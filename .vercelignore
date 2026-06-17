@@ -1,0 +1,9 @@
+# Never upload secrets or server-only tooling to Vercel.
+.env
+.env.*
+node_modules
+dist
+scripts
+supabase
+.claude
+*.log

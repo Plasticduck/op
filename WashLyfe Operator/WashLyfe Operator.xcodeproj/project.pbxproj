@@ -1,0 +1,613 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		E4991DE32FC743E400B0717F /* WashLyfe_OperatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4991DE22FC743E400B0717F /* WashLyfe_OperatorApp.swift */; };
+		E4991DE52FC743E400B0717F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4991DE42FC743E400B0717F /* ContentView.swift */; };
+		E4991DE72FC743E400B0717F /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4991DE62FC743E400B0717F /* Item.swift */; };
+		E4991DE92FC743E700B0717F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4991DE82FC743E700B0717F /* Assets.xcassets */; };
+		E4991DEC2FC743E700B0717F /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4991DEB2FC743E700B0717F /* Preview Assets.xcassets */; };
+		E4991DEC2FC7440000B0717F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4991DEB2FC7440000B0717F /* OnboardingView.swift */; };
+		E4991DEE2FC7440000B0717F /* NotificationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4991DED2FC7440000B0717F /* NotificationBridge.swift */; };
+		E4991DF62FC743E700B0717F /* WashLyfe_OperatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4991DF52FC743E700B0717F /* WashLyfe_OperatorTests.swift */; };
+		E4991E002FC743E700B0717F /* WashLyfe_OperatorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4991DFF2FC743E700B0717F /* WashLyfe_OperatorUITests.swift */; };
+		E4991E022FC743E700B0717F /* WashLyfe_OperatorUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4991E012FC743E700B0717F /* WashLyfe_OperatorUITestsLaunchTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E4991DF22FC743E700B0717F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E4991DD72FC743E400B0717F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E4991DDE2FC743E400B0717F;
+			remoteInfo = "WashLyfe Operator";
+		};
+		E4991DFC2FC743E700B0717F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E4991DD72FC743E400B0717F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E4991DDE2FC743E400B0717F;
+			remoteInfo = "WashLyfe Operator";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		E4991DDF2FC743E400B0717F /* WashLyfe Operator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WashLyfe Operator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4991DE22FC743E400B0717F /* WashLyfe_OperatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WashLyfe_OperatorApp.swift; sourceTree = "<group>"; };
+		E4991DE42FC743E400B0717F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E4991DE62FC743E400B0717F /* Item.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Item.swift; sourceTree = "<group>"; };
+		E4991DE82FC743E700B0717F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E4991DEB2FC743E700B0717F /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		E4991DEB2FC7440000B0717F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		E4991DED2FC7440000B0717F /* NotificationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationBridge.swift; sourceTree = "<group>"; };
+		E4991DF12FC743E700B0717F /* WashLyfe OperatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "WashLyfe OperatorTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4991DF52FC743E700B0717F /* WashLyfe_OperatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WashLyfe_OperatorTests.swift; sourceTree = "<group>"; };
+		E4991DFB2FC743E700B0717F /* WashLyfe OperatorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "WashLyfe OperatorUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4991DFF2FC743E700B0717F /* WashLyfe_OperatorUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WashLyfe_OperatorUITests.swift; sourceTree = "<group>"; };
+		E4991E012FC743E700B0717F /* WashLyfe_OperatorUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WashLyfe_OperatorUITestsLaunchTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E4991DDC2FC743E400B0717F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4991DEE2FC743E700B0717F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4991DF82FC743E700B0717F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		E4991DD62FC743E400B0717F = {
+			isa = PBXGroup;
+			children = (
+				E4991DE12FC743E400B0717F /* WashLyfe Operator */,
+				E4991DF42FC743E700B0717F /* WashLyfe OperatorTests */,
+				E4991DFE2FC743E700B0717F /* WashLyfe OperatorUITests */,
+				E4991DE02FC743E400B0717F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E4991DE02FC743E400B0717F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E4991DDF2FC743E400B0717F /* WashLyfe Operator.app */,
+				E4991DF12FC743E700B0717F /* WashLyfe OperatorTests.xctest */,
+				E4991DFB2FC743E700B0717F /* WashLyfe OperatorUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E4991DE12FC743E400B0717F /* WashLyfe Operator */ = {
+			isa = PBXGroup;
+			children = (
+				E4991DE22FC743E400B0717F /* WashLyfe_OperatorApp.swift */,
+				E4991DE42FC743E400B0717F /* ContentView.swift */,
+				E4991DE62FC743E400B0717F /* Item.swift */,
+				E4991DEB2FC7440000B0717F /* OnboardingView.swift */,
+				E4991DED2FC7440000B0717F /* NotificationBridge.swift */,
+				E4991DE82FC743E700B0717F /* Assets.xcassets */,
+				E4991DEA2FC743E700B0717F /* Preview Content */,
+			);
+			path = "WashLyfe Operator";
+			sourceTree = "<group>";
+		};
+		E4991DEA2FC743E700B0717F /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				E4991DEB2FC743E700B0717F /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		E4991DF42FC743E700B0717F /* WashLyfe OperatorTests */ = {
+			isa = PBXGroup;
+			children = (
+				E4991DF52FC743E700B0717F /* WashLyfe_OperatorTests.swift */,
+			);
+			path = "WashLyfe OperatorTests";
+			sourceTree = "<group>";
+		};
+		E4991DFE2FC743E700B0717F /* WashLyfe OperatorUITests */ = {
+			isa = PBXGroup;
+			children = (
+				E4991DFF2FC743E700B0717F /* WashLyfe_OperatorUITests.swift */,
+				E4991E012FC743E700B0717F /* WashLyfe_OperatorUITestsLaunchTests.swift */,
+			);
+			path = "WashLyfe OperatorUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E4991DDE2FC743E400B0717F /* WashLyfe Operator */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4991E052FC743E700B0717F /* Build configuration list for PBXNativeTarget "WashLyfe Operator" */;
+			buildPhases = (
+				E4991DDB2FC743E400B0717F /* Sources */,
+				E4991DDC2FC743E400B0717F /* Frameworks */,
+				E4991DDD2FC743E400B0717F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "WashLyfe Operator";
+			productName = "WashLyfe Operator";
+			productReference = E4991DDF2FC743E400B0717F /* WashLyfe Operator.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E4991DF02FC743E700B0717F /* WashLyfe OperatorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4991E082FC743E700B0717F /* Build configuration list for PBXNativeTarget "WashLyfe OperatorTests" */;
+			buildPhases = (
+				E4991DED2FC743E700B0717F /* Sources */,
+				E4991DEE2FC743E700B0717F /* Frameworks */,
+				E4991DEF2FC743E700B0717F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E4991DF32FC743E700B0717F /* PBXTargetDependency */,
+			);
+			name = "WashLyfe OperatorTests";
+			productName = "WashLyfe OperatorTests";
+			productReference = E4991DF12FC743E700B0717F /* WashLyfe OperatorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E4991DFA2FC743E700B0717F /* WashLyfe OperatorUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4991E0B2FC743E700B0717F /* Build configuration list for PBXNativeTarget "WashLyfe OperatorUITests" */;
+			buildPhases = (
+				E4991DF72FC743E700B0717F /* Sources */,
+				E4991DF82FC743E700B0717F /* Frameworks */,
+				E4991DF92FC743E700B0717F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E4991DFD2FC743E700B0717F /* PBXTargetDependency */,
+			);
+			name = "WashLyfe OperatorUITests";
+			productName = "WashLyfe OperatorUITests";
+			productReference = E4991DFB2FC743E700B0717F /* WashLyfe OperatorUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E4991DD72FC743E400B0717F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					E4991DDE2FC743E400B0717F = {
+						CreatedOnToolsVersion = 15.4;
+					};
+					E4991DF02FC743E700B0717F = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = E4991DDE2FC743E400B0717F;
+					};
+					E4991DFA2FC743E700B0717F = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = E4991DDE2FC743E400B0717F;
+					};
+				};
+			};
+			buildConfigurationList = E4991DDA2FC743E400B0717F /* Build configuration list for PBXProject "WashLyfe Operator" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = E4991DD62FC743E400B0717F;
+			productRefGroup = E4991DE02FC743E400B0717F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E4991DDE2FC743E400B0717F /* WashLyfe Operator */,
+				E4991DF02FC743E700B0717F /* WashLyfe OperatorTests */,
+				E4991DFA2FC743E700B0717F /* WashLyfe OperatorUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E4991DDD2FC743E400B0717F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4991DEC2FC743E700B0717F /* Preview Assets.xcassets in Resources */,
+				E4991DE92FC743E700B0717F /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4991DEF2FC743E700B0717F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4991DF92FC743E700B0717F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E4991DDB2FC743E400B0717F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4991DE52FC743E400B0717F /* ContentView.swift in Sources */,
+				E4991DE72FC743E400B0717F /* Item.swift in Sources */,
+				E4991DEC2FC7440000B0717F /* OnboardingView.swift in Sources */,
+				E4991DEE2FC7440000B0717F /* NotificationBridge.swift in Sources */,
+				E4991DE32FC743E400B0717F /* WashLyfe_OperatorApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4991DED2FC743E700B0717F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4991DF62FC743E700B0717F /* WashLyfe_OperatorTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4991DF72FC743E700B0717F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4991E002FC743E700B0717F /* WashLyfe_OperatorUITests.swift in Sources */,
+				E4991E022FC743E700B0717F /* WashLyfe_OperatorUITestsLaunchTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E4991DF32FC743E700B0717F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E4991DDE2FC743E400B0717F /* WashLyfe Operator */;
+			targetProxy = E4991DF22FC743E700B0717F /* PBXContainerItemProxy */;
+		};
+		E4991DFD2FC743E700B0717F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E4991DDE2FC743E400B0717F /* WashLyfe Operator */;
+			targetProxy = E4991DFC2FC743E700B0717F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		E4991E032FC743E700B0717F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		E4991E042FC743E700B0717F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E4991E062FC743E700B0717F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"WashLyfe Operator/Preview Content\"";
+				DEVELOPMENT_TEAM = 37XY5HCS53;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = WashLyfe;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "WashLyfe Operator uses your location to surface your nearest site and accurate site weather.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "WashLyfe-Media.WashLyfe-Operator";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E4991E072FC743E700B0717F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"WashLyfe Operator/Preview Content\"";
+				DEVELOPMENT_TEAM = 37XY5HCS53;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = WashLyfe;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "WashLyfe Operator uses your location to surface your nearest site and accurate site weather.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "WashLyfe-Media.WashLyfe-Operator";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E4991E092FC743E700B0717F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 37XY5HCS53;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "WashLyfe-Media.WashLyfe-OperatorTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WashLyfe Operator.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WashLyfe Operator";
+			};
+			name = Debug;
+		};
+		E4991E0A2FC743E700B0717F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 37XY5HCS53;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "WashLyfe-Media.WashLyfe-OperatorTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WashLyfe Operator.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/WashLyfe Operator";
+			};
+			name = Release;
+		};
+		E4991E0C2FC743E700B0717F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 37XY5HCS53;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "WashLyfe-Media.WashLyfe-OperatorUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "WashLyfe Operator";
+			};
+			name = Debug;
+		};
+		E4991E0D2FC743E700B0717F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 37XY5HCS53;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "WashLyfe-Media.WashLyfe-OperatorUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "WashLyfe Operator";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E4991DDA2FC743E400B0717F /* Build configuration list for PBXProject "WashLyfe Operator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4991E032FC743E700B0717F /* Debug */,
+				E4991E042FC743E700B0717F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E4991E052FC743E700B0717F /* Build configuration list for PBXNativeTarget "WashLyfe Operator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4991E062FC743E700B0717F /* Debug */,
+				E4991E072FC743E700B0717F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E4991E082FC743E700B0717F /* Build configuration list for PBXNativeTarget "WashLyfe OperatorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4991E092FC743E700B0717F /* Debug */,
+				E4991E0A2FC743E700B0717F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E4991E0B2FC743E700B0717F /* Build configuration list for PBXNativeTarget "WashLyfe OperatorUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4991E0C2FC743E700B0717F /* Debug */,
+				E4991E0D2FC743E700B0717F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E4991DD72FC743E400B0717F /* Project object */;
+}

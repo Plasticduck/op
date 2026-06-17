@@ -1,0 +1,492 @@
+/* eslint-disable react-refresh/only-export-components -- NAV_GROUPS is shared with CommandPalette as the single source of truth for nav */
+import { useEffect, useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
+import type { LucideIcon } from 'lucide-react'
+import {
+  AlarmClockOff,
+  Award,
+  Bandage,
+  Bolt,
+  BookUser,
+  Banknote,
+  BrainCircuit,
+  CalendarClock,
+  CalendarHeart,
+  ChartNoAxesCombined,
+  ChevronDown,
+  Clock,
+  Coffee,
+  Cog,
+  CreditCard,
+  FileClock,
+  Folders,
+  Gauge,
+  Gavel,
+  HandCoins,
+  ListChecks,
+  Building2,
+  Map,
+  Megaphone,
+  Tags as TagsIcon,
+  MessageCircle,
+  MessageSquareWarning,
+  PackageOpen,
+  Palmtree,
+  Search,
+  SearchCheck,
+  Settings,
+  Shirt,
+  Stamp,
+  Telescope,
+  UserPlus,
+  UsersRound,
+  Wallet,
+  Warehouse,
+  Wrench,
+  X,
+} from 'lucide-react'
+import { Logo } from '@/components/ui/Logo'
+import type { Role } from '@/lib/rbac'
+import { cn } from '@/lib/utils'
+
+type NavItem = {
+  to: string
+  label: string
+  icon: LucideIcon
+  roles: Role[]
+}
+
+type NavGroup = {
+  label: string
+  items: NavItem[]
+  roles?: Role[]
+}
+
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Overview',
+    items: [
+      {
+        to: '/app/dashboard',
+        label: 'Dashboard',
+        icon: Gauge,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/messages',
+        label: 'Messages',
+        icon: MessageCircle,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/insights',
+        label: 'AI Insights',
+        icon: BrainCircuit,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/reports',
+        label: 'Reports',
+        icon: ChartNoAxesCombined,
+        roles: ['owner', 'manager'],
+      },
+    ],
+  },
+  {
+    label: 'Ops',
+    roles: ['owner', 'manager', 'employee'],
+    items: [
+      {
+        to: '/app/checklists',
+        label: 'Checklists',
+        icon: ListChecks,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/work-orders',
+        label: 'Work Orders',
+        icon: Wrench,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/categories',
+        label: 'Categories',
+        icon: TagsIcon,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/vendors',
+        label: 'Vendors',
+        icon: Building2,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/assets',
+        label: 'Assets',
+        icon: Cog,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/downtime',
+        label: 'Downtime',
+        icon: AlarmClockOff,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/parts',
+        label: 'Parts',
+        icon: Bolt,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/closeouts',
+        label: 'Closeouts',
+        icon: HandCoins,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/tips',
+        label: 'Tips',
+        icon: Banknote,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/documents',
+        label: 'Documents',
+        icon: Folders,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/contacts',
+        label: 'Contacts',
+        icon: BookUser,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/supplies',
+        label: 'Supplies',
+        icon: PackageOpen,
+        roles: ['owner', 'manager', 'employee'],
+      },
+    ],
+  },
+  {
+    label: 'Ops Suite',
+    roles: ['owner', 'manager'],
+    items: [
+      {
+        to: '/app/site-reviews',
+        label: 'Site Reviews',
+        icon: Stamp,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/site-audits',
+        label: 'Site Audits',
+        icon: SearchCheck,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/invoices',
+        label: 'Invoices',
+        icon: Wallet,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/inventory',
+        label: 'Inventory',
+        icon: Warehouse,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/violations',
+        label: 'Violations',
+        icon: Gavel,
+        roles: ['owner', 'manager'],
+      },
+    ],
+  },
+  {
+    label: 'Marketing',
+    roles: ['owner', 'manager'],
+    items: [
+      {
+        to: '/app/market-research',
+        label: 'Market Research',
+        icon: Telescope,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/social-calendar',
+        label: 'Social Calendar',
+        icon: Megaphone,
+        roles: ['owner', 'manager'],
+      },
+    ],
+  },
+  {
+    label: 'People',
+    items: [
+      {
+        to: '/app/employees',
+        label: 'Employees',
+        icon: UsersRound,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/schedule',
+        label: 'Schedule',
+        icon: CalendarClock,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/timeclock',
+        label: 'Time Clock',
+        icon: Clock,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/timesheets',
+        label: 'Timesheets',
+        icon: FileClock,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/reviews',
+        label: 'Reviews',
+        icon: Award,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/counseling',
+        label: 'Counseling',
+        icon: MessageSquareWarning,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/injuries',
+        label: 'Injuries',
+        icon: Bandage,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/uniforms',
+        label: 'Uniforms',
+        icon: Shirt,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/time-off',
+        label: 'Time Off',
+        icon: Palmtree,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/breaks',
+        label: 'Breaks',
+        icon: Coffee,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/calendar',
+        label: 'Calendar',
+        icon: CalendarHeart,
+        roles: ['owner', 'manager', 'employee'],
+      },
+    ],
+  },
+  {
+    label: 'Account',
+    roles: ['owner'],
+    items: [
+      {
+        to: '/app/settings/team',
+        label: 'Team',
+        icon: UserPlus,
+        roles: ['owner'],
+      },
+      {
+        to: '/app/settings/locations',
+        label: 'Locations',
+        icon: Map,
+        roles: ['owner'],
+      },
+      {
+        to: '/app/settings/billing',
+        label: 'Billing',
+        icon: CreditCard,
+        roles: ['owner'],
+      },
+      {
+        to: '/app/settings',
+        label: 'Settings',
+        icon: Settings,
+        roles: ['owner'],
+      },
+    ],
+  },
+]
+
+const STORAGE_KEY = 'tunnelsync.navGroups'
+
+// The grouped, collapsible nav body — shared by the desktop sidebar and the
+// mobile drawer. `onNavigate` lets the drawer close itself when a link is tapped.
+export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
+  const location = useLocation()
+  const [query, setQuery] = useState('')
+
+  // Only the groups + items this role can see.
+  const baseGroups = NAV_GROUPS
+    .filter((g) => !g.roles || g.roles.includes(role))
+    .map((g) => ({ ...g, items: g.items.filter((i) => i.roles.includes(role)) }))
+    .filter((g) => g.items.length > 0)
+
+  // Apply search filter. Match against group label OR item label. A group
+  // matching its own label keeps all its items.
+  const q = query.trim().toLowerCase()
+  const visibleGroups = q
+    ? baseGroups
+        .map((g) => {
+          const groupHit = g.label.toLowerCase().includes(q)
+          const filteredItems = groupHit
+            ? g.items
+            : g.items.filter((i) => i.label.toLowerCase().includes(q))
+          return { ...g, items: filteredItems }
+        })
+        .filter((g) => g.items.length > 0)
+    : baseGroups
+
+  // Collapsible sections, remembered across visits. Default: everything open.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) return JSON.parse(saved) as Record<string, boolean>
+    } catch {
+      /* ignore malformed storage */
+    }
+    return Object.fromEntries(NAV_GROUPS.map((g) => [g.label, true]))
+  })
+
+  // Whatever section you're currently in stays open so you never lose your place.
+  useEffect(() => {
+    const active = visibleGroups.find((g) =>
+      g.items.some((i) => location.pathname.startsWith(i.to)),
+    )
+    if (active && !openGroups[active.label]) {
+      setOpenGroups((prev) => ({ ...prev, [active.label]: true }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname])
+
+  const toggle = (label: string) => {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [label]: !(prev[label] ?? true) }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        /* ignore storage failures */
+      }
+      return next
+    })
+  }
+
+  return (
+    <nav className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-4">
+      <div className="relative mb-3">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-invert-muted/60" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search nav..."
+          className="h-9 w-full rounded-md border border-white/10 bg-white/[0.04] pl-8 pr-7 text-sm text-white placeholder:text-ink-invert-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/60"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            aria-label="Clear search"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-ink-invert-muted/70 hover:text-white"
+          >
+            <X className="size-3" />
+          </button>
+        )}
+      </div>
+      {visibleGroups.length === 0 && (
+        <p className="px-2 py-4 text-center text-xs text-ink-invert-muted/60">No matches</p>
+      )}
+      {visibleGroups.map((group) => {
+        const isOpen = q.length > 0 || (openGroups[group.label] ?? true)
+        return (
+          <div key={group.label} className="mb-3">
+            <button
+              type="button"
+              onClick={() => toggle(group.label)}
+              aria-expanded={isOpen}
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-invert-muted/70 transition hover:text-white/90"
+            >
+              {group.label}
+              <ChevronDown
+                className={cn(
+                  'size-3.5 shrink-0 transition-transform duration-200',
+                  isOpen ? 'rotate-0' : '-rotate-90',
+                )}
+              />
+            </button>
+            {isOpen && (
+              <ul className="mt-2 flex flex-col gap-1">
+                {group.items.map((item) => (
+                  <li key={item.to}>
+                    <NavLink
+                      to={item.to}
+                      end={item.to === '/app/dashboard'}
+                      onClick={onNavigate}
+                    >
+                      {({ isActive }) => (
+                        <span
+                          className={cn(
+                            'group flex items-center gap-3 rounded-lg px-2 py-1.5 text-[15px] font-medium transition',
+                            isActive
+                              ? 'bg-white/[0.07] text-white'
+                              : 'text-ink-invert-muted hover:bg-white/[0.04] hover:text-white',
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              'grid size-9 shrink-0 place-items-center rounded-lg transition duration-150',
+                              isActive
+                                ? 'bg-accent text-white'
+                                : 'bg-white/[0.06] text-white/75 ring-1 ring-inset ring-white/10 group-hover:bg-accent/15 group-hover:text-white group-hover:ring-accent/40',
+                            )}
+                          >
+                            <item.icon className="size-[18px]" strokeWidth={2.25} />
+                          </span>
+                          {item.label}
+                        </span>
+                      )}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )
+      })}
+    </nav>
+  )
+}
+
+export function Sidebar({ role }: { role: Role }) {
+  return (
+    <aside className="relative hidden h-dvh w-64 shrink-0 flex-col bg-shell text-ink-invert lg:flex">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-white/[0.04] to-transparent" />
+      <div className="relative flex h-16 items-center px-5 border-b border-white/5">
+        <Logo invert size="lg" />
+      </div>
+      <SidebarNav role={role} />
+      <div className="relative border-t border-white/5 p-3 text-[11px] uppercase tracking-wider text-ink-invert-muted/60">
+        v0.0.0 · {role}
+      </div>
+    </aside>
+  )
+}
