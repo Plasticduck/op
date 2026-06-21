@@ -84,24 +84,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: BrainCircuit,
         roles: ['owner', 'manager'],
       },
-      {
-        to: '/app/reports',
-        label: 'Reports',
-        icon: ChartNoAxesCombined,
-        roles: ['owner', 'manager'],
-      },
     ],
   },
   {
-    label: 'Ops',
+    label: 'Maintenance',
     roles: ['owner', 'manager', 'employee'],
     items: [
-      {
-        to: '/app/checklists',
-        label: 'Checklists',
-        icon: ListChecks,
-        roles: ['owner', 'manager', 'employee'],
-      },
       {
         to: '/app/work-orders',
         label: 'Work Orders',
@@ -109,21 +97,9 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
-        to: '/app/categories',
-        label: 'Categories',
-        icon: TagsIcon,
-        roles: ['owner', 'manager'],
-      },
-      {
-        to: '/app/vendors',
-        label: 'Vendors',
-        icon: Building2,
-        roles: ['owner', 'manager'],
-      },
-      {
-        to: '/app/assets',
-        label: 'Assets',
-        icon: Cog,
+        to: '/app/reports',
+        label: 'Maintenance Reports',
+        icon: ChartNoAxesCombined,
         roles: ['owner', 'manager'],
       },
       {
@@ -133,9 +109,51 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
+        to: '/app/assets',
+        label: 'Assets',
+        icon: Cog,
+        roles: ['owner', 'manager'],
+      },
+      {
         to: '/app/parts',
         label: 'Parts',
         icon: Bolt,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/supplies',
+        label: 'Supplies',
+        icon: PackageOpen,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/categories',
+        label: 'Maintenance Categories',
+        icon: TagsIcon,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/documents',
+        label: 'Documents',
+        icon: Folders,
+        roles: ['owner', 'manager', 'employee'],
+      },
+    ],
+  },
+  {
+    label: 'Operations',
+    roles: ['owner', 'manager', 'employee'],
+    items: [
+      {
+        to: '/app/checklists',
+        label: 'Checklists',
+        icon: ListChecks,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/vendors',
+        label: 'Vendors',
+        icon: Building2,
         roles: ['owner', 'manager'],
       },
       {
@@ -151,29 +169,11 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
-        to: '/app/documents',
-        label: 'Documents',
-        icon: Folders,
-        roles: ['owner', 'manager', 'employee'],
-      },
-      {
         to: '/app/contacts',
         label: 'Contacts',
         icon: BookUser,
         roles: ['owner', 'manager'],
       },
-      {
-        to: '/app/supplies',
-        label: 'Supplies',
-        icon: PackageOpen,
-        roles: ['owner', 'manager', 'employee'],
-      },
-    ],
-  },
-  {
-    label: 'Ops Suite',
-    roles: ['owner', 'manager'],
-    items: [
       {
         to: '/app/site-reviews',
         label: 'Site Reviews',
