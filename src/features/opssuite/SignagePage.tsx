@@ -3,13 +3,15 @@ import { ChevronRight, Signpost } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/utils'
-import { SIGNAGE_CATEGORIES } from './signage/catalog'
+import { SIGNAGE_CATEGORIES, getItemDetail } from './signage/catalog'
+import { SignageItemDetail } from './signage/SignageItemDetail'
 
 export default function SignagePage() {
   const [activeSlug, setActiveSlug] = useState(SIGNAGE_CATEGORIES[0].slug)
   const [activeItem, setActiveItem] = useState<string | null>(null)
   const active =
     SIGNAGE_CATEGORIES.find((c) => c.slug === activeSlug) ?? SIGNAGE_CATEGORIES[0]
+  const activeDetail = activeItem ? getItemDetail(active.slug, activeItem) : undefined
 
   const selectCategory = (slug: string) => {
     setActiveSlug(slug)
@@ -110,13 +112,15 @@ export default function SignagePage() {
             </ul>
           )}
 
-          {activeItem && (
+          {activeItem && !activeDetail && (
             <div className="border-t border-border bg-content px-4 py-3 text-xs text-ink-muted">
               Sizes and pricing for {activeItem} come next.
             </div>
           )}
         </div>
       </div>
+
+      {activeDetail && <SignageItemDetail detail={activeDetail} />}
     </div>
   )
 }

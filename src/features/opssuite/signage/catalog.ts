@@ -218,3 +218,168 @@ export const SIGNAGE_CATEGORIES: SignageCategory[] = [
     ],
   },
 ]
+
+// ---------------------------------------------------------------------------
+// Per-item order form ("Job Specifications") + product info.
+//
+// Each item that has been built out gets a SignageItemDetail. The spec fields
+// mirror the vendor's order form for that product. Pricing on the vendor side
+// is a live quote computed server-side; until we have their price model we show
+// the minimum order and treat it as the unit price.
+// ---------------------------------------------------------------------------
+
+export type SpecField =
+  | { kind: 'text'; key: string; label: string; placeholder?: string }
+  | { kind: 'textarea'; key: string; label: string; placeholder?: string }
+  | { kind: 'number'; key: string; label: string; default: number; min?: number }
+  | {
+      kind: 'size'
+      key: string
+      label: string
+      unit: string
+      defaultWidth: number
+      defaultHeight: number
+    }
+  | { kind: 'select'; key: string; label: string; options: string[]; default: string }
+
+export type SignageItemDetail = {
+  /** Display title as the vendor shows it, e.g. "Custom 13-oz. Vinyl Banners". */
+  title: string
+  minimumOrder?: string
+  features?: string
+  info?: { label: string; value: string }[]
+  specs: SpecField[]
+  notes?: string[]
+}
+
+// Keyed by `${categorySlug}::${itemName}`.
+export const SIGNAGE_ITEM_DETAILS: Record<string, SignageItemDetail> = {
+  'banners::13 oz. Vinyl Banners': {
+    title: 'Custom 13-oz. Vinyl Banners',
+    minimumOrder: '$12.00 per artwork',
+    features:
+      'Tear and fade resistant, our 13 oz. vinyl banner material is an economical choice for advertising your message. Printed single sided, in full color and high resolution, the 1000 x 1000 dpi print makes this style perfect for indoor and outdoor applications. Printed on 13 oz. vinyl, these custom banners are hemmed on all sides with grommets every two feet for easy display.',
+    info: [
+      { label: 'Substrate', value: '13 oz. Vinyl Material' },
+      { label: 'Color', value: 'Printed Full Color' },
+      { label: 'Sided', value: 'Single Sided' },
+      {
+        label: 'Standard Grommets',
+        value:
+          'Choose the layout you need in the dropdown menu and select the chrome, black, or brass grommet color you desire.',
+      },
+      {
+        label: 'Wind Slits',
+        value:
+          'Strategically placed half-circle cuts placed throughout the banner to allow wind to flow through and reduce tension caused by wind load.',
+      },
+      {
+        label: 'Pole Pockets',
+        value:
+          'Extra fabric wrapped around and hemmed to create a strong pocket that the pole slides through. Available at the top and bottom, the top only, or the bottom only.',
+      },
+      {
+        label: 'Reinforced Corners',
+        value: 'Adds extra strength to the corners if there are grommets.',
+      },
+      {
+        label: 'Banner Webbing',
+        value:
+          'Nylon webbing added to the hem that strengthens the banner and reinforces grommets from being torn out by nature elements such as high wind.',
+      },
+    ],
+    notes: [
+      'Artwork includes a 1" bleed on all sides.',
+      'All important elements are at least 1" from the edge.',
+      'No crop marks are present in artwork.',
+      'If you require slits, pole pockets, reinforced corners, or webbing on your custom vinyl banners, please specify in the dropdown menus.',
+    ],
+    specs: [
+      { kind: 'text', key: 'project_title', label: 'Project Title' },
+      { kind: 'number', key: 'quantity', label: 'Quantity', default: 1, min: 1 },
+      {
+        kind: 'size',
+        key: 'product_size',
+        label: 'Product Size (Width x Height)',
+        unit: '"',
+        defaultWidth: 12,
+        defaultHeight: 12,
+      },
+      {
+        kind: 'select',
+        key: 'proofs',
+        label: 'Proofs',
+        options: ['PDF Proof', 'No Proof'],
+        default: 'PDF Proof',
+      },
+      {
+        kind: 'select',
+        key: 'grommet_layout',
+        label: 'Standard Grommet Layout',
+        options: ['Every 2 Feet', 'Corners Only', 'No Grommets', 'Custom'],
+        default: 'Every 2 Feet',
+      },
+      {
+        kind: 'select',
+        key: 'grommet_color',
+        label: 'Grommet Color',
+        options: ['Black', 'Chrome', 'Brass'],
+        default: 'Black',
+      },
+      {
+        kind: 'select',
+        key: 'hem',
+        label: 'Hem',
+        options: ['All Sides', 'No Hem'],
+        default: 'All Sides',
+      },
+      {
+        kind: 'select',
+        key: 'wind_slits',
+        label: 'Wind Slits',
+        options: ['No', 'Yes'],
+        default: 'No',
+      },
+      {
+        kind: 'select',
+        key: 'pole_pocket',
+        label: 'Pole Pocket',
+        options: ['No', 'Top & Bottom', 'Top Only', 'Bottom Only'],
+        default: 'No',
+      },
+      {
+        kind: 'select',
+        key: 'reinforced_corners',
+        label: 'Reinforced Corners',
+        options: ['No', 'Yes'],
+        default: 'No',
+      },
+      {
+        kind: 'select',
+        key: 'webbing',
+        label: 'Webbing',
+        options: ['No', 'Yes'],
+        default: 'No',
+      },
+      {
+        kind: 'textarea',
+        key: 'special_instructions',
+        label: 'Special Instructions',
+      },
+    ],
+  },
+}
+
+export function getItemDetail(
+  categorySlug: string,
+  itemName: string,
+): SignageItemDetail | undefined {
+  return SIGNAGE_ITEM_DETAILS[`${categorySlug}::${itemName}`]
+}
+
+/** Parse a leading dollar amount like "$12.00 per artwork" into 12. */
+export function parseMinimum(minimumOrder?: string): number | null {
+  if (!minimumOrder) return null
+  const m = minimumOrder.match(/\$?([\d,]+(?:\.\d+)?)/)
+  return m ? Number(m[1].replace(/,/g, '')) : null
+}
