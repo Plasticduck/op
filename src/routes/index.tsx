@@ -97,6 +97,7 @@ const InventoryPage = lz(() => import('@/features/opssuite/InventoryPage'))
 const MarketResearchPage = lz(() => import('@/features/opssuite/MarketResearchPage'))
 const MarketResearchDetailPage = lz(() => import('@/features/opssuite/MarketResearchDetailPage'))
 const SiteViolationsPage = lz(() => import('@/features/opssuite/SiteViolationsPage'))
+const SignagePage = lz(() => import('@/features/opssuite/SignagePage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
 const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
@@ -189,6 +190,7 @@ export const router = createBrowserRouter([
           { path: 'market-research', element: mgr(<MarketResearchPage />) },
           { path: 'market-research/:id', element: mgr(<MarketResearchDetailPage />) },
           { path: 'violations', element: mgr(<SiteViolationsPage />) },
+          { path: 'signage', element: mgr(<SignagePage />) },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
           { path: 'employees/:id', element: mgr(<EmployeeDetailPage />) },

@@ -36,6 +36,7 @@ import {
   SearchCheck,
   Settings,
   Shirt,
+  Signpost,
   Stamp,
   Telescope,
   UserPlus,
@@ -202,6 +203,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/violations',
         label: 'Violations',
         icon: Gavel,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/signage',
+        label: 'Signage',
+        icon: Signpost,
         roles: ['owner', 'manager'],
       },
       {
