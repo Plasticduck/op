@@ -121,10 +121,10 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager', 'technician'],
       },
       {
-        to: '/app/supplies',
-        label: 'Supplies',
-        icon: PackageOpen,
-        roles: ['owner', 'manager', 'employee', 'technician'],
+        to: '/app/vendors',
+        label: 'Vendors',
+        icon: Building2,
+        roles: ['owner', 'manager'],
       },
       {
         to: '/app/categories',
@@ -151,10 +151,10 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager', 'employee'],
       },
       {
-        to: '/app/vendors',
-        label: 'Vendors',
-        icon: Building2,
-        roles: ['owner', 'manager'],
+        to: '/app/supplies',
+        label: 'Supplies',
+        icon: PackageOpen,
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
       {
         to: '/app/closeouts',
@@ -204,12 +204,6 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Gavel,
         roles: ['owner', 'manager'],
       },
-    ],
-  },
-  {
-    label: 'Marketing',
-    roles: ['owner', 'manager'],
-    items: [
       {
         to: '/app/market-research',
         label: 'Market Research',
