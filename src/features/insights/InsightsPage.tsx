@@ -63,7 +63,7 @@ export default function InsightsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="AI Insights"
-        subtitle="Your data tells a story — WashLyfe reads it for you."
+        subtitle="Your data tells a story. Operator reads it for you."
         actions={
           <Button onClick={refresh} disabled={refreshing}>
             <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} />
