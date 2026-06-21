@@ -51,8 +51,17 @@ export const SIGNAGE_CATEGORIES: SignageCategory[] = [
   {
     slug: 'hardware',
     name: 'Hardware',
-    // Screenshot pending.
-    items: [],
+    items: [
+      'Cross Base with Water Bag',
+      'Deluxe A-Frame Hardware',
+      'Deluxe Retractable Banner Stand Hardware',
+      'Feather Flag Replacement Pole & Hardware Set',
+      'Ground Stake',
+      'Square Feather Flag Base',
+      'Standard Retractable Banner Stand Hardware',
+      'Tube Display (Step & Repeat) Hardware',
+      'X-Stand Hardware',
+    ],
   },
   {
     slug: 'yard-signs',
