@@ -139,26 +139,35 @@
   display: none;
 }
 
-/* Scroll area whose scrollbar stays hidden until the pointer hovers it, then
-   shows the browser's native scrollbar so it matches the rest of the app. Used
-   on the sidebar nav so the dark rail isn't disfigured by a permanent track. */
+/* Scroll area whose thumb stays invisible until the pointer hovers it. The
+   gutter is always reserved (transparent track + transparent thumb) so nothing
+   shifts when the thumb fades in. Tuned for the dark sidebar rail: a subtle
+   translucent-white thumb, like a native scrollbar but legible on dark. */
 .scrollbar-hover {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent; /* Firefox: thumb track, hidden by default */
 }
 .scrollbar-hover:hover {
-  scrollbar-width: auto;
-  -ms-overflow-style: auto;
+  scrollbar-color: rgb(255 255 255 / 0.28) transparent;
 }
 .scrollbar-hover::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
+  width: 10px;
+  height: 10px;
 }
-.scrollbar-hover:hover::-webkit-scrollbar {
-  width: auto;
-  height: auto;
-  display: block;
+.scrollbar-hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.scrollbar-hover:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(255 255 255 / 0.28);
+}
+.scrollbar-hover:hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 0.45);
 }
 
 /* Print: strip the app chrome so reports print clean to PDF. Mark anything you
