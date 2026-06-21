@@ -110,6 +110,16 @@ const s = (el: ReactNode) => <Suspense fallback={<RouteProgress />}>{el}</Suspen
 const mgr = (el: ReactNode) => (
   <RequireRole allow={['owner', 'manager']}>{s(el)}</RequireRole>
 )
+// Routes a technician can reach alongside managers (maintenance + the handful of
+// operations/people pages the role is scoped to).
+const tech = (el: ReactNode) => (
+  <RequireRole allow={['owner', 'manager', 'technician']}>{s(el)}</RequireRole>
+)
+// Open-to-staff pages that technicians are deliberately kept out of (checklists,
+// schedule, uniforms). Same reach as the old bare s() minus technician.
+const emp = (el: ReactNode) => (
+  <RequireRole allow={['owner', 'manager', 'employee']}>{s(el)}</RequireRole>
+)
 
 export const router = createBrowserRouter([
   // Public marketing
@@ -148,66 +158,71 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/app/dashboard" replace /> },
           { path: 'dashboard', element: s(<DashboardPage />) },
 
-          { path: 'insights', element: mgr(<InsightsPage />) },
-          { path: 'reports', element: mgr(<ReportingPage />) },
-          { path: 'reports/:reportKey', element: mgr(<PreBuiltReportPage />) },
+          { path: 'insights', element: tech(<InsightsPage />) },
+          { path: 'reports', element: tech(<ReportingPage />) },
+          { path: 'reports/:reportKey', element: tech(<PreBuiltReportPage />) },
 
-          { path: 'checklists', element: s(<ChecklistsPage />) },
+          { path: 'checklists', element: emp(<ChecklistsPage />) },
           { path: 'checklists/templates', element: mgr(<ChecklistsTemplatesPage />) },
           { path: 'checklists/templates/:id', element: mgr(<ChecklistDetailPage />) },
-          { path: 'work-orders', element: mgr(<WorkOrdersPage />) },
-          { path: 'work-orders/:id', element: mgr(<WorkOrdersPage />) },
-          { path: 'categories', element: mgr(<CategoriesPage />) },
+          { path: 'work-orders', element: tech(<WorkOrdersPage />) },
+          { path: 'work-orders/:id', element: tech(<WorkOrdersPage />) },
+          { path: 'categories', element: tech(<CategoriesPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },
-          { path: 'assets', element: mgr(<AssetsPage />) },
-          { path: 'assets/:id', element: mgr(<AssetsPage />) },
+          { path: 'assets', element: tech(<AssetsPage />) },
+          { path: 'assets/:id', element: tech(<AssetsPage />) },
           // Legacy equipment URLs redirect to /assets so old bookmarks keep working.
           { path: 'equipment', element: <Navigate to="/app/assets" replace /> },
           { path: 'equipment/:id', element: <Navigate to="/app/assets" replace /> },
-          { path: 'downtime', element: mgr(<DowntimePage />) },
-          { path: 'parts', element: mgr(<PartsPage />) },
-          { path: 'parts/:id', element: mgr(<PartsPage />) },
+          { path: 'downtime', element: tech(<DowntimePage />) },
+          { path: 'parts', element: tech(<PartsPage />) },
+          { path: 'parts/:id', element: tech(<PartsPage />) },
           { path: 'closeouts', element: mgr(<CloseoutsPage />) },
           { path: 'documents', element: s(<DocumentsPage />) },
-          { path: 'contacts', element: mgr(<ContactsPage />) },
+          { path: 'contacts', element: tech(<ContactsPage />) },
           { path: 'supplies', element: s(<SuppliesPage />) },
 
           { path: 'site-reviews', element: mgr(<SiteReviewsPage />) },
           { path: 'site-audits', element: mgr(<SiteAuditsPage />) },
-          { path: 'invoices', element: mgr(<InvoicesPage />) },
-          { path: 'inventory', element: mgr(<InventoryPage />) },
+          { path: 'invoices', element: tech(<InvoicesPage />) },
+          { path: 'inventory', element: tech(<InventoryPage />) },
           { path: 'market-research', element: mgr(<MarketResearchPage />) },
           { path: 'market-research/:id', element: mgr(<MarketResearchDetailPage />) },
           { path: 'violations', element: mgr(<SiteViolationsPage />) },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
           { path: 'employees/:id', element: mgr(<EmployeeDetailPage />) },
-          { path: 'schedule', element: s(<SchedulePage />) },
-          { path: 'timeclock', element: mgr(<TimeClockPage />) },
+          { path: 'schedule', element: emp(<SchedulePage />) },
+          { path: 'timeclock', element: tech(<TimeClockPage />) },
           { path: 'timeclock/kiosk', element: mgr(<KioskPage />) },
           { path: 'timesheets', element: mgr(<TimesheetsPage />) },
           { path: 'reviews', element: mgr(<ReviewsPage />) },
           { path: 'counseling', element: mgr(<CounselingPage />) },
           { path: 'injuries', element: mgr(<InjuriesPage />) },
-          { path: 'uniforms', element: s(<UniformsPage />) },
+          { path: 'uniforms', element: emp(<UniformsPage />) },
           { path: 'time-off', element: s(<TimeOffPage />) },
           { path: 'calendar', element: s(<CalendarPage />) },
           { path: 'social-calendar', element: mgr(<SocialCalendarPage />) },
           { path: 'messages', element: s(<MessagesPage />) },
           { path: 'tips', element: mgr(<TipsAdminPage />) },
           { path: 'messages/:conversationId', element: s(<MessagesPage />) },
-          { path: 'breaks', element: mgr(<BreaksPage />) },
+          { path: 'breaks', element: tech(<BreaksPage />) },
 
           {
             path: 'settings',
             element: (
-              <RequireRole allow={['owner']}>{s(<SettingsLayout />)}</RequireRole>
+              <RequireRole allow={['owner', 'technician']}>
+                {s(<SettingsLayout />)}
+              </RequireRole>
             ),
             children: [
               { index: true, element: <Navigate to="/app/settings/team" replace /> },
               { path: 'team', element: s(<TeamPage />) },
               { path: 'locations', element: s(<LocationsPage />) },
-              { path: 'billing', element: s(<BillingPage />) },
+              {
+                path: 'billing',
+                element: <RequireRole allow={['owner']}>{s(<BillingPage />)}</RequireRole>,
+              },
             ],
           },
         ],

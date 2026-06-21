@@ -6,7 +6,12 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { MultiLocationSelect } from '@/components/forms/MultiLocationSelect'
-import { createInvitation, inviteUrl, type LocationFull } from '@/lib/queries/account'
+import {
+  createInvitation,
+  inviteUrl,
+  type InvitableRole,
+  type LocationFull,
+} from '@/lib/queries/account'
 import { useAuth } from '@/lib/auth'
 
 export function InviteModal({
@@ -22,8 +27,10 @@ export function InviteModal({
 }) {
   const { profile } = useAuth()
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'manager' | 'employee'>('employee')
+  const [role, setRole] = useState<InvitableRole>('employee')
   const [locIds, setLocIds] = useState<string[]>([])
+  // Technicians work across every site, so site assignment doesn't apply to them.
+  const allSites = role === 'technician'
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createdUrl, setCreatedUrl] = useState<string | null>(null)
@@ -47,7 +54,7 @@ export function InviteModal({
     if (!profile) return
     setError(null)
     if (!email.includes('@')) return setError('Enter a valid email')
-    if (locIds.length === 0) return setError('Assign at least one location')
+    if (!allSites && locIds.length === 0) return setError('Assign at least one location')
 
     setSubmitting(true)
     const { data, error: err } = await createInvitation({
@@ -55,7 +62,7 @@ export function InviteModal({
       invited_by: profile.id,
       email: email.trim().toLowerCase(),
       role,
-      location_ids: locIds,
+      location_ids: allSites ? [] : locIds,
     })
     setSubmitting(false)
     if (err) return setError(err.message)
@@ -111,22 +118,33 @@ export function InviteModal({
               <Select
                 id={id}
                 value={role}
-                onChange={(e) => setRole(e.target.value as 'manager' | 'employee')}
+                onChange={(e) => setRole(e.target.value as InvitableRole)}
               >
                 <option value="employee">Employee</option>
+                <option value="technician">Technician</option>
                 <option value="manager">Manager</option>
               </Select>
             )}
           </Field>
-          <Field label="Locations" hint="Assign one or more sites" required>
-            {() => (
-              <MultiLocationSelect
-                options={locations.filter((l) => !l.archived)}
-                value={locIds}
-                onChange={setLocIds}
-              />
-            )}
-          </Field>
+          {allSites ? (
+            <Field label="Locations" hint="Technicians have access to all sites.">
+              {() => (
+                <p className="rounded-md border border-border bg-content px-3 py-2 text-sm text-ink-muted">
+                  All sites
+                </p>
+              )}
+            </Field>
+          ) : (
+            <Field label="Locations" hint="Assign one or more sites" required>
+              {() => (
+                <MultiLocationSelect
+                  options={locations.filter((l) => !l.archived)}
+                  value={locIds}
+                  onChange={setLocIds}
+                />
+              )}
+            </Field>
+          )}
           {error && (
             <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
               {error}

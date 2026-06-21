@@ -70,79 +70,79 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/dashboard',
         label: 'Dashboard',
         icon: Gauge,
-        roles: ['owner', 'manager', 'employee'],
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
       {
         to: '/app/messages',
         label: 'Messages',
         icon: MessageCircle,
-        roles: ['owner', 'manager', 'employee'],
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
       {
         to: '/app/insights',
         label: 'AI Insights',
         icon: BrainCircuit,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
     ],
   },
   {
     label: 'Maintenance',
-    roles: ['owner', 'manager', 'employee'],
+    roles: ['owner', 'manager', 'employee', 'technician'],
     items: [
       {
         to: '/app/work-orders',
         label: 'Work Orders',
         icon: Wrench,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/reports',
         label: 'Maintenance Reports',
         icon: ChartNoAxesCombined,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/downtime',
         label: 'Downtime',
         icon: AlarmClockOff,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/assets',
         label: 'Assets',
         icon: Cog,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/parts',
         label: 'Parts',
         icon: Bolt,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/supplies',
         label: 'Supplies',
         icon: PackageOpen,
-        roles: ['owner', 'manager', 'employee'],
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
       {
         to: '/app/categories',
         label: 'Maintenance Categories',
         icon: TagsIcon,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/documents',
         label: 'Documents',
         icon: Folders,
-        roles: ['owner', 'manager', 'employee'],
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
     ],
   },
   {
     label: 'Operations',
-    roles: ['owner', 'manager', 'employee'],
+    roles: ['owner', 'manager', 'employee', 'technician'],
     items: [
       {
         to: '/app/checklists',
@@ -172,7 +172,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/contacts',
         label: 'Contacts',
         icon: BookUser,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/site-reviews',
@@ -190,13 +190,13 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/invoices',
         label: 'Invoices',
         icon: Wallet,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/inventory',
         label: 'Inventory',
         icon: Warehouse,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/violations',
@@ -243,7 +243,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/timeclock',
         label: 'Time Clock',
         icon: Clock,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/timesheets',
@@ -279,37 +279,37 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/time-off',
         label: 'Time Off',
         icon: Palmtree,
-        roles: ['owner', 'manager', 'employee'],
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
       {
         to: '/app/breaks',
         label: 'Breaks',
         icon: Coffee,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/calendar',
         label: 'Calendar',
         icon: CalendarHeart,
-        roles: ['owner', 'manager', 'employee'],
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
     ],
   },
   {
     label: 'Account',
-    roles: ['owner'],
+    roles: ['owner', 'technician'],
     items: [
       {
         to: '/app/settings/team',
         label: 'Team',
         icon: UserPlus,
-        roles: ['owner'],
+        roles: ['owner', 'technician'],
       },
       {
         to: '/app/settings/locations',
         label: 'Locations',
         icon: Map,
-        roles: ['owner'],
+        roles: ['owner', 'technician'],
       },
       {
         to: '/app/settings/billing',
@@ -391,7 +391,7 @@ export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () =
   }
 
   return (
-    <nav className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-4">
+    <nav className="scrollbar-hover min-h-0 flex-1 overflow-y-auto px-3 py-4">
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-invert-muted/60" />
         <input

@@ -139,6 +139,28 @@
   display: none;
 }
 
+/* Scroll area whose scrollbar stays hidden until the pointer hovers it, then
+   shows the browser's native scrollbar so it matches the rest of the app. Used
+   on the sidebar nav so the dark rail isn't disfigured by a permanent track. */
+.scrollbar-hover {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hover:hover {
+  scrollbar-width: auto;
+  -ms-overflow-style: auto;
+}
+.scrollbar-hover::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.scrollbar-hover:hover::-webkit-scrollbar {
+  width: auto;
+  height: auto;
+  display: block;
+}
+
 /* Print: strip the app chrome so reports print clean to PDF. Mark anything you
    never want printed with the `no-print` class. */
 @media print {
