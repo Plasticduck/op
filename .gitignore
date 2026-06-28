@@ -46,3 +46,6 @@ WashLyfe Operator/**/xcuserdata/
 
 # Stray spreadsheets / data dumps
 *.xlsx
+
+# Downloaded editor extensions / artifacts (not project source)
+*.vsix
