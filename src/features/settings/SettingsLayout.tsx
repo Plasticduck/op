@@ -1,13 +1,16 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
 const tabs = [
-  { to: '/app/settings/team', label: 'Team' },
-  { to: '/app/settings/locations', label: 'Locations' },
-  { to: '/app/settings/billing', label: 'Billing' },
+  { to: '/app/settings/team', label: 'Team', ownerOnly: false },
+  { to: '/app/settings/locations', label: 'Locations', ownerOnly: false },
+  { to: '/app/settings/billing', label: 'Billing', ownerOnly: true },
 ]
 
 export function SettingsLayout() {
+  const { profile } = useAuth()
+  const visibleTabs = tabs.filter((t) => !t.ownerOnly || profile?.role === 'owner')
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -20,7 +23,7 @@ export function SettingsLayout() {
       </div>
 
       <nav className="flex gap-1 border-b border-border">
-        {tabs.map((t) => (
+        {visibleTabs.map((t) => (
           <NavLink
             key={t.to}
             to={t.to}

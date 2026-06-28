@@ -22,7 +22,7 @@ const TABS: Tab[] = [
   { to: '/app/dashboard', label: 'Home', icon: LayoutDashboard, roles: ['owner', 'manager', 'employee'] },
   { to: '/app/checklists', label: 'Checklists', icon: ClipboardList, roles: ['owner', 'manager', 'employee'] },
   { to: '/app/schedule', label: 'Schedule', icon: CalendarDays, roles: ['owner', 'manager', 'employee'] },
-  { to: '/app/reports', label: 'Reports', icon: BarChart3, roles: ['owner', 'manager'] },
+  { to: '/app/reports', label: 'Reports', icon: BarChart3, roles: ['owner', 'manager', 'technician'] },
 ]
 
 // Native-app-style bottom tab bar for phones/tablets (hidden at lg+, where the

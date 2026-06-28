@@ -139,6 +139,37 @@
   display: none;
 }
 
+/* Scroll area whose thumb stays invisible until the pointer hovers it. The
+   gutter is always reserved (transparent track + transparent thumb) so nothing
+   shifts when the thumb fades in. Tuned for the dark sidebar rail: a subtle
+   translucent-white thumb, like a native scrollbar but legible on dark. */
+.scrollbar-hover {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent; /* Firefox: thumb track, hidden by default */
+}
+.scrollbar-hover:hover {
+  scrollbar-color: rgb(255 255 255 / 0.28) transparent;
+}
+.scrollbar-hover::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scrollbar-hover::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.scrollbar-hover:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(255 255 255 / 0.28);
+}
+.scrollbar-hover:hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 0.45);
+}
+
 /* Print: strip the app chrome so reports print clean to PDF. Mark anything you
    never want printed with the `no-print` class. */
 @media print {

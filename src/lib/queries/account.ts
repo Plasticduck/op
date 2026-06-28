@@ -2,6 +2,10 @@ import { supabase } from '@/lib/supabase'
 import { SITE_URL } from '@/lib/siteUrl'
 import type { Role } from '@/lib/rbac'
 
+// Roles that can be handed out via an invite link. Owner is set only at account
+// creation, never invited.
+export type InvitableRole = Exclude<Role, 'owner'>
+
 export type AccountUser = {
   id: string
   name: string
@@ -15,7 +19,7 @@ export type AccountUser = {
 export type Invitation = {
   id: string
   email: string
-  role: 'manager' | 'employee'
+  role: InvitableRole
   location_ids: string[]
   token: string
   status: 'pending' | 'accepted' | 'expired'
@@ -73,7 +77,7 @@ export async function createInvitation(params: {
   account_id: string
   invited_by: string
   email: string
-  role: 'manager' | 'employee'
+  role: InvitableRole
   location_ids: string[]
 }) {
   return supabase.from('invitations').insert(params).select().single()

@@ -43,3 +43,6 @@ Godot.app/
 # Xcode user state (keep the project, drop per-user state)
 WashLyfe Operator/**/xcuserdata/
 **/*.xcuserstate
+
+# Stray spreadsheets / data dumps
+*.xlsx

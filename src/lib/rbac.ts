@@ -1,20 +1,29 @@
-export type Role = 'owner' | 'manager' | 'employee'
+export type Role = 'owner' | 'manager' | 'employee' | 'technician'
 
 export const ROLE_LABEL: Record<Role, string> = {
   owner: 'Owner',
   manager: 'Manager',
   employee: 'Employee',
+  technician: 'Technician',
 }
 
 export function isRole(value: unknown): value is Role {
-  return value === 'owner' || value === 'manager' || value === 'employee'
+  return (
+    value === 'owner' ||
+    value === 'manager' ||
+    value === 'employee' ||
+    value === 'technician'
+  )
 }
 
 export function canAccess(role: Role, allowed: Role[]): boolean {
   return allowed.includes(role)
 }
 
-const HIERARCHY: Record<Role, number> = { owner: 3, manager: 2, employee: 1 }
+// Technician sits alongside employee on the ladder: it's a specialized cross-site
+// maintenance role, not a rung above manager. atLeast() is the only consumer and
+// is used for coarse "manager or higher" gates, so technician ranks with employee.
+const HIERARCHY: Record<Role, number> = { owner: 3, manager: 2, employee: 1, technician: 1 }
 
 export function atLeast(role: Role, min: Role): boolean {
   return HIERARCHY[role] >= HIERARCHY[min]

@@ -271,14 +271,20 @@ function EditUserModal({
   const [locIds, setLocIds] = useState<string[]>(user.location_ids)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Owners and technicians span every site, so per-site assignment doesn't apply.
+  const allSites = role === 'owner' || role === 'technician'
 
   const save = async () => {
     setError(null)
-    if (role !== 'owner' && locIds.length === 0) {
+    if (!allSites && locIds.length === 0) {
       return setError('Assign at least one location')
     }
     setBusy(true)
-    const { error: err } = await updateUserRoleLocations(user.id, role, locIds)
+    const { error: err } = await updateUserRoleLocations(
+      user.id,
+      role,
+      role === 'technician' ? [] : locIds,
+    )
     setBusy(false)
     if (err) return setError(err.message)
     onSaved()
@@ -291,12 +297,21 @@ function EditUserModal({
           {(id) => (
             <Select id={id} value={role} onChange={(e) => setRole(e.target.value as Role)}>
               <option value="employee">Employee</option>
+              <option value="technician">Technician</option>
               <option value="manager">Manager</option>
               <option value="owner">Owner</option>
             </Select>
           )}
         </Field>
-        {role !== 'owner' && (
+        {allSites ? (
+          <Field label="Locations" hint="Has access to all sites.">
+            {() => (
+              <p className="rounded-md border border-border bg-content px-3 py-2 text-sm text-ink-muted">
+                All sites
+              </p>
+            )}
+          </Field>
+        ) : (
           <Field label="Locations">
             {() => (
               <MultiLocationSelect
