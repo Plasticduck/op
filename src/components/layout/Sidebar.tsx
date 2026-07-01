@@ -200,6 +200,12 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager', 'technician'],
       },
       {
+        to: '/app/sales-reports',
+        label: 'Sales Reports',
+        icon: ChartNoAxesCombined,
+        roles: ['owner', 'manager'],
+      },
+      {
         to: '/app/violations',
         label: 'Violations',
         icon: Gavel,
