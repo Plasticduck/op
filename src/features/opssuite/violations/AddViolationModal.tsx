@@ -56,7 +56,7 @@ export function AddViolationModal({
     if (!profile) return
     if (!locationId) return setError('Select a site.')
     if (!department) return setError('Select a department.')
-    if (!violationType) return setError('Select a note type.')
+    if (!violationType) return setError('Select a Violation Type.')
     setBusy(true)
     const { data, error: err } = await siteViolations.create({
       account_id: profile.account_id,
@@ -143,14 +143,14 @@ export function AddViolationModal({
         </Field>
 
         {department && (
-          <Field label="Note type" required>
+          <Field label="Violation Type" required>
             {(id) => (
               <Select
                 id={id}
                 value={violationType}
                 onChange={(e) => setViolationType(e.target.value)}
               >
-                <option value="">Select a note type...</option>
+                <option value="">Select a Violation Type...</option>
                 {VIOLATION_TYPES[department].map((t) => (
                   <option key={t} value={t}>
                     {t}
