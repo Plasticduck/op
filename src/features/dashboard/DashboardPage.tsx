@@ -12,7 +12,9 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { insights as insightsQ, type Insight } from '@/lib/queries/insights'
 import { currency, shortDate } from '@/lib/format'
 import EmployeeDashboard from '@/features/dashboard/EmployeeDashboard'
+import AllSitesDashboard from '@/features/dashboard/AllSitesDashboard'
 import { SiteScorecard } from '@/features/dashboard/SiteScorecard'
+import { cn } from '@/lib/utils'
 
 type WorkOrder = {
   id: string
@@ -363,8 +365,51 @@ function greeting() {
   return 'Good evening'
 }
 
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: 'all' | 'site'
+  onChange: (v: 'all' | 'site') => void
+}) {
+  const { activeLocation } = useLocations()
+  const options: { key: 'all' | 'site'; label: string }[] = [
+    { key: 'all', label: 'All sites' },
+    { key: 'site', label: activeLocation ? activeLocation.name : 'Current site' },
+  ]
+  return (
+    <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-1">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          className={cn(
+            'rounded-md px-3 py-1.5 text-sm font-medium transition',
+            view === o.key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function DashboardPage() {
   const { profile } = useAuth()
+  const { locations, loading } = useLocations()
+  const [view, setView] = useState<'all' | 'site'>('all')
+
   if (profile?.role === 'employee') return <EmployeeDashboard />
-  return <ManagerDashboard />
+  if (loading) return null
+  // Single-site accounts get the classic per-site dashboard directly.
+  if (locations.length <= 1) return <ManagerDashboard />
+
+  return (
+    <div className="flex flex-col gap-6">
+      <ViewToggle view={view} onChange={setView} />
+      {view === 'all' ? <AllSitesDashboard /> : <ManagerDashboard />}
+    </div>
+  )
 }
