@@ -1,9 +1,16 @@
-// Region -> site grouping, shared across features (violations, dashboard).
-// Sites are grouped into regions by their location name.
+// Region -> site grouping, shared across features (violations, dashboard) and
+// editable in Company settings. Built-in defaults seed a new account and act as
+// the fallback until a custom configuration is saved.
 
-export type Region = { name: string; sites: string[] }
+// Seed shape: sites referenced by location name (used before we know ids).
+export type NamedRegion = { name: string; sites: string[] }
 
-export const REGIONS: Region[] = [
+// Saved/effective shape: sites referenced by location id.
+export type RegionDef = { name: string; siteIds: string[] }
+
+export type RegionGroup<L> = { region: string; locations: L[] }
+
+export const DEFAULT_REGIONS: NamedRegion[] = [
   { name: 'Corporate', sites: ['Corporate'] },
   {
     name: 'Lubbock Region',
@@ -34,21 +41,33 @@ export const REGIONS: Region[] = [
   },
 ]
 
-export type RegionGroup<L> = { region: string; locations: L[] }
-
-// Group the given locations into the configured regions (by name). Any location
-// that isn't in a region falls into a trailing "Other" group so nothing is
-// hidden. Empty regions are dropped.
-export function groupLocationsByRegion<L extends { id: string; name: string }>(
-  locations: L[],
-): RegionGroup<L>[] {
-  const byName = new Map(locations.map((l) => [l.name, l]))
-  const groups: RegionGroup<L>[] = REGIONS.map((r) => ({
-    region: r.name,
-    locations: r.sites.map((s) => byName.get(s)).filter((l): l is L => Boolean(l)),
+// Resolve the effective regions to id-based form. A saved custom config wins;
+// otherwise derive from DEFAULT_REGIONS by matching location names.
+export function resolveRegions(
+  locations: { id: string; name: string }[],
+  saved?: RegionDef[] | null,
+): RegionDef[] {
+  if (saved && saved.length) return saved
+  const byName = new Map(locations.map((l) => [l.name, l.id]))
+  return DEFAULT_REGIONS.map((r) => ({
+    name: r.name,
+    siteIds: r.sites.map((s) => byName.get(s)).filter((id): id is string => Boolean(id)),
   }))
-  const claimed = new Set(REGIONS.flatMap((r) => r.sites))
-  const other = locations.filter((l) => !claimed.has(l.name))
+}
+
+// Group locations into id-based regions. Any location not in a region falls
+// into a trailing "Other" group so nothing is hidden. Empty regions are dropped.
+export function groupByRegions<L extends { id: string; name: string }>(
+  locations: L[],
+  regions: RegionDef[],
+): RegionGroup<L>[] {
+  const byId = new Map(locations.map((l) => [l.id, l]))
+  const groups: RegionGroup<L>[] = regions.map((r) => ({
+    region: r.name,
+    locations: r.siteIds.map((id) => byId.get(id)).filter((l): l is L => Boolean(l)),
+  }))
+  const claimed = new Set(regions.flatMap((r) => r.siteIds))
+  const other = locations.filter((l) => !claimed.has(l.id))
   if (other.length) groups.push({ region: 'Other', locations: other })
   return groups.filter((g) => g.locations.length > 0)
 }

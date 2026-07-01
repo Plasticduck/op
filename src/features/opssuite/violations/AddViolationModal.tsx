@@ -6,14 +6,11 @@ import { Select } from '@/components/ui/Select'
 import { Field } from '@/components/forms/Field'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
+import { useCompany } from '@/lib/company'
+import { groupByRegions, resolveRegions } from '@/lib/regions'
 import { supabase } from '@/lib/supabase'
 import { siteViolations } from '@/lib/queries/opsSuite'
-import {
-  DEPARTMENTS,
-  VIOLATION_TYPES,
-  groupLocationsByRegion,
-  type Department,
-} from './config'
+import { DEPARTMENTS, VIOLATION_TYPES, type Department } from './config'
 
 function fileToDataUri(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -33,7 +30,8 @@ export function AddViolationModal({
 }) {
   const { profile } = useAuth()
   const { locations } = useLocations()
-  const groups = groupLocationsByRegion(locations)
+  const { settings } = useCompany()
+  const groups = groupByRegions(locations, resolveRegions(locations, settings.regions))
 
   const [locationId, setLocationId] = useState('')
   const [department, setDepartment] = useState<Department | ''>('')

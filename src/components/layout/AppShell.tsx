@@ -7,6 +7,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { TrialBanner } from '@/components/layout/TrialBanner'
 import { DemoBanner } from '@/components/layout/DemoBanner'
 import { LocationProvider } from '@/lib/locations'
+import { CompanyProvider } from '@/lib/company'
 import { NotificationsProvider } from '@/lib/notifications'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
@@ -41,6 +42,7 @@ export function AppShell() {
     // trial has ended (or it's canceled / past due). Wrapping outside the
     // providers means a locked account never spins up realtime subscriptions.
     <BillingGate>
+      <CompanyProvider>
       <LocationProvider>
         <NotificationsProvider>
           <div className="flex h-dvh w-full bg-content text-ink">
@@ -71,6 +73,7 @@ export function AppShell() {
           </div>
         </NotificationsProvider>
       </LocationProvider>
+      </CompanyProvider>
     </BillingGate>
   )
 }

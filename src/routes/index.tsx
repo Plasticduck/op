@@ -61,6 +61,7 @@ const ResetPasswordPage = lz(() => import('@/features/auth/ResetPasswordPage'))
 const AcceptInvitePage = lz(() => import('@/features/auth/AcceptInvitePage'))
 const DashboardPage = lz(() => import('@/features/dashboard/DashboardPage'))
 const SettingsLayout = lz(() => import('@/features/settings/SettingsLayout').then((m) => ({ default: m.SettingsLayout })))
+const CompanySettingsPage = lz(() => import('@/features/settings/company/CompanySettingsPage').then((m) => ({ default: m.CompanySettingsPage })))
 const TeamPage = lz(() => import('@/features/settings/team/TeamPage').then((m) => ({ default: m.TeamPage })))
 const LocationsPage = lz(() => import('@/features/settings/locations/LocationsPage').then((m) => ({ default: m.LocationsPage })))
 const BillingPage = lz(() => import('@/features/settings/billing/BillingPage').then((m) => ({ default: m.BillingPage })))
@@ -221,6 +222,10 @@ export const router = createBrowserRouter([
             ),
             children: [
               { index: true, element: <Navigate to="/app/settings/team" replace /> },
+              {
+                path: 'company',
+                element: <RequireRole allow={['owner']}>{s(<CompanySettingsPage />)}</RequireRole>,
+              },
               { path: 'team', element: s(<TeamPage />) },
               { path: 'locations', element: s(<LocationsPage />) },
               {

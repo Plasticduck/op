@@ -62,15 +62,6 @@ export const ALL_VIOLATION_TYPES: string[] = (() => {
   return out
 })()
 
-// Region grouping now lives in a shared module; re-exported here so existing
-// violations imports keep working.
-export {
-  REGIONS,
-  groupLocationsByRegion,
-  type Region,
-  type RegionGroup,
-} from '@/lib/regions'
-
 // Accent color per department (stat-card top bar).
 export const DEPARTMENT_COLOR: Record<string, string> = {
   Total: '#9aa3b1',

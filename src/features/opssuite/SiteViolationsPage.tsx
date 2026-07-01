@@ -7,15 +7,12 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { shortDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useLocations } from '@/lib/locations'
+import { useCompany } from '@/lib/company'
+import { groupByRegions, resolveRegions } from '@/lib/regions'
 import { siteViolations, type SiteViolation } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
 import { AddViolationModal } from './violations/AddViolationModal'
-import {
-  ALL_VIOLATION_TYPES,
-  DEPARTMENTS,
-  DEPARTMENT_COLOR,
-  groupLocationsByRegion,
-} from './violations/config'
+import { ALL_VIOLATION_TYPES, DEPARTMENTS, DEPARTMENT_COLOR } from './violations/config'
 
 type Row = SiteViolation & { location: { name: string } | null }
 
@@ -30,6 +27,7 @@ const EXPORT_COLUMNS: ExportColumn<Row>[] = [
 
 export default function SiteViolationsPage() {
   const { locations } = useLocations()
+  const { settings } = useCompany()
   const [rows, setRows] = useState<Row[]>([])
   const [adding, setAdding] = useState(false)
 
@@ -37,7 +35,10 @@ export default function SiteViolationsPage() {
     siteViolations.list().then(({ data }) => setRows((data as unknown as Row[]) ?? []))
   useEffect(() => { void load() }, [])
 
-  const groups = useMemo(() => groupLocationsByRegion(locations), [locations])
+  const groups = useMemo(
+    () => groupByRegions(locations, resolveRegions(locations, settings.regions)),
+    [locations, settings.regions],
+  )
   const allSiteIds = useMemo(
     () => groups.flatMap((g) => g.locations.map((l) => l.id)),
     [groups],

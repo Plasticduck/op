@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
-import { groupLocationsByRegion } from '@/lib/regions'
+import { useCompany } from '@/lib/company'
+import { groupByRegions, resolveRegions } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard } from '@/lib/scorecard'
 import { StatCardRow } from '@/components/data/StatCardRow'
 
@@ -35,6 +36,7 @@ type ScoredLocation = { id: string; name: string; card: Scorecard | null }
 export default function AllSitesDashboard() {
   const { profile } = useAuth()
   const { locations } = useLocations()
+  const { settings } = useCompany()
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [loading, setLoading] = useState(true)
 
@@ -57,7 +59,10 @@ export default function AllSitesDashboard() {
     }
   }, [locIds])
 
-  const groups = useMemo(() => groupLocationsByRegion(locations), [locations])
+  const groups = useMemo(
+    () => groupByRegions(locations, resolveRegions(locations, settings.regions)),
+    [locations, settings.regions],
+  )
   const showRegions = groups.length > 1
 
   // Portfolio roll-up across every site we have a card for.

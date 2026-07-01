@@ -3,6 +3,7 @@ import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
 const tabs = [
+  { to: '/app/settings/company', label: 'Company', ownerOnly: true },
   { to: '/app/settings/team', label: 'Team', ownerOnly: false },
   { to: '/app/settings/locations', label: 'Locations', ownerOnly: false },
   { to: '/app/settings/billing', label: 'Billing', ownerOnly: true },
