@@ -88,60 +88,6 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: 'Maintenance',
-    roles: ['owner', 'manager', 'employee', 'technician'],
-    items: [
-      {
-        to: '/app/work-orders',
-        label: 'Work Orders',
-        icon: Wrench,
-        roles: ['owner', 'manager', 'technician'],
-      },
-      {
-        to: '/app/reports',
-        label: 'Maintenance Reports',
-        icon: ChartNoAxesCombined,
-        roles: ['owner', 'manager', 'technician'],
-      },
-      {
-        to: '/app/downtime',
-        label: 'Downtime',
-        icon: AlarmClockOff,
-        roles: ['owner', 'manager', 'technician'],
-      },
-      {
-        to: '/app/assets',
-        label: 'Assets',
-        icon: Cog,
-        roles: ['owner', 'manager', 'technician'],
-      },
-      {
-        to: '/app/parts',
-        label: 'Parts',
-        icon: Bolt,
-        roles: ['owner', 'manager', 'technician'],
-      },
-      {
-        to: '/app/vendors',
-        label: 'Vendors',
-        icon: Building2,
-        roles: ['owner', 'manager'],
-      },
-      {
-        to: '/app/categories',
-        label: 'Maintenance Categories',
-        icon: TagsIcon,
-        roles: ['owner', 'manager', 'technician'],
-      },
-      {
-        to: '/app/documents',
-        label: 'Documents',
-        icon: Folders,
-        roles: ['owner', 'manager', 'employee', 'technician'],
-      },
-    ],
-  },
-  {
     label: 'Operations',
     roles: ['owner', 'manager', 'employee', 'technician'],
     items: [
@@ -228,6 +174,60 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Social Calendar',
         icon: Megaphone,
         roles: ['owner', 'manager'],
+      },
+    ],
+  },
+  {
+    label: 'Maintenance',
+    roles: ['owner', 'manager', 'employee', 'technician'],
+    items: [
+      {
+        to: '/app/work-orders',
+        label: 'Work Orders',
+        icon: Wrench,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/reports',
+        label: 'Maintenance Reports',
+        icon: ChartNoAxesCombined,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/downtime',
+        label: 'Downtime',
+        icon: AlarmClockOff,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/assets',
+        label: 'Assets',
+        icon: Cog,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/parts',
+        label: 'Parts',
+        icon: Bolt,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/vendors',
+        label: 'Vendors',
+        icon: Building2,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/categories',
+        label: 'Maintenance Categories',
+        icon: TagsIcon,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/documents',
+        label: 'Documents',
+        icon: Folders,
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
     ],
   },
