@@ -226,10 +226,22 @@ export default function SiteViolationsPage() {
           {/* Date range + quick reports */}
           <FilterColumn title="Date Range">
             <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                <span className="text-sm text-ink-muted">to</span>
-                <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              <div className="flex flex-col gap-2">
+                <Input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  aria-label="From date"
+                  className="min-w-0"
+                />
+                <span className="text-center text-xs text-ink-muted">to</span>
+                <Input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  aria-label="To date"
+                  className="min-w-0"
+                />
               </div>
               <div>
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
@@ -251,18 +263,20 @@ export default function SiteViolationsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button onClick={() => setReport(computeFiltered())}>View Report</Button>
           <div className="flex gap-2">
-            <Button
-              variant="secondary"
+            <button
+              type="button"
               onClick={() => exportExcel('violations', EXPORT_COLUMNS, computeFiltered())}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-ok px-4 text-sm font-medium text-white transition hover:opacity-90"
             >
               <Download className="size-4" /> Export Excel
-            </Button>
-            <Button
-              variant="secondary"
+            </button>
+            <button
+              type="button"
               onClick={() => exportPdf('Violations', EXPORT_COLUMNS, computeFiltered())}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-danger px-4 text-sm font-medium text-white transition hover:opacity-90"
             >
               <Download className="size-4" /> Export PDF
-            </Button>
+            </button>
           </div>
         </div>
       </div>
