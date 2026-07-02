@@ -5,8 +5,28 @@ export type Account = Database['public']['Tables']['accounts']['Row']
 
 export type PlanKey = 'single_monthly' | 'single_yearly' | 'multi_monthly'
 
+// Live subscription details fetched from Stripe (via the get-billing-summary
+// edge function). `subscription` is null when the account has no Stripe
+// subscription yet.
+export type StripeSubscription = {
+  status: string
+  cancelAtPeriodEnd: boolean
+  currentPeriodEnd: number
+  quantity: number
+  interval: 'day' | 'week' | 'month' | 'year' | null
+  intervalCount: number
+  unitAmount: number | null
+  currency: string
+  productName: string | null
+  priceNickname: string | null
+  paymentMethod: { brand: string; last4: string } | null
+  upcomingInvoice: { amountDue: number; date: number } | null
+}
+export type BillingSummary = { subscription: StripeSubscription | null }
+
 export const billing = {
   account: () => supabase.from('accounts').select('*').single(),
+  summary: () => supabase.functions.invoke('get-billing-summary', { body: {} }),
   checkout: (plan: PlanKey) =>
     supabase.functions.invoke('create-checkout-session', { body: { plan } }),
   portal: () => supabase.functions.invoke('create-portal-session', { body: {} }),

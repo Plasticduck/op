@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react'
-import { differenceInCalendarDays } from 'date-fns'
+import { differenceInCalendarDays, format } from 'date-fns'
 import { Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { billing, PLANS, type Account, type PlanKey } from '@/lib/queries/billing'
+import { currency } from '@/lib/format'
+import {
+  billing,
+  PLANS,
+  type Account,
+  type BillingSummary,
+  type PlanKey,
+  type StripeSubscription,
+} from '@/lib/queries/billing'
 
 const STATUS_TONE = { trial: 'accent', active: 'ok', past_due: 'warn', canceled: 'danger' } as const
 
 export function BillingPage() {
   const [account, setAccount] = useState<Account | null>(null)
+  const [sub, setSub] = useState<StripeSubscription | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -17,6 +26,9 @@ export function BillingPage() {
     const { data } = await billing.account()
     setAccount((data as Account | null) ?? null)
     setLoading(false)
+    // Live Stripe details (best-effort: null if Stripe not configured / no sub).
+    const { data: sum, error: sumErr } = await billing.summary()
+    if (!sumErr) setSub((sum as BillingSummary | null)?.subscription ?? null)
   }
   useEffect(() => { void load() }, [])
 
@@ -91,6 +103,45 @@ export function BillingPage() {
         </div>
       </div>
 
+      {sub && (
+        <div className="rounded-md border border-border bg-card p-4">
+          <h2 className="text-sm font-semibold text-ink">Subscription details</h2>
+          <p className="mb-3 text-xs text-ink-muted">Live from Stripe.</p>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+            <Detail label="Plan" value={sub.productName ?? sub.priceNickname ?? '—'} />
+            <Detail label="Status" value={sub.status.replace('_', ' ')} />
+            <Detail label="Price" value={priceLabel(sub)} />
+            <Detail
+              label="Quantity"
+              value={`${sub.quantity} ${sub.quantity === 1 ? 'location' : 'locations'}`}
+            />
+            <Detail
+              label={sub.cancelAtPeriodEnd ? 'Ends on' : 'Renews on'}
+              value={fmtUnix(sub.currentPeriodEnd)}
+            />
+            <Detail
+              label="Payment method"
+              value={
+                sub.paymentMethod
+                  ? `${cap(sub.paymentMethod.brand)} ···· ${sub.paymentMethod.last4}`
+                  : '—'
+              }
+            />
+            {sub.upcomingInvoice && (
+              <Detail
+                label="Next invoice"
+                value={`${currency(sub.upcomingInvoice.amountDue / 100)} on ${fmtUnix(sub.upcomingInvoice.date)}`}
+              />
+            )}
+          </dl>
+          {sub.cancelAtPeriodEnd && (
+            <p className="mt-3 rounded-md bg-warn-soft px-3 py-2 text-sm text-warn">
+              This subscription is set to cancel at the end of the current period.
+            </p>
+          )}
+        </div>
+      )}
+
       {!hasSubscription && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {PLANS.map((p) => (
@@ -121,6 +172,26 @@ export function BillingPage() {
           </pre>
         </div>
       )}
+    </div>
+  )
+}
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+const fmtUnix = (unix: number) => format(new Date(unix * 1000), 'MMM d, yyyy')
+
+function priceLabel(sub: StripeSubscription): string {
+  if (sub.unitAmount == null) return '—'
+  const amt = currency(sub.unitAmount / 100)
+  if (!sub.interval) return amt
+  const every = sub.intervalCount > 1 ? `${sub.intervalCount} ` : ''
+  return `${amt} / ${every}${sub.interval}`
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-ink-muted">{label}</dt>
+      <dd className="text-ink">{value || '—'}</dd>
     </div>
   )
 }
