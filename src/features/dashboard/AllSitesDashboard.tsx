@@ -7,6 +7,7 @@ import { useCompany } from '@/lib/company'
 import { groupByRegions, resolveRegions } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard } from '@/lib/scorecard'
 import { StatCardRow } from '@/components/data/StatCardRow'
+import { WeatherOutlook } from '@/components/data/WeatherOutlook'
 
 // Vivid grade color by letter grade.
 function gradeHex(letter: string): string {
@@ -35,8 +36,14 @@ type ScoredLocation = { id: string; name: string; card: Scorecard | null }
 
 export default function AllSitesDashboard() {
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations, activeLocation } = useLocations()
   const { settings } = useCompany()
+
+  // Weather for the active site, or the first site that has coordinates.
+  const weatherSite =
+    activeLocation?.latitude != null && activeLocation?.longitude != null
+      ? activeLocation
+      : locations.find((l) => l.latitude != null && l.longitude != null) ?? null
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [loading, setLoading] = useState(true)
 
@@ -86,6 +93,15 @@ export default function AllSitesDashboard() {
         </p>
       </div>
 
+      {weatherSite && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-ink-subtle">
+            Weather · {weatherSite.name}
+          </p>
+          <WeatherOutlook latitude={weatherSite.latitude} longitude={weatherSite.longitude} />
+        </div>
+      )}
+
       <StatCardRow
         className="sm:grid-cols-3 lg:grid-cols-5"
         items={[
@@ -132,9 +148,9 @@ function RegionSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">{title}</h2>
-        <span className="text-xs text-ink-subtle">{locations.length} sites</span>
+      <div className="flex items-center gap-3 border-b border-border pb-1.5">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-ink">{title}</h2>
+        <span className="text-xs text-ink-muted">{locations.length} sites</span>
         {!loading && avg && (
           <span
             className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
