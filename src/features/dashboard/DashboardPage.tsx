@@ -14,6 +14,7 @@ import { currency, shortDate } from '@/lib/format'
 import EmployeeDashboard from '@/features/dashboard/EmployeeDashboard'
 import AllSitesDashboard from '@/features/dashboard/AllSitesDashboard'
 import { SiteScorecard } from '@/features/dashboard/SiteScorecard'
+import { DayInHistory } from '@/features/dashboard/DayInHistory'
 import { cn } from '@/lib/utils'
 
 type WorkOrder = {
@@ -154,6 +155,7 @@ function ManagerDashboard() {
         <p className="mt-1 text-sm text-ink-muted sm:text-base">
           {activeLocation.name} · {format(new Date(), 'EEEE, MMMM d, yyyy')}
         </p>
+        <DayInHistory />
       </div>
 
       <WeatherOutlook
