@@ -152,10 +152,10 @@ function ManagerDashboard() {
         <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
           {greeting()}, {profile?.name.split(' ')[0]}
         </h1>
+        <DayInHistory />
         <p className="mt-1 text-sm text-ink-muted sm:text-base">
           {activeLocation.name} · {format(new Date(), 'EEEE, MMMM d, yyyy')}
         </p>
-        <DayInHistory />
       </div>
 
       <WeatherOutlook
