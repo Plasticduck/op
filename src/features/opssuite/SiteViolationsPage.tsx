@@ -296,34 +296,61 @@ export default function SiteViolationsPage() {
               description="Adjust the filters or date range and generate again."
             />
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border bg-card">
-              <table className="w-full min-w-[820px] text-sm">
-                <thead className="border-b border-border bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Site</th>
-                    <th className="px-4 py-3 font-medium">Department</th>
-                    <th className="px-4 py-3 font-medium">Violation Type</th>
-                    <th className="px-4 py-3 font-medium">Notes</th>
-                    <th className="px-4 py-3 font-medium">Reported by</th>
-                    <th className="px-4 py-3 font-medium">Reported</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.map((r) => (
-                    <tr key={r.id} className="border-t border-border hover:bg-content">
-                      <td className="px-4 py-3 font-medium text-ink">
-                        {r.location?.name ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-ink-muted">{r.department ?? '—'}</td>
-                      <td className="px-4 py-3 text-ink-muted">{r.violation_type ?? '—'}</td>
-                      <td className="px-4 py-3 text-ink-muted">{r.description ?? '—'}</td>
-                      <td className="px-4 py-3 text-ink-muted">{r.reported_by_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-ink-muted">{shortDate(r.reported_at)}</td>
+            <>
+              {/* Desktop table */}
+              <div className="hidden overflow-x-auto rounded-lg border border-border bg-card sm:block">
+                <table className="w-full min-w-[820px] text-sm">
+                  <thead className="border-b border-border bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Site</th>
+                      <th className="px-4 py-3 font-medium">Department</th>
+                      <th className="px-4 py-3 font-medium">Violation Type</th>
+                      <th className="px-4 py-3 font-medium">Notes</th>
+                      <th className="px-4 py-3 font-medium">Reported by</th>
+                      <th className="px-4 py-3 font-medium">Reported</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {report.map((r) => (
+                      <tr key={r.id} className="border-t border-border hover:bg-content">
+                        <td className="px-4 py-3 font-medium text-ink">
+                          {r.location?.name ?? '—'}
+                        </td>
+                        <td className="px-4 py-3 text-ink-muted">{r.department ?? '—'}</td>
+                        <td className="px-4 py-3 text-ink-muted">{r.violation_type ?? '—'}</td>
+                        <td className="px-4 py-3 text-ink-muted">{r.description ?? '—'}</td>
+                        <td className="px-4 py-3 text-ink-muted">{r.reported_by_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-ink-muted">{shortDate(r.reported_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile cards */}
+              <ul className="flex flex-col gap-2 sm:hidden">
+                {report.map((r) => (
+                  <li key={r.id} className="rounded-lg border border-border bg-card p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-ink">{r.location?.name ?? '—'}</p>
+                      <span className="shrink-0 text-xs text-ink-muted">
+                        {shortDate(r.reported_at)}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-sm text-ink">
+                      {r.violation_type ?? '—'}
+                      <span className="text-ink-muted"> · {r.department ?? '—'}</span>
+                    </p>
+                    {r.description && (
+                      <p className="mt-1 text-sm text-ink-muted">{r.description}</p>
+                    )}
+                    <p className="mt-1 text-xs text-ink-subtle">
+                      By {r.reported_by_name ?? '—'}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       )}

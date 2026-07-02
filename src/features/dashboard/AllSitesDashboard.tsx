@@ -98,7 +98,7 @@ export default function AllSitesDashboard() {
       </div>
 
       <StatCardRow
-        className="sm:grid-cols-3 lg:grid-cols-5"
+        className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
         items={[
           { label: 'Sites', value: locations.length },
           { label: 'Average grade', value: loading ? '—' : letterFor(avgTotal) },

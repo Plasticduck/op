@@ -90,30 +90,54 @@ export default function SiteAuditsPage() {
       ) : table.rows.length === 0 ? (
         <EmptyState icon={ClipboardCheck} title="No audits" description="Site audits in this timeframe will appear here." />
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border bg-card">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
-              <tr>
-                <th className="px-3 py-2.5 font-medium">Site</th>
-                <th className="px-3 py-2.5 font-medium">Submitted by</th>
-                <th className="px-3 py-2.5 font-medium">Date</th>
-                <th className="px-3 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.map((a) => (
-                <tr key={a.id} className="border-t border-border hover:bg-content">
-                  <td className="px-3 py-2.5 font-medium text-ink">{a.location?.name ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-ink-muted">{a.submitted_by_name ?? '—'}</td>
-                  <td className="px-3 py-2.5 text-ink-muted">{shortDate(a.created_at)}</td>
-                  <td className="px-3 py-2.5 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setOpen(a)}>View</Button>
-                  </td>
+        <>
+          {/* Desktop table */}
+          <div className="hidden overflow-x-auto rounded-md border border-border bg-card sm:block">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
+                <tr>
+                  <th className="px-3 py-2.5 font-medium">Site</th>
+                  <th className="px-3 py-2.5 font-medium">Submitted by</th>
+                  <th className="px-3 py-2.5 font-medium">Date</th>
+                  <th className="px-3 py-2.5" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {table.rows.map((a) => (
+                  <tr key={a.id} className="border-t border-border hover:bg-content">
+                    <td className="px-3 py-2.5 font-medium text-ink">{a.location?.name ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-ink-muted">{a.submitted_by_name ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-ink-muted">{shortDate(a.created_at)}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => setOpen(a)}>View</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <ul className="flex flex-col gap-2 sm:hidden">
+            {table.rows.map((a) => (
+              <li key={a.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(a)}
+                  className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-card p-3 text-left"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">{a.location?.name ?? '—'}</p>
+                    <p className="text-xs text-ink-muted">
+                      {a.submitted_by_name ?? '—'} · {shortDate(a.created_at)}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-accent">View</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {open && (

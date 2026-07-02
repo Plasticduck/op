@@ -169,6 +169,7 @@ function ManagerDashboard() {
 
       {isManagerPlus && (
         <StatCardRow
+          className="grid-cols-2"
           items={[
             { label: 'Open work orders', value: stats?.openWorkOrders ?? '—' },
             { label: 'Equipment down', value: stats?.equipmentDown ?? '—' },
