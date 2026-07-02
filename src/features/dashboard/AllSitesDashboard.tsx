@@ -8,6 +8,7 @@ import { groupByRegions, resolveRegions } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard } from '@/lib/scorecard'
 import { StatCardRow } from '@/components/data/StatCardRow'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
+import { Select } from '@/components/ui/Select'
 
 // Vivid grade color by letter grade.
 function gradeHex(letter: string): string {
@@ -39,11 +40,19 @@ export default function AllSitesDashboard() {
   const { locations, activeLocation } = useLocations()
   const { settings } = useCompany()
 
-  // Weather for the active site, or the first site that has coordinates.
-  const weatherSite =
-    activeLocation?.latitude != null && activeLocation?.longitude != null
-      ? activeLocation
-      : locations.find((l) => l.latitude != null && l.longitude != null) ?? null
+  // Sites with coordinates can show weather; user picks which one.
+  const weatherSites = useMemo(
+    () => locations.filter((l) => l.latitude != null && l.longitude != null),
+    [locations],
+  )
+  const [weatherId, setWeatherId] = useState('')
+  useEffect(() => {
+    if (weatherId && weatherSites.some((s) => s.id === weatherId)) return
+    const def =
+      (activeLocation?.latitude != null ? activeLocation.id : weatherSites[0]?.id) ?? ''
+    setWeatherId(def)
+  }, [weatherSites, activeLocation, weatherId])
+  const weatherSite = weatherSites.find((s) => s.id === weatherId) ?? null
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [loading, setLoading] = useState(true)
 
@@ -95,9 +104,23 @@ export default function AllSitesDashboard() {
 
       {weatherSite && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wider text-ink-subtle">
-            Weather · {weatherSite.name}
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium uppercase tracking-wider text-ink-subtle">Weather</p>
+            <div className="w-48">
+              <Select
+                value={weatherId}
+                onChange={(e) => setWeatherId(e.target.value)}
+                aria-label="Weather site"
+                className="h-9"
+              >
+                {weatherSites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
           <WeatherOutlook latitude={weatherSite.latitude} longitude={weatherSite.longitude} />
         </div>
       )}
