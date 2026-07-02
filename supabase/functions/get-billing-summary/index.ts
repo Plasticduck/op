@@ -1,8 +1,11 @@
 // get-billing-summary — Supabase Edge Function (Deno).
-// Returns the account's LIVE subscription details straight from Stripe so the
-// Billing page reflects the real Stripe state (plan, price, quantity, status,
-// renewal date, payment method, next invoice). Inert (503 'no_key') until
-// STRIPE_SECRET_KEY is set. Owner-only.
+// Returns billing info straight from Stripe so the Billing page reflects real
+// Stripe state:
+//   - subscription: the account's live subscription (plan, price, quantity,
+//     status, renewal, payment method, next invoice), or null.
+//   - plans: the configured checkout prices (single monthly/yearly, per-location
+//     monthly), resolved live from Stripe so the plan cards show real prices.
+// Inert (503 'no_key') until STRIPE_SECRET_KEY is set. Owner-only (checked here).
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import Stripe from 'npm:stripe@17'
@@ -21,6 +24,37 @@ function corsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   }
+}
+
+const PLAN_ENV: { key: string; env: string }[] = [
+  { key: 'single_monthly', env: 'STRIPE_PRICE_SINGLE_MONTHLY' },
+  { key: 'single_yearly', env: 'STRIPE_PRICE_SINGLE_YEARLY' },
+  { key: 'multi_monthly', env: 'STRIPE_PRICE_PER_LOCATION_MONTHLY' },
+]
+
+async function loadPlans(stripe: Stripe) {
+  const plans = []
+  for (const p of PLAN_ENV) {
+    const priceId = Deno.env.get(p.env)
+    if (!priceId) continue
+    try {
+      const price = await stripe.prices.retrieve(priceId, { expand: ['product'] })
+      const product = price.product
+      plans.push({
+        key: p.key,
+        priceId,
+        productName:
+          product && typeof product === 'object' && 'name' in product ? product.name : null,
+        unitAmount: price.unit_amount,
+        currency: price.currency,
+        interval: price.recurring?.interval ?? null,
+        intervalCount: price.recurring?.interval_count ?? 1,
+      })
+    } catch {
+      // Skip a price that can't be retrieved (bad id / archived).
+    }
+  }
+  return plans
 }
 
 Deno.serve(async (req) => {
@@ -53,15 +87,18 @@ Deno.serve(async (req) => {
     .single()
   if (!profile || profile.role !== 'owner') return json({ error: 'forbidden' }, 403)
 
+  const stripe = new Stripe(secret, { httpClient: Stripe.createFetchHttpClient() })
+
+  // Configured plan prices, live from Stripe (independent of any subscription).
+  const plans = await loadPlans(stripe)
+
   const { data: acct } = await svc
     .from('accounts')
     .select('stripe_customer_id, stripe_subscription_id')
     .eq('id', profile.account_id)
     .single()
 
-  if (!acct?.stripe_customer_id) return json({ subscription: null })
-
-  const stripe = new Stripe(secret, { httpClient: Stripe.createFetchHttpClient() })
+  if (!acct?.stripe_customer_id) return json({ subscription: null, plans })
 
   // Prefer the known subscription id; otherwise grab the customer's latest.
   const expand = ['items.data.price.product', 'default_payment_method']
@@ -78,7 +115,7 @@ Deno.serve(async (req) => {
     sub = list.data[0] ?? null
   }
 
-  if (!sub) return json({ subscription: null })
+  if (!sub) return json({ subscription: null, plans })
 
   const item = sub.items.data[0]
   const price = item?.price
@@ -92,7 +129,6 @@ Deno.serve(async (req) => {
       ? { brand: pm.card.brand, last4: pm.card.last4 }
       : null
 
-  // Upcoming invoice (projected next charge). Not always available.
   let upcoming: { amountDue: number; date: number } | null = null
   try {
     const inv = await stripe.invoices.retrieveUpcoming({ customer: acct.stripe_customer_id })
@@ -116,5 +152,6 @@ Deno.serve(async (req) => {
       paymentMethod: card,
       upcomingInvoice: upcoming,
     },
+    plans,
   })
 })

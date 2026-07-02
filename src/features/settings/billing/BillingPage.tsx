@@ -10,14 +10,23 @@ import {
   type Account,
   type BillingSummary,
   type PlanKey,
+  type StripePlan,
   type StripeSubscription,
 } from '@/lib/queries/billing'
 
 const STATUS_TONE = { trial: 'accent', active: 'ok', past_due: 'warn', canceled: 'danger' } as const
 
+// Suffix shown after the live price for each plan.
+const PLAN_SUFFIX: Record<PlanKey, string> = {
+  single_monthly: '/mo',
+  single_yearly: '/yr',
+  multi_monthly: '/loc/mo',
+}
+
 export function BillingPage() {
   const [account, setAccount] = useState<Account | null>(null)
   const [sub, setSub] = useState<StripeSubscription | null>(null)
+  const [plans, setPlans] = useState<StripePlan[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -26,11 +35,23 @@ export function BillingPage() {
     const { data } = await billing.account()
     setAccount((data as Account | null) ?? null)
     setLoading(false)
-    // Live Stripe details (best-effort: null if Stripe not configured / no sub).
+    // Live Stripe details (best-effort: empty if Stripe not configured).
     const { data: sum, error: sumErr } = await billing.summary()
-    if (!sumErr) setSub((sum as BillingSummary | null)?.subscription ?? null)
+    if (!sumErr) {
+      const s = sum as BillingSummary | null
+      setSub(s?.subscription ?? null)
+      setPlans(s?.plans ?? [])
+    }
   }
   useEffect(() => { void load() }, [])
+
+  // Live price string for a plan card, e.g. "$99.00/mo". Falls back to the
+  // hardcoded label when Stripe pricing isn't available.
+  const priceFor = (key: PlanKey, fallback: string) => {
+    const p = plans.find((pl) => pl.key === key)
+    if (!p || p.unitAmount == null) return fallback
+    return `${currency(p.unitAmount / 100)}${PLAN_SUFFIX[key]}`
+  }
 
   // Surface ?checkout=success|cancelled from the Stripe redirect.
   useEffect(() => {
@@ -147,7 +168,7 @@ export function BillingPage() {
           {PLANS.map((p) => (
             <div key={p.key} className="flex flex-col rounded-md border border-border bg-card p-4">
               <h3 className="font-medium text-ink">{p.name}</h3>
-              <p className="mt-1 text-2xl font-semibold text-ink">{p.price}</p>
+              <p className="mt-1 text-2xl font-semibold text-ink">{priceFor(p.key, p.price)}</p>
               <p className="mt-1 flex-1 text-sm text-ink-muted">{p.blurb}</p>
               <Button className="mt-3" onClick={() => handle('checkout', p.key)} disabled={busy === p.key}>
                 {busy === p.key ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}

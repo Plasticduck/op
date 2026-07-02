@@ -22,7 +22,21 @@ export type StripeSubscription = {
   paymentMethod: { brand: string; last4: string } | null
   upcomingInvoice: { amountDue: number; date: number } | null
 }
-export type BillingSummary = { subscription: StripeSubscription | null }
+// A checkout price configured in Stripe, resolved live so the plan cards
+// reflect real Stripe pricing.
+export type StripePlan = {
+  key: PlanKey
+  priceId: string
+  productName: string | null
+  unitAmount: number | null
+  currency: string
+  interval: 'day' | 'week' | 'month' | 'year' | null
+  intervalCount: number
+}
+export type BillingSummary = {
+  subscription: StripeSubscription | null
+  plans?: StripePlan[]
+}
 
 export const billing = {
   account: () => supabase.from('accounts').select('*').single(),
