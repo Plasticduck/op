@@ -1,85 +1,72 @@
-import { useEffect, useState } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import { differenceInCalendarDays, format } from 'date-fns'
-import { Check, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { currency } from '@/lib/format'
-import {
-  billing,
-  PLANS,
-  type Account,
-  type BillingSummary,
-  type PlanKey,
-  type StripePlan,
-  type StripeSubscription,
-} from '@/lib/queries/billing'
+import { useAuth } from '@/lib/auth'
+import { billing, type Account, type BillingSummary, type StripeSubscription } from '@/lib/queries/billing'
 
 const STATUS_TONE = { trial: 'accent', active: 'ok', past_due: 'warn', canceled: 'danger' } as const
 
-// Suffix shown after the live price for each plan.
-const PLAN_SUFFIX: Record<PlanKey, string> = {
-  single_monthly: '/mo',
-  single_yearly: '/yr',
-  multi_monthly: '/loc/mo',
+const PRICING_TABLE_ID = 'prctbl_1TotitAPyEiCoyu4cSa18lhI'
+const PUBLISHABLE_KEY =
+  'pk_live_51TfMqvAPyEiCoyu4D6eGtyNqakiOPmw7HzT8nz8627uvMdXq9TDzaYRkvSbpRuprs0B2onSn2Hp0Fkd0sprso95b00Pt8SmiV5'
+
+// Stripe's hosted pricing table (web component). Renders your products/prices
+// straight from Stripe, so this stays in sync with whatever you configure there.
+function StripePricingTable({
+  clientReferenceId,
+  customerEmail,
+}: {
+  clientReferenceId?: string
+  customerEmail?: string
+}) {
+  useEffect(() => {
+    const src = 'https://js.stripe.com/v3/pricing-table.js'
+    if (!document.querySelector(`script[src="${src}"]`)) {
+      const s = document.createElement('script')
+      s.src = src
+      s.async = true
+      document.head.appendChild(s)
+    }
+  }, [])
+
+  const props: Record<string, string> = {
+    'pricing-table-id': PRICING_TABLE_ID,
+    'publishable-key': PUBLISHABLE_KEY,
+  }
+  if (clientReferenceId) props['client-reference-id'] = clientReferenceId
+  if (customerEmail) props['customer-email'] = customerEmail
+
+  return createElement('stripe-pricing-table', props as never)
 }
 
 export function BillingPage() {
+  const { profile } = useAuth()
   const [account, setAccount] = useState<Account | null>(null)
   const [sub, setSub] = useState<StripeSubscription | null>(null)
-  const [plans, setPlans] = useState<StripePlan[]>([])
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   const load = async () => {
     const { data } = await billing.account()
     setAccount((data as Account | null) ?? null)
     setLoading(false)
-    // Live Stripe details (best-effort: empty if Stripe not configured).
+    // Live Stripe subscription details (best-effort).
     const { data: sum, error: sumErr } = await billing.summary()
-    if (!sumErr) {
-      const s = sum as BillingSummary | null
-      setSub(s?.subscription ?? null)
-      setPlans(s?.plans ?? [])
-    }
+    if (!sumErr) setSub((sum as BillingSummary | null)?.subscription ?? null)
   }
   useEffect(() => { void load() }, [])
 
-  // Live price string for a plan card, e.g. "$99.00/mo". Falls back to the
-  // hardcoded label when Stripe pricing isn't available.
-  const priceFor = (key: PlanKey, fallback: string) => {
-    const p = plans.find((pl) => pl.key === key)
-    if (!p || p.unitAmount == null) return fallback
-    return `${currency(p.unitAmount / 100)}${PLAN_SUFFIX[key]}`
-  }
-
-  // Surface ?checkout=success|cancelled from the Stripe redirect.
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get('checkout')
-    if (p === 'success') setNotice('Subscription started — thanks! It may take a moment to reflect.')
-    if (p === 'cancelled') setNotice('Checkout cancelled.')
-  }, [])
-
-  const handle = async (
-    action: 'checkout' | 'portal',
-    plan?: PlanKey,
-  ) => {
-    setBusy(plan ?? 'portal')
+  const openPortal = async () => {
+    setBusy(true)
     setNotice(null)
-    const { data, error } =
-      action === 'checkout' ? await billing.checkout(plan!) : await billing.portal()
-    setBusy(null)
+    const { data, error } = await billing.portal()
+    setBusy(false)
     if (error) {
-      const ctx = (error as unknown as { context?: Response }).context
-      let msg = 'Could not start billing.'
-      if (ctx) {
-        try {
-          const body = await ctx.json()
-          if (body?.error === 'no_key') msg = 'Stripe is not configured yet (see setup note below).'
-          else if (body?.message) msg = body.message
-        } catch { /* ignore */ }
-      }
-      setNotice(msg)
+      setNotice('Could not open the billing portal. Please try again.')
       return
     }
     const res = data as { url?: string }
@@ -101,7 +88,7 @@ export function BillingPage() {
       )}
 
       <div className="rounded-md border border-border bg-card p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-ink">Current plan</h2>
@@ -116,8 +103,8 @@ export function BillingPage() {
             </p>
           </div>
           {hasSubscription && (
-            <Button variant="secondary" onClick={() => handle('portal')} disabled={busy === 'portal'}>
-              {busy === 'portal' && <Loader2 className="size-4 animate-spin" />}
+            <Button variant="secondary" onClick={openPortal} disabled={busy}>
+              {busy && <Loader2 className="size-4 animate-spin" />}
               Manage subscription
             </Button>
           )}
@@ -164,33 +151,11 @@ export function BillingPage() {
       )}
 
       {!hasSubscription && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {PLANS.map((p) => (
-            <div key={p.key} className="flex flex-col rounded-md border border-border bg-card p-4">
-              <h3 className="font-medium text-ink">{p.name}</h3>
-              <p className="mt-1 text-2xl font-semibold text-ink">{priceFor(p.key, p.price)}</p>
-              <p className="mt-1 flex-1 text-sm text-ink-muted">{p.blurb}</p>
-              <Button className="mt-3" onClick={() => handle('checkout', p.key)} disabled={busy === p.key}>
-                {busy === p.key ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-                Choose plan
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {notice?.includes('Stripe is not configured') && (
-        <div className="rounded-md border border-border bg-card p-4 text-sm text-ink-muted">
-          <p className="font-medium text-ink">Enable billing</p>
-          <p className="mt-1">Set Stripe secrets, then deploy the functions:</p>
-          <pre className="mt-2 overflow-x-auto rounded bg-content p-2 font-mono text-xs text-ink">
-{`supabase secrets set STRIPE_SECRET_KEY=sk_test_... \\
-  STRIPE_WEBHOOK_SECRET=whsec_... \\
-  STRIPE_PRICE_SINGLE_MONTHLY=price_... \\
-  STRIPE_PRICE_SINGLE_YEARLY=price_... \\
-  STRIPE_PRICE_PER_LOCATION_MONTHLY=price_... \\
-  APP_URL=https://operator.washlyfe.com`}
-          </pre>
+        <div className="rounded-md border border-border bg-card p-4">
+          <StripePricingTable
+            clientReferenceId={account?.id}
+            customerEmail={profile?.email}
+          />
         </div>
       )}
     </div>
