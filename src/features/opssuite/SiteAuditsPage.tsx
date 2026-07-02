@@ -11,11 +11,12 @@ import { AttachmentViewer } from '@/components/data/AttachmentViewer'
 import { shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
+import { supabase } from '@/lib/supabase'
 import { siteAudits, customForms, type SiteAudit } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
-import SiteAuditForm from './SiteAuditForm'
+import SiteAuditForm, { type SiteAuditPhotos } from './SiteAuditForm'
 import { SiteAuditBuilder } from './SiteAuditBuilder'
 import {
   DEFAULT_SITE_AUDIT_SCHEMA,
@@ -24,6 +25,15 @@ import {
 } from './siteAuditSchema'
 
 type Row = SiteAudit & { location: { name: string } | null }
+
+function fileToDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = reject
+    r.readAsDataURL(file)
+  })
+}
 
 const EXPORT_COLUMNS: ExportColumn<Row>[] = [
   { header: 'Site', value: (r) => r.location?.name },
@@ -201,7 +211,7 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const save = async (answers: SiteAuditAnswers) => {
+  const save = async (answers: SiteAuditAnswers, photos: SiteAuditPhotos) => {
     setError(null)
     if (!locationId) {
       setError('Pick a site')
@@ -219,7 +229,7 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
     }
 
     setBusy(true)
-    const { error: err } = await siteAudits.create({
+    const { data, error: err } = await siteAudits.create({
       account_id: accountId,
       location_id: locationId,
       initial_observations: initialObservations,
@@ -232,11 +242,37 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
       submitted_by: submitterId,
       submitted_by_name: submitterName,
     })
-    setBusy(false)
     if (err) {
+      setBusy(false)
       setError(err.message)
       return
     }
+
+    // Upload each item's staged photos, tagged with the item id (label).
+    const auditId = (data as { id?: string } | null)?.id
+    if (auditId) {
+      for (const [itemId, files] of Object.entries(photos)) {
+        for (const file of files) {
+          const dataUri = await fileToDataUri(file)
+          const { error: upErr } = await supabase.from('ops_attachments').insert({
+            account_id: accountId,
+            entity_type: 'audit',
+            entity_id: auditId,
+            label: itemId,
+            file_name: file.name,
+            file_type: file.type,
+            data_uri: dataUri,
+          })
+          if (upErr) {
+            setBusy(false)
+            setError(upErr.message)
+            return
+          }
+        }
+      }
+    }
+
+    setBusy(false)
     onSaved()
   }
 
