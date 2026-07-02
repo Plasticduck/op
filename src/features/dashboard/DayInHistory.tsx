@@ -50,8 +50,8 @@ function factForToday(date = new Date()): string {
 
 export function DayInHistory() {
   return (
-    <p className="mt-1 text-xs text-ink-subtle sm:text-sm">
-      <span className="font-medium text-ink-muted">This day in car wash history:</span>{' '}
+    <p className="mt-1 text-xs text-ink-muted sm:text-sm">
+      <span className="font-semibold text-ink">This day in car wash history:</span>{' '}
       {factForToday()}
     </p>
   )
