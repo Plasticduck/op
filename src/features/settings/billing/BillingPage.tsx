@@ -5,20 +5,30 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { currency } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
+import { useLocations } from '@/lib/locations'
 import { billing, type Account, type BillingSummary, type StripeSubscription } from '@/lib/queries/billing'
 
 const STATUS_TONE = { trial: 'accent', active: 'ok', past_due: 'warn', canceled: 'danger' } as const
 
-const PRICING_TABLE_ID = 'prctbl_1TotitAPyEiCoyu4cSa18lhI'
+// Multi-site table (offers the multi-location plan). Used for accounts that
+// already have more than one location.
+const PRICING_TABLE_MULTI = 'prctbl_1TotitAPyEiCoyu4cSa18lhI'
+// Single-location-only table, shown to single-site accounts so they can't buy
+// the multi-site plan. Set this to a Stripe pricing table that contains ONLY
+// the single-location plan. Until it's set, single-site accounts fall back to
+// the multi table (no restriction yet).
+const PRICING_TABLE_SINGLE = ''
 const PUBLISHABLE_KEY =
   'pk_live_51TfMqvAPyEiCoyu4D6eGtyNqakiOPmw7HzT8nz8627uvMdXq9TDzaYRkvSbpRuprs0B2onSn2Hp0Fkd0sprso95b00Pt8SmiV5'
 
 // Stripe's hosted pricing table (web component). Renders your products/prices
 // straight from Stripe, so this stays in sync with whatever you configure there.
 function StripePricingTable({
+  pricingTableId,
   clientReferenceId,
   customerEmail,
 }: {
+  pricingTableId: string
   clientReferenceId?: string
   customerEmail?: string
 }) {
@@ -33,7 +43,7 @@ function StripePricingTable({
   }, [])
 
   const props: Record<string, string> = {
-    'pricing-table-id': PRICING_TABLE_ID,
+    'pricing-table-id': pricingTableId,
     'publishable-key': PUBLISHABLE_KEY,
   }
   if (clientReferenceId) props['client-reference-id'] = clientReferenceId
@@ -44,6 +54,7 @@ function StripePricingTable({
 
 export function BillingPage() {
   const { profile } = useAuth()
+  const { locations } = useLocations()
   const [account, setAccount] = useState<Account | null>(null)
   const [sub, setSub] = useState<StripeSubscription | null>(null)
   const [loading, setLoading] = useState(true)
@@ -153,6 +164,14 @@ export function BillingPage() {
       {!hasSubscription && (
         <div className="rounded-md border border-border bg-card p-4">
           <StripePricingTable
+            pricingTableId={
+              // Single-site accounts get the single-location-only table so they
+              // can't buy the multi-site plan. Multi-site accounts get the full
+              // table. Falls back to the multi table if the single one isn't set.
+              locations.length <= 1 && PRICING_TABLE_SINGLE
+                ? PRICING_TABLE_SINGLE
+                : PRICING_TABLE_MULTI
+            }
             clientReferenceId={account?.id}
             customerEmail={profile?.email}
           />
