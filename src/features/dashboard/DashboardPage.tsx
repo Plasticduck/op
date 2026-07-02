@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, Boxes, ClipboardList, DollarSign, Sparkles, Wrench } from 'lucide-react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
@@ -399,7 +399,12 @@ function ViewToggle({
 export default function DashboardPage() {
   const { profile } = useAuth()
   const { locations, loading } = useLocations()
-  const [view, setView] = useState<'all' | 'site'>('all')
+  // View is driven by the URL so a site card (?view=site) opens that site's
+  // single-site dashboard, and the toggle stays shareable/back-navigable.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view: 'all' | 'site' = searchParams.get('view') === 'site' ? 'site' : 'all'
+  const setView = (v: 'all' | 'site') =>
+    setSearchParams(v === 'site' ? { view: 'site' } : {}, { replace: true })
 
   if (profile?.role === 'employee') return <EmployeeDashboard />
   if (loading) return null

@@ -249,7 +249,8 @@ function SiteCard({ loc, loading }: { loc: ScoredLocation; loading: boolean }) {
 
   const open = () => {
     setActiveId(loc.id)
-    navigate('/app/work-orders')
+    // Switch the dashboard into this site's single-site view.
+    navigate('/app/dashboard?view=site')
   }
 
   return (
