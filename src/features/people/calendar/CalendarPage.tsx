@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input'
 import { MonthGrid, type MonthGridEvent } from '@/components/data/MonthGrid'
 import { useAuth } from '@/lib/auth'
 import { calendar, type CalendarEvent } from '@/lib/queries/people'
+import { googleCalendar, type GoogleEvent, type GoogleEventsResult } from '@/lib/queries/googleCalendar'
 
 function Inner({ locationId }: { locationId: string }) {
   const { profile } = useAuth()
@@ -20,6 +21,10 @@ function Inner({ locationId }: { locationId: string }) {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState<{ presetDate?: string } | null>(null)
   const [open, setOpen] = useState<CalendarEvent | null>(null)
+  const [google, setGoogle] = useState<{ connected: boolean; email?: string; events: GoogleEvent[] }>(
+    { connected: false, events: [] },
+  )
+  const [googleNotice, setGoogleNotice] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -34,15 +39,57 @@ function Inner({ locationId }: { locationId: string }) {
 
   useEffect(() => { void load() }, [load])
 
+  // Google Calendar overlay (read-only, per user).
+  const loadGoogle = useCallback(async () => {
+    const from = startOfMonth(month).toISOString()
+    const to = endOfMonth(month).toISOString()
+    const { data, error } = await googleCalendar.events(from, to)
+    if (error) return
+    const r = data as GoogleEventsResult | null
+    setGoogle({ connected: !!r?.connected, email: r?.email, events: r?.events ?? [] })
+  }, [month])
+
+  useEffect(() => { void loadGoogle() }, [loadGoogle])
+
+  useEffect(() => {
+    const g = new URLSearchParams(window.location.search).get('google')
+    if (g === 'connected') setGoogleNotice('Google Calendar connected.')
+    else if (g === 'error') setGoogleNotice('Could not connect Google Calendar. Please try again.')
+  }, [])
+
+  const connectGoogle = async () => {
+    setGoogleNotice(null)
+    const { data, error } = await googleCalendar.connectUrl()
+    const res = data as { url?: string; error?: string } | null
+    if (error || res?.error === 'no_key') {
+      setGoogleNotice('Google Calendar is not configured yet.')
+      return
+    }
+    if (res?.url) window.location.href = res.url
+  }
+
+  const disconnectGoogle = async () => {
+    await googleCalendar.disconnect()
+    setGoogle({ connected: false, events: [] })
+    setGoogleNotice(null)
+  }
+
   const events: MonthGridEvent[] = useMemo(
-    () =>
-      rows.map((r) => ({
+    () => [
+      ...rows.map((r) => ({
         id: r.id,
         date: r.start_at,
         title: r.title,
-        tone: 'accent',
+        tone: 'accent' as const,
       })),
-    [rows],
+      ...google.events.map((e) => ({
+        id: `g:${e.id}`,
+        date: e.start,
+        title: e.title,
+        tone: 'ok' as const,
+      })),
+    ],
+    [rows, google.events],
   )
 
   const eventsById = useMemo(() => {
@@ -63,6 +110,34 @@ function Inner({ locationId }: { locationId: string }) {
           ) : undefined
         }
       />
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-4 py-2">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="inline-block size-2.5 rounded-full bg-ok" aria-hidden />
+          {google.connected ? (
+            <span className="text-ink-muted">
+              Google Calendar: <span className="text-ink">{google.email ?? 'connected'}</span>
+            </span>
+          ) : (
+            <span className="text-ink-muted">Overlay your Google Calendar events here.</span>
+          )}
+        </div>
+        {google.connected ? (
+          <Button variant="secondary" size="sm" onClick={disconnectGoogle}>
+            Disconnect Google
+          </Button>
+        ) : (
+          <Button variant="secondary" size="sm" onClick={connectGoogle}>
+            Connect Google Calendar
+          </Button>
+        )}
+      </div>
+
+      {googleNotice && (
+        <div className="rounded-md border border-border bg-accent-soft/50 px-3 py-2 text-sm text-ink">
+          {googleNotice}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-ink-muted">Loading...</p>
