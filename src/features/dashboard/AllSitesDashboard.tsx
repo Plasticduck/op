@@ -33,26 +33,19 @@ function greeting() {
   return 'Good evening'
 }
 
-type ScoredLocation = { id: string; name: string; card: Scorecard | null }
+type ScoredLocation = {
+  id: string
+  name: string
+  latitude: number | null
+  longitude: number | null
+  card: Scorecard | null
+}
 
 export default function AllSitesDashboard() {
   const { profile } = useAuth()
-  const { locations, activeLocation } = useLocations()
+  const { locations } = useLocations()
   const { settings } = useCompany()
 
-  // Sites with coordinates can show weather; user picks which one.
-  const weatherSites = useMemo(
-    () => locations.filter((l) => l.latitude != null && l.longitude != null),
-    [locations],
-  )
-  const [weatherId, setWeatherId] = useState('')
-  useEffect(() => {
-    if (weatherId && weatherSites.some((s) => s.id === weatherId)) return
-    const def =
-      (activeLocation?.latitude != null ? activeLocation.id : weatherSites[0]?.id) ?? ''
-    setWeatherId(def)
-  }, [weatherSites, activeLocation, weatherId])
-  const weatherSite = weatherSites.find((s) => s.id === weatherId) ?? null
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [loading, setLoading] = useState(true)
 
@@ -102,29 +95,6 @@ export default function AllSitesDashboard() {
         </p>
       </div>
 
-      {weatherSite && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-medium uppercase tracking-wider text-ink-subtle">Weather</p>
-            <div className="w-48">
-              <Select
-                value={weatherId}
-                onChange={(e) => setWeatherId(e.target.value)}
-                aria-label="Weather site"
-                className="h-9"
-              >
-                {weatherSites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          <WeatherOutlook latitude={weatherSite.latitude} longitude={weatherSite.longitude} />
-        </div>
-      )}
-
       <StatCardRow
         className="sm:grid-cols-3 lg:grid-cols-5"
         items={[
@@ -141,15 +111,37 @@ export default function AllSitesDashboard() {
           <RegionSection
             key={g.region}
             title={g.region}
-            locations={g.locations.map((l) => ({ id: l.id, name: l.name, card: cards[l.id] ?? null }))}
+            locations={g.locations.map((l) => ({
+              id: l.id,
+              name: l.name,
+              latitude: l.latitude,
+              longitude: l.longitude,
+              card: cards[l.id] ?? null,
+            }))}
             loading={loading}
           />
         ))
       ) : (
-        <SiteGrid
-          locations={locations.map((l) => ({ id: l.id, name: l.name, card: cards[l.id] ?? null }))}
-          loading={loading}
-        />
+        <div className="flex flex-col gap-3">
+          <WeatherBar
+            sites={locations.map((l) => ({
+              id: l.id,
+              name: l.name,
+              latitude: l.latitude,
+              longitude: l.longitude,
+            }))}
+          />
+          <SiteGrid
+            locations={locations.map((l) => ({
+              id: l.id,
+              name: l.name,
+              latitude: l.latitude,
+              longitude: l.longitude,
+              card: cards[l.id] ?? null,
+            }))}
+            loading={loading}
+          />
+        </div>
       )}
     </div>
   )
@@ -183,8 +175,60 @@ function RegionSection({
           </span>
         )}
       </div>
+      <WeatherBar sites={locations} />
       <SiteGrid locations={locations} loading={loading} />
     </section>
+  )
+}
+
+// Weather for a region (or the whole account): a dropdown of its sites. Sites
+// without coordinates are greyed out (disabled) until coordinates are set.
+function WeatherBar({
+  sites,
+}: {
+  sites: { id: string; name: string; latitude: number | null; longitude: number | null }[]
+}) {
+  const hasCoords = (s: { latitude: number | null; longitude: number | null }) =>
+    s.latitude != null && s.longitude != null
+  const withCoords = sites.filter(hasCoords)
+  const [id, setId] = useState('')
+  useEffect(() => {
+    if (id && sites.some((s) => s.id === id && hasCoords(s))) return
+    setId(withCoords[0]?.id ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sites])
+  const selected = sites.find((s) => s.id === id) ?? null
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-medium uppercase tracking-wider text-ink-subtle">Weather</p>
+        <div className="w-48">
+          <Select
+            value={id}
+            onChange={(e) => setId(e.target.value)}
+            aria-label="Weather site"
+            className="h-9"
+            disabled={withCoords.length === 0}
+          >
+            {withCoords.length === 0 && <option value="">No coordinates set</option>}
+            {sites.map((s) => (
+              <option key={s.id} value={s.id} disabled={!hasCoords(s)}>
+                {s.name}
+                {hasCoords(s) ? '' : ' — no coordinates'}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+      {selected && hasCoords(selected) ? (
+        <WeatherOutlook latitude={selected.latitude} longitude={selected.longitude} />
+      ) : (
+        <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-ink-muted">
+          Set site coordinates (Settings → Locations) to see the weather outlook.
+        </p>
+      )}
+    </div>
   )
 }
 
