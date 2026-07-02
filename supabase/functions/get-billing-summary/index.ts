@@ -101,18 +101,23 @@ Deno.serve(async (req) => {
   if (!acct?.stripe_customer_id) return json({ subscription: null, plans })
 
   // Prefer the known subscription id; otherwise grab the customer's latest.
+  // Wrapped so a bad customer id / mode mismatch can't wipe out the plans.
   const expand = ['items.data.price.product', 'default_payment_method']
   let sub: Stripe.Subscription | null = null
-  if (acct.stripe_subscription_id) {
-    sub = await stripe.subscriptions.retrieve(acct.stripe_subscription_id, { expand })
-  } else {
-    const list = await stripe.subscriptions.list({
-      customer: acct.stripe_customer_id,
-      status: 'all',
-      limit: 1,
-      expand: expand.map((e) => `data.${e}`),
-    })
-    sub = list.data[0] ?? null
+  try {
+    if (acct.stripe_subscription_id) {
+      sub = await stripe.subscriptions.retrieve(acct.stripe_subscription_id, { expand })
+    } else {
+      const list = await stripe.subscriptions.list({
+        customer: acct.stripe_customer_id,
+        status: 'all',
+        limit: 1,
+        expand: expand.map((e) => `data.${e}`),
+      })
+      sub = list.data[0] ?? null
+    }
+  } catch {
+    sub = null
   }
 
   if (!sub) return json({ subscription: null, plans })
