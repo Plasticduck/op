@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { SITE_URL } from '@/lib/siteUrl'
+import { fnErrorMessage } from '@/lib/fnError'
 import type { Role } from '@/lib/rbac'
 
 // Roles that can be handed out via an invite link. Owner is set only at account
@@ -85,6 +86,23 @@ export async function createInvitation(params: {
 
 export async function revokeInvitation(id: string) {
   return supabase.from('invitations').delete().eq('id', id)
+}
+
+// Best-effort: email the invitee their invite link. Returns { ok } so callers
+// can tell the user when the email couldn't be sent (the invite still exists
+// and its link stays copyable from the Pending invitations list).
+export async function sendInviteEmail(
+  invitationId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.functions.invoke('send-invite-email', {
+    body: { invitation_id: invitationId },
+  })
+  if (error) {
+    const msg = await fnErrorMessage(error, data as { error?: string } | null, 'Could not send email')
+    return { ok: false, error: msg }
+  }
+  const res = (data as { ok?: boolean; error?: string } | null) ?? {}
+  return { ok: res.ok !== false, error: res.error }
 }
 
 export async function resendInvitation(id: string) {

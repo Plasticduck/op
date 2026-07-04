@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { MultiLocationSelect } from '@/components/forms/MultiLocationSelect'
 import {
   createInvitation,
+  sendInviteEmail,
   type InvitableRole,
   type LocationFull,
 } from '@/lib/queries/account'
@@ -52,18 +53,30 @@ export function InviteModal({
     if (!allSites && locIds.length === 0) return setError('Assign at least one location')
 
     setSubmitting(true)
-    const { error: err } = await createInvitation({
+    const { data, error: err } = await createInvitation({
       account_id: profile.account_id,
       invited_by: profile.id,
       email: email.trim().toLowerCase(),
       role,
       location_ids: allSites ? [] : locIds,
     })
+    if (err) {
+      setSubmitting(false)
+      return setError(err.message)
+    }
+    // Invite created. Email it to the invitee. The invite exists either way, so
+    // if the email fails we keep the modal open and tell them the link is still
+    // copyable from Pending invitations.
+    const emailRes = await sendInviteEmail((data as { id: string }).id)
     setSubmitting(false)
-    if (err) return setError(err.message)
-    // Invite sent. Close the box; the link is available under Pending invitations.
     onCreated()
-    close()
+    if (emailRes.ok) {
+      close()
+    } else {
+      setError(
+        `Invite created, but the email could not be sent (${emailRes.error ?? 'unknown error'}). Copy the link from Pending invitations to share it.`,
+      )
+    }
   }
 
   return (
