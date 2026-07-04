@@ -14,10 +14,8 @@ const STATUS_TONE = { trial: 'accent', active: 'ok', past_due: 'warn', canceled:
 // already have more than one location.
 const PRICING_TABLE_MULTI = 'prctbl_1TotitAPyEiCoyu4cSa18lhI'
 // Single-location-only table, shown to single-site accounts so they can't buy
-// the multi-site plan. Set this to a Stripe pricing table that contains ONLY
-// the single-location plan. Until it's set, single-site accounts fall back to
-// the multi table (no restriction yet).
-const PRICING_TABLE_SINGLE = ''
+// the multi-site plan.
+const PRICING_TABLE_SINGLE = 'prctbl_1TpUXLAPyEiCoyu4fc4TxK64'
 const PUBLISHABLE_KEY =
   'pk_live_51TfMqvAPyEiCoyu4D6eGtyNqakiOPmw7HzT8nz8627uvMdXq9TDzaYRkvSbpRuprs0B2onSn2Hp0Fkd0sprso95b00Pt8SmiV5'
 
