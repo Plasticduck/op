@@ -13,6 +13,12 @@ const MULTI_PRICES = new Set([
   Deno.env.get('STRIPE_PRICE_MULTI_SITE_YEARLY') ?? 'price_1ToayPAPyEiCoyu4qwAAUPe4',
 ])
 
+// Per-site multi maintenance prices (the add-on scales with sites too).
+const MULTI_MAINT_PRICES = new Set([
+  Deno.env.get('STRIPE_PRICE_MULTI_MAINTENANCE') ?? 'price_1TotbpAPyEiCoyu4SuP2euHT',
+  Deno.env.get('STRIPE_PRICE_MULTI_MAINTENANCE_YEARLY') ?? 'price_1TotcNAPyEiCoyu4h2eZYGGc',
+])
+
 // Single-Site prices to revert to when dropping below 2 sites (fallback when
 // the original price wasn't recorded).
 const SINGLE_MONTHLY = Deno.env.get('STRIPE_PRICE_SINGLE_MONTHLY') ?? ''
@@ -105,12 +111,23 @@ Deno.serve(async (req) => {
     /multi/i.test(productName(planItem.price?.product))
   const interval = planItem.price?.recurring?.interval
 
+  // Maintenance add-on item (per-site on multi).
+  const maint = sub.items.data.find((i) => /maintenance/i.test(productName(i.price?.product)))
+  const maintOnMulti = !!(maint?.price?.id && MULTI_MAINT_PRICES.has(maint.price.id))
+
   if (active >= 2) {
-    // Keep the per-site quantity in sync (only when already on the multi plan).
+    // Keep the per-site quantities (plan + maintenance) in sync with the count.
+    const updates: { id: string; quantity: number }[] = []
     if (onMulti && (planItem.quantity ?? 1) !== active) {
+      updates.push({ id: planItem.id, quantity: active })
+    }
+    if (maintOnMulti && (maint!.quantity ?? 1) !== active) {
+      updates.push({ id: maint!.id, quantity: active })
+    }
+    if (updates.length) {
       try {
         await stripe.subscriptions.update(sub.id, {
-          items: [{ id: planItem.id, quantity: active }],
+          items: updates,
           proration_behavior: 'create_prorations',
         })
       } catch {
@@ -127,19 +144,26 @@ Deno.serve(async (req) => {
   // Below 2 sites: revert to Single-Site. Prefer the exact price we upgraded
   // from; fall back to the env single price for the interval. The Stripe swap is
   // best-effort — the app always moves to single so the account isn't stuck.
-  if (onMulti) {
+  if (onMulti || maintOnMulti) {
     const billingCfg = ((acct.company_settings ?? {}) as Record<string, unknown>).billing as
-      | { priorSinglePrice?: string | null; priorInterval?: string | null }
+      | { priorSinglePrice?: string | null; priorInterval?: string | null; priorMaintPrice?: string | null }
       | undefined
     const fallback = interval === 'year' ? SINGLE_YEARLY : SINGLE_MONTHLY
     const singlePrice =
       (billingCfg?.priorInterval === interval ? billingCfg?.priorSinglePrice : null) ||
       billingCfg?.priorSinglePrice ||
       fallback
-    if (singlePrice) {
+
+    const items: { id: string; price: string; quantity: number }[] = []
+    if (onMulti && singlePrice) items.push({ id: planItem.id, price: singlePrice, quantity: 1 })
+    // Revert the maintenance add-on to its recorded single-site price.
+    if (maintOnMulti && billingCfg?.priorMaintPrice) {
+      items.push({ id: maint!.id, price: billingCfg.priorMaintPrice, quantity: 1 })
+    }
+    if (items.length) {
       try {
         await stripe.subscriptions.update(sub.id, {
-          items: [{ id: planItem.id, price: singlePrice, quantity: 1 }],
+          items,
           proration_behavior: 'create_prorations',
         })
       } catch {

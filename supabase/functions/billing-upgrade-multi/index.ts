@@ -11,6 +11,10 @@ const MULTI_PRICE_MONTHLY =
   Deno.env.get('STRIPE_PRICE_MULTI_SITE') ?? 'price_1ToaLIAPyEiCoyu4oH73HTmd'
 const MULTI_PRICE_YEARLY =
   Deno.env.get('STRIPE_PRICE_MULTI_SITE_YEARLY') ?? 'price_1ToayPAPyEiCoyu4qwAAUPe4'
+const MULTI_MAINT_MONTHLY =
+  Deno.env.get('STRIPE_PRICE_MULTI_MAINTENANCE') ?? 'price_1TotbpAPyEiCoyu4SuP2euHT'
+const MULTI_MAINT_YEARLY =
+  Deno.env.get('STRIPE_PRICE_MULTI_MAINTENANCE_YEARLY') ?? 'price_1TotcNAPyEiCoyu4h2eZYGGc'
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -107,17 +111,33 @@ Deno.serve(async (req) => {
     )
   }
 
-  // Remember the single-site price we're swapping away from, so an automatic
-  // downgrade (locations back below 2) can revert to the exact same price.
+  // The maintenance add-on (if present) has its own multi-site per-site price.
+  const isYear = base.price?.recurring?.interval === 'year'
+  const maint = sub.items.data.find((i) => /maintenance/i.test(productName(i.price?.product)))
+
+  // Remember the single-site prices we're swapping away from, so an automatic
+  // downgrade (locations back below 2) can revert to the exact same prices.
   const cs = (acct.company_settings ?? {}) as Record<string, unknown>
   const billingCfg = {
     ...((cs.billing as Record<string, unknown> | undefined) ?? {}),
     priorSinglePrice: base.price?.id ?? null,
     priorInterval: base.price?.recurring?.interval ?? null,
+    priorMaintPrice: maint?.price?.id ?? null,
+  }
+
+  const updateItems: { id: string; price: string; quantity: number }[] = [
+    { id: base.id, price: targetPrice, quantity },
+  ]
+  if (maint) {
+    updateItems.push({
+      id: maint.id,
+      price: isYear ? MULTI_MAINT_YEARLY : MULTI_MAINT_MONTHLY,
+      quantity, // maintenance is also per-site
+    })
   }
 
   await stripe.subscriptions.update(sub.id, {
-    items: [{ id: base.id, price: targetPrice, quantity }],
+    items: updateItems,
     proration_behavior: 'create_prorations',
   })
 
