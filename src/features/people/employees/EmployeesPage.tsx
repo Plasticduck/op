@@ -37,7 +37,14 @@ function Inner({ locationId }: { locationId: string }) {
       <PageHeader
         title="Employees"
         subtitle="Staff roster for scheduling, time tracking, and HR. Includes staff who don't log in. For app logins and roles, see Settings, Team."
-        actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> Add employee</Button>}
+        actions={
+          <Button
+            onClick={() => setCreating(true)}
+            title="Adds a roster record for scheduling and the time clock. No app login. To give someone a login, use Settings, Team, Invite team member."
+          >
+            <Plus className="size-4" /> Add roster staff
+          </Button>
+        }
       />
 
       <WeatherOutlook
@@ -61,7 +68,7 @@ function Inner({ locationId }: { locationId: string }) {
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Users} title="No employees" description="Add your team to manage schedules, time, and HR records." action={<Button onClick={() => setCreating(true)}>Add employee</Button>} />
+        <EmptyState icon={Users} title="No employees" description="Add staff here to manage schedules, time, and HR records. This is the roster and does not create an app login. To give someone a login, invite them under Settings, Team." action={<Button onClick={() => setCreating(true)}>Add roster staff</Button>} />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
           <table className="w-full min-w-[720px] text-sm">

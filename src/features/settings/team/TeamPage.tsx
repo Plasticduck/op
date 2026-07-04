@@ -85,7 +85,10 @@ export function TeamPage() {
               People who can log into Operator, and their role and site access. For the staff roster used by scheduling and HR, see People, Employees.
             </p>
           </div>
-          <Button onClick={() => setInviteOpen(true)}>
+          <Button
+            onClick={() => setInviteOpen(true)}
+            title="Emails an app login invite. When accepted, it also creates their Employees roster record automatically."
+          >
             <UserPlus className="size-4" />
             Invite team member
           </Button>
