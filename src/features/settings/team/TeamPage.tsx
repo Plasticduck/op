@@ -76,10 +76,15 @@ export function TeamPage() {
     <div className="flex flex-col gap-6">
       {/* Members */}
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink">
-            Team members ({users.length})
-          </h2>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">
+              Team members ({users.length})
+            </h2>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              People who can log into Operator, and their role and site access. For the staff roster used by scheduling and HR, see People, Employees.
+            </p>
+          </div>
           <Button onClick={() => setInviteOpen(true)}>
             <UserPlus className="size-4" />
             Invite team member

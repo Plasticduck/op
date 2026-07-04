@@ -36,7 +36,7 @@ function Inner({ locationId }: { locationId: string }) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Employees"
-        subtitle="Team roster for this location."
+        subtitle="Staff roster for scheduling, time tracking, and HR. Includes staff who don't log in. For app logins and roles, see Settings, Team."
         actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> Add employee</Button>}
       />
 
@@ -71,6 +71,7 @@ function Inner({ locationId }: { locationId: string }) {
                 <th className="px-3 py-2.5 font-medium">Role</th>
                 <th className="px-3 py-2.5 font-medium">Start date</th>
                 <th className="px-3 py-2.5 font-medium">Status</th>
+                <th className="px-3 py-2.5 font-medium">App access</th>
               </tr>
             </thead>
             <tbody>
@@ -86,6 +87,13 @@ function Inner({ locationId }: { locationId: string }) {
                   <td className="px-3 py-2.5 text-ink-muted">{shortDate(e.start_date)}</td>
                   <td className="px-3 py-2.5">
                     <Badge tone={e.status === 'active' ? 'ok' : 'neutral'}>{e.status}</Badge>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {e.user_id ? (
+                      <Badge tone="accent">Has login</Badge>
+                    ) : (
+                      <span className="text-xs text-ink-subtle">Roster only</span>
+                    )}
                   </td>
                 </tr>
               ))}
