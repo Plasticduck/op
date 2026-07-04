@@ -120,8 +120,9 @@ export async function updateLocation(
 }
 
 // Permanently delete a location. Destructive: related records cascade-delete.
+// Returns the deleted row(s) so callers can detect an RLS/no-op block.
 export async function deleteLocation(id: string) {
-  return supabase.from('locations').delete().eq('id', id)
+  return supabase.from('locations').delete().eq('id', id).select('id')
 }
 
 export function inviteUrl(token: string) {

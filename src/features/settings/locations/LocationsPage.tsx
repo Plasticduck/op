@@ -141,7 +141,7 @@ export function LocationsPage() {
   const doDelete = async () => {
     if (!deleteTarget) return
     setBusy(true)
-    const { error } = await deleteLocation(deleteTarget.id)
+    const { data, error } = await deleteLocation(deleteTarget.id)
     setBusy(false)
     const name = deleteTarget.name
     setDeleteTarget(null)
@@ -149,6 +149,11 @@ export function LocationsPage() {
       setUpgradeNotice(`Could not delete ${name}: ${error.message}. Try archiving it instead.`)
       return
     }
+    if (!data || data.length === 0) {
+      setUpgradeNotice(`${name} was not deleted. You may not have permission (owners only).`)
+      return
+    }
+    setUpgradeNotice(`${name} deleted.`)
     void refresh()
   }
 
