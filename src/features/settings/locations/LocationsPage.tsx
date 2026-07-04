@@ -20,6 +20,7 @@ import { currency, timeOfDay } from '@/lib/format'
 import { geocodeAddress } from '@/lib/weather'
 import {
   createLocation,
+  deleteLocation,
   listAllLocations,
   updateLocation,
   type LocationFull,
@@ -69,6 +70,7 @@ export function LocationsPage() {
   const [editing, setEditing] = useState<LocationFull | null>(null)
   const [creating, setCreating] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<LocationFull | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<LocationFull | null>(null)
   const [busy, setBusy] = useState(false)
   const { reload: reloadActiveLocations } = useLocations()
   const { sitePlan, reload: reloadCompany } = useCompany()
@@ -133,6 +135,20 @@ export function LocationsPage() {
     await updateLocation(archiveTarget.id, { archived: !archiveTarget.archived })
     setBusy(false)
     setArchiveTarget(null)
+    void refresh()
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    setBusy(true)
+    const { error } = await deleteLocation(deleteTarget.id)
+    setBusy(false)
+    const name = deleteTarget.name
+    setDeleteTarget(null)
+    if (error) {
+      setUpgradeNotice(`Could not delete ${name}: ${error.message}. Try archiving it instead.`)
+      return
+    }
     void refresh()
   }
 
@@ -218,6 +234,14 @@ export function LocationsPage() {
                 >
                   {l.archived ? 'Restore' : 'Archive'}
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto text-danger hover:text-danger"
+                  onClick={() => setDeleteTarget(l)}
+                >
+                  Delete
+                </Button>
               </div>
             </div>
           ))}
@@ -258,6 +282,17 @@ export function LocationsPage() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={`Delete ${deleteTarget?.name}?`}
+        description="This permanently deletes the location and all of its data (work orders, equipment, checklists, closeouts, and more). This cannot be undone. To keep the data, archive it instead."
+        confirmLabel="Delete permanently"
+        destructive
+        loading={busy}
+        onConfirm={doDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       <ConfirmDialog
         open={!!confirmAdd}

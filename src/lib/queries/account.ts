@@ -119,6 +119,11 @@ export async function updateLocation(
   return supabase.from('locations').update(patch).eq('id', id)
 }
 
+// Permanently delete a location. Destructive: related records cascade-delete.
+export async function deleteLocation(id: string) {
+  return supabase.from('locations').delete().eq('id', id)
+}
+
 export function inviteUrl(token: string) {
   return `${SITE_URL}/invite/${token}`
 }

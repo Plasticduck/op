@@ -13,6 +13,11 @@ const MULTI_PRICES = new Set([
   Deno.env.get('STRIPE_PRICE_MULTI_SITE_YEARLY') ?? 'price_1ToayPAPyEiCoyu4qwAAUPe4',
 ])
 
+// Single-Site prices to revert to when dropping below 2 sites (fallback when
+// the original price wasn't recorded).
+const SINGLE_MONTHLY = Deno.env.get('STRIPE_PRICE_SINGLE_MONTHLY') ?? ''
+const SINGLE_YEARLY = Deno.env.get('STRIPE_PRICE_SINGLE_YEARLY') ?? ''
+
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
   'http://localhost:5173',
@@ -66,7 +71,7 @@ Deno.serve(async (req) => {
 
   const { data: acct } = await svc
     .from('accounts')
-    .select('id, stripe_subscription_id')
+    .select('id, stripe_subscription_id, company_settings')
     .eq('id', profile.account_id)
     .single()
   if (!acct?.stripe_subscription_id) return json({ ok: true, skipped: 'no_subscription' })
@@ -89,8 +94,38 @@ Deno.serve(async (req) => {
     .select('id', { count: 'exact', head: true })
     .eq('account_id', profile.account_id)
     .eq('archived', false)
-  const quantity = Math.max(1, count ?? 1)
+  const active = count ?? 0
 
+  // Below 2 sites: revert to the Single-Site plan (per-site multi no longer
+  // applies). Prefer the exact price we upgraded from; fall back to the env
+  // single price matching the current interval.
+  if (active < 2) {
+    const interval = item.price?.recurring?.interval
+    const billingCfg = ((acct.company_settings ?? {}) as Record<string, unknown>).billing as
+      | { priorSinglePrice?: string | null; priorInterval?: string | null }
+      | undefined
+    const fallback = interval === 'year' ? SINGLE_YEARLY : SINGLE_MONTHLY
+    const singlePrice =
+      (billingCfg?.priorInterval === interval ? billingCfg?.priorSinglePrice : null) ||
+      billingCfg?.priorSinglePrice ||
+      fallback
+
+    if (singlePrice) {
+      await stripe.subscriptions.update(sub.id, {
+        items: [{ id: item.id, price: singlePrice, quantity: 1 }],
+        proration_behavior: 'create_prorations',
+      })
+      await svc
+        .from('accounts')
+        .update({ site_plan: 'single', plan: 'single', subscription_quantity: 1 })
+        .eq('id', profile.account_id)
+      return json({ ok: true, downgraded: true })
+    }
+    // No single price available to revert to; leave as-is.
+    return json({ ok: true, skipped: 'no_single_price' })
+  }
+
+  const quantity = active
   if ((item.quantity ?? 1) !== quantity) {
     await stripe.subscriptions.update(sub.id, {
       items: [{ id: item.id, quantity }],

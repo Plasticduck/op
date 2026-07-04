@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
 
   const { data: acct } = await svc
     .from('accounts')
-    .select('id, stripe_subscription_id')
+    .select('id, stripe_subscription_id, company_settings')
     .eq('id', profile.account_id)
     .single()
   if (!acct?.stripe_subscription_id) return json({ error: 'no_subscription' }, 400)
@@ -107,6 +107,15 @@ Deno.serve(async (req) => {
     )
   }
 
+  // Remember the single-site price we're swapping away from, so an automatic
+  // downgrade (locations back below 2) can revert to the exact same price.
+  const cs = (acct.company_settings ?? {}) as Record<string, unknown>
+  const billingCfg = {
+    ...((cs.billing as Record<string, unknown> | undefined) ?? {}),
+    priorSinglePrice: base.price?.id ?? null,
+    priorInterval: base.price?.recurring?.interval ?? null,
+  }
+
   await stripe.subscriptions.update(sub.id, {
     items: [{ id: base.id, price: targetPrice, quantity }],
     proration_behavior: 'create_prorations',
@@ -115,7 +124,12 @@ Deno.serve(async (req) => {
   // Reflect immediately (the webhook will also sync).
   await svc
     .from('accounts')
-    .update({ site_plan: 'multi', plan: 'multi', subscription_quantity: quantity })
+    .update({
+      site_plan: 'multi',
+      plan: 'multi',
+      subscription_quantity: quantity,
+      company_settings: { ...cs, billing: billingCfg },
+    })
     .eq('id', profile.account_id)
 
   return json({ ok: true, quantity })
