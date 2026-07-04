@@ -175,6 +175,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Megaphone,
         roles: ['owner', 'manager'],
       },
+      {
+        to: '/app/documents',
+        label: 'Documents',
+        icon: Folders,
+        roles: ['owner', 'manager', 'employee', 'technician'],
+      },
     ],
   },
   {
@@ -222,12 +228,6 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Maintenance Categories',
         icon: TagsIcon,
         roles: ['owner', 'manager', 'technician'],
-      },
-      {
-        to: '/app/documents',
-        label: 'Documents',
-        icon: Folders,
-        roles: ['owner', 'manager', 'employee', 'technician'],
       },
     ],
   },
