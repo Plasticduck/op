@@ -53,6 +53,10 @@ export const billing = {
   checkout: (plan: PlanKey) =>
     supabase.functions.invoke('create-checkout-session', { body: { plan } }),
   portal: () => supabase.functions.invoke('create-portal-session', { body: {} }),
+  // Switch a subscribed account from Single-Site to the per-site Multi-Site plan.
+  upgradeMulti: () => supabase.functions.invoke('billing-upgrade-multi', { body: {} }),
+  // Reconcile the per-site subscription quantity with the active location count.
+  syncQuantity: () => supabase.functions.invoke('billing-sync-quantity', { body: {} }),
 }
 
 export const PLANS: { key: PlanKey; name: string; price: string; blurb: string }[] = [

@@ -14,6 +14,7 @@ import { AddressAutocomplete } from '@/components/forms/AddressAutocomplete'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
+import { billing } from '@/lib/queries/billing'
 import { compareLocationName } from '@/lib/utils'
 import { timeOfDay } from '@/lib/format'
 import { geocodeAddress } from '@/lib/weather'
@@ -74,6 +75,9 @@ export function LocationsPage() {
   const refresh = async () => {
     await load()
     await reloadActiveLocations()
+    // Keep a per-site subscription's quantity in sync with the location count
+    // (best effort; the function no-ops unless the account is on the multi plan).
+    void billing.syncQuantity()
   }
 
   const toggleArchive = async () => {

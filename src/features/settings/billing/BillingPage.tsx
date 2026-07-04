@@ -71,6 +71,7 @@ export function BillingPage() {
   }
   useEffect(() => { void load() }, [])
 
+  // No subscription yet: just flip the plan so the multi pricing table shows.
   const upgradeToMulti = async () => {
     if (!account) return
     setUpgrading(true)
@@ -78,6 +79,22 @@ export function BillingPage() {
     await reloadCompany()
     await load()
     setUpgrading(false)
+  }
+
+  // Already subscribed: change the Stripe subscription to the per-site plan.
+  const upgradeSubscribed = async () => {
+    setUpgrading(true)
+    setNotice(null)
+    const { data, error } = await billing.upgradeMulti()
+    const res = data as { ok?: boolean; error?: string } | null
+    setUpgrading(false)
+    if (error || res?.error) {
+      setNotice('Could not upgrade automatically. Try "Manage subscription" or contact support.')
+      return
+    }
+    await reloadCompany()
+    await load()
+    setNotice('Upgraded to Multi-Site. You can now add locations. Billing is per site.')
   }
 
   const openPortal = async () => {
@@ -130,6 +147,19 @@ export function BillingPage() {
           )}
         </div>
       </div>
+
+      {hasSubscription && sitePlan === 'single' && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/30 bg-accent-soft px-4 py-3">
+          <p className="text-sm text-ink">
+            You're on the Single-Site plan. Upgrade to Multi-Site (billed per location) to add
+            more sites.
+          </p>
+          <Button onClick={upgradeSubscribed} disabled={upgrading}>
+            {upgrading && <Loader2 className="size-4 animate-spin" />}
+            Upgrade to Multi-Site
+          </Button>
+        </div>
+      )}
 
       {sub && (
         <div className="rounded-md border border-border bg-card p-4">
