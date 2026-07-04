@@ -12,6 +12,7 @@ import {
   type InvitableRole,
   type LocationFull,
 } from '@/lib/queries/account'
+import { employees } from '@/lib/queries/people'
 import { useAuth } from '@/lib/auth'
 
 export function InviteModal({
@@ -26,6 +27,7 @@ export function InviteModal({
   locations: LocationFull[]
 }) {
   const { profile } = useAuth()
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<InvitableRole>('employee')
   const [locIds, setLocIds] = useState<string[]>([])
@@ -35,6 +37,7 @@ export function InviteModal({
   const [error, setError] = useState<string | null>(null)
 
   const reset = () => {
+    setName('')
     setEmail('')
     setRole('employee')
     setLocIds([])
@@ -49,14 +52,16 @@ export function InviteModal({
   const submit = async () => {
     if (!profile) return
     setError(null)
+    if (!name.trim()) return setError('Enter their name')
     if (!email.includes('@')) return setError('Enter a valid email')
     if (!allSites && locIds.length === 0) return setError('Assign at least one location')
 
+    const cleanEmail = email.trim().toLowerCase()
     setSubmitting(true)
     const { data, error: err } = await createInvitation({
       account_id: profile.account_id,
       invited_by: profile.id,
-      email: email.trim().toLowerCase(),
+      email: cleanEmail,
       role,
       location_ids: allSites ? [] : locIds,
     })
@@ -64,9 +69,27 @@ export function InviteModal({
       setSubmitting(false)
       return setError(err.message)
     }
-    // Invite created. Email it to the invitee. The invite exists either way, so
-    // if the email fails we keep the modal open and tell them the link is still
-    // copyable from Pending invitations.
+
+    // Pre-create the People roster record so an invited employee is schedulable
+    // right away, before they accept. accept_invitation links this same record
+    // (matched by email) when they sign in, so there's no duplicate. Best effort:
+    // if it fails, acceptance still creates the record.
+    if (role === 'employee' && locIds.length >= 1) {
+      const trimmed = name.trim()
+      const first = trimmed.split(' ')[0]
+      const last = trimmed.slice(first.length).trim()
+      await employees.create({
+        location_id: locIds[0],
+        first_name: first,
+        last_name: last,
+        email: cleanEmail,
+        status: 'active',
+      })
+    }
+
+    // Email the invite. The invite exists either way, so if the email fails we
+    // keep the modal open and tell them the link is copyable from Pending
+    // invitations.
     const emailRes = await sendInviteEmail((data as { id: string }).id)
     setSubmitting(false)
     onCreated()
@@ -84,9 +107,19 @@ export function InviteModal({
       open={open}
       onClose={close}
       title="Invite team member"
-      description="They get a secure link to set their password and join."
+      description="They get a secure link to set their password and join. Employees are added to your roster automatically."
     >
       <div className="flex flex-col gap-4">
+          <Field label="Full name" required>
+            {(id) => (
+              <Input
+                id={id}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Jordan Rivera"
+              />
+            )}
+          </Field>
           <Field label="Email" required>
             {(id) => (
               <Input

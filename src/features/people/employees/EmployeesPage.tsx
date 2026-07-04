@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Plus, Users } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Users } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { StatCardRow } from '@/components/data/StatCardRow'
@@ -11,13 +11,12 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { shortDate } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
 import { employees, type Employee } from '@/lib/queries/people'
-import { EmployeeModal } from './EmployeeModal'
 
 function Inner({ locationId }: { locationId: string }) {
   const { activeLocation } = useLocations()
+  const navigate = useNavigate()
   const [rows, setRows] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
   const [showInactive, setShowInactive] = useState(false)
 
   const load = useCallback(async () => {
@@ -36,13 +35,10 @@ function Inner({ locationId }: { locationId: string }) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Employees"
-        subtitle="Staff roster for scheduling, time tracking, and HR. Includes staff who don't log in. For app logins and roles, see Settings, Team."
+        subtitle="Your staff roster for schedules, time tracking, and HR. Add people by inviting them under Settings, Team."
         actions={
-          <Button
-            onClick={() => setCreating(true)}
-            title="Adds a roster record for scheduling and the time clock. No app login. To give someone a login, use Settings, Team, Invite team member."
-          >
-            <Plus className="size-4" /> Add roster staff
+          <Button onClick={() => navigate('/app/settings/team')}>
+            Invite team member
           </Button>
         }
       />
@@ -68,7 +64,7 @@ function Inner({ locationId }: { locationId: string }) {
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Users} title="No employees" description="Add staff here to manage schedules, time, and HR records. This is the roster and does not create an app login. To give someone a login, invite them under Settings, Team." action={<Button onClick={() => setCreating(true)}>Add roster staff</Button>} />
+        <EmptyState icon={Users} title="No employees yet" description="Your roster fills up as you invite team members. Invite someone to give them an app login and add them here automatically." action={<Button onClick={() => navigate('/app/settings/team')}>Invite team member</Button>} />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
           <table className="w-full min-w-[720px] text-sm">
@@ -99,7 +95,7 @@ function Inner({ locationId }: { locationId: string }) {
                     {e.user_id ? (
                       <Badge tone="accent">Has login</Badge>
                     ) : (
-                      <span className="text-xs text-ink-subtle">Roster only</span>
+                      <span className="text-xs text-ink-subtle">Invite pending</span>
                     )}
                   </td>
                 </tr>
@@ -108,8 +104,6 @@ function Inner({ locationId }: { locationId: string }) {
           </table>
         </div>
       )}
-
-      {creating && <EmployeeModal locationId={locationId} existing={null} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); void load() }} />}
     </div>
   )
 }
