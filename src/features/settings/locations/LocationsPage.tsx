@@ -13,10 +13,10 @@ import { AddressAutocomplete } from '@/components/forms/AddressAutocomplete'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
-import { billing } from '@/lib/queries/billing'
+import { billing, type AddSiteQuote } from '@/lib/queries/billing'
 import { setSitePlan } from '@/lib/queries/companySettings'
 import { compareLocationName } from '@/lib/utils'
-import { timeOfDay } from '@/lib/format'
+import { currency, timeOfDay } from '@/lib/format'
 import { geocodeAddress } from '@/lib/weather'
 import {
   createLocation,
@@ -41,6 +41,28 @@ const PAY_PERIODS = [
   { value: 'semimonthly', label: 'Semi-monthly' },
 ]
 
+type AddConfirm = {
+  mode: 'upgrade' | 'add'
+  amount: number | null
+  interval: 'month' | 'year'
+  hasSub: boolean
+}
+
+function describeAdd(c: AddConfirm): string {
+  const p =
+    c.amount == null
+      ? 'the per-site rate'
+      : `${currency(c.amount / 100)} per site / ${c.interval === 'year' ? 'year' : 'month'}`
+  if (c.mode === 'upgrade') {
+    return c.hasSub
+      ? `Adding another location moves you to the Multi-Site plan. You agree to be billed ${p} for each active location.`
+      : `Adding another location moves you to the Multi-Site plan. When your subscription starts, you'll be billed ${p} per location.`
+  }
+  return c.hasSub
+    ? `This adds one more site. You agree to an additional ${p} (prorated on your next invoice).`
+    : `This adds one more site. It will be billed ${p} once your subscription starts.`
+}
+
 export function LocationsPage() {
   const [rows, setRows] = useState<LocationFull[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,7 +73,8 @@ export function LocationsPage() {
   const { reload: reloadActiveLocations } = useLocations()
   const { sitePlan, reload: reloadCompany } = useCompany()
   const { profile } = useAuth()
-  const [confirmUpgradeAdd, setConfirmUpgradeAdd] = useState(false)
+  const [confirmAdd, setConfirmAdd] = useState<AddConfirm | null>(null)
+  const [quoting, setQuoting] = useState(false)
   const [upgradeAdding, setUpgradeAdding] = useState(false)
   const [upgradeNotice, setUpgradeNotice] = useState<string | null>(null)
 
@@ -59,6 +82,27 @@ export function LocationsPage() {
   // to Multi-Site (billed per site) as part of adding the second site.
   const activeCount = rows.filter((r) => !r.archived).length
   const singleLocked = sitePlan === 'single' && activeCount >= 1
+
+  // Show a priced confirmation before any add that incurs a per-site charge
+  // (single -> multi upgrade, or a new site on an existing multi account).
+  const startAdd = async () => {
+    if (!singleLocked && sitePlan !== 'multi') {
+      setCreating(true)
+      return
+    }
+    setQuoting(true)
+    const { data } = await billing.addSiteQuote()
+    setQuoting(false)
+    const q = data as AddSiteQuote | null
+    const interval: 'month' | 'year' = q?.interval ?? 'month'
+    const amount = interval === 'year' ? (q?.perSiteYearly ?? null) : (q?.perSiteMonthly ?? null)
+    setConfirmAdd({
+      mode: singleLocked ? 'upgrade' : 'add',
+      amount,
+      interval,
+      hasSub: !!q?.hasSubscription,
+    })
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -100,7 +144,7 @@ export function LocationsPage() {
         <h2 className="text-sm font-semibold text-ink">
           Locations ({activeCount} active)
         </h2>
-        <Button onClick={() => (singleLocked ? setConfirmUpgradeAdd(true) : setCreating(true))}>
+        <Button onClick={startAdd} disabled={quoting}>
           <Plus className="size-4" />
           Add location
         </Button>
@@ -124,7 +168,7 @@ export function LocationsPage() {
           icon={MapPin}
           title="No locations yet"
           description="Add your first site to start tracking operations."
-          action={<Button onClick={() => setCreating(true)}>Add location</Button>}
+          action={<Button onClick={startAdd} disabled={quoting}>Add location</Button>}
         />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -216,16 +260,17 @@ export function LocationsPage() {
       )}
 
       <ConfirmDialog
-        open={confirmUpgradeAdd}
-        title="Add a second site?"
-        description="Adding another location moves you to the Multi-Site plan, billed per site. You'll be charged for each active location."
-        confirmLabel="Add site & upgrade"
+        open={!!confirmAdd}
+        title={confirmAdd?.mode === 'upgrade' ? 'Move to Multi-Site?' : 'Add another site?'}
+        description={confirmAdd ? describeAdd(confirmAdd) : ''}
+        confirmLabel={confirmAdd?.mode === 'upgrade' ? 'Agree & add site' : 'Agree & add site'}
         onConfirm={() => {
-          setConfirmUpgradeAdd(false)
-          setUpgradeAdding(true)
+          const mode = confirmAdd?.mode
+          setConfirmAdd(null)
+          setUpgradeAdding(mode === 'upgrade')
           setCreating(true)
         }}
-        onCancel={() => setConfirmUpgradeAdd(false)}
+        onCancel={() => setConfirmAdd(null)}
       />
 
       <ConfirmDialog

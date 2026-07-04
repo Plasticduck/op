@@ -57,6 +57,16 @@ export const billing = {
   upgradeMulti: () => supabase.functions.invoke('billing-upgrade-multi', { body: {} }),
   // Reconcile the per-site subscription quantity with the active location count.
   syncQuantity: () => supabase.functions.invoke('billing-sync-quantity', { body: {} }),
+  // Per-site price + current interval, for the add-location confirmation.
+  addSiteQuote: () => supabase.functions.invoke('billing-add-site-quote', { body: {} }),
+}
+
+export type AddSiteQuote = {
+  perSiteMonthly: number | null
+  perSiteYearly: number | null
+  currency: string
+  interval: 'month' | 'year' | null
+  hasSubscription: boolean
 }
 
 export const PLANS: { key: PlanKey; name: string; price: string; blurb: string }[] = [
