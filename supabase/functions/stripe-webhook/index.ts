@@ -52,9 +52,33 @@ Deno.serve(async (req) => {
     const accountId = (sub.metadata?.account_id as string | undefined) ?? null
     const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id
     const quantity = sub.items.data[0]?.quantity ?? 1
+
+    // Reflect the plan tier onto site_plan, which gates adding locations. Match
+    // by product name: the Multi-Site product is the only one containing "Multi"
+    // (Single Site and the Maintenance add-on do not).
+    let sitePlan: 'single' | 'multi' = 'single'
+    for (const it of sub.items.data) {
+      const pp = it.price?.product
+      let name = ''
+      if (pp && typeof pp === 'object' && 'name' in pp) {
+        name = (pp as { name?: string }).name ?? ''
+      } else if (typeof pp === 'string') {
+        try {
+          name = (await stripe.products.retrieve(pp)).name ?? ''
+        } catch {
+          name = ''
+        }
+      }
+      if (/multi/i.test(name)) {
+        sitePlan = 'multi'
+        break
+      }
+    }
+
     const patch = {
       billing_status: STATUS_MAP[sub.status] ?? 'canceled',
       plan: quantity > 1 ? 'multi' : 'single',
+      site_plan: sitePlan,
       subscription_quantity: quantity,
       stripe_subscription_id: sub.id,
       stripe_customer_id: customerId,
