@@ -74,21 +74,7 @@ Deno.serve(async (req) => {
     .select('id, stripe_subscription_id, company_settings')
     .eq('id', profile.account_id)
     .single()
-  if (!acct?.stripe_subscription_id) return json({ ok: true, skipped: 'no_subscription' })
-
-  const stripe = new Stripe(secret, { httpClient: Stripe.createFetchHttpClient() })
-  const sub = await stripe.subscriptions.retrieve(acct.stripe_subscription_id, {
-    expand: ['items.data.price.product'],
-  })
-
-  // Find the per-site Multi-Site item (by price id, or product name fallback).
-  const item = sub.items.data.find(
-    (i) =>
-      (i.price?.id && MULTI_PRICES.has(i.price.id)) ||
-      /multi/i.test(productName(i.price?.product)),
-  )
-  if (!item) return json({ ok: true, skipped: 'not_multi' })
-
+  // Active site count drives everything.
   const { count } = await svc
     .from('locations')
     .select('id', { count: 'exact', head: true })
@@ -96,11 +82,52 @@ Deno.serve(async (req) => {
     .eq('archived', false)
   const active = count ?? 0
 
-  // Below 2 sites: revert to the Single-Site plan (per-site multi no longer
-  // applies). Prefer the exact price we upgraded from; fall back to the env
-  // single price matching the current interval.
-  if (active < 2) {
-    const interval = item.price?.recurring?.interval
+  // Trial / no subscription: just keep site_plan honest.
+  if (!acct?.stripe_subscription_id) {
+    const desired = active >= 2 ? 'multi' : 'single'
+    await svc.from('accounts').update({ site_plan: desired }).eq('id', profile.account_id)
+    return json({ ok: true, noSub: true, sitePlan: desired })
+  }
+
+  const stripe = new Stripe(secret, { httpClient: Stripe.createFetchHttpClient() })
+  const sub = await stripe.subscriptions.retrieve(acct.stripe_subscription_id, {
+    expand: ['items.data.price.product'],
+  })
+
+  // The plan item is the non-add-on item (the add-on is "Maintenance").
+  const planItem =
+    sub.items.data.find((i) => !/maintenance/i.test(productName(i.price?.product))) ??
+    sub.items.data[0]
+  if (!planItem) return json({ ok: true, skipped: 'no_plan_item' })
+
+  const onMulti =
+    (planItem.price?.id && MULTI_PRICES.has(planItem.price.id)) ||
+    /multi/i.test(productName(planItem.price?.product))
+  const interval = planItem.price?.recurring?.interval
+
+  if (active >= 2) {
+    // Keep the per-site quantity in sync (only when already on the multi plan).
+    if (onMulti && (planItem.quantity ?? 1) !== active) {
+      try {
+        await stripe.subscriptions.update(sub.id, {
+          items: [{ id: planItem.id, quantity: active }],
+          proration_behavior: 'create_prorations',
+        })
+      } catch {
+        /* best effort */
+      }
+    }
+    await svc
+      .from('accounts')
+      .update({ site_plan: 'multi', plan: 'multi', subscription_quantity: active })
+      .eq('id', profile.account_id)
+    return json({ ok: true, sitePlan: 'multi', quantity: active })
+  }
+
+  // Below 2 sites: revert to Single-Site. Prefer the exact price we upgraded
+  // from; fall back to the env single price for the interval. The Stripe swap is
+  // best-effort — the app always moves to single so the account isn't stuck.
+  if (onMulti) {
     const billingCfg = ((acct.company_settings ?? {}) as Record<string, unknown>).billing as
       | { priorSinglePrice?: string | null; priorInterval?: string | null }
       | undefined
@@ -109,33 +136,20 @@ Deno.serve(async (req) => {
       (billingCfg?.priorInterval === interval ? billingCfg?.priorSinglePrice : null) ||
       billingCfg?.priorSinglePrice ||
       fallback
-
     if (singlePrice) {
-      await stripe.subscriptions.update(sub.id, {
-        items: [{ id: item.id, price: singlePrice, quantity: 1 }],
-        proration_behavior: 'create_prorations',
-      })
-      await svc
-        .from('accounts')
-        .update({ site_plan: 'single', plan: 'single', subscription_quantity: 1 })
-        .eq('id', profile.account_id)
-      return json({ ok: true, downgraded: true })
+      try {
+        await stripe.subscriptions.update(sub.id, {
+          items: [{ id: planItem.id, price: singlePrice, quantity: 1 }],
+          proration_behavior: 'create_prorations',
+        })
+      } catch {
+        /* price swap failed (e.g. archived); app still moves to single below */
+      }
     }
-    // No single price available to revert to; leave as-is.
-    return json({ ok: true, skipped: 'no_single_price' })
   }
-
-  const quantity = active
-  if ((item.quantity ?? 1) !== quantity) {
-    await stripe.subscriptions.update(sub.id, {
-      items: [{ id: item.id, quantity }],
-      proration_behavior: 'create_prorations',
-    })
-    await svc
-      .from('accounts')
-      .update({ subscription_quantity: quantity })
-      .eq('id', profile.account_id)
-  }
-
-  return json({ ok: true, quantity })
+  await svc
+    .from('accounts')
+    .update({ site_plan: 'single', plan: 'single', subscription_quantity: 1 })
+    .eq('id', profile.account_id)
+  return json({ ok: true, sitePlan: 'single' })
 })
