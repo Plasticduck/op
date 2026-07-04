@@ -21,6 +21,15 @@ export type StripeSubscription = {
   priceNickname: string | null
   paymentMethod: { brand: string; last4: string } | null
   upcomingInvoice: { amountDue: number; date: number } | null
+  // All line items (base plan + add-ons) and the summed recurring total (cents).
+  items?: {
+    name: string
+    unitAmount: number | null
+    quantity: number
+    amount: number
+    interval: 'day' | 'week' | 'month' | 'year' | null
+  }[]
+  total?: number
 }
 // A checkout price configured in Stripe, resolved live so the plan cards
 // reflect real Stripe pricing.

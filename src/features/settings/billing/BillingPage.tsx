@@ -138,7 +138,7 @@ export function BillingPage() {
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
             <Detail label="Plan" value={sub.productName ?? sub.priceNickname ?? '—'} />
             <Detail label="Status" value={sub.status.replace('_', ' ')} />
-            <Detail label="Price" value={priceLabel(sub)} />
+            <Detail label="Total" value={priceLabel(sub)} />
             <Detail
               label="Quantity"
               value={`${sub.quantity} ${sub.quantity === 1 ? 'location' : 'locations'}`}
@@ -162,6 +162,27 @@ export function BillingPage() {
               />
             )}
           </dl>
+
+          {sub.items && sub.items.length > 1 && (
+            <div className="mt-4 border-t border-border pt-3">
+              <p className="text-xs uppercase tracking-wide text-ink-muted">Includes</p>
+              <ul className="mt-2 flex flex-col gap-1.5 text-sm">
+                {sub.items.map((li, i) => (
+                  <li key={i} className="flex items-center justify-between gap-3">
+                    <span className="text-ink">
+                      {li.name}
+                      {li.quantity > 1 ? ` × ${li.quantity}` : ''}
+                    </span>
+                    <span className="tabular-nums text-ink-muted">
+                      {currency(li.amount / 100)}
+                      {li.interval ? ` / ${li.interval}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {sub.cancelAtPeriodEnd && (
             <p className="mt-3 rounded-md bg-warn-soft px-3 py-2 text-sm text-warn">
               This subscription is set to cancel at the end of the current period.
@@ -201,8 +222,10 @@ const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 const fmtUnix = (unix: number) => format(new Date(unix * 1000), 'MMM d, yyyy')
 
 function priceLabel(sub: StripeSubscription): string {
-  if (sub.unitAmount == null) return '—'
-  const amt = currency(sub.unitAmount / 100)
+  // Prefer the summed total across all line items (base + add-ons).
+  const cents = sub.total ?? sub.unitAmount
+  if (cents == null) return '—'
+  const amt = currency(cents / 100)
   if (!sub.interval) return amt
   const every = sub.intervalCount > 1 ? `${sub.intervalCount} ` : ''
   return `${amt} / ${every}${sub.interval}`

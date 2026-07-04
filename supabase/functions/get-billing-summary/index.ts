@@ -122,6 +122,26 @@ Deno.serve(async (req) => {
 
   if (!sub) return json({ subscription: null, plans })
 
+  // A subscription can have several line items (base plan + add-ons). Build a
+  // breakdown and a real total instead of only reading the first item.
+  const lineItems = sub.items.data.map((it) => {
+    const p = it.price
+    const prod = p?.product
+    const name =
+      prod && typeof prod === 'object' && 'name' in prod
+        ? prod.name
+        : (p?.nickname ?? 'Item')
+    const qty = it.quantity ?? 1
+    return {
+      name,
+      unitAmount: p?.unit_amount ?? null,
+      quantity: qty,
+      amount: (p?.unit_amount ?? 0) * qty,
+      interval: p?.recurring?.interval ?? null,
+    }
+  })
+  const total = lineItems.reduce((s, li) => s + li.amount, 0)
+
   const item = sub.items.data[0]
   const price = item?.price
   const product = price?.product
@@ -156,6 +176,8 @@ Deno.serve(async (req) => {
       priceNickname: price?.nickname ?? null,
       paymentMethod: card,
       upcomingInvoice: upcoming,
+      items: lineItems,
+      total,
     },
     plans,
   })
