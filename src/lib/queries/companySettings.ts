@@ -19,6 +19,8 @@ export type CorporateInfo = {
 export type CompanySettings = {
   corporate?: CorporateInfo
   regions?: RegionDef[]
+  // First day of the work week for scheduling: 0 = Sunday … 6 = Saturday.
+  scheduleWeekStart?: number
 }
 
 export type SitePlan = 'single' | 'multi'

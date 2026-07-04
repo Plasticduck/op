@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  CalendarCog,
   ChevronLeft,
   ChevronRight,
   ClipboardCopy,
@@ -10,7 +11,16 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { addDays, addWeeks, format, startOfWeek } from 'date-fns'
+import {
+  addDays,
+  addMonths,
+  addWeeks,
+  endOfMonth,
+  format,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from 'date-fns'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -24,6 +34,8 @@ import { Select } from '@/components/ui/Select'
 import { currency, timeOfDay } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
+import { useCompany } from '@/lib/company'
+import { updateCompany } from '@/lib/queries/companySettings'
 import {
   employees as empQ,
   schedules,
@@ -55,9 +67,13 @@ type CrossShift = {
   schedule: { id: string; location_id: string } | null
 }
 
-function Inner({ locationId }: { locationId: string }) {
+// One week of the schedule grid. The parent (`Scheduler`) owns the work-week
+// start day and the planning period, and renders one WeekBlock per week in the
+// visible range (1 for weekly, 2 for bi-weekly, 4-6 for monthly). Everything
+// about a single week -- shifts, drag+drop, publish, AI suggest, copy/clear --
+// lives here and operates on the `weekStart` it is handed.
+function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: Date }) {
   const { profile } = useAuth()
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [emps, setEmps] = useState<Employee[]>([])
   const [scheduleId, setScheduleId] = useState<string | null>(null)
   const [published, setPublished] = useState(false)
@@ -317,33 +333,29 @@ function Inner({ locationId }: { locationId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Schedule"
-        subtitle="Weekly shift planning."
-        actions={
-          <div className="flex items-center gap-2">
-            <Badge tone={published ? 'ok' : 'warn'}>{published ? 'Published' : 'Draft'}</Badge>
-            <Button
-              variant="secondary"
-              onClick={() => void requestAISuggest()}
-              disabled={aiBusy}
-              title="Build a draft week from team history with Claude"
-            >
-              <Sparkles className="size-4" /> {aiBusy && !aiResult ? 'Thinking...' : 'AI suggest'}
-            </Button>
-            <Button variant="secondary" onClick={togglePublish}>{published ? 'Unpublish' : 'Publish'}</Button>
-          </div>
-        }
-      />
-
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card/40 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="icon" onClick={() => setWeekStart((w) => addWeeks(w, -1))}><ChevronLeft className="size-4" /></Button>
-          <span className="text-sm font-medium text-ink">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-ink">
             {format(weekStart, 'MMM d')} to {format(addDays(weekStart, 6), 'MMM d, yyyy')}
           </span>
-          <Button variant="secondary" size="icon" onClick={() => setWeekStart((w) => addWeeks(w, 1))}><ChevronRight className="size-4" /></Button>
+          <Badge tone={published ? 'ok' : 'warn'}>{published ? 'Published' : 'Draft'}</Badge>
+          <span className="ml-1 text-xs text-ink-muted">
+            Hours <span className="tabular font-medium text-ink">{totalHours.toFixed(1)}</span>
+            <span className="mx-1.5 text-ink-subtle">.</span>
+            Labor <span className="tabular font-medium text-ink">{currency(laborCost)}</span>
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void requestAISuggest()}
+            disabled={aiBusy}
+            title="Build a draft week from team history with Claude"
+          >
+            <Sparkles className="size-4" /> {aiBusy && !aiResult ? 'Thinking...' : 'AI suggest'}
+          </Button>
           <Button
             variant="secondary"
             size="sm"
@@ -363,10 +375,7 @@ function Inner({ locationId }: { locationId: string }) {
             {clearBusy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
             Clear week
           </Button>
-        </div>
-        <div className="flex gap-4 text-sm text-ink-muted">
-          <span>Hours: <span className="tabular font-medium text-ink">{totalHours.toFixed(1)}</span></span>
-          <span>Est. labor: <span className="tabular font-medium text-ink">{currency(laborCost)}</span></span>
+          <Button variant="secondary" size="sm" onClick={togglePublish}>{published ? 'Unpublish' : 'Publish'}</Button>
         </div>
       </div>
 
@@ -757,15 +766,187 @@ function ShiftModal({
   )
 }
 
+type Period = 'weekly' | 'biweekly' | 'monthly'
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+function readPeriod(): Period {
+  try {
+    const v = localStorage.getItem('schedule.period')
+    if (v === 'biweekly' || v === 'monthly') return v
+  } catch {
+    /* ignore */
+  }
+  return 'weekly'
+}
+
+// Manager scheduling surface. Owns the two knobs the user asked for -- the
+// work-week start day (a per-account setting) and the planning period -- then
+// stacks one WeekBlock per week in the visible range.
+function Scheduler({ locationId }: { locationId: string }) {
+  const { profile } = useAuth()
+  const { settings, reload: reloadCompany } = useCompany()
+  const weekStartsOn = ((settings.scheduleWeekStart ?? 1) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6
+  const [period, setPeriod] = useState<Period>(readPeriod)
+  const [anchor, setAnchor] = useState<Date>(() => new Date())
+  const [showWorkWeek, setShowWorkWeek] = useState(false)
+
+  const changePeriod = (p: Period) => {
+    setPeriod(p)
+    try {
+      localStorage.setItem('schedule.period', p)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // The list of week-start dates to render. Weekly is one week; bi-weekly is
+  // two; monthly is every week that overlaps the anchor's month, aligned to the
+  // chosen work-week start day.
+  const weeks = useMemo(() => {
+    const first = startOfWeek(anchor, { weekStartsOn })
+    if (period === 'weekly') return [first]
+    if (period === 'biweekly') return [first, addWeeks(first, 1)]
+    const monthEnd = endOfMonth(anchor)
+    const out: Date[] = []
+    let w = startOfWeek(startOfMonth(anchor), { weekStartsOn })
+    while (w <= monthEnd) {
+      out.push(w)
+      w = addWeeks(w, 1)
+    }
+    return out
+  }, [anchor, period, weekStartsOn])
+
+  const step = (dir: -1 | 1) => {
+    setAnchor((a) =>
+      period === 'monthly'
+        ? dir === 1
+          ? addMonths(a, 1)
+          : subMonths(a, 1)
+        : addWeeks(a, dir * (period === 'biweekly' ? 2 : 1)),
+    )
+  }
+
+  const rangeLabel =
+    period === 'monthly'
+      ? format(anchor, 'MMMM yyyy')
+      : `${format(weeks[0], 'MMM d')} to ${format(addDays(weeks[weeks.length - 1], 6), 'MMM d, yyyy')}`
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Schedule"
+        subtitle="Shift planning. Set the work week and plan weekly, bi-weekly, or monthly."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowWorkWeek(true)}>
+              <CalendarCog className="size-4" /> Set work week
+            </Button>
+            <Select
+              aria-label="Planning period"
+              value={period}
+              onChange={(e) => changePeriod(e.target.value as Period)}
+              className="h-9 w-auto"
+            >
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-weekly</option>
+              <option value="monthly">Monthly</option>
+            </Select>
+          </div>
+        }
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="icon" onClick={() => step(-1)}><ChevronLeft className="size-4" /></Button>
+          <span className="min-w-[13rem] text-center text-sm font-medium text-ink">{rangeLabel}</span>
+          <Button variant="secondary" size="icon" onClick={() => step(1)}><ChevronRight className="size-4" /></Button>
+        </div>
+        <span className="text-xs text-ink-muted">Work week starts {DAY_NAMES[weekStartsOn]}</span>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {weeks.map((w) => (
+          <WeekBlock key={fmtDay(w)} locationId={locationId} weekStart={w} />
+        ))}
+      </div>
+
+      {showWorkWeek && (
+        <WorkWeekModal
+          current={weekStartsOn}
+          onClose={() => setShowWorkWeek(false)}
+          onSaved={async (day) => {
+            if (profile?.account_id) {
+              await updateCompany(profile.account_id, {
+                settings: { ...settings, scheduleWeekStart: day },
+              })
+              await reloadCompany()
+            }
+            setShowWorkWeek(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function WorkWeekModal({
+  current,
+  onClose,
+  onSaved,
+}: {
+  current: number
+  onClose: () => void
+  onSaved: (day: number) => Promise<void> | void
+}) {
+  const [day, setDay] = useState(current)
+  const [busy, setBusy] = useState(false)
+  return (
+    <Modal open onClose={onClose} title="Set work week" size="sm">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-ink-muted">
+          Choose which day your work week starts on. Schedules, hours, and labor totals are grouped by this day for everyone in your company.
+        </p>
+        <Field label="Work week starts on">
+          {(id) => (
+            <Select id={id} value={String(day)} onChange={(e) => setDay(Number(e.target.value))}>
+              {DAY_NAMES.map((name, i) => (
+                <option key={i} value={i}>{name}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              await onSaved(day)
+              setBusy(false)
+            }}
+          >
+            {busy && <Loader2 className="size-4 animate-spin" />}
+            Save
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // Employees get a read-only view of their own published shifts. RLS already
 // limits what they can see/write; this just gives them a clean personal view
 // without the manager grid's edit/publish controls.
 function MyScheduleView({ locationId }: { locationId: string }) {
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const { settings } = useCompany()
+  const weekStartsOn = ((settings.scheduleWeekStart ?? 1) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6
+  const [anchor, setAnchor] = useState<Date>(() => new Date())
+  const weekStart = useMemo(() => startOfWeek(anchor, { weekStartsOn }), [anchor, weekStartsOn])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [published, setPublished] = useState(false)
   const [loading, setLoading] = useState(true)
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
 
   useEffect(() => {
     let active = true
@@ -794,11 +975,11 @@ function MyScheduleView({ locationId }: { locationId: string }) {
       <PageHeader title="My schedule" subtitle="Your shifts for the week." />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="icon" onClick={() => setWeekStart((w) => addWeeks(w, -1))}><ChevronLeft className="size-4" /></Button>
+          <Button variant="secondary" size="icon" onClick={() => setAnchor((a) => addWeeks(a, -1))}><ChevronLeft className="size-4" /></Button>
           <span className="text-sm font-medium text-ink">
             {format(weekStart, 'MMM d')} to {format(addDays(weekStart, 6), 'MMM d, yyyy')}
           </span>
-          <Button variant="secondary" size="icon" onClick={() => setWeekStart((w) => addWeeks(w, 1))}><ChevronRight className="size-4" /></Button>
+          <Button variant="secondary" size="icon" onClick={() => setAnchor((a) => addWeeks(a, 1))}><ChevronRight className="size-4" /></Button>
         </div>
         <span className="tabular text-sm text-ink-muted">{totalHours.toFixed(1)} hrs</span>
       </div>
@@ -848,7 +1029,7 @@ export default function SchedulePage() {
         profile?.role === 'employee' ? (
           <MyScheduleView locationId={locationId} />
         ) : (
-          <Inner locationId={locationId} />
+          <Scheduler locationId={locationId} />
         )
       }
     </LocationGate>
