@@ -22,13 +22,13 @@ export function CompanySettingsPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Seed the form from the loaded company settings (regions fall back to the
-  // built-in defaults so the editor starts from the current effective config).
+  // Seed the form from this account's saved company settings. Regions are
+  // per-account, so an account with none starts empty.
   useEffect(() => {
     if (loading) return
     setName(companyName)
     setCorporate(settings.corporate ?? {})
-    setRegions(resolveRegions(locations, settings.regions))
+    setRegions(resolveRegions(settings.regions))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading])
 

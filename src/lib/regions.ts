@@ -41,18 +41,12 @@ export const DEFAULT_REGIONS: NamedRegion[] = [
   },
 ]
 
-// Resolve the effective regions to id-based form. A saved custom config wins;
-// otherwise derive from DEFAULT_REGIONS by matching location names.
-export function resolveRegions(
-  locations: { id: string; name: string }[],
-  saved?: RegionDef[] | null,
-): RegionDef[] {
-  if (saved && saved.length) return saved
-  const byName = new Map(locations.map((l) => [l.name, l.id]))
-  return DEFAULT_REGIONS.map((r) => ({
-    name: r.name,
-    siteIds: r.sites.map((s) => byName.get(s)).filter((id): id is string => Boolean(id)),
-  }))
+// The effective regions for an account: exactly what it has saved, and nothing
+// otherwise. Regions are per-account, so one account's regions never appear on
+// another's. An account with no saved regions shows its sites ungrouped.
+// DEFAULT_REGIONS is only a template for seeding, never an automatic fallback.
+export function resolveRegions(saved?: RegionDef[] | null): RegionDef[] {
+  return saved && saved.length ? saved : []
 }
 
 // Group locations into id-based regions. Any location not in a region falls

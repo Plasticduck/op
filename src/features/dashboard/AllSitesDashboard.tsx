@@ -70,7 +70,7 @@ export default function AllSitesDashboard() {
   }, [locIds])
 
   const groups = useMemo(
-    () => groupByRegions(locations, resolveRegions(locations, settings.regions)),
+    () => groupByRegions(locations, resolveRegions(settings.regions)),
     [locations, settings.regions],
   )
   const showRegions = groups.length > 1

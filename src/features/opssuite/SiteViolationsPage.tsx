@@ -36,7 +36,7 @@ export default function SiteViolationsPage() {
   useEffect(() => { void load() }, [])
 
   const groups = useMemo(
-    () => groupByRegions(locations, resolveRegions(locations, settings.regions)),
+    () => groupByRegions(locations, resolveRegions(settings.regions)),
     [locations, settings.regions],
   )
   const allSiteIds = useMemo(

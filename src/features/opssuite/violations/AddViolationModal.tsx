@@ -31,7 +31,7 @@ export function AddViolationModal({
   const { profile } = useAuth()
   const { locations } = useLocations()
   const { settings } = useCompany()
-  const groups = groupByRegions(locations, resolveRegions(locations, settings.regions))
+  const groups = groupByRegions(locations, resolveRegions(settings.regions))
 
   const [locationId, setLocationId] = useState('')
   const [department, setDepartment] = useState<Department | ''>('')
