@@ -6,10 +6,12 @@ import { z } from 'zod'
 import { Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
+import { setSitePlan, type SitePlan } from '@/lib/queries/companySettings'
 import { AuthLayout } from '@/features/auth/AuthLayout'
 import { Field } from '@/components/forms/Field'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { cn } from '@/lib/utils'
 
 const schema = z.object({
   name: z.string().min(1, 'Enter your name'),
@@ -24,6 +26,7 @@ export default function SignupPage() {
   const navigate = useNavigate()
   const { refreshProfile } = useAuth()
   const [formError, setFormError] = useState<string | null>(null)
+  const [sitePlan, setSitePlanChoice] = useState<SitePlan>('multi')
   const {
     register,
     handleSubmit,
@@ -50,7 +53,7 @@ export default function SignupPage() {
       return
     }
 
-    const { error: rpcError } = await supabase.rpc('signup_account', {
+    const { data: accountId, error: rpcError } = await supabase.rpc('signup_account', {
       p_account_name: values.accountName,
       p_location_name: values.locationName,
       p_user_name: values.name,
@@ -58,6 +61,15 @@ export default function SignupPage() {
     if (rpcError) {
       setFormError(rpcError.message)
       return
+    }
+
+    // Persist the chosen site plan (best effort; the account is already created).
+    if (accountId) {
+      try {
+        await setSitePlan(accountId as string, sitePlan)
+      } catch {
+        /* ignore — defaults to multi until set */
+      }
     }
 
     await refreshProfile()
@@ -86,6 +98,33 @@ export default function SignupPage() {
         <Field label="Company name" error={errors.accountName?.message} required>
           {(id) => (
             <Input id={id} invalid={!!errors.accountName} {...register('accountName')} />
+          )}
+        </Field>
+        <Field label="How many locations?" required>
+          {() => (
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { key: 'single', title: 'Single location', blurb: 'One site.' },
+                  { key: 'multi', title: 'Multiple locations', blurb: 'Two or more sites.' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setSitePlanChoice(opt.key)}
+                  className={cn(
+                    'flex flex-col rounded-md border p-3 text-left transition',
+                    sitePlan === opt.key
+                      ? 'border-accent bg-accent-soft'
+                      : 'border-border bg-card hover:bg-content',
+                  )}
+                >
+                  <span className="text-sm font-medium text-ink">{opt.title}</span>
+                  <span className="text-xs text-ink-muted">{opt.blurb}</span>
+                </button>
+              ))}
+            </div>
           )}
         </Field>
         <Field

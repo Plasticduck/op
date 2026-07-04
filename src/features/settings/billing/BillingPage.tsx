@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { currency } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
-import { useLocations } from '@/lib/locations'
+import { useCompany } from '@/lib/company'
+import { setSitePlan } from '@/lib/queries/companySettings'
 import { billing, type Account, type BillingSummary, type StripeSubscription } from '@/lib/queries/billing'
 
 const STATUS_TONE = { trial: 'accent', active: 'ok', past_due: 'warn', canceled: 'danger' } as const
@@ -52,11 +53,12 @@ function StripePricingTable({
 
 export function BillingPage() {
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { sitePlan, reload: reloadCompany } = useCompany()
   const [account, setAccount] = useState<Account | null>(null)
   const [sub, setSub] = useState<StripeSubscription | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [upgrading, setUpgrading] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   const load = async () => {
@@ -68,6 +70,15 @@ export function BillingPage() {
     if (!sumErr) setSub((sum as BillingSummary | null)?.subscription ?? null)
   }
   useEffect(() => { void load() }, [])
+
+  const upgradeToMulti = async () => {
+    if (!account) return
+    setUpgrading(true)
+    await setSitePlan(account.id, 'multi')
+    await reloadCompany()
+    await load()
+    setUpgrading(false)
+  }
 
   const openPortal = async () => {
     setBusy(true)
@@ -159,17 +170,24 @@ export function BillingPage() {
         </div>
       )}
 
+      {!hasSubscription && sitePlan === 'single' && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-4 py-3">
+          <p className="text-sm text-ink-muted">
+            Single-location account. Have more than one site? Switch to Multi-Site.
+          </p>
+          <Button variant="secondary" onClick={upgradeToMulti} disabled={upgrading}>
+            {upgrading && <Loader2 className="size-4 animate-spin" />}
+            Upgrade to Multi-Site
+          </Button>
+        </div>
+      )}
+
       {!hasSubscription && (
         <div className="rounded-md border border-border bg-card p-4">
           <StripePricingTable
-            pricingTableId={
-              // Single-site accounts get the single-location-only table so they
-              // can't buy the multi-site plan. Multi-site accounts get the full
-              // table. Falls back to the multi table if the single one isn't set.
-              locations.length <= 1 && PRICING_TABLE_SINGLE
-                ? PRICING_TABLE_SINGLE
-                : PRICING_TABLE_MULTI
-            }
+            // Single-site accounts get the single-location-only table so they
+            // can't buy the multi-site plan; multi-site accounts get the full one.
+            pricingTableId={sitePlan === 'multi' ? PRICING_TABLE_MULTI : PRICING_TABLE_SINGLE}
             clientReferenceId={account?.id}
             customerEmail={profile?.email}
           />

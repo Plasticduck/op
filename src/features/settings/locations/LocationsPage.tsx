@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { MapPin, Plus } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Lock, MapPin, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
@@ -12,6 +13,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { AddressAutocomplete } from '@/components/forms/AddressAutocomplete'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
+import { useCompany } from '@/lib/company'
 import { compareLocationName } from '@/lib/utils'
 import { timeOfDay } from '@/lib/format'
 import { geocodeAddress } from '@/lib/weather'
@@ -46,6 +48,13 @@ export function LocationsPage() {
   const [archiveTarget, setArchiveTarget] = useState<LocationFull | null>(null)
   const [busy, setBusy] = useState(false)
   const { reload: reloadActiveLocations } = useLocations()
+  const { sitePlan } = useCompany()
+  const navigate = useNavigate()
+
+  // Single-site accounts can keep one active location; adding another requires
+  // upgrading to a multi-site account.
+  const activeCount = rows.filter((r) => !r.archived).length
+  const singleLocked = sitePlan === 'single' && activeCount >= 1
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -82,13 +91,31 @@ export function LocationsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ink">
-          Locations ({rows.filter((r) => !r.archived).length} active)
+          Locations ({activeCount} active)
         </h2>
-        <Button onClick={() => setCreating(true)}>
-          <Plus className="size-4" />
-          Add location
-        </Button>
+        {singleLocked ? (
+          <Button variant="secondary" onClick={() => navigate('/app/settings/billing')}>
+            <Lock className="size-4" />
+            Upgrade to add locations
+          </Button>
+        ) : (
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="size-4" />
+            Add location
+          </Button>
+        )}
       </div>
+
+      {singleLocked && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-sm">
+          <p className="text-ink">
+            You're on a single-location account. Upgrade to Multi-Site to add more locations.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/app/settings/billing')}>
+            Upgrade
+          </Button>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <EmptyState

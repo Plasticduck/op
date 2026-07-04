@@ -21,14 +21,31 @@ export type CompanySettings = {
   regions?: RegionDef[]
 }
 
-type AccountRow = { name?: string; company_settings?: CompanySettings | null }
+export type SitePlan = 'single' | 'multi'
+
+type AccountRow = {
+  name?: string
+  company_settings?: CompanySettings | null
+  site_plan?: SitePlan | null
+}
 
 export async function getCompany(
   accountId: string,
-): Promise<{ name: string; settings: CompanySettings }> {
+): Promise<{ name: string; settings: CompanySettings; sitePlan: SitePlan }> {
   const { data } = await supabase.from('accounts').select('*').eq('id', accountId).single()
   const row = data as AccountRow | null
-  return { name: row?.name ?? '', settings: (row?.company_settings ?? {}) as CompanySettings }
+  return {
+    name: row?.name ?? '',
+    settings: (row?.company_settings ?? {}) as CompanySettings,
+    sitePlan: row?.site_plan ?? 'multi',
+  }
+}
+
+export async function setSitePlan(accountId: string, sitePlan: SitePlan) {
+  return supabase
+    .from('accounts')
+    .update({ site_plan: sitePlan } as unknown as AccountUpdate)
+    .eq('id', accountId)
 }
 
 export async function updateCompany(
