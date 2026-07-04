@@ -35,7 +35,7 @@ function Inner({ locationId }: { locationId: string }) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Employees"
-        subtitle="Your staff roster for schedules, time tracking, and HR. Add people by inviting them under Settings, Team."
+        subtitle="Your staff roster for schedules, time tracking, and HR."
         actions={
           <Button onClick={() => navigate('/app/settings/team')}>
             Invite team member
