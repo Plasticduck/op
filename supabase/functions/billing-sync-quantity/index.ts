@@ -8,8 +8,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import Stripe from 'npm:stripe@17'
 
-const MULTI_PRICE =
-  Deno.env.get('STRIPE_PRICE_MULTI_SITE') ?? 'price_1ToaLIAPyEiCoyu4oH73HTmd'
+const MULTI_PRICES = new Set([
+  Deno.env.get('STRIPE_PRICE_MULTI_SITE') ?? 'price_1ToaLIAPyEiCoyu4oH73HTmd',
+  Deno.env.get('STRIPE_PRICE_MULTI_SITE_YEARLY') ?? 'price_1ToayPAPyEiCoyu4qwAAUPe4',
+])
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -76,7 +78,9 @@ Deno.serve(async (req) => {
 
   // Find the per-site Multi-Site item (by price id, or product name fallback).
   const item = sub.items.data.find(
-    (i) => i.price?.id === MULTI_PRICE || /multi/i.test(productName(i.price?.product)),
+    (i) =>
+      (i.price?.id && MULTI_PRICES.has(i.price.id)) ||
+      /multi/i.test(productName(i.price?.product)),
   )
   if (!item) return json({ ok: true, skipped: 'not_multi' })
 

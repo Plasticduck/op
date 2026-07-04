@@ -7,8 +7,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import Stripe from 'npm:stripe@17'
 
-const MULTI_PRICE =
+const MULTI_PRICE_MONTHLY =
   Deno.env.get('STRIPE_PRICE_MULTI_SITE') ?? 'price_1ToaLIAPyEiCoyu4oH73HTmd'
+const MULTI_PRICE_YEARLY =
+  Deno.env.get('STRIPE_PRICE_MULTI_SITE_YEARLY') ?? 'price_1ToayPAPyEiCoyu4qwAAUPe4'
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -85,6 +87,10 @@ Deno.serve(async (req) => {
     items[0]
   if (!base) return json({ error: 'no_plan_item' }, 400)
 
+  // Preserve the customer's billing interval: yearly single -> yearly multi.
+  const targetPrice =
+    base.price?.recurring?.interval === 'year' ? MULTI_PRICE_YEARLY : MULTI_PRICE_MONTHLY
+
   // Active location count = the per-site quantity.
   const { count } = await svc
     .from('locations')
@@ -94,7 +100,7 @@ Deno.serve(async (req) => {
   const quantity = Math.max(1, count ?? 1)
 
   await stripe.subscriptions.update(sub.id, {
-    items: [{ id: base.id, price: MULTI_PRICE, quantity }],
+    items: [{ id: base.id, price: targetPrice, quantity }],
     proration_behavior: 'create_prorations',
   })
 
