@@ -17,6 +17,7 @@ import {
   listUsers,
   removeUser,
   resendInvitation,
+  sendInviteEmail,
   revokeInvitation,
   updateUserRoleLocations,
   inviteUrl,
@@ -195,11 +196,13 @@ export function TeamPage() {
                             variant="ghost"
                             size="sm"
                             onClick={async () => {
+                              // Refresh the 72h window and email the link again.
                               await resendInvitation(inv.id)
+                              await sendInviteEmail(inv.id)
                               void load()
                             }}
                           >
-                            Renew
+                            Resend
                           </Button>
                           <Button
                             variant="ghost"
