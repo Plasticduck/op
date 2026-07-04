@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Lock, MapPin, Plus } from 'lucide-react'
+import { MapPin, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
@@ -15,6 +14,7 @@ import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
 import { billing } from '@/lib/queries/billing'
+import { setSitePlan } from '@/lib/queries/companySettings'
 import { compareLocationName } from '@/lib/utils'
 import { timeOfDay } from '@/lib/format'
 import { geocodeAddress } from '@/lib/weather'
@@ -49,11 +49,14 @@ export function LocationsPage() {
   const [archiveTarget, setArchiveTarget] = useState<LocationFull | null>(null)
   const [busy, setBusy] = useState(false)
   const { reload: reloadActiveLocations } = useLocations()
-  const { sitePlan } = useCompany()
-  const navigate = useNavigate()
+  const { sitePlan, reload: reloadCompany } = useCompany()
+  const { profile } = useAuth()
+  const [confirmUpgradeAdd, setConfirmUpgradeAdd] = useState(false)
+  const [upgradeAdding, setUpgradeAdding] = useState(false)
+  const [upgradeNotice, setUpgradeNotice] = useState<string | null>(null)
 
-  // Single-site accounts can keep one active location; adding another requires
-  // upgrading to a multi-site account.
+  // Single-site accounts can keep one active location; adding another moves them
+  // to Multi-Site (billed per site) as part of adding the second site.
   const activeCount = rows.filter((r) => !r.archived).length
   const singleLocked = sitePlan === 'single' && activeCount >= 1
 
@@ -97,27 +100,22 @@ export function LocationsPage() {
         <h2 className="text-sm font-semibold text-ink">
           Locations ({activeCount} active)
         </h2>
-        {singleLocked ? (
-          <Button variant="secondary" onClick={() => navigate('/app/settings/billing')}>
-            <Lock className="size-4" />
-            Upgrade to add locations
-          </Button>
-        ) : (
-          <Button onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            Add location
-          </Button>
-        )}
+        <Button onClick={() => (singleLocked ? setConfirmUpgradeAdd(true) : setCreating(true))}>
+          <Plus className="size-4" />
+          Add location
+        </Button>
       </div>
 
+      {upgradeNotice && (
+        <div className="rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-ink">
+          {upgradeNotice}
+        </div>
+      )}
+
       {singleLocked && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warn/30 bg-warn-soft px-3 py-2 text-sm">
-          <p className="text-ink">
-            You're on a single-location account. Upgrade to Multi-Site to add more locations.
-          </p>
-          <Button variant="secondary" size="sm" onClick={() => navigate('/app/settings/billing')}>
-            Upgrade
-          </Button>
+        <div className="rounded-md border border-border bg-content px-3 py-2 text-sm text-ink-muted">
+          You're on the Single-Site plan. Adding another location moves you to Multi-Site,
+          billed per site.
         </div>
       )}
 
@@ -189,13 +187,46 @@ export function LocationsPage() {
             setCreating(false)
             setEditing(null)
           }}
-          onSaved={() => {
+          onSaved={async () => {
             setCreating(false)
             setEditing(null)
-            void refresh()
+            const doUpgrade = upgradeAdding
+            setUpgradeAdding(false)
+            await refresh()
+            if (doUpgrade) {
+              // The new site now exists (2+ locations). Move to Multi-Site.
+              const { data, error } = await billing.upgradeMulti()
+              const res = data as { error?: string } | null
+              if (!error && !res?.error) {
+                setUpgradeNotice('Moved to Multi-Site. Billing is now per site.')
+              } else if (res?.error === 'no_subscription') {
+                // Trial account: no charge yet — just switch the plan.
+                if (profile) await setSitePlan(profile.account_id, 'multi')
+                setUpgradeNotice('Switched to Multi-Site.')
+              } else {
+                setUpgradeNotice(
+                  'Site added, but the Multi-Site upgrade did not complete. Please retry from Billing.',
+                )
+              }
+              await reloadCompany()
+              await load()
+            }
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmUpgradeAdd}
+        title="Add a second site?"
+        description="Adding another location moves you to the Multi-Site plan, billed per site. You'll be charged for each active location."
+        confirmLabel="Add site & upgrade"
+        onConfirm={() => {
+          setConfirmUpgradeAdd(false)
+          setUpgradeAdding(true)
+          setCreating(true)
+        }}
+        onCancel={() => setConfirmUpgradeAdd(false)}
+      />
 
       <ConfirmDialog
         open={!!archiveTarget}

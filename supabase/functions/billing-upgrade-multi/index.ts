@@ -91,13 +91,21 @@ Deno.serve(async (req) => {
   const targetPrice =
     base.price?.recurring?.interval === 'year' ? MULTI_PRICE_YEARLY : MULTI_PRICE_MONTHLY
 
-  // Active location count = the per-site quantity.
+  // Active location count = the per-site quantity. Multi-Site is only for
+  // accounts with more than one site, so a 1-site account can't switch to it
+  // (which would just lower their price without adding a billed location).
   const { count } = await svc
     .from('locations')
     .select('id', { count: 'exact', head: true })
     .eq('account_id', profile.account_id)
     .eq('archived', false)
-  const quantity = Math.max(1, count ?? 1)
+  const quantity = count ?? 0
+  if (quantity < 2) {
+    return json(
+      { error: 'need_more_sites', message: 'Multi-Site requires more than one location.' },
+      400,
+    )
+  }
 
   await stripe.subscriptions.update(sub.id, {
     items: [{ id: base.id, price: targetPrice, quantity }],
