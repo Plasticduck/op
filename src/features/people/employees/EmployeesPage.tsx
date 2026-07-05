@@ -96,9 +96,9 @@ function Inner({ locationId }: { locationId: string }) {
                   </td>
                   <td className="px-3 py-2.5">
                     {e.user_id ? (
-                      <Badge tone="accent">Has login</Badge>
+                      <Badge tone="accent">Yes</Badge>
                     ) : (
-                      <span className="text-xs text-ink-subtle">No login</span>
+                      <span className="text-xs text-ink-subtle">No</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-right">
