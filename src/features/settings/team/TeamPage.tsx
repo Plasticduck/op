@@ -26,6 +26,11 @@ import {
   type LocationFull,
 } from '@/lib/queries/account'
 
+// Invitations carry a fixed 72h window (DB default and resendInvitation both use
+// now() + 72h), so an invite's last-sent time is expires_at minus this TTL. Keep
+// in sync with resendInvitation / the invitations.expires_at default.
+const INVITE_TTL_MS = 72 * 3600 * 1000
+
 export function TeamPage() {
   const { profile } = useAuth()
   const [users, setUsers] = useState<AccountUser[]>([])
@@ -167,6 +172,7 @@ export function TeamPage() {
                 <tr>
                   <th className="px-3 py-2.5 font-medium">Email</th>
                   <th className="px-3 py-2.5 font-medium">Role</th>
+                  <th className="px-3 py-2.5 font-medium">Last sent</th>
                   <th className="px-3 py-2.5 font-medium">Expires</th>
                   <th className="px-3 py-2.5" />
                 </tr>
@@ -174,11 +180,17 @@ export function TeamPage() {
               <tbody>
                 {invites.map((inv) => {
                   const expired = new Date(inv.expires_at) < new Date()
+                  // The invite/resend action always sets expires_at to now + the
+                  // fixed TTL, so the last time it was sent is expires_at - TTL.
+                  const lastSent = new Date(new Date(inv.expires_at).getTime() - INVITE_TTL_MS)
                   return (
                     <tr key={inv.id} className="border-t border-border hover:bg-content">
                       <td className="px-3 py-2.5 text-ink">{inv.email}</td>
                       <td className="px-3 py-2.5">
                         <Badge tone="neutral">{ROLE_LABEL[inv.role]}</Badge>
+                      </td>
+                      <td className="px-3 py-2.5 text-ink-muted" title={lastSent.toLocaleString()}>
+                        {formatDistanceToNow(lastSent, { addSuffix: true })}
                       </td>
                       <td className="px-3 py-2.5 text-ink-muted">
                         <span className="inline-flex items-center gap-1">
