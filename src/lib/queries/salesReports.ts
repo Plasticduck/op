@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase'
 // (entity_id) and the report day (label = 'YYYY-MM-DD'), so listing a day's
 // uploads for a site is a simple filtered select.
 const ENTITY = 'sales_report'
+// Whole-month reports live under a separate type keyed by 'YYYY-MM', so they
+// never overlap the daily calendar's date-range queries.
+const ENTITY_MONTH = 'sales_report_month'
 
 export type SalesReportFile = {
   id: string
@@ -49,6 +52,34 @@ export const salesReports = {
       entity_type: ENTITY,
       entity_id: params.location_id,
       label: params.report_date,
+      file_name: params.file_name,
+      file_type: params.file_type,
+      data_uri: params.data_uri,
+    }),
+
+  // Whole-month report for a site. `month` is 'YYYY-MM'.
+  listMonth: (locationId: string, month: string) =>
+    supabase
+      .from('ops_attachments')
+      .select('id, file_name, file_type, created_at, label')
+      .eq('entity_type', ENTITY_MONTH)
+      .eq('entity_id', locationId)
+      .eq('label', month)
+      .order('created_at', { ascending: false }),
+
+  uploadMonth: (params: {
+    account_id: string
+    location_id: string
+    report_month: string
+    file_name: string
+    file_type: string
+    data_uri: string
+  }) =>
+    supabase.from('ops_attachments').insert({
+      account_id: params.account_id,
+      entity_type: ENTITY_MONTH,
+      entity_id: params.location_id,
+      label: params.report_month,
       file_name: params.file_name,
       file_type: params.file_type,
       data_uri: params.data_uri,

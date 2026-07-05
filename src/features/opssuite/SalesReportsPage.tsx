@@ -48,11 +48,15 @@ export default function SalesReportsPage() {
   const [locationId, setLocationId] = useState('')
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [reports, setReports] = useState<SalesReportFile[]>([])
+  const [monthReports, setMonthReports] = useState<SalesReportFile[]>([])
   const [loading, setLoading] = useState(false)
   const [uploadingDate, setUploadingDate] = useState<string | null>(null)
+  const [uploadingMonth, setUploadingMonth] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const uploadDateRef = useRef<string | null>(null)
+  const uploadTargetRef = useRef<{ kind: 'day' | 'month'; key: string } | null>(null)
+
+  const siteName = locations.find((l) => l.id === locationId)?.name ?? ''
 
   // Default to the first available site once locations load.
   useEffect(() => {
@@ -69,16 +73,19 @@ export default function SalesReportsPage() {
   const load = useCallback(() => {
     if (!locationId || days.length === 0) {
       setReports([])
+      setMonthReports([])
       return
     }
     setLoading(true)
-    salesReports
-      .listRange(locationId, iso(days[0]), iso(days[days.length - 1]))
-      .then(({ data }) => {
-        setReports((data as SalesReportFile[] | null) ?? [])
-        setLoading(false)
-      })
-  }, [locationId, days])
+    Promise.all([
+      salesReports.listRange(locationId, iso(days[0]), iso(days[days.length - 1])),
+      salesReports.listMonth(locationId, format(anchor, 'yyyy-MM')),
+    ]).then(([range, month]) => {
+      setReports((range.data as SalesReportFile[] | null) ?? [])
+      setMonthReports((month.data as SalesReportFile[] | null) ?? [])
+      setLoading(false)
+    })
+  }, [locationId, days, anchor])
 
   useEffect(() => { load() }, [load])
 
@@ -93,38 +100,53 @@ export default function SalesReportsPage() {
     return m
   }, [reports])
 
-  const pickDay = (dayIso: string) => {
+  const pick = (target: { kind: 'day' | 'month'; key: string }) => {
     if (!locationId) {
       setError('Choose a site first.')
       return
     }
     setError(null)
-    uploadDateRef.current = dayIso
+    uploadTargetRef.current = target
     fileInputRef.current?.click()
   }
+  const pickDay = (dayIso: string) => pick({ kind: 'day', key: dayIso })
+  const pickMonth = () => pick({ kind: 'month', key: format(anchor, 'yyyy-MM') })
 
   const onFilesChosen = async (files: FileList | null) => {
     const list = Array.from(files ?? [])
-    const date = uploadDateRef.current
-    if (!list.length || !date || !locationId || !profile) return
+    const target = uploadTargetRef.current
+    if (!list.length || !target || !locationId || !profile) return
     setError(null)
-    setUploadingDate(date)
+    if (target.kind === 'month') setUploadingMonth(true)
+    else setUploadingDate(target.key)
     for (const file of list) {
       const dataUri = await fileToDataUri(file)
-      const { error: err } = await salesReports.upload({
-        account_id: profile.account_id,
-        location_id: locationId,
-        report_date: date,
-        file_name: file.name,
-        file_type: file.type,
-        data_uri: dataUri,
-      })
+      const { error: err } =
+        target.kind === 'month'
+          ? await salesReports.uploadMonth({
+              account_id: profile.account_id,
+              location_id: locationId,
+              report_month: target.key,
+              file_name: file.name,
+              file_type: file.type,
+              data_uri: dataUri,
+            })
+          : await salesReports.upload({
+              account_id: profile.account_id,
+              location_id: locationId,
+              report_date: target.key,
+              file_name: file.name,
+              file_type: file.type,
+              data_uri: dataUri,
+            })
       if (err) {
+        setUploadingMonth(false)
         setUploadingDate(null)
         setError(err.message)
         return
       }
     }
+    setUploadingMonth(false)
     setUploadingDate(null)
     load()
   }
@@ -206,6 +228,49 @@ export default function SalesReportsPage() {
       {error && (
         <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
       )}
+
+      {/* Whole-month report for this site + month */}
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">Monthly report</h2>
+            <p className="text-xs text-ink-muted">
+              The full-month sales report for {siteName || 'this site'}, {format(anchor, 'MMMM yyyy')}.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {monthReports.map((r) => (
+              <div key={r.id} className="group flex items-center gap-1 rounded bg-accent-soft px-2 py-1">
+                <button
+                  type="button"
+                  onClick={() => void downloadFile(r)}
+                  title={`Download ${r.file_name ?? 'report'}`}
+                  className="flex min-w-0 items-center gap-1 text-left"
+                >
+                  <FileText className="size-3.5 shrink-0 text-accent" />
+                  <span className="max-w-[180px] truncate text-xs font-medium text-accent">
+                    {r.file_name ?? 'Report'}
+                  </span>
+                </button>
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => void removeReport(r.id)}
+                    title="Remove"
+                    className="rounded p-0.5 text-accent hover:text-danger"
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <Button variant="secondary" size="sm" onClick={pickMonth} disabled={uploadingMonth}>
+              {uploadingMonth ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              Upload monthly report
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <div className="overflow-x-auto">
         <div className="min-w-[760px]">
