@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { shortDate } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
 import { employees, type Employee } from '@/lib/queries/people'
+import { EmployeeModal } from './EmployeeModal'
 
 function Inner({ locationId }: { locationId: string }) {
   const { activeLocation } = useLocations()
@@ -18,6 +19,7 @@ function Inner({ locationId }: { locationId: string }) {
   const [rows, setRows] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [showInactive, setShowInactive] = useState(false)
+  const [editing, setEditing] = useState<Employee | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -75,6 +77,7 @@ function Inner({ locationId }: { locationId: string }) {
                 <th className="px-3 py-2.5 font-medium">Start date</th>
                 <th className="px-3 py-2.5 font-medium">Status</th>
                 <th className="px-3 py-2.5 font-medium">App access</th>
+                <th className="px-3 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -95,14 +98,26 @@ function Inner({ locationId }: { locationId: string }) {
                     {e.user_id ? (
                       <Badge tone="accent">Has login</Badge>
                     ) : (
-                      <span className="text-xs text-ink-subtle">Invite pending</span>
+                      <span className="text-xs text-ink-subtle">No login</span>
                     )}
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>Edit</Button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {editing && (
+        <EmployeeModal
+          locationId={locationId}
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void load() }}
+        />
       )}
     </div>
   )
