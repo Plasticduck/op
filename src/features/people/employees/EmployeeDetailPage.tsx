@@ -178,15 +178,15 @@ function PinModal({ employeeId, onClose }: { employeeId: string; onClose: () => 
           <p className="rounded-md bg-ok-soft px-3 py-2 text-sm text-ok">PIN set. The employee can now clock in at the kiosk.</p>
         ) : (
           <>
-            <Field label="4-digit PIN" hint="Used at the time clock kiosk">
-              {(id) => <Input id={id} inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />}
+            <Field label="5-digit PIN" hint="Used at the time clock kiosk">
+              {(id) => <Input id={id} inputMode="numeric" maxLength={5} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />}
             </Field>
             {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
           </>
         )}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>{done ? 'Close' : 'Cancel'}</Button>
-          {!done && <Button onClick={save} disabled={pin.length !== 4}>Set PIN</Button>}
+          {!done && <Button onClick={save} disabled={pin.length !== 5}>Set PIN</Button>}
         </div>
       </div>
     </Modal>

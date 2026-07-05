@@ -34,7 +34,7 @@ export function EmployeeModal({
   const save = async () => {
     setError(null)
     if (!first.trim() || !last.trim()) return setError('First and last name are required')
-    if (pin && !/^\d{4}$/.test(pin)) return setError('Kiosk PIN must be exactly 4 digits')
+    if (pin && !/^\d{5}$/.test(pin)) return setError('Kiosk PIN must be exactly 5 digits')
     const payload = {
       first_name: first.trim(),
       last_name: last.trim(),
@@ -75,16 +75,16 @@ export function EmployeeModal({
           <Field
             label="Kiosk PIN"
             className="col-span-2"
-            hint={hasPin ? 'A PIN is set — leave blank to keep it, or enter 4 digits to change.' : '4 digits the employee uses to clock in/out at the kiosk.'}
+            hint={hasPin ? 'A PIN is set — leave blank to keep it, or enter 5 digits to change.' : '5 digits the employee uses to clock in/out at the kiosk.'}
           >
             {(id) => (
               <Input
                 id={id}
                 inputMode="numeric"
-                maxLength={4}
+                maxLength={5}
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                placeholder={hasPin ? '••••' : '0000'}
+                placeholder={hasPin ? '•••••' : '00000'}
               />
             )}
           </Field>

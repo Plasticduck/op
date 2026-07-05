@@ -41,6 +41,7 @@ export function InviteModal({
   const [startDate, setStartDate] = useState('')
   const [hourly, setHourly] = useState('')
   const [uniform, setUniform] = useState('')
+  const [pin, setPin] = useState('')
   // Technicians work across every site, so site assignment doesn't apply to them.
   const allSites = isUser && role === 'technician'
   // An employee (roster) record is created for non-users and for user-employees;
@@ -61,6 +62,7 @@ export function InviteModal({
     setStartDate('')
     setHourly('')
     setUniform('')
+    setPin('')
     setError(null)
   }
 
@@ -86,16 +88,27 @@ export function InviteModal({
     if (!profile) return
     setError(null)
     if (!first.trim() || !last.trim()) return setError('Enter a first and last name')
+    if (pin && !/^\d{5}$/.test(pin)) return setError('Kiosk PIN must be exactly 5 digits')
 
     // Non-user: just add a roster record. No login, no email needed.
     if (!isUser) {
       if (locIds.length === 0) return setError('Assign at least one location')
       setSubmitting(true)
-      const { error: empErr } = await employees.create(
+      const { data: created, error: empErr } = await employees.create(
         rosterPayload(locIds[0], email.trim().toLowerCase() || null),
       )
+      if (empErr) {
+        setSubmitting(false)
+        return setError(empErr.message)
+      }
+      if (pin && created) {
+        const { error: pinErr } = await employees.setPin((created as { id: string }).id, pin)
+        if (pinErr) {
+          setSubmitting(false)
+          return setError(pinErr.message)
+        }
+      }
       setSubmitting(false)
-      if (empErr) return setError(empErr.message)
       onCreated()
       return close()
     }
@@ -123,7 +136,8 @@ export function InviteModal({
     // (matched by email) when they sign in, so there's no duplicate. Best effort:
     // if it fails, acceptance still creates the record.
     if (role === 'employee' && locIds.length >= 1) {
-      await employees.create(rosterPayload(locIds[0], cleanEmail))
+      const { data: created } = await employees.create(rosterPayload(locIds[0], cleanEmail))
+      if (pin && created) await employees.setPin((created as { id: string }).id, pin)
     }
 
     // Email the invite. The invite exists either way, so if the email fails we
@@ -254,6 +268,18 @@ export function InviteModal({
               </Field>
               <Field label="Uniform size">
                 {(id) => <Input id={id} value={uniform} onChange={(e) => setUniform(e.target.value)} placeholder="M" />}
+              </Field>
+              <Field label="Kiosk PIN" hint="5 digits used to clock in/out at the kiosk.">
+                {(id) => (
+                  <Input
+                    id={id}
+                    inputMode="numeric"
+                    maxLength={5}
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                    placeholder="00000"
+                  />
+                )}
               </Field>
             </div>
           </div>

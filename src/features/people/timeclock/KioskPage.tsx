@@ -68,9 +68,9 @@ function Inner({ locationId }: { locationId: string }) {
   const press = (digit: string) => {
     if (busy) return
     setError(null)
-    const next = (pin + digit).slice(0, 4)
+    const next = (pin + digit).slice(0, 5)
     setPin(next)
-    if (next.length === 4) void submit(next)
+    if (next.length === 5) void submit(next)
   }
 
   useEffect(() => {
@@ -118,7 +118,7 @@ function Inner({ locationId }: { locationId: string }) {
               <p className="mb-2 text-lg font-medium text-white">Enter your PIN</p>
               <p className="mb-5 text-sm text-ink-invert-muted">to clock in or out</p>
               <div className="mb-5 flex justify-center gap-3">
-                {[0, 1, 2, 3].map((i) => (
+                {[0, 1, 2, 3, 4].map((i) => (
                   <div key={i} className={cn('size-4 rounded-full transition', i < pin.length ? 'bg-accent' : 'bg-white/20')} />
                 ))}
               </div>
