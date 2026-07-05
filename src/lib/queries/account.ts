@@ -19,6 +19,7 @@ export type AccountUser = {
 
 export type Invitation = {
   id: string
+  name: string | null
   email: string
   role: InvitableRole
   location_ids: string[]
@@ -69,7 +70,7 @@ export async function removeUser(id: string) {
 export async function listInvitations() {
   return supabase
     .from('invitations')
-    .select('id, email, role, location_ids, token, status, created_at, expires_at')
+    .select('id, name, email, role, location_ids, token, status, created_at, expires_at')
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
 }
@@ -77,6 +78,7 @@ export async function listInvitations() {
 export async function createInvitation(params: {
   account_id: string
   invited_by: string
+  name: string
   email: string
   role: InvitableRole
   location_ids: string[]

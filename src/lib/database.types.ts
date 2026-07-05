@@ -43,11 +43,13 @@ export type Database = {
         Row: {
           account_type: string
           billing_status: string
+          company_settings: Json
           created_at: string
           id: string
           is_demo: boolean
           name: string
           plan: string | null
+          site_plan: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subscription_quantity: number
@@ -56,11 +58,13 @@ export type Database = {
         Insert: {
           account_type?: string
           billing_status?: string
+          company_settings?: Json
           created_at?: string
           id?: string
           is_demo?: boolean
           name: string
           plan?: string | null
+          site_plan?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_quantity?: number
@@ -69,11 +73,13 @@ export type Database = {
         Update: {
           account_type?: string
           billing_status?: string
+          company_settings?: Json
           created_at?: string
           id?: string
           is_demo?: boolean
           name?: string
           plan?: string | null
+          site_plan?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_quantity?: number
@@ -1721,6 +1727,7 @@ export type Database = {
           id: string
           invited_by: string | null
           location_ids: string[]
+          name: string | null
           role: string
           status: string
           token: string
@@ -1733,6 +1740,7 @@ export type Database = {
           id?: string
           invited_by?: string | null
           location_ids?: string[]
+          name?: string | null
           role: string
           status?: string
           token?: string
@@ -1745,6 +1753,7 @@ export type Database = {
           id?: string
           invited_by?: string | null
           location_ids?: string[]
+          name?: string | null
           role?: string
           status?: string
           token?: string
@@ -4098,6 +4107,7 @@ export type Database = {
         Returns: string[]
       }
       get_invitation_email: { Args: { p_token: string }; Returns: string }
+      get_invitation_info: { Args: { p_token: string }; Returns: Json }
       kiosk_punch: {
         Args: { p_employee_id: string; p_pin: string }
         Returns: string

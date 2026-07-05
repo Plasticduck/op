@@ -12,7 +12,6 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 
 const schema = z.object({
-  name: z.string().min(1, 'Enter your name'),
   password: z.string().min(8, 'At least 8 characters'),
 })
 type Values = z.infer<typeof schema>
@@ -22,6 +21,7 @@ export default function AcceptInvitePage() {
   const navigate = useNavigate()
   const { refreshProfile } = useAuth()
   const [email, setEmail] = useState<string | null>(null)
+  const [name, setName] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -33,11 +33,15 @@ export default function AcceptInvitePage() {
 
   useEffect(() => {
     let active = true
+    // Name was captured when the invite was created, so we don't ask again --
+    // just confirm the invite is valid and greet them by name.
     supabase
-      .rpc('get_invitation_email', { p_token: token ?? '' })
+      .rpc('get_invitation_info', { p_token: token ?? '' })
       .then(({ data }) => {
         if (!active) return
-        setEmail((data as string | null) ?? null)
+        const info = data as { email: string; name: string | null } | null
+        setEmail(info?.email ?? null)
+        setName(info?.name ?? null)
         setChecking(false)
       })
     return () => {
@@ -52,7 +56,7 @@ export default function AcceptInvitePage() {
     const { data, error } = await supabase.auth.signUp({
       email,
       password: values.password,
-      options: { data: { name: values.name } },
+      options: { data: { name: name ?? undefined } },
     })
     if (error) {
       setFormError(error.message)
@@ -63,9 +67,11 @@ export default function AcceptInvitePage() {
       return
     }
 
+    // accept_invitation reads the name from the invitation; passing it too keeps
+    // older invites (created before names were stored) working.
     const { error: rpcError } = await supabase.rpc('accept_invitation', {
       p_token: token ?? '',
-      p_user_name: values.name,
+      p_user_name: name ?? undefined,
     })
     if (rpcError) {
       setFormError(rpcError.message)
@@ -106,17 +112,12 @@ export default function AcceptInvitePage() {
 
   return (
     <AuthLayout
-      title="Join your team"
-      subtitle={`You were invited as ${email}. Set your name and a password.`}
+      title={name ? `Welcome, ${name.split(' ')[0]}` : 'Join your team'}
+      subtitle={`You were invited as ${email}. Create a password to finish joining.`}
     >
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <Field label="Email">
           {(id) => <Input id={id} value={email} disabled readOnly />}
-        </Field>
-        <Field label="Your name" error={errors.name?.message} required>
-          {(id) => (
-            <Input id={id} autoComplete="name" invalid={!!errors.name} {...register('name')} />
-          )}
         </Field>
         <Field label="Password" error={errors.password?.message} required>
           {(id) => (
