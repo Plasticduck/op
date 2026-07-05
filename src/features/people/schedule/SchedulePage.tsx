@@ -35,7 +35,7 @@ import { currency, timeOfDay } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
-import { updateCompany } from '@/lib/queries/companySettings'
+import { updateCompany, type ShiftTemplate } from '@/lib/queries/companySettings'
 import {
   employees as empQ,
   schedules,
@@ -57,6 +57,32 @@ const PRESETS: { label: string; start: string; end: string }[] = [
   { label: 'Close 2 to 10', start: '14:00', end: '22:00' },
   { label: 'Full 6 to 10', start: '06:00', end: '22:00' },
 ]
+
+// Drag payload type for a shift preset dragged from the palette onto a cell.
+const SHIFT_DND_TYPE = 'application/shift-template'
+
+// Built-in shift presets shown in the palette. Anything beyond these is a custom
+// shift the user creates. Times are 24h "HH:MM".
+const DEFAULT_SHIFTS: { start: string; end: string }[] = [
+  { start: '08:00', end: '14:00' }, // 8-2
+  { start: '14:00', end: '20:00' }, // 2-8
+  { start: '07:00', end: '15:00' }, // 7-3
+  { start: '15:00', end: '20:00' }, // 3-8
+  { start: '07:00', end: '19:00' }, // 7-7
+  { start: '08:00', end: '20:00' }, // 8-8
+  { start: '14:00', end: '19:00' }, // 2-7
+  { start: '07:00', end: '12:00' }, // 7-12
+  { start: '12:00', end: '19:00' }, // 12-7
+  { start: '12:00', end: '20:00' }, // 12-8
+]
+
+// Compact label matching the user's shorthand: 08:00 -> 14:00 becomes "8-2".
+const hour12 = (t: string) => {
+  const [h, m] = t.split(':').map(Number)
+  const hh = h % 12 || 12
+  return m ? `${hh}:${String(m).padStart(2, '0')}` : `${hh}`
+}
+const shiftChipLabel = (start: string, end: string) => `${hour12(start)}-${hour12(end)}`
 
 type CrossShift = {
   id: string
@@ -302,9 +328,41 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
     if (data) setShifts((arr) => [...arr, data as Shift])
   }
 
+  // Dropping a shift preset from the palette creates a shift with that preset's
+  // exact start/end time.
+  const createShiftFromTemplate = async (
+    employeeId: string,
+    date: string,
+    start: string,
+    end: string,
+  ) => {
+    if (!scheduleId) return
+    const { data } = await schedules.addShift({
+      schedule_id: scheduleId,
+      employee_id: employeeId,
+      date,
+      start_time: start,
+      end_time: end,
+      role_label: null,
+      notes: null,
+    })
+    if (data) setShifts((arr) => [...arr, data as Shift])
+  }
+
   const onDropCell = (employeeId: string, date: string) => async (e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(null)
+    // A shift preset dragged from the palette carries its time in dataTransfer.
+    const tplRaw = e.dataTransfer.getData(SHIFT_DND_TYPE)
+    if (tplRaw) {
+      try {
+        const tpl = JSON.parse(tplRaw) as { start: string; end: string }
+        await createShiftFromTemplate(employeeId, date, tpl.start, tpl.end)
+      } catch {
+        /* malformed payload, ignore */
+      }
+      return
+    }
     if (!drag) return
     if (drag.kind === 'shift') await moveShift(drag.shiftId, employeeId, date)
     else await createShiftFromEmployee(drag.employeeId, date)
@@ -386,7 +444,7 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
       ) : (
         <>
         <div className="rounded-md border border-accent/20 bg-accent-soft/40 px-3 py-2 text-xs text-ink-muted">
-          <span className="font-medium text-accent">Tip:</span> Drag a shift to another day or employee to move it. Drag an employee's name onto a day to create a new shift.
+          <span className="font-medium text-accent">Tip:</span> Drag a shift preset from the left onto a cell to schedule it. Drag an existing shift to move it, or an employee's name onto a day to create one.
         </div>
         <div className="overflow-x-auto rounded-md border border-border bg-card">
           <table className="w-full min-w-[920px] border-collapse text-sm">
@@ -436,9 +494,12 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
                         <td
                           key={dayStr}
                           onDragOver={(e) => {
-                            if (!drag) return
+                            // A palette preset shows up as a dataTransfer type
+                            // during the drag (its value can't be read yet).
+                            const isTemplate = e.dataTransfer.types.includes(SHIFT_DND_TYPE)
+                            if (!drag && !isTemplate) return
                             e.preventDefault()
-                            e.dataTransfer.dropEffect = drag.kind === 'shift' ? 'move' : 'copy'
+                            e.dataTransfer.dropEffect = drag?.kind === 'shift' ? 'move' : 'copy'
                             if (dragOver !== cellKey) setDragOver(cellKey)
                           }}
                           onDragLeave={() => { if (dragOver === cellKey) setDragOver(null) }}
@@ -780,9 +841,134 @@ function readPeriod(): Period {
   return 'weekly'
 }
 
+// Left-hand palette of draggable shift presets (built-in + custom). Dragging a
+// chip onto a schedule cell creates a shift with that exact time.
+function ShiftPalette({
+  custom,
+  onCreate,
+  onDelete,
+}: {
+  custom: ShiftTemplate[]
+  onCreate: () => void
+  onDelete: (id: string) => void
+}) {
+  const chips = [
+    ...DEFAULT_SHIFTS.map((s) => ({
+      key: `${s.start}-${s.end}`,
+      start: s.start,
+      end: s.end,
+      label: shiftChipLabel(s.start, s.end),
+      customId: null as string | null,
+    })),
+    ...custom.map((s) => ({
+      key: s.id,
+      start: s.start,
+      end: s.end,
+      label: s.label?.trim() || shiftChipLabel(s.start, s.end),
+      customId: s.id,
+    })),
+  ]
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 lg:sticky lg:top-4 lg:w-52 lg:shrink-0">
+      <div className="mb-1 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-ink">Shifts</h3>
+        <Button size="sm" variant="secondary" onClick={onCreate}>
+          <Plus className="size-4" /> Create
+        </Button>
+      </div>
+      <p className="mb-2.5 text-xs text-ink-muted">Drag a shift onto the schedule.</p>
+      <div className="flex flex-wrap gap-1.5 lg:flex-col">
+        {chips.map((c) => (
+          <div
+            key={c.key}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(SHIFT_DND_TYPE, JSON.stringify({ start: c.start, end: c.end }))
+              e.dataTransfer.effectAllowed = 'copy'
+            }}
+            title={`${timeOfDay(c.start)} to ${timeOfDay(c.end)}`}
+            className="group flex cursor-grab items-center justify-between gap-2 rounded-md border border-border bg-content px-2.5 py-1.5 text-sm text-ink hover:border-accent active:cursor-grabbing"
+          >
+            <span className="font-medium tabular">{c.label}</span>
+            {c.customId && (
+              <button
+                type="button"
+                onClick={() => onDelete(c.customId!)}
+                title="Delete custom shift"
+                className="rounded p-0.5 text-ink-subtle hover:text-danger lg:hidden lg:group-hover:block"
+              >
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CreateShiftModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void
+  onSave: (t: { start: string; end: string; label?: string }) => Promise<void> | void
+}) {
+  const [start, setStart] = useState('08:00')
+  const [end, setEnd] = useState('16:00')
+  const [label, setLabel] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const dur = hoursBetween(start, end)
+
+  return (
+    <Modal open onClose={onClose} title="Create a shift" size="sm">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-ink-muted">
+          Add a reusable shift preset. It appears in the palette so you can drag it onto the schedule.
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Start">{(id) => <TimeSelect id={id} value={start} onChange={setStart} />}</Field>
+          <Field label="End">{(id) => <TimeSelect id={id} value={end} onChange={setEnd} />}</Field>
+        </div>
+        <div className="text-xs text-ink-muted">
+          Duration: <span className="font-medium text-ink">{dur.toFixed(1)} hrs</span>
+        </div>
+        <Field label="Label (optional)" hint="Defaults to a short time label like 8-2.">
+          {(id) => (
+            <Input
+              id={id}
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder={shiftChipLabel(start, end)}
+            />
+          )}
+        </Field>
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={busy}
+            onClick={async () => {
+              if (dur <= 0) return setError('End time must be after start time')
+              setBusy(true)
+              await onSave({ start, end, label: label.trim() || undefined })
+              setBusy(false)
+            }}
+          >
+            {busy && <Loader2 className="size-4 animate-spin" />}
+            Add shift
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // Manager scheduling surface. Owns the two knobs the user asked for -- the
 // work-week start day (a per-account setting) and the planning period -- then
-// stacks one WeekBlock per week in the visible range.
+// stacks one WeekBlock per week in the visible range, with the shift palette
+// on the left.
 function Scheduler({ locationId }: { locationId: string }) {
   const { profile } = useAuth()
   const { settings, reload: reloadCompany } = useCompany()
@@ -790,6 +976,14 @@ function Scheduler({ locationId }: { locationId: string }) {
   const [period, setPeriod] = useState<Period>(readPeriod)
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [showWorkWeek, setShowWorkWeek] = useState(false)
+  const [showCreateShift, setShowCreateShift] = useState(false)
+  const templates = settings.shiftTemplates ?? []
+
+  const persistTemplates = async (next: ShiftTemplate[]) => {
+    if (!profile?.account_id) return
+    await updateCompany(profile.account_id, { settings: { ...settings, shiftTemplates: next } })
+    await reloadCompany()
+  }
 
   const changePeriod = (p: Period) => {
     setPeriod(p)
@@ -865,10 +1059,17 @@ function Scheduler({ locationId }: { locationId: string }) {
         <span className="text-xs text-ink-muted">Work week starts {DAY_NAMES[weekStartsOn]}</span>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {weeks.map((w) => (
-          <WeekBlock key={fmtDay(w)} locationId={locationId} weekStart={w} />
-        ))}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <ShiftPalette
+          custom={templates}
+          onCreate={() => setShowCreateShift(true)}
+          onDelete={(id) => void persistTemplates(templates.filter((t) => t.id !== id))}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {weeks.map((w) => (
+            <WeekBlock key={fmtDay(w)} locationId={locationId} weekStart={w} />
+          ))}
+        </div>
       </div>
 
       {showWorkWeek && (
@@ -883,6 +1084,19 @@ function Scheduler({ locationId }: { locationId: string }) {
               await reloadCompany()
             }
             setShowWorkWeek(false)
+          }}
+        />
+      )}
+
+      {showCreateShift && (
+        <CreateShiftModal
+          onClose={() => setShowCreateShift(false)}
+          onSave={async (t) => {
+            await persistTemplates([
+              ...templates,
+              { id: crypto.randomUUID(), start: t.start, end: t.end, label: t.label },
+            ])
+            setShowCreateShift(false)
           }}
         />
       )}

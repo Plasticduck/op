@@ -16,11 +16,21 @@ export type CorporateInfo = {
   website?: string
 }
 
+// A reusable shift preset the user can drag onto the schedule. Times are "HH:MM".
+export type ShiftTemplate = {
+  id: string
+  start: string
+  end: string
+  label?: string
+}
+
 export type CompanySettings = {
   corporate?: CorporateInfo
   regions?: RegionDef[]
   // First day of the work week for scheduling: 0 = Sunday … 6 = Saturday.
   scheduleWeekStart?: number
+  // Custom shift presets shown in the schedule builder's shift palette.
+  shiftTemplates?: ShiftTemplate[]
 }
 
 export type SitePlan = 'single' | 'multi'
