@@ -63,7 +63,9 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const appUrl = Deno.env.get('APP_URL') ?? 'https://operator.washlyfe.com'
-  const fromAddr = Deno.env.get('RESEND_FROM') ?? 'WashLyfe Operator <notifications@operator.washlyfe.com>'
+  // Default sender must be a Resend-verified domain. washlyfe.com is verified;
+  // the operator.washlyfe.com subdomain is not, so sending from it is rejected.
+  const fromAddr = Deno.env.get('RESEND_FROM') ?? 'WashLyfe Operator <notifications@washlyfe.com>'
 
   const auth = req.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) return json({ error: 'unauthorized' }, 401, origin)
