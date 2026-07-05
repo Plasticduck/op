@@ -61,9 +61,17 @@ const PRESETS: { label: string; start: string; end: string }[] = [
 // Drag payload type for a shift preset dragged from the palette onto a cell.
 const SHIFT_DND_TYPE = 'application/shift-template'
 
+// Lunch shifts are marked with this role_label sentinel. They are unpaid breaks:
+// present on the schedule but excluded from all hour and labor totals.
+const LUNCH_LABEL = 'Lunch'
+const isLunchShift = (s: { role_label?: string | null }) =>
+  (s.role_label ?? '').trim().toLowerCase() === LUNCH_LABEL.toLowerCase()
+// Hours a shift contributes to totals: zero for lunch/unpaid breaks.
+const paidHours = (s: Shift) => (isLunchShift(s) ? 0 : hoursBetween(s.start_time, s.end_time))
+
 // Built-in shift presets shown in the palette. Anything beyond these is a custom
-// shift the user creates. Times are 24h "HH:MM".
-const DEFAULT_SHIFTS: { start: string; end: string }[] = [
+// shift the user creates. Times are 24h "HH:MM". Lunch presets don't count hours.
+const DEFAULT_SHIFTS: { start: string; end: string; lunch?: boolean }[] = [
   { start: '08:00', end: '14:00' }, // 8-2
   { start: '14:00', end: '20:00' }, // 2-8
   { start: '07:00', end: '15:00' }, // 7-3
@@ -74,6 +82,10 @@ const DEFAULT_SHIFTS: { start: string; end: string }[] = [
   { start: '07:00', end: '12:00' }, // 7-12
   { start: '12:00', end: '19:00' }, // 12-7
   { start: '12:00', end: '20:00' }, // 12-8
+  { start: '11:00', end: '12:00', lunch: true }, // LUNCH 11-12
+  { start: '12:00', end: '13:00', lunch: true }, // LUNCH 12-1
+  { start: '13:00', end: '14:00', lunch: true }, // LUNCH 1-2
+  { start: '14:00', end: '15:00', lunch: true }, // LUNCH 2-3
 ]
 
 // Compact label matching the user's shorthand: 08:00 -> 14:00 becomes "8-2".
@@ -82,7 +94,8 @@ const hour12 = (t: string) => {
   const hh = h % 12 || 12
   return m ? `${hh}:${String(m).padStart(2, '0')}` : `${hh}`
 }
-const shiftChipLabel = (start: string, end: string) => `${hour12(start)}-${hour12(end)}`
+const shiftChipLabel = (start: string, end: string, lunch?: boolean) =>
+  `${lunch ? 'LUNCH ' : ''}${hour12(start)}-${hour12(end)}`
 
 type CrossShift = {
   id: string
@@ -176,14 +189,14 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
   const laborCost = shifts.reduce((acc, s) => {
     const emp = emps.find((e) => e.id === s.employee_id)
     const rate = emp?.hourly_rate ?? 0
-    return acc + hoursBetween(s.start_time, s.end_time) * rate
+    return acc + paidHours(s) * rate
   }, 0)
-  const totalHours = shifts.reduce((a, s) => a + hoursBetween(s.start_time, s.end_time), 0)
+  const totalHours = shifts.reduce((a, s) => a + paidHours(s), 0)
 
   const hoursByEmployee = useMemo(() => {
     const m = new Map<string, number>()
     for (const s of shifts) {
-      m.set(s.employee_id, (m.get(s.employee_id) ?? 0) + hoursBetween(s.start_time, s.end_time))
+      m.set(s.employee_id, (m.get(s.employee_id) ?? 0) + paidHours(s))
     }
     return m
   }, [shifts])
@@ -191,7 +204,7 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
   const hoursByDay = useMemo(() => {
     const m = new Map<string, number>()
     for (const s of shifts) {
-      m.set(s.date, (m.get(s.date) ?? 0) + hoursBetween(s.start_time, s.end_time))
+      m.set(s.date, (m.get(s.date) ?? 0) + paidHours(s))
     }
     return m
   }, [shifts])
@@ -335,6 +348,7 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
     date: string,
     start: string,
     end: string,
+    lunch: boolean,
   ) => {
     if (!scheduleId) return
     const { data } = await schedules.addShift({
@@ -343,7 +357,7 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
       date,
       start_time: start,
       end_time: end,
-      role_label: null,
+      role_label: lunch ? LUNCH_LABEL : null,
       notes: null,
     })
     if (data) setShifts((arr) => [...arr, data as Shift])
@@ -356,8 +370,8 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
     const tplRaw = e.dataTransfer.getData(SHIFT_DND_TYPE)
     if (tplRaw) {
       try {
-        const tpl = JSON.parse(tplRaw) as { start: string; end: string }
-        await createShiftFromTemplate(employeeId, date, tpl.start, tpl.end)
+        const tpl = JSON.parse(tplRaw) as { start: string; end: string; lunch?: boolean }
+        await createShiftFromTemplate(employeeId, date, tpl.start, tpl.end, !!tpl.lunch)
       } catch {
         /* malformed payload, ignore */
       }
@@ -521,7 +535,8 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
                                 }}
                                 onDragEnd={() => { setDrag(null); setDragOver(null) }}
                                 className={cn(
-                                  'group relative rounded bg-accent-soft text-xs text-accent cursor-grab active:cursor-grabbing',
+                                  'group relative rounded text-xs cursor-grab active:cursor-grabbing',
+                                  isLunchShift(s) ? 'bg-warn-soft text-warn' : 'bg-accent-soft text-accent',
                                   drag?.kind === 'shift' && drag.shiftId === s.id && 'opacity-40',
                                 )}
                               >
@@ -801,6 +816,7 @@ function ShiftModal({
               <option>Detail</option>
               <option>Cashier</option>
               <option>Manager</option>
+              <option value="Lunch">Lunch (unpaid, not counted)</option>
             </Select>
           )}
         </Field>
@@ -854,17 +870,19 @@ function ShiftPalette({
 }) {
   const chips = [
     ...DEFAULT_SHIFTS.map((s) => ({
-      key: `${s.start}-${s.end}`,
+      key: `${s.start}-${s.end}-${s.lunch ? 'L' : ''}`,
       start: s.start,
       end: s.end,
-      label: shiftChipLabel(s.start, s.end),
+      lunch: !!s.lunch,
+      label: shiftChipLabel(s.start, s.end, s.lunch),
       customId: null as string | null,
     })),
     ...custom.map((s) => ({
       key: s.id,
       start: s.start,
       end: s.end,
-      label: s.label?.trim() || shiftChipLabel(s.start, s.end),
+      lunch: !!s.lunch,
+      label: s.label?.trim() || shiftChipLabel(s.start, s.end, s.lunch),
       customId: s.id,
     })),
   ]
@@ -883,11 +901,19 @@ function ShiftPalette({
             key={c.key}
             draggable
             onDragStart={(e) => {
-              e.dataTransfer.setData(SHIFT_DND_TYPE, JSON.stringify({ start: c.start, end: c.end }))
+              e.dataTransfer.setData(
+                SHIFT_DND_TYPE,
+                JSON.stringify({ start: c.start, end: c.end, lunch: c.lunch }),
+              )
               e.dataTransfer.effectAllowed = 'copy'
             }}
-            title={`${timeOfDay(c.start)} to ${timeOfDay(c.end)}`}
-            className="group flex cursor-grab items-center justify-between gap-2 rounded-md border border-border bg-content px-2.5 py-1.5 text-sm text-ink hover:border-accent active:cursor-grabbing"
+            title={`${timeOfDay(c.start)} to ${timeOfDay(c.end)}${c.lunch ? ' (unpaid, not counted)' : ''}`}
+            className={cn(
+              'group flex cursor-grab items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm hover:border-accent active:cursor-grabbing',
+              c.lunch
+                ? 'border-warn/40 bg-warn-soft text-warn'
+                : 'border-border bg-content text-ink',
+            )}
           >
             <span className="font-medium tabular">{c.label}</span>
             {c.customId && (
@@ -912,11 +938,12 @@ function CreateShiftModal({
   onSave,
 }: {
   onClose: () => void
-  onSave: (t: { start: string; end: string; label?: string }) => Promise<void> | void
+  onSave: (t: { start: string; end: string; label?: string; lunch?: boolean }) => Promise<void> | void
 }) {
   const [start, setStart] = useState('08:00')
   const [end, setEnd] = useState('16:00')
   const [label, setLabel] = useState('')
+  const [lunch, setLunch] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dur = hoursBetween(start, end)
@@ -934,13 +961,27 @@ function CreateShiftModal({
         <div className="text-xs text-ink-muted">
           Duration: <span className="font-medium text-ink">{dur.toFixed(1)} hrs</span>
         </div>
-        <Field label="Label (optional)" hint="Defaults to a short time label like 8-2.">
+        <label className="flex items-start gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={lunch}
+            onChange={(e) => setLunch(e.target.checked)}
+          />
+          <span>
+            Lunch break
+            <span className="block text-xs text-ink-muted">
+              Unpaid. Shows on the schedule but does not count toward hours or labor.
+            </span>
+          </span>
+        </label>
+        <Field label="Label (optional)" hint={lunch ? 'Defaults to a label like LUNCH 12-1.' : 'Defaults to a short time label like 8-2.'}>
           {(id) => (
             <Input
               id={id}
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder={shiftChipLabel(start, end)}
+              placeholder={shiftChipLabel(start, end, lunch)}
             />
           )}
         </Field>
@@ -952,7 +993,7 @@ function CreateShiftModal({
             onClick={async () => {
               if (dur <= 0) return setError('End time must be after start time')
               setBusy(true)
-              await onSave({ start, end, label: label.trim() || undefined })
+              await onSave({ start, end, label: label.trim() || undefined, lunch: lunch || undefined })
               setBusy(false)
             }}
           >
@@ -1094,7 +1135,7 @@ function Scheduler({ locationId }: { locationId: string }) {
           onSave={async (t) => {
             await persistTemplates([
               ...templates,
-              { id: crypto.randomUUID(), start: t.start, end: t.end, label: t.label },
+              { id: crypto.randomUUID(), start: t.start, end: t.end, label: t.label, lunch: t.lunch },
             ])
             setShowCreateShift(false)
           }}
@@ -1182,7 +1223,7 @@ function MyScheduleView({ locationId }: { locationId: string }) {
     }
   }, [locationId, weekStart])
 
-  const totalHours = shifts.reduce((a, s) => a + hoursBetween(s.start_time, s.end_time), 0)
+  const totalHours = shifts.reduce((a, s) => a + paidHours(s), 0)
 
   return (
     <div className="flex flex-col gap-6">

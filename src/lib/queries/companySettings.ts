@@ -17,11 +17,13 @@ export type CorporateInfo = {
 }
 
 // A reusable shift preset the user can drag onto the schedule. Times are "HH:MM".
+// `lunch` marks an unpaid break that does not count toward scheduled hours.
 export type ShiftTemplate = {
   id: string
   start: string
   end: string
   label?: string
+  lunch?: boolean
 }
 
 export type CompanySettings = {
