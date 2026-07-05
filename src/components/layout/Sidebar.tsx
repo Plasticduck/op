@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
   AlarmClockOff,
+  AlertTriangle,
   Award,
   Bandage,
   Bolt,
@@ -21,7 +22,6 @@ import {
   FileClock,
   Folders,
   Gauge,
-  Gavel,
   HandCoins,
   ListChecks,
   Building2,
@@ -154,7 +154,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         to: '/app/violations',
         label: 'Violations',
-        icon: Gavel,
+        icon: AlertTriangle,
         roles: ['owner', 'manager'],
       },
       {
