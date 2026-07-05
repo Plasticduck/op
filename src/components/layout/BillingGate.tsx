@@ -145,7 +145,7 @@ function Paywall({
         ) : (
           <div className="mx-auto mt-10 max-w-md rounded-lg border border-border bg-card p-6 text-center">
             <p className="text-sm text-ink">
-              Ask the account owner for {accountName || 'your car wash'} to choose a plan to restore access.
+              Ask the account admin for {accountName || 'your car wash'} to choose a plan to restore access.
             </p>
             <a
               href={contactHref}

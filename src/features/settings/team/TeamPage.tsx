@@ -399,7 +399,7 @@ function EditUserModal({
               <option value="employee">Employee</option>
               <option value="technician">Technician</option>
               <option value="manager">Manager</option>
-              <option value="owner">Owner</option>
+              <option value="owner">Admin</option>
             </Select>
           )}
         </Field>

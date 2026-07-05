@@ -1,7 +1,9 @@
 export type Role = 'owner' | 'manager' | 'employee' | 'technician'
 
+// The `owner` role is labeled "Admin" in the UI. The internal key stays `owner`
+// (used throughout RLS policies and role checks); only the display name changed.
 export const ROLE_LABEL: Record<Role, string> = {
-  owner: 'Owner',
+  owner: 'Admin',
   manager: 'Manager',
   employee: 'Employee',
   technician: 'Technician',

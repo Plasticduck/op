@@ -104,7 +104,7 @@ export default function AcceptInvitePage() {
         }
       >
         <p className="text-sm text-ink-muted">
-          Ask your account owner to send a fresh invite.
+          Ask your account admin to send a fresh invite.
         </p>
       </AuthLayout>
     )
