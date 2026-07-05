@@ -43,6 +43,16 @@ async function loadProfile(userId: string): Promise<Profile | null> {
   return (data as Profile | null) ?? null
 }
 
+// Record that the signed-in user is active. RLS lets a user update their own
+// row (id = auth.uid()), so this is a direct write. Best effort: failures are
+// ignored so a hiccup never affects the session.
+async function touchLastSeen(userId: string) {
+  await supabase
+    .from('users')
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq('id', userId)
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -111,6 +121,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sub.subscription.unsubscribe()
     }
   }, [])
+
+  // Keep last_seen_at current while the user has the app open: on load, when the
+  // tab regains focus, and every few minutes. Throttled so we don't write more
+  // than once a minute regardless of how often those fire.
+  useEffect(() => {
+    const uid = profile?.id
+    if (!uid) return
+    let lastWrite = 0
+    const touch = () => {
+      const now = Date.now()
+      if (now - lastWrite < 60_000) return
+      lastWrite = now
+      void touchLastSeen(uid)
+    }
+    touch()
+    const interval = setInterval(touch, 5 * 60_000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') touch()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [profile?.id])
 
   const value: AuthState = {
     session,
