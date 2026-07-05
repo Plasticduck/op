@@ -11,16 +11,29 @@ export type SalesReportFile = {
   file_name: string | null
   file_type: string | null
   created_at: string
+  label: string
 }
 
 export const salesReports = {
   list: (locationId: string, reportDate: string) =>
     supabase
       .from('ops_attachments')
-      .select('id, file_name, file_type, created_at')
+      .select('id, file_name, file_type, created_at, label')
       .eq('entity_type', ENTITY)
       .eq('entity_id', locationId)
       .eq('label', reportDate)
+      .order('created_at', { ascending: false }),
+
+  // All reports for a site whose report day falls in [fromDate, toDate]. Labels
+  // are 'YYYY-MM-DD' so string range comparison is chronological.
+  listRange: (locationId: string, fromDate: string, toDate: string) =>
+    supabase
+      .from('ops_attachments')
+      .select('id, file_name, file_type, created_at, label')
+      .eq('entity_type', ENTITY)
+      .eq('entity_id', locationId)
+      .gte('label', fromDate)
+      .lte('label', toDate)
       .order('created_at', { ascending: false }),
 
   upload: (params: {
