@@ -30,21 +30,37 @@ export function InviteModal({
   // A "user" gets an app login (emailed invite); a "non-user" is roster-only
   // staff (scheduling / time clock) with no login and no email required.
   const [isUser, setIsUser] = useState(true)
-  const [name, setName] = useState('')
+  const [first, setFirst] = useState('')
+  const [last, setLast] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<InvitableRole>('employee')
   const [locIds, setLocIds] = useState<string[]>([])
+  // HR fields for the roster record.
+  const [roleTitle, setRoleTitle] = useState('')
+  const [phone, setPhone] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [hourly, setHourly] = useState('')
+  const [uniform, setUniform] = useState('')
   // Technicians work across every site, so site assignment doesn't apply to them.
   const allSites = isUser && role === 'technician'
+  // An employee (roster) record is created for non-users and for user-employees;
+  // managers/technicians are login-only, so their HR fields don't apply.
+  const hasRosterRecord = !isUser || role === 'employee'
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reset = () => {
     setIsUser(true)
-    setName('')
+    setFirst('')
+    setLast('')
     setEmail('')
     setRole('employee')
     setLocIds([])
+    setRoleTitle('')
+    setPhone('')
+    setStartDate('')
+    setHourly('')
+    setUniform('')
     setError(null)
   }
 
@@ -53,30 +69,31 @@ export function InviteModal({
     onClose()
   }
 
-  const splitName = (full: string) => {
-    const trimmed = full.trim()
-    const first = trimmed.split(' ')[0]
-    const last = trimmed.slice(first.length).trim()
-    return { first, last }
-  }
+  const rosterPayload = (locId: string, cleanEmail: string | null) => ({
+    location_id: locId,
+    first_name: first.trim(),
+    last_name: last.trim(),
+    email: cleanEmail,
+    phone: phone.trim() || null,
+    role_title: roleTitle.trim() || null,
+    start_date: startDate || null,
+    hourly_rate: hourly ? Number(hourly) : null,
+    uniform_size: uniform.trim() || null,
+    status: 'active' as const,
+  })
 
   const submit = async () => {
     if (!profile) return
     setError(null)
-    if (!name.trim()) return setError('Enter their name')
+    if (!first.trim() || !last.trim()) return setError('Enter a first and last name')
 
     // Non-user: just add a roster record. No login, no email needed.
     if (!isUser) {
       if (locIds.length === 0) return setError('Assign at least one location')
-      const { first, last } = splitName(name)
       setSubmitting(true)
-      const { error: empErr } = await employees.create({
-        location_id: locIds[0],
-        first_name: first,
-        last_name: last,
-        email: email.trim().toLowerCase() || null,
-        status: 'active',
-      })
+      const { error: empErr } = await employees.create(
+        rosterPayload(locIds[0], email.trim().toLowerCase() || null),
+      )
       setSubmitting(false)
       if (empErr) return setError(empErr.message)
       onCreated()
@@ -91,7 +108,7 @@ export function InviteModal({
     const { data, error: err } = await createInvitation({
       account_id: profile.account_id,
       invited_by: profile.id,
-      name: name.trim(),
+      name: `${first.trim()} ${last.trim()}`.trim(),
       email: cleanEmail,
       role,
       location_ids: allSites ? [] : locIds,
@@ -106,14 +123,7 @@ export function InviteModal({
     // (matched by email) when they sign in, so there's no duplicate. Best effort:
     // if it fails, acceptance still creates the record.
     if (role === 'employee' && locIds.length >= 1) {
-      const { first, last } = splitName(name)
-      await employees.create({
-        location_id: locIds[0],
-        first_name: first,
-        last_name: last,
-        email: cleanEmail,
-        status: 'active',
-      })
+      await employees.create(rosterPayload(locIds[0], cleanEmail))
     }
 
     // Email the invite. The invite exists either way, so if the email fails we
@@ -143,16 +153,19 @@ export function InviteModal({
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label="Full name" required>
-          {(id) => (
-            <Input
-              id={id}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Jordan Rivera"
-            />
-          )}
-        </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="First name" required>
+            {(id) => (
+              <Input id={id} value={first} onChange={(e) => setFirst(e.target.value)} placeholder="Jordan" />
+            )}
+          </Field>
+          <Field label="Last name" required>
+            {(id) => (
+              <Input id={id} value={last} onChange={(e) => setLast(e.target.value)} placeholder="Rivera" />
+            )}
+          </Field>
+        </div>
+
         <Field label="Account type" hint="Non-users appear on schedules and the time clock but can't log in.">
           {(id) => (
             <Select
@@ -213,6 +226,37 @@ export function InviteModal({
               />
             )}
           </Field>
+        )}
+
+        {hasRosterRecord && (
+          <div className="flex flex-col gap-4 rounded-md border border-border bg-content/50 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
+              Employee details (optional)
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Role title">
+                {(id) => (
+                  <Input id={id} value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="Attendant" />
+                )}
+              </Field>
+              <Field label="Phone">
+                {(id) => <Input id={id} value={phone} onChange={(e) => setPhone(e.target.value)} />}
+              </Field>
+              <Field label="Start date">
+                {(id) => (
+                  <Input id={id} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                )}
+              </Field>
+              <Field label="Hourly rate">
+                {(id) => (
+                  <Input id={id} type="number" step="0.01" value={hourly} onChange={(e) => setHourly(e.target.value)} placeholder="0.00" />
+                )}
+              </Field>
+              <Field label="Uniform size">
+                {(id) => <Input id={id} value={uniform} onChange={(e) => setUniform(e.target.value)} placeholder="M" />}
+              </Field>
+            </div>
+          </div>
         )}
 
         {error && (

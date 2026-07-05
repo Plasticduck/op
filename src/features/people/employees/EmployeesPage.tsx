@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Users } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
@@ -11,20 +11,24 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { shortDate } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
 import { employees, type Employee } from '@/lib/queries/people'
+import { listAllLocations, type LocationFull } from '@/lib/queries/account'
+import { InviteModal } from '@/features/settings/team/InviteModal'
 import { EmployeeModal } from './EmployeeModal'
 
 function Inner({ locationId }: { locationId: string }) {
   const { activeLocation } = useLocations()
-  const navigate = useNavigate()
   const [rows, setRows] = useState<Employee[]>([])
+  const [locations, setLocations] = useState<LocationFull[]>([])
   const [loading, setLoading] = useState(true)
   const [showInactive, setShowInactive] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
+  const [inviteOpen, setInviteOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await employees.list(locationId)
-    setRows((data as Employee[] | null) ?? [])
+    const [emp, locs] = await Promise.all([employees.list(locationId), listAllLocations()])
+    setRows((emp.data as Employee[] | null) ?? [])
+    setLocations((locs.data as LocationFull[] | null) ?? [])
     setLoading(false)
   }, [locationId])
 
@@ -39,8 +43,8 @@ function Inner({ locationId }: { locationId: string }) {
         title="Employees"
         subtitle="Your staff roster for schedules, time tracking, and HR."
         actions={
-          <Button onClick={() => navigate('/app/settings/team')}>
-            Invite team member
+          <Button onClick={() => setInviteOpen(true)}>
+            Add team member
           </Button>
         }
       />
@@ -66,7 +70,7 @@ function Inner({ locationId }: { locationId: string }) {
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Users} title="No employees yet" description="Your roster fills up as you invite team members. Invite someone to give them an app login and add them here automatically." action={<Button onClick={() => navigate('/app/settings/team')}>Invite team member</Button>} />
+        <EmptyState icon={Users} title="No employees yet" description="Add a team member to start building your roster. You can add them as an app user or as roster-only staff." action={<Button onClick={() => setInviteOpen(true)}>Add team member</Button>} />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
           <table className="w-full min-w-[720px] text-sm">
@@ -110,6 +114,13 @@ function Inner({ locationId }: { locationId: string }) {
           </table>
         </div>
       )}
+
+      <InviteModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        onCreated={load}
+        locations={locations}
+      />
 
       {editing && (
         <EmployeeModal
