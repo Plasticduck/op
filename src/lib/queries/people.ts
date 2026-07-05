@@ -17,6 +17,16 @@ export const employees = {
   listActive: (loc: string) =>
     supabase.from('employees').select('*').eq('location_id', loc).eq('status', 'active').order('first_name'),
   get: (id: string) => supabase.from('employees').select('*').eq('id', id).single(),
+  // Active roster staff with no app login yet (user_id is null), across the given
+  // locations. Used by the Team page to offer converting them to users.
+  listNonUsers: (locationIds: string[]) =>
+    supabase
+      .from('employees')
+      .select('*')
+      .in('location_id', locationIds)
+      .is('user_id', null)
+      .eq('status', 'active')
+      .order('first_name'),
   create: (row: T['employees']['Insert']) =>
     supabase.from('employees').insert(row).select().single(),
   update: (id: string, patch: T['employees']['Update']) =>
