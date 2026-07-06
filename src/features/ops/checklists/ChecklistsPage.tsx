@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, ClipboardList, Settings, Square } from 'lucide-react'
+import { Camera, Check, ClipboardList, Loader2, Settings, Square } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -12,7 +12,32 @@ import { useLocations } from '@/lib/locations'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { dateTime, timeOfDay } from '@/lib/format'
-import { checklists, type ChecklistInstance, type ChecklistItemEvent } from '@/lib/queries/ops'
+import {
+  checklists,
+  type ChecklistInstance,
+  type ChecklistItemEvent,
+  type ChecklistSubmissionLatest,
+} from '@/lib/queries/ops'
+
+function fileToDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = reject
+    r.readAsDataURL(file)
+  })
+}
+
+const VERDICT: Record<
+  ChecklistSubmissionLatest['ai_status'],
+  { tone: 'ok' | 'danger' | 'warn' | 'neutral'; label: string }
+> = {
+  pass: { tone: 'ok', label: 'Verified' },
+  discrepancy: { tone: 'danger', label: 'Discrepancy' },
+  unclear: { tone: 'warn', label: 'Unclear' },
+  error: { tone: 'neutral', label: 'Check failed' },
+  pending: { tone: 'neutral', label: 'Checking...' },
+}
 
 type InstanceWithTemplate = ChecklistInstance & {
   checklist: {
@@ -25,7 +50,7 @@ type InstanceWithTemplate = ChecklistInstance & {
   }
 }
 
-type ItemRow = { id: string; label: string; order_index: number }
+type ItemRow = { id: string; label: string; order_index: number; requires_photo: boolean }
 
 type StateEntry = {
   checked: boolean
@@ -57,6 +82,13 @@ function Inner({ locationId }: { locationId: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [auditFor, setAuditFor] = useState<{ instanceId: string; itemLabel: string } | null>(null)
+  // Photo verification: which items have a baseline at this site, the latest
+  // submission per (instance, item), and which cells are busy uploading/verifying.
+  const [baselineItems, setBaselineItems] = useState<Set<string>>(new Set())
+  const [subs, setSubs] = useState<Map<string, ChecklistSubmissionLatest>>(new Map())
+  const [photoBusy, setPhotoBusy] = useState<Set<string>>(new Set())
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const targetRef = useRef<{ kind: 'baseline' | 'submission'; instanceId: string; itemId: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -101,8 +133,95 @@ function Inner({ locationId }: { locationId: string }) {
       })
     })
     setState(map)
+
+    // Photo verification: baselines set at this site + latest submissions.
+    const photoItemIds = Object.values(itemsMap).flat().filter((i) => i.requires_photo).map((i) => i.id)
+    const [baseRes, subRes] = await Promise.all([
+      checklists.baselinesFor(photoItemIds, locationId),
+      checklists.latestSubmissionsFor(instanceIds),
+    ])
+    setBaselineItems(new Set(((baseRes.data as { item_id: string }[] | null) ?? []).map((b) => b.item_id)))
+    const sm = new Map<string, ChecklistSubmissionLatest>()
+    ;((subRes.data as ChecklistSubmissionLatest[] | null) ?? []).forEach((s) => {
+      sm.set(stateKey(s.instance_id, s.item_id), s)
+    })
+    setSubs(sm)
     setLoading(false)
   }, [locationId])
+
+  const setBusy = (key: string, on: boolean) =>
+    setPhotoBusy((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(key)
+      else next.delete(key)
+      return next
+    })
+
+  const openPicker = (kind: 'baseline' | 'submission', instanceId: string, itemId: string) => {
+    targetRef.current = { kind, instanceId, itemId }
+    fileRef.current?.click()
+  }
+
+  const onFile = async (file: File | null) => {
+    const t = targetRef.current
+    if (!file || !t) return
+    setError(null)
+    const dataUri = await fileToDataUri(file)
+
+    if (t.kind === 'baseline') {
+      const bk = `base:${t.itemId}`
+      setBusy(bk, true)
+      const { error: err } = await checklists.setBaseline({
+        item_id: t.itemId,
+        location_id: locationId,
+        data_uri: dataUri,
+        created_by: profile?.id ?? '',
+      })
+      setBusy(bk, false)
+      if (err) return setError(err.message)
+      setBaselineItems((prev) => new Set(prev).add(t.itemId))
+      return
+    }
+
+    const key = stateKey(t.instanceId, t.itemId)
+    setBusy(key, true)
+    const { data, error: err } = await checklists.submitPhoto({
+      instance_id: t.instanceId,
+      item_id: t.itemId,
+      location_id: locationId,
+      data_uri: dataUri,
+      submitted_by: profile?.id ?? '',
+      submitted_by_name: profile?.name ?? null,
+    })
+    if (err || !data) {
+      setBusy(key, false)
+      return setError(err?.message ?? 'Upload failed')
+    }
+    const submissionId = (data as { id: string }).id
+    // Submitting a photo also marks the task done.
+    if (!state.get(key)?.checked) void onToggle(t.instanceId, t.itemId)
+    const pending: ChecklistSubmissionLatest = {
+      id: submissionId,
+      instance_id: t.instanceId,
+      item_id: t.itemId,
+      location_id: locationId,
+      submitted_by_name: profile?.name ?? null,
+      ai_status: 'pending',
+      ai_notes: null,
+      created_at: new Date().toISOString(),
+    }
+    setSubs((prev) => new Map(prev).set(key, pending))
+    const { data: vres } = await checklists.verifySubmission(submissionId)
+    const v = vres as { ai_status?: ChecklistSubmissionLatest['ai_status']; ai_notes?: string } | null
+    setSubs((prev) =>
+      new Map(prev).set(key, {
+        ...pending,
+        ai_status: v?.ai_status ?? 'error',
+        ai_notes: v?.ai_notes ?? null,
+      }),
+    )
+    setBusy(key, false)
+  }
 
   useEffect(() => {
     void load()
@@ -245,44 +364,98 @@ function Inner({ locationId }: { locationId: string }) {
                 ) : (
                   <ul className="mt-3 flex flex-col gap-2">
                     {items.map((item) => {
-                      const entry = state.get(stateKey(inst.id, item.id))
+                      const key = stateKey(inst.id, item.id)
+                      const entry = state.get(key)
                       const checked = !!entry?.checked
+                      const sub = subs.get(key)
+                      const hasBaseline = baselineItems.has(item.id)
+                      const busy = photoBusy.has(key)
+                      const baseBusy = photoBusy.has(`base:${item.id}`)
                       return (
-                        <li key={item.id} className="flex items-stretch gap-1">
-                          <button
-                            type="button"
-                            onClick={() => void onToggle(inst.id, item.id)}
-                            className={cn(
-                              'flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition',
-                              checked
-                                ? 'border-ok/40 bg-ok-soft text-ink'
-                                : 'border-border bg-card text-ink hover:bg-content',
-                            )}
-                          >
-                            {checked ? (
-                              <Check className="size-4 shrink-0 text-ok" />
-                            ) : (
-                              <Square className="size-4 shrink-0 text-ink-muted" />
-                            )}
-                            <span className={cn('flex-1', checked && 'line-through opacity-70')}>
-                              {item.label}
-                            </span>
-                            {checked && entry && (
-                              <span className="ml-auto whitespace-nowrap text-xs text-ink-muted">
-                                {entry.last_actor_name || 'Someone'}
-                                {entry.last_event_at ? ` at ${dateTime(entry.last_event_at)}` : ''}
-                              </span>
-                            )}
-                          </button>
-                          {isManagerPlus && (
+                        <li key={item.id} className="flex flex-col gap-1">
+                          <div className="flex items-stretch gap-1">
                             <button
                               type="button"
-                              onClick={() => setAuditFor({ instanceId: inst.id, itemLabel: item.label })}
-                              className="shrink-0 rounded-md border border-border bg-card px-2 text-xs text-ink-muted hover:bg-content hover:text-ink"
-                              aria-label={`Audit ${item.label}`}
+                              onClick={() => void onToggle(inst.id, item.id)}
+                              className={cn(
+                                'flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition',
+                                checked
+                                  ? 'border-ok/40 bg-ok-soft text-ink'
+                                  : 'border-border bg-card text-ink hover:bg-content',
+                              )}
                             >
-                              Audit
+                              {checked ? (
+                                <Check className="size-4 shrink-0 text-ok" />
+                              ) : (
+                                <Square className="size-4 shrink-0 text-ink-muted" />
+                              )}
+                              <span className={cn('flex-1', checked && 'line-through opacity-70')}>
+                                {item.label}
+                              </span>
+                              {item.requires_photo && (
+                                <Camera className="size-3.5 shrink-0 text-ink-subtle" />
+                              )}
+                              {checked && entry && (
+                                <span className="ml-auto whitespace-nowrap text-xs text-ink-muted">
+                                  {entry.last_actor_name || 'Someone'}
+                                  {entry.last_event_at ? ` at ${dateTime(entry.last_event_at)}` : ''}
+                                </span>
+                              )}
                             </button>
+                            {isManagerPlus && (
+                              <button
+                                type="button"
+                                onClick={() => setAuditFor({ instanceId: inst.id, itemLabel: item.label })}
+                                className="shrink-0 rounded-md border border-border bg-card px-2 text-xs text-ink-muted hover:bg-content hover:text-ink"
+                                aria-label={`Audit ${item.label}`}
+                              >
+                                Audit
+                              </button>
+                            )}
+                          </div>
+
+                          {item.requires_photo && (
+                            <div className="ml-2 flex flex-col gap-2 rounded-md border border-border bg-content px-3 py-2 sm:ml-7">
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className="font-medium text-ink">Photo check</span>
+                                {sub ? (
+                                  <Badge tone={VERDICT[sub.ai_status].tone}>{VERDICT[sub.ai_status].label}</Badge>
+                                ) : hasBaseline ? (
+                                  <span className="text-ink-muted">Awaiting photo</span>
+                                ) : (
+                                  <span className="text-warn">No baseline set for this site</span>
+                                )}
+                                {sub?.submitted_by_name && (
+                                  <span className="text-ink-subtle">by {sub.submitted_by_name}</span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={busy || !hasBaseline}
+                                  onClick={() => openPicker('submission', inst.id, item.id)}
+                                  title={hasBaseline ? undefined : 'A manager must set a baseline photo first.'}
+                                >
+                                  {busy ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
+                                  {sub ? 'Retake photo' : 'Submit photo'}
+                                </Button>
+                                {isManagerPlus && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={baseBusy}
+                                    onClick={() => openPicker('baseline', inst.id, item.id)}
+                                  >
+                                    {baseBusy && <Loader2 className="size-4 animate-spin" />}
+                                    {hasBaseline ? 'Update baseline' : 'Set baseline'}
+                                  </Button>
+                                )}
+                              </div>
+                              {sub?.ai_notes && (
+                                <p className="whitespace-pre-line text-xs text-ink-muted">{sub.ai_notes}</p>
+                              )}
+                            </div>
                           )}
                         </li>
                       )
@@ -305,6 +478,18 @@ function Inner({ locationId }: { locationId: string }) {
           })}
         </div>
       )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          void onFile(e.target.files?.[0] ?? null)
+          e.target.value = ''
+        }}
+      />
 
       {auditFor && (
         <AuditModal

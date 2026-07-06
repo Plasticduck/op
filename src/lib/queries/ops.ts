@@ -192,6 +192,72 @@ export const checklists = {
       .eq('location_id', locationId)
       .gte('instance_date', sinceIso.slice(0, 10))
       .order('instance_date', { ascending: false }),
+
+  // ---- Photo + AI verification (migration 0050) ----------------------------
+  // Per-site baseline reference photos, keyed by (item, location). Metadata only
+  // (no data_uri) so lists stay light; fetch the full image with getBaseline.
+  baselinesFor: (itemIds: string[], locationId: string) =>
+    itemIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from('checklist_item_baselines')
+          .select('id, item_id, location_id, created_at')
+          .in('item_id', itemIds)
+          .eq('location_id', locationId),
+  getBaseline: (itemId: string, locationId: string) =>
+    supabase
+      .from('checklist_item_baselines')
+      .select('id, data_uri')
+      .eq('item_id', itemId)
+      .eq('location_id', locationId)
+      .maybeSingle(),
+  setBaseline: (params: { item_id: string; location_id: string; data_uri: string; created_by: string }) =>
+    supabase
+      .from('checklist_item_baselines')
+      .upsert(
+        {
+          item_id: params.item_id,
+          location_id: params.location_id,
+          data_uri: params.data_uri,
+          created_by: params.created_by,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'item_id,location_id' },
+      )
+      .select('id')
+      .single(),
+
+  // Employee photo submissions and their AI verdicts.
+  submitPhoto: (params: {
+    instance_id: string
+    item_id: string
+    location_id: string
+    data_uri: string
+    submitted_by: string
+    submitted_by_name: string | null
+  }) => supabase.from('checklist_submissions').insert(params).select('id').single(),
+  verifySubmission: (submissionId: string) =>
+    supabase.functions.invoke('verify-checklist-photo', { body: { submission_id: submissionId } }),
+  latestSubmissionsFor: (instanceIds: string[]) =>
+    instanceIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from('checklist_submission_latest')
+          .select('*')
+          .in('instance_id', instanceIds),
+  submissionImage: (id: string) =>
+    supabase.from('checklist_submissions').select('data_uri').eq('id', id).single(),
+}
+
+export type ChecklistSubmissionLatest = {
+  id: string
+  instance_id: string
+  item_id: string
+  location_id: string
+  submitted_by_name: string | null
+  ai_status: 'pending' | 'pass' | 'discrepancy' | 'unclear' | 'error'
+  ai_notes: string | null
+  created_at: string
 }
 
 // ---- Closeouts -------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Plus, Trash2, Save, Loader2 } from 'lucide-react'
+import { ArrowLeft, Camera, Plus, Trash2, Save, Loader2 } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -28,7 +28,7 @@ type TemplateRow = {
   locations: { location_id: string }[]
 }
 
-type ItemRow = { id: string; label: string; order_index: number }
+type ItemRow = { id: string; label: string; order_index: number; requires_photo: boolean }
 
 type ResetPolicy = 'daily' | 'weekly' | 'manual'
 
@@ -185,6 +185,13 @@ export default function ChecklistDetailPage() {
     await checklists.removeItem(itemId)
     const { data } = await checklists.items(id)
     setItems((data as ItemRow[] | null) ?? [])
+  }
+
+  // Flag a task as photo-verified: employees must submit a photo, which AI
+  // checks against the per-site baseline.
+  const togglePhoto = async (itemId: string, next: boolean) => {
+    setItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, requires_photo: next } : it)))
+    await checklists.updateItem(itemId, { requires_photo: next })
   }
 
   const saveSettings = async () => {
@@ -360,14 +367,29 @@ export default function ChecklistDetailPage() {
                 {items.map((it) => (
                   <li key={it.id} className="flex items-center justify-between gap-3 py-2">
                     <span className="text-sm text-ink">{it.label}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void removeItem(it.id)}
-                      aria-label="Delete item"
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => void togglePhoto(it.id, !it.requires_photo)}
+                        title="Require a photo + AI verification for this task"
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs',
+                          it.requires_photo
+                            ? 'border-accent/40 bg-accent-soft text-accent'
+                            : 'border-border text-ink-muted hover:text-ink',
+                        )}
+                      >
+                        <Camera className="size-3.5" /> Photo
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void removeItem(it.id)}
+                        aria-label="Delete item"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>

@@ -555,6 +555,58 @@ export type Database = {
           },
         ]
       }
+      checklist_item_baselines: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          data_uri: string
+          id: string
+          item_id: string
+          location_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          data_uri: string
+          id?: string
+          item_id: string
+          location_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          data_uri?: string
+          id?: string
+          item_id?: string
+          location_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_item_baselines_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_item_baselines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_item_baselines_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checklist_item_events: {
         Row: {
           action: string
@@ -616,18 +668,21 @@ export type Database = {
           id: string
           label: string
           order_index: number
+          requires_photo: boolean
         }
         Insert: {
           checklist_id: string
           id?: string
           label: string
           order_index?: number
+          requires_photo?: boolean
         }
         Update: {
           checklist_id?: string
           id?: string
           label?: string
           order_index?: number
+          requires_photo?: boolean
         }
         Relationships: [
           {
@@ -668,6 +723,77 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checklist_submissions: {
+        Row: {
+          ai_model: string | null
+          ai_notes: string | null
+          ai_status: string
+          created_at: string
+          data_uri: string
+          id: string
+          instance_id: string
+          item_id: string
+          location_id: string
+          submitted_by: string | null
+          submitted_by_name: string | null
+        }
+        Insert: {
+          ai_model?: string | null
+          ai_notes?: string | null
+          ai_status?: string
+          created_at?: string
+          data_uri: string
+          id?: string
+          instance_id: string
+          item_id: string
+          location_id: string
+          submitted_by?: string | null
+          submitted_by_name?: string | null
+        }
+        Update: {
+          ai_model?: string | null
+          ai_notes?: string | null
+          ai_status?: string
+          created_at?: string
+          data_uri?: string
+          id?: string
+          instance_id?: string
+          item_id?: string
+          location_id?: string
+          submitted_by?: string | null
+          submitted_by_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_submissions_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_submissions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_submissions_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_submissions_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -4131,6 +4257,41 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "checklist_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checklist_submission_latest: {
+        Row: {
+          ai_notes: string | null
+          ai_status: string | null
+          created_at: string | null
+          id: string | null
+          instance_id: string | null
+          item_id: string | null
+          location_id: string | null
+          submitted_by_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_submissions_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_submissions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_submissions_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]
