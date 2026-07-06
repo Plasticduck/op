@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components -- route config: lazy() refs + router export, not an HMR component module */
 import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
 import { RequireAuth, RequireRole, RedirectIfAuthed } from '@/routes/guards'
@@ -27,13 +27,23 @@ function lz<T extends ComponentType<unknown>>(factory: () => Promise<{ default: 
   return lazy(() => retryImport(factory))
 }
 
-// Friendly fallback if a route still errors after the reload guard.
+// Friendly fallback if a route still errors after the reload guard. Surfaces the
+// underlying error text so a crash is diagnosable instead of a blank wall.
 function RouteError() {
+  const err = useRouteError()
+  const message = err instanceof Error ? err.message : String(err ?? 'Unknown error')
+  const stack = err instanceof Error ? err.stack : undefined
   return (
-    <div className="grid min-h-dvh place-items-center bg-content px-4 text-center">
-      <div className="max-w-sm">
+    <div className="min-h-dvh bg-content px-4 py-10">
+      <div className="mx-auto max-w-2xl">
         <p className="text-base font-medium text-ink">Something went wrong loading this page.</p>
-        <p className="mt-1 text-sm text-ink-muted">Reloading usually fixes it.</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          Reloading usually fixes it. If it keeps happening, send this detail to support.
+        </p>
+        <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-card p-3 text-left text-xs text-danger">
+          {message}
+          {stack ? `\n\n${stack}` : ''}
+        </pre>
         <button
           type="button"
           onClick={() => window.location.reload()}
