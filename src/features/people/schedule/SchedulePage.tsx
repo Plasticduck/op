@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCopy,
+  ClipboardPaste,
   Loader2,
   Plus,
   Sparkles,
@@ -106,12 +107,29 @@ type CrossShift = {
   schedule: { id: string; location_id: string } | null
 }
 
+// Copied day of shifts, ready to paste onto another day. Held by the parent so
+// it can be pasted across weeks in the multi-week views.
+type DayClipboard = {
+  label: string
+  shifts: { start_time: string; end_time: string; role_label: string | null; notes: string | null }[]
+}
+
 // One week of the schedule grid. The parent (`Scheduler`) owns the work-week
 // start day and the planning period, and renders one WeekBlock per week in the
 // visible range (1 for weekly, 2 for bi-weekly, 4-6 for monthly). Everything
 // about a single week -- shifts, drag+drop, publish, AI suggest, copy/clear --
 // lives here and operates on the `weekStart` it is handed.
-function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: Date }) {
+function WeekBlock({
+  locationId,
+  weekStart,
+  clipboard,
+  setClipboard,
+}: {
+  locationId: string
+  weekStart: Date
+  clipboard: DayClipboard | null
+  setClipboard: (c: DayClipboard | null) => void
+}) {
   const { profile } = useAuth()
   const [emps, setEmps] = useState<Employee[]>([])
   const [scheduleId, setScheduleId] = useState<string | null>(null)
@@ -305,6 +323,41 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
       return
     }
     setAiResult(res)
+  }
+
+  // ---- Copy / paste a day ---------------------------------------------------
+  // Copy every shift in an (employee, day) cell to a shared clipboard, then
+  // paste them onto any other cell (same or different employee/day/week).
+  const copyDay = (employeeId: string, date: string, empName: string) => {
+    const cellShifts = shifts.filter((s) => s.employee_id === employeeId && s.date === date)
+    if (cellShifts.length === 0) return
+    setClipboard({
+      label: `${empName.trim()} on ${format(new Date(date + 'T00:00'), 'EEE MMM d')}`,
+      shifts: cellShifts.map((s) => ({
+        start_time: s.start_time,
+        end_time: s.end_time,
+        role_label: s.role_label,
+        notes: s.notes,
+      })),
+    })
+  }
+
+  const pasteDay = async (employeeId: string, date: string) => {
+    if (!clipboard || !scheduleId) return
+    const added: Shift[] = []
+    for (const t of clipboard.shifts) {
+      const { data } = await schedules.addShift({
+        schedule_id: scheduleId,
+        employee_id: employeeId,
+        date,
+        start_time: t.start_time,
+        end_time: t.end_time,
+        role_label: t.role_label,
+        notes: t.notes,
+      })
+      if (data) added.push(data as Shift)
+    }
+    if (added.length) setShifts((arr) => [...arr, ...added])
   }
 
   // ---- Drag-and-drop --------------------------------------------------------
@@ -569,12 +622,33 @@ function WeekBlock({ locationId, weekStart }: { locationId: string; weekStart: D
                                 {cellConflicts.length === 1 ? cellConflicts[0] : `${cellConflicts.length} conflicts`}
                               </div>
                             )}
-                            <button
-                              onClick={() => setAddFor({ employeeId: emp.id, date: dayStr })}
-                              className="rounded border border-dashed border-border px-1.5 py-1 text-xs text-ink-subtle hover:border-accent hover:text-accent"
-                            >
-                              <Plus className="mx-auto size-3" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setAddFor({ employeeId: emp.id, date: dayStr })}
+                                title="Add a shift"
+                                className="flex-1 rounded border border-dashed border-border px-1.5 py-1 text-xs text-ink-subtle hover:border-accent hover:text-accent"
+                              >
+                                <Plus className="mx-auto size-3" />
+                              </button>
+                              {cell.length > 0 && (
+                                <button
+                                  onClick={() => copyDay(emp.id, dayStr, `${emp.first_name} ${emp.last_name}`)}
+                                  title="Copy this day's shifts"
+                                  className="rounded border border-border px-1.5 py-1 text-ink-subtle hover:border-accent hover:text-accent"
+                                >
+                                  <ClipboardCopy className="size-3" />
+                                </button>
+                              )}
+                              {clipboard && (
+                                <button
+                                  onClick={() => void pasteDay(emp.id, dayStr)}
+                                  title={`Paste ${clipboard.shifts.length} shift${clipboard.shifts.length === 1 ? '' : 's'} from ${clipboard.label}`}
+                                  className="rounded border border-accent/40 bg-accent-soft px-1.5 py-1 text-accent hover:bg-accent-soft"
+                                >
+                                  <ClipboardPaste className="size-3" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </td>
                       )
@@ -1018,6 +1092,8 @@ function Scheduler({ locationId }: { locationId: string }) {
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [showWorkWeek, setShowWorkWeek] = useState(false)
   const [showCreateShift, setShowCreateShift] = useState(false)
+  // Shared across all week blocks so a copied day can be pasted into any week.
+  const [clipboard, setClipboard] = useState<DayClipboard | null>(null)
   const templates = settings.shiftTemplates ?? []
 
   const persistTemplates = async (next: ShiftTemplate[]) => {
@@ -1100,6 +1176,16 @@ function Scheduler({ locationId }: { locationId: string }) {
         <span className="text-xs text-ink-muted">Work week starts {DAY_NAMES[weekStartsOn]}</span>
       </div>
 
+      {clipboard && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/30 bg-accent-soft/50 px-3 py-2 text-xs text-ink">
+          <span>
+            Copied {clipboard.shifts.length} shift{clipboard.shifts.length === 1 ? '' : 's'} from{' '}
+            <span className="font-medium">{clipboard.label}</span>. Click the paste icon on any day to drop them in.
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => setClipboard(null)}>Clear</Button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <ShiftPalette
           custom={templates}
@@ -1108,7 +1194,13 @@ function Scheduler({ locationId }: { locationId: string }) {
         />
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {weeks.map((w) => (
-            <WeekBlock key={fmtDay(w)} locationId={locationId} weekStart={w} />
+            <WeekBlock
+              key={fmtDay(w)}
+              locationId={locationId}
+              weekStart={w}
+              clipboard={clipboard}
+              setClipboard={setClipboard}
+            />
           ))}
         </div>
       </div>
