@@ -102,7 +102,12 @@ function Inner({ locationId }: { locationId: string }) {
       setLoading(false)
       return
     }
-    const list = (instData as InstanceWithTemplate[] | null) ?? []
+    // Defensive: an instance whose template embed came back null (e.g. RLS hid
+    // the template) would crash the render, so drop those rather than trust it.
+    type RawInstance = ChecklistInstance & { checklist: InstanceWithTemplate['checklist'] | null }
+    const list = (((instData as RawInstance[] | null) ?? []).filter(
+      (i): i is InstanceWithTemplate => i.checklist != null,
+    ))
     setInstances(list)
 
     const uniqueChecklistIds = Array.from(new Set(list.map((i) => i.checklist_id)))
