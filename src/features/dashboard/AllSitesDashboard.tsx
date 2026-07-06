@@ -8,7 +8,7 @@ import { groupByRegions, resolveRegions } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard } from '@/lib/scorecard'
 import { StatCardRow } from '@/components/data/StatCardRow'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
-import { DayInHistory } from '@/features/dashboard/DayInHistory'
+import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { Select } from '@/components/ui/Select'
 
 // Vivid grade color by letter grade.
@@ -94,7 +94,7 @@ export default function AllSitesDashboard() {
         <p className="mt-1 text-sm text-ink-muted sm:text-base">
           All sites overview · {format(new Date(), 'EEEE, MMMM d, yyyy')}
         </p>
-        <DayInHistory />
+        <CarWashFunFact />
       </div>
 
       <StatCardRow

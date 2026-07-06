@@ -1,8 +1,8 @@
-// "This day in car wash history" — a friendly dashboard greeting. There's no
-// public car-wash-history API, so this is a curated pool of history/trivia that
-// rotates one entry per day (stable within a day, different across days).
+// "Car wash fun fact" — a friendly dashboard greeting. A curated pool of car
+// wash trivia that rotates one entry per day (stable within a day, different
+// across days).
 
-const CAR_WASH_HISTORY: string[] = [
+const CAR_WASH_FACTS: string[] = [
   'The first car wash is credited to Detroit in 1914, where attendants pushed cars by hand through a line of wash stations.',
   'Early "automatic" washes in the 1940s still needed workers to soap and rinse. The car moved, but people did the scrubbing.',
   'The first fully automatic conveyor car wash appeared around 1946, using pumps, sprinklers, and blowers instead of hands.',
@@ -45,13 +45,13 @@ const CAR_WASH_HISTORY: string[] = [
 function factForToday(date = new Date()): string {
   const start = new Date(date.getFullYear(), 0, 0)
   const dayOfYear = Math.floor((date.getTime() - start.getTime()) / 86400000)
-  return CAR_WASH_HISTORY[dayOfYear % CAR_WASH_HISTORY.length]
+  return CAR_WASH_FACTS[dayOfYear % CAR_WASH_FACTS.length]
 }
 
-export function DayInHistory() {
+export function CarWashFunFact() {
   return (
     <p className="mt-1 text-xs text-ink-muted sm:text-sm">
-      <span className="font-semibold text-ink">This day in car wash history:</span>{' '}
+      <span className="font-semibold text-ink">Car wash fun fact:</span>{' '}
       {factForToday()}
     </p>
   )
