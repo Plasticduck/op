@@ -1,11 +1,17 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Check, Copy, Mail } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
+import { billing, type Account } from '@/lib/queries/billing'
 import { cn } from '@/lib/utils'
 
-// Email-forwarded payables inbox. Invoices sent to payables@washlyfe.com land
-// here and move through the status pipeline below. The forwarding + sorting
-// pipeline is wired up separately; this screen is the dashboard it feeds.
-const PAYABLES_EMAIL = 'payables@washlyfe.com'
+// Each wash (account) gets its own unique inbound address,
+//   <invoice_inbox_token>@invoices.washlyfe.com
+// so invoices emailed there file against THAT wash (all of its sites), replacing
+// the single shared payables@washlyfe.com. The inbound-email service must be
+// configured to accept *@invoices.washlyfe.com and resolve the account from the
+// local-part token (see account_for_invoice_token in migration 0050). This
+// screen surfaces the address + shows the invoices it produces.
+const INVOICE_INBOX_DOMAIN = 'invoices.washlyfe.com'
 
 type InvoiceStatus =
   | 'unassigned'
@@ -38,8 +44,8 @@ const TABS: TabDef[] = [
   {
     key: 'unassigned',
     label: 'Unassigned',
-    subtitle: `Invoices emailed to ${PAYABLES_EMAIL}. Open one, set site(s) and approver(s), and add it to the queue.`,
-    empty: `No emailed-in invoices waiting. New invoices can be forwarded to ${PAYABLES_EMAIL}`,
+    subtitle: `Invoices emailed to this wash's invoice inbox. Open one, set site(s) and approver(s), and add it to the queue.`,
+    empty: 'No emailed-in invoices waiting. Forward vendor invoices to the address above.',
   },
   {
     key: 'queue',
@@ -88,6 +94,15 @@ export default function InvoicesPage() {
   // No rows until the email pipeline is wired up.
   const [rows] = useState<InvoiceRow[]>([])
 
+  // This wash's unique inbound invoice address.
+  const [account, setAccount] = useState<Account | null>(null)
+  useEffect(() => {
+    billing.account().then(({ data }) => setAccount((data as Account | null) ?? null))
+  }, [])
+  const inboxEmail = account?.invoice_inbox_token
+    ? `${account.invoice_inbox_token}@${INVOICE_INBOX_DOMAIN}`
+    : null
+
   const active = TABS.find((t) => t.key === activeKey) ?? TABS[0]
 
   const counts = useMemo(() => {
@@ -121,6 +136,30 @@ export default function InvoicesPage() {
         <h1 className="text-xl font-semibold tracking-tight text-ink">{active.label}</h1>
         <p className="mt-1 text-sm text-ink-muted">{active.subtitle}</p>
       </div>
+
+      {/* This wash's unique invoice inbox address */}
+      {inboxEmail && (
+        <div className="rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent/15 text-accent">
+              <Mail className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-ink">Forward invoices to this wash</div>
+              <p className="mt-0.5 text-xs text-ink-muted">
+                Unique to {account?.name ?? 'your wash'}. Any invoice emailed to this address files against
+                this wash automatically, across all of its sites. Give it to vendors or set up auto-forwarding.
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <code className="break-all rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-sm text-ink">
+                  {inboxEmail}
+                </code>
+                <CopyButton value={inboxEmail} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border">
@@ -244,6 +283,24 @@ export default function InvoicesPage() {
         </table>
       </div>
     </div>
+  )
+}
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        await navigator.clipboard.writeText(value)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-ink transition hover:bg-content"
+    >
+      {copied ? <Check className="size-4 text-ok" /> : <Copy className="size-4" />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
   )
 }
 

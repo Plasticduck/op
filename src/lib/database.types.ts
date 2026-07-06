@@ -46,6 +46,7 @@ export type Database = {
           company_settings: Json
           created_at: string
           id: string
+          invoice_inbox_token: string
           is_demo: boolean
           name: string
           plan: string | null
@@ -61,6 +62,7 @@ export type Database = {
           company_settings?: Json
           created_at?: string
           id?: string
+          invoice_inbox_token: string
           is_demo?: boolean
           name: string
           plan?: string | null
@@ -76,6 +78,7 @@ export type Database = {
           company_settings?: Json
           created_at?: string
           id?: string
+          invoice_inbox_token?: string
           is_demo?: boolean
           name?: string
           plan?: string | null
@@ -4138,6 +4141,7 @@ export type Database = {
         Args: { p_token: string; p_user_name?: string }
         Returns: string
       }
+      account_for_invoice_token: { Args: { p_token: string }; Returns: string }
       acknowledge_counseling: {
         Args: { p_record_id: string }
         Returns: undefined
@@ -4160,6 +4164,7 @@ export type Database = {
         Args: { p_location_id: string }
         Returns: string[]
       }
+      gen_invoice_inbox_token: { Args: never; Returns: string }
       get_invitation_email: { Args: { p_token: string }; Returns: string }
       get_invitation_info: { Args: { p_token: string }; Returns: Json }
       kiosk_punch: {
