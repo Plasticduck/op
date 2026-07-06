@@ -1519,6 +1519,60 @@ export type Database = {
           },
         ]
       }
+      google_calendar_connections: {
+        Row: {
+          access_token: string | null
+          account_id: string
+          calendar_id: string
+          created_at: string
+          email: string | null
+          id: string
+          refresh_token: string
+          token_expiry: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          account_id: string
+          calendar_id?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          refresh_token: string
+          token_expiry?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          account_id?: string
+          calendar_id?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          refresh_token?: string
+          token_expiry?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_connections_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_calendar_connections_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       injury_reports: {
         Row: {
           area_description: string | null
