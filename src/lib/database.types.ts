@@ -813,6 +813,7 @@ export type Database = {
           name: string
           opens_at_local: string
           reset_policy: string
+          roles: string[]
           updated_at: string
         }
         Insert: {
@@ -829,6 +830,7 @@ export type Database = {
           name: string
           opens_at_local?: string
           reset_policy?: string
+          roles?: string[]
           updated_at?: string
         }
         Update: {
@@ -845,6 +847,7 @@ export type Database = {
           name?: string
           opens_at_local?: string
           reset_policy?: string
+          roles?: string[]
           updated_at?: string
         }
         Relationships: [

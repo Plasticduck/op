@@ -13,10 +13,12 @@ import { useAuth } from '@/lib/auth'
 import { timeOfDay } from '@/lib/format'
 import { checklists, type Checklist } from '@/lib/queries/ops'
 import { compareLocationName, cn } from '@/lib/utils'
+import { ROLE_LABEL, type Role } from '@/lib/rbac'
 
 type Template = Checklist & { locations: { location_id: string }[] }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const ROLE_OPTIONS: Role[] = ['owner', 'manager', 'employee', 'technician']
 
 function resetTone(p: string): 'accent' | 'warn' | 'neutral' {
   if (p === 'daily') return 'accent'
@@ -101,6 +103,7 @@ export default function ChecklistsTemplatesPage() {
                 <th className="px-4 py-2 font-medium">Sites</th>
                 <th className="px-4 py-2 font-medium">Schedule</th>
                 <th className="px-4 py-2 font-medium">Reset</th>
+                <th className="px-4 py-2 font-medium">Roles</th>
                 <th className="px-4 py-2 font-medium">Items</th>
                 <th className="px-4 py-2" />
               </tr>
@@ -155,6 +158,21 @@ export default function ChecklistsTemplatesPage() {
                     <td className="px-4 py-3">
                       <Badge tone={resetTone(t.reset_policy)}>{t.reset_policy}</Badge>
                     </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const rs = t.roles ?? []
+                        if (rs.length === 0 || rs.length >= ROLE_OPTIONS.length) {
+                          return <span className="text-xs text-ink-muted">All</span>
+                        }
+                        return (
+                          <div className="flex flex-wrap gap-1">
+                            {rs.map((r) => (
+                              <Badge key={r} tone="accent">{ROLE_LABEL[r as Role] ?? r}</Badge>
+                            ))}
+                          </div>
+                        )
+                      })()}
+                    </td>
                     <td className="px-4 py-3 text-ink">
                       {itemCounts[t.id] ?? '…'}
                     </td>
@@ -204,6 +222,7 @@ function AddTemplateModal({
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [locationIds, setLocationIds] = useState<string[]>([])
+  const [roles, setRoles] = useState<string[]>([...ROLE_OPTIONS])
   const [itemsText, setItemsText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -212,6 +231,10 @@ function AddTemplateModal({
     setLocationIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     )
+  }
+
+  const toggleRole = (r: string) => {
+    setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]))
   }
 
   const save = async () => {
@@ -231,6 +254,7 @@ function AddTemplateModal({
       name: cleanName,
       description: description.trim() || null,
       frequency: 'daily',
+      roles: roles.length > 0 ? roles : [...ROLE_OPTIONS],
     })
     if (createErr || !data) {
       setSaving(false)
@@ -311,6 +335,35 @@ function AddTemplateModal({
                   )
                 })
               )}
+            </div>
+          )}
+        </Field>
+
+        <Field
+          label="Assign to roles"
+          hint="Only these roles see this checklist in their daily view. The admin always sees every checklist."
+        >
+          {() => (
+            <div className="flex flex-wrap gap-2">
+              {ROLE_OPTIONS.map((r) => {
+                const on = roles.includes(r)
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => toggleRole(r)}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition',
+                      on
+                        ? 'border-accent bg-accent-soft text-accent'
+                        : 'border-border bg-card text-ink hover:bg-content',
+                    )}
+                    aria-pressed={on}
+                  >
+                    {ROLE_LABEL[r]}
+                  </button>
+                )
+              })}
             </div>
           )}
         </Field>

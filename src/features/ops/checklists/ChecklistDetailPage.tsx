@@ -13,7 +13,11 @@ import { useLocations } from '@/lib/locations'
 import { compareLocationName, cn } from '@/lib/utils'
 import { dateTime, timeOfDay } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
+import { ROLE_LABEL, type Role } from '@/lib/rbac'
 import { checklists, type ChecklistItemEvent } from '@/lib/queries/ops'
+
+const ROLE_OPTIONS: Role[] = ['owner', 'manager', 'employee', 'technician']
+const ALL_ROLES: string[] = [...ROLE_OPTIONS]
 
 type TemplateRow = {
   id: string
@@ -24,6 +28,7 @@ type TemplateRow = {
   closes_at_local: string | null
   days_of_week: number[]
   reset_policy: string
+  roles: string[] | null
   archived: boolean
   locations: { location_id: string }[]
 }
@@ -54,6 +59,7 @@ export default function ChecklistDetailPage() {
   const [items, setItems] = useState<ItemRow[]>([])
   const [locationIds, setLocationIds] = useState<string[]>([])
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([])
+  const [roles, setRoles] = useState<string[]>(ALL_ROLES)
   const [opensAt, setOpensAt] = useState('09:00')
   const [closesAt, setClosesAt] = useState('')
   const [resetPolicy, setResetPolicy] = useState<ResetPolicy>('daily')
@@ -84,6 +90,7 @@ export default function ChecklistDetailPage() {
       setClosesAt(t.closes_at_local ? t.closes_at_local.slice(0, 5) : '')
       setDaysOfWeek(t.days_of_week ?? [])
       setResetPolicy((t.reset_policy as ResetPolicy) ?? 'daily')
+      setRoles(t.roles && t.roles.length > 0 ? t.roles : ALL_ROLES)
       const assigned = (t.locations ?? []).map((r) => r.location_id)
       setLocationIds(assigned)
 
@@ -166,6 +173,10 @@ export default function ChecklistDetailPage() {
     )
   }
 
+  const toggleRole = (r: string) => {
+    setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]))
+  }
+
   const addItem = async () => {
     if (!id) return
     const label = newItemLabel.trim()
@@ -204,6 +215,7 @@ export default function ChecklistDetailPage() {
       closes_at_local: closesAt || null,
       days_of_week: daysOfWeek,
       reset_policy: resetPolicy,
+      roles: roles.length > 0 ? roles : ALL_ROLES,
     })
     await checklists.setLocations(id, locationIds)
     setSavingTemplate(false)
@@ -356,6 +368,23 @@ export default function ChecklistDetailPage() {
                 })}
               </div>
             )}
+          </section>
+
+          <section className="flex flex-col gap-2 rounded-md border border-border bg-card p-4">
+            <h2 className="text-sm font-semibold text-ink">Assign to roles</h2>
+            <p className="text-xs text-ink-muted">
+              Only these roles see this checklist in their daily view. The admin always sees every checklist.
+            </p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {ROLE_OPTIONS.map((r) => {
+                const active = roles.includes(r)
+                return (
+                  <button key={r} type="button" onClick={() => toggleRole(r)} className={pillClass(active)}>
+                    {ROLE_LABEL[r]}
+                  </button>
+                )
+              })}
+            </div>
           </section>
 
           <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">

@@ -47,6 +47,7 @@ type InstanceWithTemplate = ChecklistInstance & {
     opens_at_local: string
     closes_at_local: string | null
     reset_policy: string
+    roles: string[] | null
   }
 }
 
@@ -303,6 +304,15 @@ function Inner({ locationId }: { locationId: string }) {
     }
   }
 
+  // Role targeting: the admin (owner) sees every checklist; everyone else sees
+  // only checklists assigned to their role. A null/empty roles list means "all".
+  const visibleInstances = instances.filter((inst) => {
+    if (profile?.role === 'owner') return true
+    const roles = inst.checklist.roles
+    if (!roles || roles.length === 0) return true
+    return roles.includes(profile?.role ?? '')
+  })
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -325,11 +335,11 @@ function Inner({ locationId }: { locationId: string }) {
 
       {loading ? (
         <p className="text-sm text-ink-muted">Loading...</p>
-      ) : instances.length === 0 ? (
+      ) : visibleInstances.length === 0 ? (
         <EmptyState
           icon={ClipboardList}
           title="No checklists for today"
-          description="No checklists are scheduled for this site today. Manage templates to add or change schedules."
+          description="No checklists are scheduled for your role at this site today. Manage templates to add or change schedules."
           action={
             isManagerPlus ? (
               <Link to="/app/checklists/templates">
@@ -340,7 +350,7 @@ function Inner({ locationId }: { locationId: string }) {
         />
       ) : (
         <div className="flex flex-col gap-4">
-          {instances.map((inst) => {
+          {visibleInstances.map((inst) => {
             const open = isOpenNow(inst.opens_at, inst.closes_at)
             const items = itemsByChecklist[inst.checklist_id] ?? []
             return (

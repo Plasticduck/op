@@ -155,7 +155,7 @@ export const checklists = {
     const today = new Date().toISOString().slice(0, 10)
     return supabase
       .from('checklist_instances')
-      .select('*, checklist:checklist_id(id, name, description, opens_at_local, closes_at_local, reset_policy)')
+      .select('*, checklist:checklist_id(id, name, description, opens_at_local, closes_at_local, reset_policy, roles)')
       .eq('location_id', locationId)
       .eq('instance_date', today)
       .order('opens_at')
