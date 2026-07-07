@@ -152,7 +152,21 @@ export const checklists = {
   ensureTodayForLocation: async (locationId: string) => {
     const { error: rpcErr } = await supabase.rpc('ensure_today_instances', { p_location_id: locationId })
     if (rpcErr) return { data: null, error: rpcErr }
-    const today = new Date().toISOString().slice(0, 10)
+    // "Today" must be resolved in the location's timezone, not UTC: instances are
+    // keyed by the local date (ensure_checklist_instance computes it in the site's
+    // tz), so a UTC date would miss them in the evening after the UTC rollover.
+    const { data: loc } = await supabase
+      .from('locations')
+      .select('timezone')
+      .eq('id', locationId)
+      .single()
+    const tz = (loc as { timezone: string | null } | null)?.timezone || 'America/Chicago'
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
     return supabase
       .from('checklist_instances')
       .select('*, checklist:checklist_id(id, name, description, opens_at_local, closes_at_local, reset_policy, roles)')
