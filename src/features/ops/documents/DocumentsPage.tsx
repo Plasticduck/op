@@ -97,7 +97,7 @@ function Inner({ locationId }: { locationId: string }) {
                     onChange={(e) => setApplyAll(e.target.checked)}
                     disabled={!!progress}
                   />
-                  All {locations.length} sites
+                  Apply to all sites
                 </label>
               )}
               <Select
