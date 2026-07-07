@@ -10,6 +10,7 @@ import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { shortDate } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
+import { useLocations } from '@/lib/locations'
 import { documents, type DocumentRow } from '@/lib/queries/ops'
 
 const CATEGORIES = [
@@ -23,12 +24,14 @@ const TONE = { sop: 'accent', sds: 'warn', policy: 'neutral', other: 'neutral' }
 
 function Inner({ locationId }: { locationId: string }) {
   const { profile } = useAuth()
+  const { locations } = useLocations()
   const isManagerPlus = profile?.role !== 'employee'
   const [rows, setRows] = useState<DocumentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [uploadCategory, setUploadCategory] = useState('sop')
-  const [uploading, setUploading] = useState(false)
+  const [applyAll, setApplyAll] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<DocumentRow | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -41,21 +44,33 @@ function Inner({ locationId }: { locationId: string }) {
 
   useEffect(() => { void load() }, [load])
 
-  const onUpload = async (file: File) => {
-    setUploading(true)
-    const path = `${locationId}/${Date.now()}-${file.name}`
-    const { error: upErr } = await supabase.storage.from('documents').upload(path, file)
-    if (!upErr) {
-      await documents.create({
-        location_id: locationId,
-        name: file.name,
-        category: uploadCategory,
-        file_url: path,
-        uploaded_by: profile?.id ?? null,
-      })
-      await load()
+  const onUpload = async (files: FileList) => {
+    const list = Array.from(files)
+    if (list.length === 0) return
+    // Fan the same file out to every site the user can manage, or just this one.
+    const targets = applyAll && locations.length > 0 ? locations.map((l) => l.id) : [locationId]
+    const total = list.length * targets.length
+    setProgress({ done: 0, total })
+    let done = 0
+    for (const file of list) {
+      for (const loc of targets) {
+        const path = `${loc}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`
+        const { error: upErr } = await supabase.storage.from('documents').upload(path, file)
+        if (!upErr) {
+          await documents.create({
+            location_id: loc,
+            name: file.name,
+            category: uploadCategory,
+            file_url: path,
+            uploaded_by: profile?.id ?? null,
+          })
+        }
+        done += 1
+        setProgress({ done, total })
+      }
     }
-    setUploading(false)
+    setProgress(null)
+    await load()
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -73,18 +88,36 @@ function Inner({ locationId }: { locationId: string }) {
         subtitle="SOPs, safety data sheets, and policies."
         actions={
           isManagerPlus ? (
-            <div className="flex items-center gap-2">
-              <Select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)} className="w-32">
+            <div className="flex flex-wrap items-center gap-2">
+              {locations.length > 1 && (
+                <label className="flex items-center gap-1.5 text-sm text-ink-muted">
+                  <input
+                    type="checkbox"
+                    checked={applyAll}
+                    onChange={(e) => setApplyAll(e.target.checked)}
+                    disabled={!!progress}
+                  />
+                  All {locations.length} sites
+                </label>
+              )}
+              <Select
+                value={uploadCategory}
+                onChange={(e) => setUploadCategory(e.target.value)}
+                className="w-32"
+                disabled={!!progress}
+              >
                 {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
               </Select>
               <input
                 ref={fileRef}
                 type="file"
+                multiple
                 className="hidden"
-                onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+                onChange={(e) => e.target.files && onUpload(e.target.files)}
               />
-              <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
-                <Upload className="size-4" /> {uploading ? 'Uploading…' : 'Upload'}
+              <Button onClick={() => fileRef.current?.click()} disabled={!!progress}>
+                <Upload className="size-4" />
+                {progress ? `Uploading ${progress.done}/${progress.total}…` : 'Upload'}
               </Button>
             </div>
           ) : undefined
