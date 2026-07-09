@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
-import { ClipboardCheck, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ClipboardCheck, MapPin, Plus, Search } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
+import { Input } from '@/components/ui/Input'
 import { Field } from '@/components/forms/Field'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { compareLocationName } from '@/lib/utils'
 import { JsonView } from '@/components/data/JsonView'
 import { AttachmentViewer } from '@/components/data/AttachmentViewer'
 import { shortDate } from '@/lib/format'
@@ -45,12 +47,15 @@ const EXPORT_COLUMNS: ExportColumn<Row>[] = [
 
 export default function SiteAuditsPage() {
   const { profile } = useAuth()
+  const { locations, activeLocation } = useLocations()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<Row | null>(null)
   const [adding, setAdding] = useState(false)
   const [schema, setSchema] = useState<SiteAuditSchema>(DEFAULT_SITE_AUDIT_SCHEMA)
   const [builderOpen, setBuilderOpen] = useState(false)
+  const [siteFilter, setSiteFilter] = useState('all')
+  const [search, setSearch] = useState('')
 
   const load = () =>
     siteAudits.list().then(({ data }) => {
@@ -63,7 +68,31 @@ export default function SiteAuditsPage() {
       if (data?.schema) setSchema(data.schema as SiteAuditSchema)
     })
   }, [])
-  const table = useOpsTable(rows, (r) => r.created_at)
+
+  // Admins (owners) can pick any site; everyone else is locked to their active
+  // site, so a manager only ever sees the site they have selected.
+  const isAdmin = profile?.role === 'owner'
+  const sortedLocations = useMemo(
+    () => [...locations].sort((a, b) => compareLocationName(a.name, b.name)),
+    [locations],
+  )
+  const effectiveSite = isAdmin ? siteFilter : (activeLocation?.id ?? 'all')
+
+  const visibleRows = useMemo(() => {
+    let r = rows
+    if (effectiveSite !== 'all') r = r.filter((x) => x.location_id === effectiveSite)
+    const q = search.trim().toLowerCase()
+    if (q) {
+      r = r.filter(
+        (x) =>
+          (x.location?.name ?? '').toLowerCase().includes(q) ||
+          (x.submitted_by_name ?? '').toLowerCase().includes(q),
+      )
+    }
+    return r
+  }, [rows, effectiveSite, search])
+
+  const table = useOpsTable(visibleRows, (r) => r.created_at)
 
   const canCustomize = profile?.role === 'owner' || profile?.role === 'manager'
 
@@ -79,6 +108,36 @@ export default function SiteAuditsPage() {
         {canCustomize && (
           <Button variant="secondary" size="sm" onClick={() => setBuilderOpen(true)}>Customize</Button>
         )}
+      </div>
+      <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-card px-3 py-3">
+        <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
+          <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" /> Site</span>
+          {isAdmin ? (
+            <Select
+              value={siteFilter}
+              onChange={(e) => setSiteFilter(e.target.value)}
+              className="h-9 w-56"
+              aria-label="Filter by site"
+            >
+              <option value="all">All sites</option>
+              {sortedLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+          ) : (
+            <Select value="locked" disabled className="h-9 w-56" aria-label="Site">
+              <option value="locked">{activeLocation?.name ?? 'Current site'}</option>
+            </Select>
+          )}
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
+          <span className="inline-flex items-center gap-1"><Search className="size-3.5" /> Search</span>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Site or submitter"
+            className="h-9 w-56"
+            aria-label="Search audits"
+          />
+        </label>
       </div>
       <OpsToolbar
         range={table.range} onRange={table.setRange} sort={table.sort} onSort={table.setSort} count={table.rows.length}
