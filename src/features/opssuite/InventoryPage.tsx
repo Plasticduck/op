@@ -18,14 +18,25 @@ import { useOpsTable } from './useOpsTable'
 type CountRow = InventoryCount & { location: { name: string } | null }
 type Tab = 'catalog' | 'counts'
 type DateRange = 'all' | '7d' | '30d' | 'month' | 'year'
+type Division = 'lube' | 'wash' | 'maintenance'
+
+const DIVISIONS: { key: Division; label: string }[] = [
+  { key: 'lube', label: 'Lube' },
+  { key: 'wash', label: 'Wash' },
+  { key: 'maintenance', label: 'Maintenance' },
+]
+const divisionLabel = (key: string | null) =>
+  DIVISIONS.find((d) => d.key === key)?.label ?? (key ?? '—')
 
 const ITEM_COLUMNS: ExportColumn<InventoryItem>[] = [
+  { header: 'Division', value: (r) => divisionLabel(r.division) },
   { header: 'Category', value: (r) => r.category },
   { header: 'Brand', value: (r) => r.brand },
   { header: 'Item', value: (r) => r.item },
 ]
 const COUNT_COLUMNS: ExportColumn<CountRow>[] = [
   { header: 'Site', value: (r) => r.location?.name },
+  { header: 'Division', value: (r) => divisionLabel(r.division) },
   { header: 'Item', value: (r) => r.item },
   { header: 'Brand', value: (r) => r.brand },
   { header: 'Qty', value: (r) => r.quantity },
@@ -40,9 +51,11 @@ export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [counts, setCounts] = useState<CountRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [division, setDivision] = useState<Division | ''>('')
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [countsSiteId, setCountsSiteId] = useState('')
+  const [countsDivision, setCountsDivision] = useState<Division | ''>('')
   const [countsRange, setCountsRange] = useState<DateRange>('all')
   const [countsQuery, setCountsQuery] = useState('')
   const [adding, setAdding] = useState(false)
@@ -56,17 +69,30 @@ export default function InventoryPage() {
     })
   useEffect(() => { void load() }, [])
 
+  // Catalog is split by division and never shows everything at once: nothing is
+  // listed until a division (Lube, Wash, or Maintenance) is picked.
+  const divisionItemCounts = useMemo(() => {
+    const m: Record<Division, number> = { lube: 0, wash: 0, maintenance: 0 }
+    for (const it of items) if (it.division in m) m[it.division as Division]++
+    return m
+  }, [items])
+
+  const divisionItems = useMemo(
+    () => (division ? items.filter((it) => it.division === division) : []),
+    [items, division],
+  )
+
   const categories = useMemo(() => {
     const set = new Set<string>()
-    for (const it of items) if (it.category) set.add(it.category)
+    for (const it of divisionItems) if (it.category) set.add(it.category)
     return [...set].sort()
-  }, [items])
+  }, [divisionItems])
 
   const q = query.trim().toLowerCase()
   const matches = (...vals: (string | null)[]) =>
     (!q || vals.some((v) => v?.toLowerCase().includes(q))) && (!category || vals.includes(category))
 
-  const visibleItems = items.filter((it) => matches(it.category, it.brand, it.item))
+  const visibleItems = divisionItems.filter((it) => matches(it.category, it.brand, it.item))
 
   const countsQ = countsQuery.trim().toLowerCase()
   const countsFiltersActive = countsSiteId !== '' && (countsRange !== 'all' || countsQ !== '')
@@ -81,6 +107,7 @@ export default function InventoryPage() {
   const visibleCounts = countsFiltersActive
     ? counts.filter((c) => {
         if (c.location_id !== countsSiteId) return false
+        if (countsDivision && c.division !== countsDivision) return false
         if (rangeStart && new Date(c.created_at) < rangeStart) return false
         if (countsQ && ![c.category, c.brand, c.item].some((v) => v?.toLowerCase().includes(countsQ))) return false
         return true
@@ -119,18 +146,24 @@ export default function InventoryPage() {
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
           {tab === 'catalog' ? (
-            <>
-              <Select value={category} onChange={(e) => setCategory(e.target.value)} className="w-48">
-                <option value="">All categories</option>
-                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-              <Input placeholder="Search…" value={query} onChange={(e) => setQuery(e.target.value)} className="w-56" />
-            </>
+            division && (
+              <>
+                <Select value={category} onChange={(e) => setCategory(e.target.value)} className="w-48">
+                  <option value="">All categories</option>
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </Select>
+                <Input placeholder="Search…" value={query} onChange={(e) => setQuery(e.target.value)} className="w-56" />
+              </>
+            )
           ) : (
             <>
               <Select value={countsSiteId} onChange={(e) => setCountsSiteId(e.target.value)} className="w-56" aria-label="Site">
                 <option value="">Pick a site…</option>
                 {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </Select>
+              <Select value={countsDivision} onChange={(e) => setCountsDivision(e.target.value as Division | '')} className="w-44" aria-label="Division">
+                <option value="">All divisions</option>
+                {DIVISIONS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
               </Select>
               <Select value={countsRange} onChange={(e) => setCountsRange(e.target.value as DateRange)} className="w-44" aria-label="Date range">
                 <option value="all">All dates</option>
@@ -145,15 +178,37 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {tab === 'catalog' ? (
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportPdf('Inventory Catalog', ITEM_COLUMNS, visibleItems)}>
-            <FileText className="size-4" /> PDF
-          </Button>
-          <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportExcel('inventory-catalog', ITEM_COLUMNS, visibleItems)}>
-            <FileSpreadsheet className="size-4" /> Excel
-          </Button>
+      {tab === 'catalog' && (
+        <div className="flex flex-wrap gap-1.5">
+          {DIVISIONS.map((d) => (
+            <button
+              key={d.key}
+              type="button"
+              onClick={() => { setDivision(d.key); setCategory(''); setQuery('') }}
+              className={
+                'rounded-md border px-3 py-1.5 text-sm font-medium transition ' +
+                (division === d.key
+                  ? 'border-accent bg-accent-soft text-accent'
+                  : 'border-border bg-card text-ink-muted hover:bg-content')
+              }
+            >
+              {d.label} <span className="ml-1 opacity-70">{divisionItemCounts[d.key]}</span>
+            </button>
+          ))}
         </div>
+      )}
+
+      {tab === 'catalog' ? (
+        division && (
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportPdf(`Inventory Catalog - ${divisionLabel(division)}`, ITEM_COLUMNS, visibleItems)}>
+              <FileText className="size-4" /> PDF
+            </Button>
+            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportExcel(`inventory-${division}`, ITEM_COLUMNS, visibleItems)}>
+              <FileSpreadsheet className="size-4" /> Excel
+            </Button>
+          </div>
+        )
       ) : countsFiltersActive ? (
         <OpsToolbar
           range={countsTable.range} onRange={countsTable.setRange} sort={countsTable.sort} onSort={countsTable.setSort} count={countsTable.rows.length}
@@ -165,10 +220,16 @@ export default function InventoryPage() {
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : tab === 'catalog' ? (
-        visibleItems.length === 0 ? (
+        !division ? (
           <EmptyState
             icon={Boxes}
-            title="No items"
+            title="Pick a division"
+            description="Inventory is organized into Lube, Wash, and Maintenance. Choose a division above to view its items."
+          />
+        ) : visibleItems.length === 0 ? (
+          <EmptyState
+            icon={Boxes}
+            title={`No ${divisionLabel(division)} items`}
             description="No catalog items match your filters."
             action={<Button onClick={() => setAddingItem(true)}><Plus className="size-4" /> Add item</Button>}
           />
@@ -223,6 +284,7 @@ export default function InventoryPage() {
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-3 py-2.5 font-medium">Site</th>
+                <th className="px-3 py-2.5 font-medium">Division</th>
                 <th className="px-3 py-2.5 font-medium">Item</th>
                 <th className="px-3 py-2.5 font-medium">Brand</th>
                 <th className="px-3 py-2.5 font-medium text-right">Qty</th>
@@ -234,6 +296,7 @@ export default function InventoryPage() {
               {countsTable.rows.map((c) => (
                 <tr key={c.id} className="border-t border-border hover:bg-content">
                   <td className="px-3 py-2.5 font-medium text-ink">{c.location?.name ?? '—'}</td>
+                  <td className="px-3 py-2.5 text-ink-muted">{divisionLabel(c.division)}</td>
                   <td className="px-3 py-2.5 text-ink">{c.item ?? '—'}</td>
                   <td className="px-3 py-2.5 text-ink-muted">{c.brand ?? '—'}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-ink">{c.quantity}</td>
@@ -260,6 +323,7 @@ export default function InventoryPage() {
       {addingItem && (
         <AddItem
           accountId={profile?.account_id ?? ''}
+          defaultDivision={division || 'lube'}
           onClose={() => setAddingItem(false)}
           onSaved={() => { setAddingItem(false); void load() }}
         />
@@ -268,11 +332,13 @@ export default function InventoryPage() {
   )
 }
 
-function AddItem({ accountId, onClose, onSaved }: {
+function AddItem({ accountId, defaultDivision, onClose, onSaved }: {
   accountId: string
+  defaultDivision: Division
   onClose: () => void
   onSaved: () => void
 }) {
+  const [divisionValue, setDivisionValue] = useState<Division>(defaultDivision)
   const [category, setCategory] = useState('')
   const [brand, setBrand] = useState('')
   const [item, setItem] = useState('')
@@ -289,6 +355,7 @@ function AddItem({ accountId, onClose, onSaved }: {
     setBusy(true)
     const { error: err } = await inventory.createItem({
       account_id: accountId,
+      division: divisionValue,
       category: cat,
       brand: br || null,
       item: it,
@@ -301,6 +368,13 @@ function AddItem({ accountId, onClose, onSaved }: {
   return (
     <Modal open onClose={onClose} title="Add catalog item">
       <div className="flex flex-col gap-4">
+        <Field label="Division" required>
+          {(id) => (
+            <Select id={id} value={divisionValue} onChange={(e) => setDivisionValue(e.target.value as Division)}>
+              {DIVISIONS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </Select>
+          )}
+        </Field>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Category" required>
             {(id) => <Input id={id} value={category} onChange={(e) => setCategory(e.target.value)} />}
@@ -347,6 +421,7 @@ function AddCount({ accountId, items, submitterId, submitterName, onClose, onSav
     const { error: err } = await inventory.createCount({
       account_id: accountId,
       location_id: locationId,
+      division: it?.division ?? null,
       category: it?.category ?? null,
       brand: it?.brand ?? null,
       item: it?.item ?? null,

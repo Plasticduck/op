@@ -1814,6 +1814,7 @@ export type Database = {
           brand: string | null
           category: string | null
           created_at: string
+          division: string | null
           id: string
           item: string | null
           location_id: string | null
@@ -1826,6 +1827,7 @@ export type Database = {
           brand?: string | null
           category?: string | null
           created_at?: string
+          division?: string | null
           id?: string
           item?: string | null
           location_id?: string | null
@@ -1838,6 +1840,7 @@ export type Database = {
           brand?: string | null
           category?: string | null
           created_at?: string
+          division?: string | null
           id?: string
           item?: string | null
           location_id?: string | null
@@ -1875,6 +1878,7 @@ export type Database = {
           brand: string | null
           category: string | null
           created_at: string
+          division: string
           id: string
           item: string | null
         }
@@ -1883,6 +1887,7 @@ export type Database = {
           brand?: string | null
           category?: string | null
           created_at?: string
+          division?: string
           id?: string
           item?: string | null
         }
@@ -1891,6 +1896,7 @@ export type Database = {
           brand?: string | null
           category?: string | null
           created_at?: string
+          division?: string
           id?: string
           item?: string | null
         }
