@@ -15,6 +15,8 @@ import EmployeeDashboard from '@/features/dashboard/EmployeeDashboard'
 import AllSitesDashboard from '@/features/dashboard/AllSitesDashboard'
 import { SiteScorecard } from '@/features/dashboard/SiteScorecard'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
+import { GoogleRatingTile } from '@/components/data/GoogleRating'
+import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { cn } from '@/lib/utils'
 
 type WorkOrder = {
@@ -52,6 +54,8 @@ function ManagerDashboard() {
   const [topInsights, setTopInsights] = useState<Insight[]>([])
   const [recentCloseouts, setRecentCloseouts] = useState<RecentCloseout[]>([])
   const [loading, setLoading] = useState(true)
+  const [googleRating, setGoogleRating] = useState<SiteRating | null>(null)
+  const [ratingLoading, setRatingLoading] = useState(true)
 
   const isManagerPlus = profile?.role !== 'employee'
 
@@ -134,6 +138,20 @@ function ManagerDashboard() {
     }
   }, [activeLocation])
 
+  useEffect(() => {
+    if (!isManagerPlus || !activeLocation) return
+    let active = true
+    setRatingLoading(true)
+    ratings.fetch([activeLocation.id]).then((rows) => {
+      if (!active) return
+      setGoogleRating(rows[0] ?? null)
+      setRatingLoading(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [isManagerPlus, activeLocation])
+
   if (locLoading) return null
 
   if (!activeLocation) {
@@ -165,6 +183,15 @@ function ManagerDashboard() {
 
       {isManagerPlus && (
         <SiteScorecard locationId={activeLocation.id} locationName={activeLocation.name} />
+      )}
+
+      {isManagerPlus && (
+        <GoogleRatingTile
+          rating={googleRating?.rating ?? null}
+          count={googleRating?.count ?? null}
+          syncedAt={googleRating?.synced_at ?? null}
+          loading={ratingLoading}
+        />
       )}
 
       {isManagerPlus && (

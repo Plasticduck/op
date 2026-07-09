@@ -6,7 +6,9 @@ import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
 import { groupByRegions, resolveRegions } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard } from '@/lib/scorecard'
+import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { StatCardRow } from '@/components/data/StatCardRow'
+import { GoogleRatingBadge } from '@/components/data/GoogleRating'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { Select } from '@/components/ui/Select'
@@ -40,6 +42,7 @@ type ScoredLocation = {
   latitude: number | null
   longitude: number | null
   card: Scorecard | null
+  googleRating: number | null
 }
 
 export default function AllSitesDashboard() {
@@ -49,8 +52,10 @@ export default function AllSitesDashboard() {
 
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [loading, setLoading] = useState(true)
+  const [ratingsMap, setRatingsMap] = useState<Record<string, SiteRating>>({})
 
   const locIds = useMemo(() => locations.map((l) => l.id), [locations])
+  const locIdsKey = locIds.join(',')
 
   useEffect(() => {
     if (locIds.length === 0) {
@@ -69,6 +74,21 @@ export default function AllSitesDashboard() {
     }
   }, [locIds])
 
+  useEffect(() => {
+    if (locIds.length === 0) return
+    let active = true
+    ratings.fetch(locIds).then((rows) => {
+      if (!active) return
+      const map: Record<string, SiteRating> = {}
+      rows.forEach((r) => { map[r.location_id] = r })
+      setRatingsMap(map)
+    })
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locIdsKey])
+
   const groups = useMemo(
     () => groupByRegions(locations, resolveRegions(settings.regions)),
     [locations, settings.regions],
@@ -84,6 +104,12 @@ export default function AllSitesDashboard() {
   const needsAttention = scored.filter(
     (c) => c.total < 80 || c.signals.highPriority > 0 || c.signals.overdue > 0,
   ).length
+  const ratedValues = locations
+    .map((l) => ratingsMap[l.id]?.rating)
+    .filter((r): r is number => r != null)
+  const avgGoogle = ratedValues.length
+    ? ratedValues.reduce((a, c) => a + c, 0) / ratedValues.length
+    : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,10 +124,11 @@ export default function AllSitesDashboard() {
       </div>
 
       <StatCardRow
-        className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
+        className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
         items={[
           { label: 'Sites', value: locations.length },
           { label: 'Average grade', value: loading ? '—' : letterFor(avgTotal) },
+          { label: 'Avg Google rating', value: avgGoogle != null ? `${avgGoogle.toFixed(1)} ★` : '—' },
           { label: 'Needs attention', value: loading ? '—' : needsAttention },
           { label: 'High-priority WOs', value: loading ? '—' : sum((c) => c.signals.highPriority) },
           { label: 'Equipment down', value: loading ? '—' : sum((c) => c.signals.equipmentDown) },
@@ -119,6 +146,7 @@ export default function AllSitesDashboard() {
               latitude: l.latitude,
               longitude: l.longitude,
               card: cards[l.id] ?? null,
+              googleRating: ratingsMap[l.id]?.rating ?? null,
             }))}
             loading={loading}
           />
@@ -140,6 +168,7 @@ export default function AllSitesDashboard() {
               latitude: l.latitude,
               longitude: l.longitude,
               card: cards[l.id] ?? null,
+              googleRating: ratingsMap[l.id]?.rating ?? null,
             }))}
             loading={loading}
           />
@@ -264,9 +293,12 @@ function SiteCard({ loc, loading }: { loc: ScoredLocation; loading: boolean }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-semibold text-ink">{loc.name}</p>
-          <p className="text-xs text-ink-muted">
-            {loading || !card ? 'Scoring…' : `${card.total}/100`}
-          </p>
+          <div className="mt-0.5 flex items-center gap-2">
+            <p className="text-xs text-ink-muted">
+              {loading || !card ? 'Scoring…' : `${card.total}/100`}
+            </p>
+            <GoogleRatingBadge rating={loc.googleRating} />
+          </div>
         </div>
         <span
           className="grid size-11 shrink-0 place-items-center rounded-lg text-lg font-bold text-white"

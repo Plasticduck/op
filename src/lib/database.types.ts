@@ -1970,6 +1970,10 @@ export type Database = {
           created_at: string
           downtime_alert_hours: number
           geofence_radius_m: number
+          google_place_id: string | null
+          google_rating: number | null
+          google_rating_count: number | null
+          google_rating_synced_at: string | null
           id: string
           latitude: number | null
           longitude: number | null
@@ -1990,6 +1994,10 @@ export type Database = {
           created_at?: string
           downtime_alert_hours?: number
           geofence_radius_m?: number
+          google_place_id?: string | null
+          google_rating?: number | null
+          google_rating_count?: number | null
+          google_rating_synced_at?: string | null
           id?: string
           latitude?: number | null
           longitude?: number | null
@@ -2010,6 +2018,10 @@ export type Database = {
           created_at?: string
           downtime_alert_hours?: number
           geofence_radius_m?: number
+          google_place_id?: string | null
+          google_rating?: number | null
+          google_rating_count?: number | null
+          google_rating_synced_at?: string | null
           id?: string
           latitude?: number | null
           longitude?: number | null
