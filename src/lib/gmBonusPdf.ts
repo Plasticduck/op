@@ -22,9 +22,56 @@ async function loaders() {
   return { jsPDF, autoTable }
 }
 
-export async function exportSiteBonusPdf(site: string, monthLabel: string, r: GmBonusResult): Promise<void> {
+type Logo = { dataUrl: string; w: number; h: number }
+
+// Load the brand logo into a data URL so jsPDF can embed it. Same-origin
+// (public/) so the canvas is not tainted. Returns null on any failure so an
+// export never breaks over a missing logo.
+async function loadLogo(url?: string | null): Promise<Logo | null> {
+  if (!url) return null
+  try {
+    return await new Promise<Logo>((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth
+          canvas.height = img.naturalHeight
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return reject(new Error('no canvas context'))
+          ctx.drawImage(img, 0, 0)
+          resolve({ dataUrl: canvas.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight })
+        } catch (e) {
+          reject(e)
+        }
+      }
+      img.onerror = () => reject(new Error('logo load failed'))
+      img.src = url
+    })
+  } catch {
+    return null
+  }
+}
+
+function placeLogo(doc: Doc, logo: Logo | null) {
+  if (!logo) return
+  const width = 42
+  const height = width * (logo.h / logo.w)
+  const pageW = doc.internal.pageSize.getWidth()
+  doc.addImage(logo.dataUrl, 'PNG', pageW - 14 - width, 8, width, height)
+}
+
+export async function exportSiteBonusPdf(
+  site: string,
+  monthLabel: string,
+  r: GmBonusResult,
+  logoUrl?: string | null,
+): Promise<void> {
   const { jsPDF, autoTable } = await loaders()
+  const logo = await loadLogo(logoUrl)
   const doc = new jsPDF() as Doc
+  placeLogo(doc, logo)
   doc.setFontSize(15)
   doc.text('GM / AGM Monthly Bonus', 14, 16)
   doc.setFontSize(10)
@@ -98,9 +145,15 @@ export async function exportSiteBonusPdf(site: string, monthLabel: string, r: Gm
 
 export type AllSitesRow = { site: string; result: GmBonusResult | null }
 
-export async function exportAllSitesBonusPdf(monthLabel: string, rows: AllSitesRow[]): Promise<void> {
+export async function exportAllSitesBonusPdf(
+  monthLabel: string,
+  rows: AllSitesRow[],
+  logoUrl?: string | null,
+): Promise<void> {
   const { jsPDF, autoTable } = await loaders()
+  const logo = await loadLogo(logoUrl)
   const doc = new jsPDF() as Doc
+  placeLogo(doc, logo)
   doc.setFontSize(15)
   doc.text('GM / AGM Bonus - All Sites', 14, 16)
   doc.setFontSize(10)

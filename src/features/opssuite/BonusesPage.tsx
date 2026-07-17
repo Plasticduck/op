@@ -169,10 +169,10 @@ export default function BonusesPage() {
     setExporting(true)
     try {
       if (isAll) {
-        await exportAllSitesBonusPdf(monthLabel, allRows)
+        await exportAllSitesBonusPdf(monthLabel, allRows, profile?.brand_logo_url)
       } else {
         const siteName = sortedLocations.find((l) => l.id === locationId)?.name ?? 'Site'
-        await exportSiteBonusPdf(siteName, monthLabel, result)
+        await exportSiteBonusPdf(siteName, monthLabel, result, profile?.brand_logo_url)
       }
     } finally {
       setExporting(false)
