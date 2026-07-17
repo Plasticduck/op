@@ -235,7 +235,7 @@ export default function BonusesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Bonuses"
+        title="GM/AGM Bonuses"
         subtitle="GM and AGM monthly bonus calculator. Admin only."
         actions={
           <div className="flex flex-wrap gap-2">
