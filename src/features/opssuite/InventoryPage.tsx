@@ -10,14 +10,15 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
-import { inventory, type InventoryItem, type InventoryCount } from '@/lib/queries/opsSuite'
+import { inventory, type InventoryItem, type InventoryCount, type InventoryCountSession, type InventoryCountLine } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
 import { exportCountSheet } from '@/lib/countSheet'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
 
 type CountRow = InventoryCount & { location: { name: string } | null }
-type Tab = 'catalog' | 'counts'
+type SessionRow = InventoryCountSession & { location: { name: string } | null }
+type Tab = 'catalog' | 'counts' | 'sessions'
 type DateRange = 'all' | '7d' | '30d' | 'month' | 'year'
 type Division = 'lube' | 'wash' | 'maintenance' | 'chemical'
 
@@ -54,6 +55,7 @@ export default function InventoryPage() {
   const [tab, setTab] = useState<Tab>('catalog')
   const [items, setItems] = useState<InventoryItem[]>([])
   const [counts, setCounts] = useState<CountRow[]>([])
+  const [sessions, setSessions] = useState<SessionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [division, setDivision] = useState<Division | ''>('')
   const [query, setQuery] = useState('')
@@ -65,11 +67,14 @@ export default function InventoryPage() {
   const [adding, setAdding] = useState(false)
   const [addingItem, setAddingItem] = useState(false)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
+  // A New Count / reopened count session. `division` is the division being counted.
+  const [countSession, setCountSession] = useState<{ session: SessionRow | null; division: Division } | null>(null)
 
   const load = () =>
-    Promise.all([inventory.items(), inventory.counts()]).then(([i, c]) => {
+    Promise.all([inventory.items(), inventory.counts(), inventory.sessions()]).then(([i, c, s]) => {
       setItems((i.data as InventoryItem[]) ?? [])
       setCounts((c.data as unknown as CountRow[]) ?? [])
+      setSessions((s.data as unknown as SessionRow[]) ?? [])
       setLoading(false)
     })
   useEffect(() => { void load() }, [])
@@ -134,18 +139,21 @@ export default function InventoryPage() {
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-1.5">
-          {(['catalog', 'counts'] as Tab[]).map((t) => (
+        <div className="flex flex-wrap gap-1.5">
+          {(['catalog', 'counts', 'sessions'] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTab(t)}
               className={
-                'rounded-md px-3 py-1.5 text-sm font-medium capitalize transition ' +
+                'rounded-md px-3 py-1.5 text-sm font-medium transition ' +
                 (tab === t ? 'bg-accent text-white' : 'bg-card border border-border text-ink-muted hover:bg-content')
               }
             >
-              {t} <span className="ml-1 opacity-70">{t === 'catalog' ? items.length : counts.length}</span>
+              {t === 'sessions' ? 'Saved Counts' : t === 'catalog' ? 'Catalog' : 'Counts'}{' '}
+              <span className="ml-1 opacity-70">
+                {t === 'catalog' ? items.length : t === 'counts' ? counts.length : sessions.length}
+              </span>
             </button>
           ))}
         </div>
@@ -160,7 +168,7 @@ export default function InventoryPage() {
                 <Input placeholder="Search…" value={query} onChange={(e) => setQuery(e.target.value)} className="w-56" />
               </>
             )
-          ) : (
+          ) : tab === 'counts' ? (
             <>
               <Select value={countsSiteId} onChange={(e) => setCountsSiteId(e.target.value)} className="w-56" aria-label="Site">
                 <option value="">Pick a site…</option>
@@ -179,7 +187,7 @@ export default function InventoryPage() {
               </Select>
               <Input placeholder="Search category, brand, item…" value={countsQuery} onChange={(e) => setCountsQuery(e.target.value)} className="w-64" />
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -206,6 +214,9 @@ export default function InventoryPage() {
       {tab === 'catalog' ? (
         division && (
           <div className="flex items-center justify-end gap-2">
+            <Button size="sm" disabled={!division} onClick={() => division && setCountSession({ session: null, division })}>
+              <Plus className="size-4" /> New Count
+            </Button>
             <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportCountSheet(divisionLabel(division), visibleItems)}>
               <ClipboardList className="size-4" /> Count sheet
             </Button>
@@ -285,7 +296,8 @@ export default function InventoryPage() {
             </table>
           </div>
         )
-      ) : !countsFiltersActive ? (
+      ) : tab === 'counts' ? (
+        !countsFiltersActive ? (
         <EmptyState
           icon={Boxes}
           title="Pick a site to view counts"
@@ -322,6 +334,30 @@ export default function InventoryPage() {
             </tbody>
           </table>
         </div>
+        )
+      ) : (
+        <SessionsList
+          sessions={sessions}
+          onOpen={(s) => setCountSession({ session: s, division: (s.division as Division) ?? 'lube' })}
+          onDelete={async (id) => {
+            if (!window.confirm('Delete this saved count?')) return
+            await inventory.deleteSession(id)
+            await load()
+          }}
+        />
+      )}
+
+      {countSession && (
+        <CountSession
+          accountId={profile?.account_id ?? ''}
+          submitterId={profile?.id ?? null}
+          submitterName={profile?.name ?? null}
+          division={countSession.division}
+          items={items.filter((it) => it.division === countSession.division)}
+          session={countSession.session}
+          onClose={() => setCountSession(null)}
+          onSaved={() => { setCountSession(null); void load() }}
+        />
       )}
 
       {adding && (
@@ -491,6 +527,217 @@ function EditItem({ item, onClose, onSaved }: {
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function SessionsList({ sessions, onOpen, onDelete }: {
+  sessions: SessionRow[]
+  onOpen: (s: SessionRow) => void
+  onDelete: (id: string) => void
+}) {
+  if (sessions.length === 0) {
+    return (
+      <EmptyState
+        icon={Boxes}
+        title="No saved counts"
+        description="Start a New Count from a division on the Catalog tab. Saved counts appear here to reopen."
+      />
+    )
+  }
+  return (
+    <div className="overflow-x-auto rounded-md border border-border bg-card">
+      <table className="w-full min-w-[720px] text-sm">
+        <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
+          <tr>
+            <th className="px-3 py-2.5 font-medium">Site</th>
+            <th className="px-3 py-2.5 font-medium">Division</th>
+            <th className="px-3 py-2.5 font-medium">Note</th>
+            <th className="px-3 py-2.5 font-medium">Started by</th>
+            <th className="px-3 py-2.5 font-medium">Updated</th>
+            <th className="px-3 py-2.5 font-medium text-right"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {sessions.map((s) => (
+            <tr key={s.id} className="border-t border-border hover:bg-content">
+              <td className="px-3 py-2.5 font-medium text-ink">{s.location?.name ?? '—'}</td>
+              <td className="px-3 py-2.5 text-ink-muted">{divisionLabel(s.division)}</td>
+              <td className="px-3 py-2.5 text-ink-muted">{s.note || '—'}</td>
+              <td className="px-3 py-2.5 text-ink-muted">{s.created_by_name ?? '—'}</td>
+              <td className="px-3 py-2.5 text-ink-muted">{shortDate(s.updated_at)}</td>
+              <td className="px-3 py-2.5 text-right">
+                <div className="flex items-center justify-end gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => onOpen(s)}>Open</Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-danger hover:text-danger"
+                    onClick={() => onDelete(s.id)}
+                    aria-label="Delete saved count"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function CountSession({ accountId, submitterId, submitterName, division, items, session, onClose, onSaved }: {
+  accountId: string
+  submitterId: string | null
+  submitterName: string | null
+  division: Division
+  items: InventoryItem[]
+  session: SessionRow | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { locations } = useLocations()
+  const sortedItems = useMemo(
+    () =>
+      [...items].sort(
+        (a, b) =>
+          (a.category ?? '').localeCompare(b.category ?? '') || (a.item ?? '').localeCompare(b.item ?? ''),
+      ),
+    [items],
+  )
+  const [locationId, setLocationId] = useState(session?.location_id ?? '')
+  const [note, setNote] = useState(session?.note ?? '')
+  const [qty, setQty] = useState<Record<string, string>>({})
+  const [initialLines, setInitialLines] = useState<Record<string, boolean>>({})
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [loadingLines, setLoadingLines] = useState(!!session)
+
+  useEffect(() => {
+    if (!session) return
+    let active = true
+    void inventory.sessionLines(session.id).then(({ data }) => {
+      if (!active) return
+      const map: Record<string, string> = {}
+      const init: Record<string, boolean> = {}
+      ;((data as InventoryCountLine[] | null) ?? []).forEach((l) => {
+        if (l.quantity != null) {
+          map[l.item_id] = String(l.quantity)
+          init[l.item_id] = true
+        }
+      })
+      setQty(map)
+      setInitialLines(init)
+      setLoadingLines(false)
+    })
+    return () => { active = false }
+  }, [session])
+
+  const save = async () => {
+    setError(null)
+    if (!locationId) return setError('Pick a site')
+    setBusy(true)
+    let sid = session?.id
+    if (!sid) {
+      const { data, error: err } = await inventory.createSession({
+        account_id: accountId,
+        location_id: locationId,
+        division,
+        note: note.trim() || null,
+        created_by: submitterId,
+        created_by_name: submitterName,
+      })
+      if (err || !data) {
+        setBusy(false)
+        return setError(err?.message ?? 'Failed to create count')
+      }
+      sid = (data as { id: string }).id
+    } else {
+      await inventory.updateSession(sid, { note: note.trim() || null })
+    }
+    // Write a line for every item that has a number, plus any that had one before
+    // and were cleared (so clearing a value persists as blank).
+    const lines = sortedItems
+      .filter((it) => (qty[it.id] ?? '').trim() !== '' || initialLines[it.id])
+      .map((it) => {
+        const v = (qty[it.id] ?? '').trim()
+        return { session_id: sid as string, item_id: it.id, quantity: v === '' ? null : Number(v) }
+      })
+    const { error: lerr } = await inventory.saveLines(lines)
+    setBusy(false)
+    if (lerr) return setError(lerr.message)
+    onSaved()
+  }
+
+  const filledCount = Object.values(qty).filter((v) => v.trim() !== '').length
+
+  return (
+    <Modal open onClose={onClose} title={`${session ? 'Count' : 'New count'} · ${divisionLabel(division)}`} size="lg">
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Site" required>
+            {(id) => (
+              <Select id={id} value={locationId} onChange={(e) => setLocationId(e.target.value)} disabled={!!session}>
+                <option value="">Select…</option>
+                {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </Select>
+            )}
+          </Field>
+          <Field label="Note">
+            {(id) => <Input id={id} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional label" />}
+          </Field>
+        </div>
+
+        {loadingLines ? (
+          <p className="text-sm text-ink-muted">Loading…</p>
+        ) : sortedItems.length === 0 ? (
+          <p className="text-sm text-ink-muted">No items in this division yet.</p>
+        ) : (
+          <div className="max-h-[50vh] overflow-y-auto rounded-md border border-border">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Item</th>
+                  <th className="w-28 px-3 py-2 text-right font-medium">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedItems.map((it) => (
+                  <tr key={it.id} className="border-t border-border">
+                    <td className="px-3 py-1.5 text-ink">
+                      <div className="font-medium">{it.item ?? '—'}</div>
+                      <div className="text-xs text-ink-muted">{[it.category, it.brand].filter(Boolean).join(' · ')}</div>
+                    </td>
+                    <td className="px-3 py-1.5 text-right">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="1"
+                        value={qty[it.id] ?? ''}
+                        onChange={(e) => setQty((m) => ({ ...m, [it.id]: e.target.value }))}
+                        className="h-9 w-24 text-right"
+                        aria-label={`Count for ${it.item ?? 'item'}`}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-ink-subtle">{filledCount} of {sortedItems.length} filled</span>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save count'}</Button>
+          </div>
         </div>
       </div>
     </Modal>

@@ -58,7 +58,30 @@ export const inventory = {
   updateItem: (id: string, patch: T['inventory_items']['Update']) =>
     supabase.from('inventory_items').update(patch).eq('id', id),
   deleteItem: (id: string) => supabase.from('inventory_items').delete().eq('id', id),
+
+  // Count sessions: a saved, resumable count of a site + division.
+  sessions: () =>
+    supabase
+      .from('inventory_count_sessions')
+      .select('*, location:location_id(name)')
+      .order('created_at', { ascending: false }),
+  createSession: (row: T['inventory_count_sessions']['Insert']) =>
+    supabase.from('inventory_count_sessions').insert(row).select('*, location:location_id(name)').single(),
+  updateSession: (id: string, patch: T['inventory_count_sessions']['Update']) =>
+    supabase
+      .from('inventory_count_sessions')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id),
+  deleteSession: (id: string) => supabase.from('inventory_count_sessions').delete().eq('id', id),
+  sessionLines: (sessionId: string) =>
+    supabase.from('inventory_count_lines').select('*').eq('session_id', sessionId),
+  saveLines: (rows: T['inventory_count_lines']['Insert'][]) =>
+    rows.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase.from('inventory_count_lines').upsert(rows, { onConflict: 'session_id,item_id' }),
 }
+export type InventoryCountSession = T['inventory_count_sessions']['Row']
+export type InventoryCountLine = T['inventory_count_lines']['Row']
 export const capitalRequests = {
   list: () => supabase.from('capital_requests').select(withLoc).order('created_at', { ascending: false }),
   create: (row: T['capital_requests']['Insert']) => supabase.from('capital_requests').insert(row).select().single(),

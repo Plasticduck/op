@@ -1944,6 +1944,103 @@ export type Database = {
           },
         ]
       }
+      inventory_count_lines: {
+        Row: {
+          id: string
+          item_id: string
+          quantity: number | null
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          item_id: string
+          quantity?: number | null
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          item_id?: string
+          quantity?: number | null
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_count_lines_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_count_lines_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_count_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_count_sessions: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          division: string | null
+          id: string
+          location_id: string
+          note: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          division?: string | null
+          id?: string
+          location_id: string
+          note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          created_by_name?: string | null
+          division?: string | null
+          id?: string
+          location_id?: string
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_count_sessions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_count_sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_count_sessions_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_counts: {
         Row: {
           account_id: string
