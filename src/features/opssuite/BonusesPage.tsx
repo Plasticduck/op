@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, RotateCcw, Save, X } from 'lucide-react'
+import { BadgeDollarSign, Check, FileDown, RotateCcw, Save, X } from 'lucide-react'
 import { addMonths, format, parseISO, subMonths } from 'date-fns'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { compareLocationName } from '@/lib/utils'
 import { currency } from '@/lib/format'
 import { gmBonus, type GmBonusBase, type GmBonusMonth } from '@/lib/queries/gmBonus'
 import { computeGmBonus, type AvgBase, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
+import { exportSiteBonusPdf, exportAllSitesBonusPdf, type AllSitesRow } from '@/lib/gmBonusPdf'
+
+const ALL = '__all__'
 
 const num = (s: string) => {
   const n = Number(s)
@@ -48,11 +52,12 @@ export default function BonusesPage() {
 
   const [locationId, setLocationId] = useState('')
   const [period, setPeriod] = useState(format(new Date(), 'yyyy-MM-01'))
-  const [months, setMonths] = useState<GmBonusMonth[]>([])
-  const [baselines, setBaselines] = useState<GmBonusBase[]>([])
+  const [allMonths, setAllMonths] = useState<GmBonusMonth[]>([])
+  const [allBaselines, setAllBaselines] = useState<GmBonusBase[]>([])
   const [form, setForm] = useState<Form>(emptyForm)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -60,16 +65,20 @@ export default function BonusesPage() {
     if (!locationId && sortedLocations.length > 0) setLocationId(sortedLocations[0].id)
   }, [sortedLocations, locationId])
 
+  // Load account-wide once; both the single-site and All Sites views read from it.
   const load = useCallback(async () => {
-    if (!locationId) return
     setLoading(true)
     setError(null)
-    const [b, m] = await Promise.all([gmBonus.baselines(locationId), gmBonus.months(locationId)])
-    setBaselines((b.data as GmBonusBase[] | null) ?? [])
-    setMonths((m.data as GmBonusMonth[] | null) ?? [])
+    const [b, m] = await Promise.all([gmBonus.allBaselines(), gmBonus.allMonths()])
+    setAllBaselines((b.data as GmBonusBase[] | null) ?? [])
+    setAllMonths((m.data as GmBonusMonth[] | null) ?? [])
     setLoading(false)
-  }, [locationId])
+  }, [])
   useEffect(() => { void load() }, [load])
+
+  const isAll = locationId === ALL
+  const months = useMemo(() => allMonths.filter((m) => m.location_id === locationId), [allMonths, locationId])
+  const baselines = useMemo(() => allBaselines.filter((b) => b.location_id === locationId), [allBaselines, locationId])
 
   const monthRow = useMemo(() => months.find((m) => m.period === period) ?? null, [months, period])
   const prevRow = useMemo(
@@ -117,6 +126,58 @@ export default function BonusesPage() {
   const avgBase: AvgBase = avgRow ? Number(avgRow.avg_mos) : null
 
   const result = computeGmBonus({ current, previous, membershipBase, avgBase })
+
+  // All Sites: each site's current-month result from saved data (no live editing).
+  const allRows: AllSitesRow[] = useMemo(() => {
+    return sortedLocations.map((loc) => {
+      const siteMonths = allMonths.filter((m) => m.location_id === loc.id)
+      const mRow = siteMonths.find((m) => m.period === period) ?? null
+      if (!mRow) return { site: loc.name, result: null }
+      const pRow = siteMonths.find((m) => m.period === prevPeriod(period)) ?? null
+      const siteBases = allBaselines.filter((b) => b.location_id === loc.id)
+      const memRow = effectiveBaseline(siteBases, 'membership', period)
+      const aRow = effectiveBaseline(siteBases, 'avg', period)
+      return {
+        site: loc.name,
+        result: computeGmBonus({
+          current: {
+            mighty_count: mRow.mighty_count,
+            super_count: mRow.super_count,
+            wonder_count: mRow.wonder_count,
+            avg_mos: Number(mRow.avg_mos),
+            churn_pct: Number(mRow.churn_pct),
+            conversion_pct: Number(mRow.conversion_pct),
+          },
+          previous: pRow
+            ? { mighty_count: pRow.mighty_count, super_count: pRow.super_count, wonder_count: pRow.wonder_count }
+            : null,
+          membershipBase: memRow
+            ? { mighty_count: memRow.mighty_count, super_count: memRow.super_count, wonder_count: memRow.wonder_count }
+            : null,
+          avgBase: aRow ? Number(aRow.avg_mos) : null,
+        }),
+      }
+    })
+  }, [sortedLocations, allMonths, allBaselines, period])
+
+  const monthLabel = monthOf(period)
+  const allGmSum = allRows.reduce((a, r) => a + (r.result?.gmTotal ?? 0), 0)
+  const allAgmSum = allRows.reduce((a, r) => a + (r.result?.agmTotal ?? 0), 0)
+  const anyAllData = allRows.some((r) => r.result)
+
+  const exportToPdf = async () => {
+    setExporting(true)
+    try {
+      if (isAll) {
+        await exportAllSitesBonusPdf(monthLabel, allRows)
+      } else {
+        const siteName = sortedLocations.find((l) => l.id === locationId)?.name ?? 'Site'
+        await exportSiteBonusPdf(siteName, monthLabel, result)
+      }
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const saveMonth = async () => {
     if (!profile || !locationId) return
@@ -177,9 +238,20 @@ export default function BonusesPage() {
         title="Bonuses"
         subtitle="GM and AGM monthly bonus calculator. Admin only."
         actions={
-          <Button onClick={saveMonth} disabled={saving || !locationId}>
-            <Save className="size-4" /> {saving ? 'Saving…' : `Save ${format(parseISO(period), 'MMM yyyy')}`}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {!isAll && (
+              <Button onClick={saveMonth} disabled={saving || !locationId}>
+                <Save className="size-4" /> {saving ? 'Saving…' : `Save ${format(parseISO(period), 'MMM yyyy')}`}
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              onClick={exportToPdf}
+              disabled={exporting || (isAll && !anyAllData)}
+            >
+              <FileDown className="size-4" /> {exporting ? 'Exporting…' : 'Export to PDF'}
+            </Button>
+          </div>
         }
       />
 
@@ -187,6 +259,7 @@ export default function BonusesPage() {
         <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
           Site
           <Select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="h-9 w-64">
+            <option value={ALL}>All Sites</option>
             {sortedLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </Select>
         </label>
@@ -200,7 +273,9 @@ export default function BonusesPage() {
           />
         </label>
         <span className="pb-2 text-xs text-ink-subtle">
-          {monthRow ? 'Saved' : 'Not yet saved'} · prior month {prevRow ? 'on file' : 'missing'}
+          {isAll
+            ? `${allRows.filter((r) => r.result).length} of ${sortedLocations.length} sites have data`
+            : `${monthRow ? 'Saved' : 'Not yet saved'} · prior month ${prevRow ? 'on file' : 'missing'}`}
         </span>
       </div>
 
@@ -209,6 +284,55 @@ export default function BonusesPage() {
 
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
+      ) : isAll ? (
+        !anyAllData ? (
+          <EmptyState
+            icon={BadgeDollarSign}
+            title={`No bonus data for ${monthLabel}`}
+            description="Pick a month with saved numbers, or enter a site's numbers first. Sites appear here once their month is saved."
+          />
+        ) : (
+          <div className="overflow-x-auto rounded-md border border-border bg-card">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
+                <tr>
+                  <th className="px-3 py-2.5 font-medium">Site</th>
+                  <th className="px-3 py-2.5 text-right font-medium">One-time</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Churn</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Conversion</th>
+                  <th className="px-3 py-2.5 text-right font-medium">GM Total</th>
+                  <th className="px-3 py-2.5 text-right font-medium">AGM Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allRows.map((r) => (
+                  <tr key={r.site} className="border-t border-border hover:bg-content">
+                    <td className="px-3 py-2.5 font-medium text-ink">{r.site}</td>
+                    {r.result ? (
+                      <>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.oneTimeTotal)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.churn.amount)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.conversion.amount)}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(r.result.gmTotal)}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(r.result.agmTotal)}</td>
+                      </>
+                    ) : (
+                      <td colSpan={5} className="px-3 py-2.5 text-right text-xs text-ink-subtle">No data</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border bg-content font-semibold">
+                  <td className="px-3 py-2.5 text-ink">Total</td>
+                  <td colSpan={3} />
+                  <td className="px-3 py-2.5 text-right tabular-nums text-accent">{currency(allGmSum)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-ink">{currency(allAgmSum)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Inputs */}
