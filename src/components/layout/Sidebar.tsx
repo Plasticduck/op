@@ -6,6 +6,7 @@ import {
   AlarmClockOff,
   AlertTriangle,
   Award,
+  BadgeDollarSign,
   Bandage,
   Bolt,
   BookUser,
@@ -114,6 +115,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Tips',
         icon: Banknote,
         roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/bonuses',
+        label: 'Bonuses',
+        icon: BadgeDollarSign,
+        roles: ['owner'],
       },
       {
         to: '/app/contacts',

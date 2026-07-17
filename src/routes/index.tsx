@@ -110,6 +110,7 @@ const MarketResearchDetailPage = lz(() => import('@/features/opssuite/MarketRese
 const SiteViolationsPage = lz(() => import('@/features/opssuite/SiteViolationsPage'))
 const SignagePage = lz(() => import('@/features/opssuite/SignagePage'))
 const SalesReportsPage = lz(() => import('@/features/opssuite/SalesReportsPage'))
+const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
 const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
@@ -132,6 +133,10 @@ const tech = (el: ReactNode) => (
 // schedule, uniforms). Same reach as the old bare s() minus technician.
 const emp = (el: ReactNode) => (
   <RequireRole allow={['owner', 'manager', 'employee']}>{s(el)}</RequireRole>
+)
+// Admin-only pages (owner is the Admin role).
+const adm = (el: ReactNode) => (
+  <RequireRole allow={['owner']}>{s(el)}</RequireRole>
 )
 
 export const router = createBrowserRouter([
@@ -204,6 +209,7 @@ export const router = createBrowserRouter([
           { path: 'violations', element: mgr(<SiteViolationsPage />) },
           { path: 'signage', element: mgr(<SignagePage />) },
           { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
+          { path: 'bonuses', element: adm(<BonusesPage />) },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
           { path: 'employees/:id', element: mgr(<EmployeeDetailPage />) },
