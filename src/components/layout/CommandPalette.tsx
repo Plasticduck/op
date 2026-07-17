@@ -25,6 +25,7 @@ export function CommandPalette() {
       if (g.roles && !g.roles.includes(role)) continue
       for (const i of g.items) {
         if (!i.roles.includes(role)) continue
+        if (i.flag === 'gm_bonus' && !profile.gm_bonus_enabled) continue
         flat.push({ to: i.to, label: i.label, group: g.label })
       }
     }

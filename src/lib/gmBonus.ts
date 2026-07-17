@@ -1,0 +1,182 @@
+// GM / AGM monthly bonus math. This mirrors Mighty Wash's spreadsheet
+// ("1 MW GM Bonus.xlsx") so the app produces identical numbers. All percentages
+// for churn/conversion are whole-number percents (e.g. 9.3 means 9.3%);
+// membership shares are fractions (0..1).
+
+export type MonthInputs = {
+  mighty_count: number
+  super_count: number
+  wonder_count: number
+  avg_mos: number
+  churn_pct: number
+  conversion_pct: number
+}
+
+export type PrevCounts = {
+  mighty_count: number
+  super_count: number
+  wonder_count: number
+} | null
+
+export type BaseSnapshot = {
+  base_date: string
+  mighty_count: number
+  super_count: number
+  wonder_count: number
+  avg_mos: number
+} | null
+
+export const LIFETIME_VALUE_BONUS = 1500
+export const MEMBERSHIP_BONUS = 1500
+
+// Churn reward: lower bracket wins. <7 -> 600, [7,8) -> 520, ... , >=12 -> 0.
+export const CHURN_BRACKETS: { under: number; amount: number; label: string }[] = [
+  { under: 7, amount: 600, label: '0 - 7%' },
+  { under: 8, amount: 520, label: '7 - 8%' },
+  { under: 9, amount: 440, label: '8 - 9%' },
+  { under: 10, amount: 360, label: '9 - 10%' },
+  { under: 11, amount: 240, label: '10 - 11%' },
+  { under: 12, amount: 120, label: '11 - 12%' },
+  { under: Infinity, amount: 0, label: '12% +' },
+]
+
+export function churnReward(churnPct: number): number {
+  for (const b of CHURN_BRACKETS) if (churnPct < b.under) return b.amount
+  return 0
+}
+
+// Conversion reward on INT(conversion%): >=15 -> 400, 14 -> 350, 13 -> 300,
+// 12 -> 250, 11 -> 150, 10 -> 80, else 0. Capped at 150 when churn >= 15%.
+export function conversionReward(conversionPct: number, churnPct: number): number {
+  const n = Math.trunc(conversionPct)
+  let x: number
+  if (n >= 15) x = 400
+  else if (n === 14) x = 350
+  else if (n === 13) x = 300
+  else if (n === 12) x = 250
+  else if (n === 11) x = 150
+  else if (n === 10) x = 80
+  else x = 0
+  return churnPct >= 15 ? Math.min(x, 150) : x
+}
+
+export type LevelKey = 'mighty' | 'super' | 'wonder'
+
+export type LevelRow = {
+  key: LevelKey
+  label: string
+  count: number
+  pct: number // fraction of total members
+  pctChange: number | null // vs previous month, null when no prior month
+  pctChangeSinceBase: number | null // vs base snapshot, null when no base
+}
+
+const LEVELS: { key: LevelKey; label: string }[] = [
+  { key: 'mighty', label: 'Mighty Protector' },
+  { key: 'super', label: 'Super Shine' },
+  { key: 'wonder', label: 'Wonder Clean' },
+]
+
+const share = (n: number, total: number) => (total > 0 ? n / total : 0)
+
+export type GmBonusResult = {
+  currentTotal: number
+  previousTotal: number | null
+  levels: LevelRow[]
+  avgMos: { base: number | null; current: number; delta: number | null }
+  lifetimeValue: { earned: boolean | null; amount: number; goalReached: boolean }
+  membership: { earned: boolean | null; amount: number; combinedChangeSinceBase: number | null; goalReached: boolean }
+  oneTimeTotal: number
+  churn: { pct: number; amount: number; bracket: string }
+  conversion: { pct: number; amount: number; capped: boolean }
+  gmTotal: number
+  agmTotal: number
+  hasBase: boolean
+}
+
+export function computeGmBonus(args: {
+  current: MonthInputs
+  previous: PrevCounts
+  base: BaseSnapshot
+}): GmBonusResult {
+  const { current, previous, base } = args
+
+  const counts: Record<LevelKey, number> = {
+    mighty: current.mighty_count,
+    super: current.super_count,
+    wonder: current.wonder_count,
+  }
+  const currentTotal = counts.mighty + counts.super + counts.wonder
+
+  const prevCounts: Record<LevelKey, number> | null = previous
+    ? { mighty: previous.mighty_count, super: previous.super_count, wonder: previous.wonder_count }
+    : null
+  const previousTotal = prevCounts
+    ? prevCounts.mighty + prevCounts.super + prevCounts.wonder
+    : null
+
+  const baseCounts: Record<LevelKey, number> | null = base
+    ? { mighty: base.mighty_count, super: base.super_count, wonder: base.wonder_count }
+    : null
+  const baseTotal = baseCounts ? baseCounts.mighty + baseCounts.super + baseCounts.wonder : null
+
+  const levels: LevelRow[] = LEVELS.map(({ key, label }) => {
+    const pct = share(counts[key], currentTotal)
+    const prevPct = prevCounts && previousTotal ? share(prevCounts[key], previousTotal) : null
+    const basePct = baseCounts && baseTotal ? share(baseCounts[key], baseTotal) : null
+    return {
+      key,
+      label,
+      count: counts[key],
+      pct,
+      pctChange: prevPct === null ? null : pct - prevPct,
+      pctChangeSinceBase: basePct === null ? null : pct - basePct,
+    }
+  })
+
+  // Lifetime value: current avg months of active membership up at least 1 vs base.
+  const avgDelta = base ? current.avg_mos - base.avg_mos : null
+  const lifeEarned = avgDelta === null ? null : avgDelta >= 1
+  const lifetimeValue = {
+    earned: lifeEarned,
+    amount: lifeEarned ? LIFETIME_VALUE_BONUS : 0,
+    goalReached: lifeEarned === true,
+  }
+
+  // Membership: Mighty + Super combined share is up at least 10 points vs base.
+  const mightyChg = levels[0].pctChangeSinceBase
+  const superChg = levels[1].pctChangeSinceBase
+  const combined = mightyChg === null || superChg === null ? null : mightyChg + superChg
+  const memEarned = combined === null ? null : combined >= 0.1
+  const membership = {
+    earned: memEarned,
+    amount: memEarned ? MEMBERSHIP_BONUS : 0,
+    combinedChangeSinceBase: combined,
+    goalReached: memEarned === true,
+  }
+
+  const oneTimeTotal = lifetimeValue.amount + membership.amount
+
+  const churnAmt = churnReward(current.churn_pct)
+  const churnBracket = CHURN_BRACKETS.find((b) => current.churn_pct < b.under)?.label ?? '12% +'
+  const convAmt = conversionReward(current.conversion_pct, current.churn_pct)
+  const convUncapped = conversionReward(current.conversion_pct, 0)
+
+  const gmTotal = oneTimeTotal + churnAmt + convAmt
+  const agmTotal = gmTotal / 2
+
+  return {
+    currentTotal,
+    previousTotal,
+    levels,
+    avgMos: { base: base ? base.avg_mos : null, current: current.avg_mos, delta: avgDelta },
+    lifetimeValue,
+    membership,
+    oneTimeTotal,
+    churn: { pct: current.churn_pct, amount: churnAmt, bracket: churnBracket },
+    conversion: { pct: current.conversion_pct, amount: convAmt, capped: convAmt < convUncapped },
+    gmTotal,
+    agmTotal,
+    hasBase: base !== null,
+  }
+}

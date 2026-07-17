@@ -48,6 +48,7 @@ import {
   X,
 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
+import { useAuth } from '@/lib/auth'
 import type { Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
@@ -56,6 +57,8 @@ type NavItem = {
   label: string
   icon: LucideIcon
   roles: Role[]
+  // Item only shows when the account has this feature flag enabled.
+  flag?: 'gm_bonus'
 }
 
 type NavGroup = {
@@ -121,6 +124,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Bonuses',
         icon: BadgeDollarSign,
         roles: ['owner'],
+        flag: 'gm_bonus',
       },
       {
         to: '/app/contacts',
@@ -347,12 +351,16 @@ const STORAGE_KEY = 'tunnelsync.navGroups'
 // mobile drawer. `onNavigate` lets the drawer close itself when a link is tapped.
 export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
   const location = useLocation()
+  const { profile } = useAuth()
   const [query, setQuery] = useState('')
 
-  // Only the groups + items this role can see.
+  const canSee = (i: NavItem) =>
+    i.roles.includes(role) && (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled))
+
+  // Only the groups + items this role (and account) can see.
   const baseGroups = NAV_GROUPS
     .filter((g) => !g.roles || g.roles.includes(role))
-    .map((g) => ({ ...g, items: g.items.filter((i) => i.roles.includes(role)) }))
+    .map((g) => ({ ...g, items: g.items.filter(canSee) }))
     .filter((g) => g.items.length > 0)
 
   // Apply search filter. Match against group label OR item label. A group

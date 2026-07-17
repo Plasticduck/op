@@ -17,6 +17,7 @@ export type Profile = {
   name: string
   email: string
   avatar_url: string | null
+  gm_bonus_enabled: boolean
 }
 
 type AuthState = {
@@ -32,7 +33,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined)
 async function loadProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, account_id, location_ids, role, name, email, avatar_url')
+    .select('id, account_id, location_ids, role, name, email, avatar_url, account:account_id(gm_bonus_enabled)')
     .eq('id', userId)
     .maybeSingle()
   if (error) {
@@ -40,7 +41,21 @@ async function loadProfile(userId: string): Promise<Profile | null> {
     console.error('[auth] failed to load profile', error)
     return null
   }
-  return (data as Profile | null) ?? null
+  if (!data) return null
+  const row = data as Record<string, unknown> & {
+    account?: { gm_bonus_enabled?: boolean } | { gm_bonus_enabled?: boolean }[] | null
+  }
+  const acct = Array.isArray(row.account) ? row.account[0] : row.account
+  return {
+    id: row.id as string,
+    account_id: row.account_id as string,
+    location_ids: (row.location_ids as string[] | null) ?? [],
+    role: row.role as Role,
+    name: row.name as string,
+    email: row.email as string,
+    avatar_url: (row.avatar_url as string | null) ?? null,
+    gm_bonus_enabled: acct?.gm_bonus_enabled ?? false,
+  }
 }
 
 // Record that the signed-in user is active. RLS lets a user update their own

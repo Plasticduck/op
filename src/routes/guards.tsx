@@ -65,6 +65,15 @@ export function RequireRole({ allow, children }: { allow: Role[]; children: Reac
   return <>{children}</>
 }
 
+// Feature is enabled per-account (Mighty Wash only for now). Non-enabled
+// accounts that reach the URL directly are bounced to the dashboard.
+export function RequireGmBonus({ children }: { children: ReactNode }) {
+  const { profile } = useAuth()
+  if (!profile) return null
+  if (!profile.gm_bonus_enabled) return <Navigate to="/app/dashboard" replace />
+  return <>{children}</>
+}
+
 // Public auth pages bounce already-onboarded users into the app. We require a
 // *profile*, not just a session — during signup the session flips to
 // authenticated before the account row exists, and redirecting on session alone

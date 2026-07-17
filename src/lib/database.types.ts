@@ -45,6 +45,7 @@ export type Database = {
           billing_status: string
           company_settings: Json
           created_at: string
+          gm_bonus_enabled: boolean
           id: string
           invoice_inbox_token: string
           is_demo: boolean
@@ -61,6 +62,7 @@ export type Database = {
           billing_status?: string
           company_settings?: Json
           created_at?: string
+          gm_bonus_enabled?: boolean
           id?: string
           invoice_inbox_token: string
           is_demo?: boolean
@@ -77,6 +79,7 @@ export type Database = {
           billing_status?: string
           company_settings?: Json
           created_at?: string
+          gm_bonus_enabled?: boolean
           id?: string
           invoice_inbox_token?: string
           is_demo?: boolean
@@ -1647,6 +1650,133 @@ export type Database = {
             columns: ["parent_asset_id"]
             isOneToOne: false
             referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gm_bonus_base: {
+        Row: {
+          account_id: string
+          avg_mos: number
+          base_date: string
+          created_at: string
+          id: string
+          location_id: string
+          mighty_count: number
+          super_count: number
+          updated_at: string
+          wonder_count: number
+        }
+        Insert: {
+          account_id: string
+          avg_mos?: number
+          base_date: string
+          created_at?: string
+          id?: string
+          location_id: string
+          mighty_count?: number
+          super_count?: number
+          updated_at?: string
+          wonder_count?: number
+        }
+        Update: {
+          account_id?: string
+          avg_mos?: number
+          base_date?: string
+          created_at?: string
+          id?: string
+          location_id?: string
+          mighty_count?: number
+          super_count?: number
+          updated_at?: string
+          wonder_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gm_bonus_base_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gm_bonus_base_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: true
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gm_bonus_months: {
+        Row: {
+          account_id: string
+          avg_mos: number
+          churn_pct: number
+          conversion_pct: number
+          created_at: string
+          id: string
+          location_id: string
+          mighty_count: number
+          period: string
+          source: string
+          submitted_by: string | null
+          super_count: number
+          updated_at: string
+          wonder_count: number
+        }
+        Insert: {
+          account_id: string
+          avg_mos?: number
+          churn_pct?: number
+          conversion_pct?: number
+          created_at?: string
+          id?: string
+          location_id: string
+          mighty_count?: number
+          period: string
+          source?: string
+          submitted_by?: string | null
+          super_count?: number
+          updated_at?: string
+          wonder_count?: number
+        }
+        Update: {
+          account_id?: string
+          avg_mos?: number
+          churn_pct?: number
+          conversion_pct?: number
+          created_at?: string
+          id?: string
+          location_id?: string
+          mighty_count?: number
+          period?: string
+          source?: string
+          submitted_by?: string | null
+          super_count?: number
+          updated_at?: string
+          wonder_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gm_bonus_months_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gm_bonus_months_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gm_bonus_months_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

@@ -3,7 +3,7 @@ import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
-import { RequireAuth, RequireRole, RedirectIfAuthed } from '@/routes/guards'
+import { RequireAuth, RequireRole, RequireGmBonus, RedirectIfAuthed } from '@/routes/guards'
 import { RouteStub } from '@/routes/RouteStub'
 
 // Lazily load a route chunk, but if the fetch fails because the chunk no longer
@@ -209,7 +209,7 @@ export const router = createBrowserRouter([
           { path: 'violations', element: mgr(<SiteViolationsPage />) },
           { path: 'signage', element: mgr(<SignagePage />) },
           { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
-          { path: 'bonuses', element: adm(<BonusesPage />) },
+          { path: 'bonuses', element: adm(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
           { path: 'employees/:id', element: mgr(<EmployeeDetailPage />) },
