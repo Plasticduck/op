@@ -43,6 +43,7 @@ export type Database = {
         Row: {
           account_type: string
           billing_status: string
+          brand_logo_url: string | null
           company_settings: Json
           created_at: string
           gm_bonus_enabled: boolean
@@ -60,6 +61,7 @@ export type Database = {
         Insert: {
           account_type?: string
           billing_status?: string
+          brand_logo_url?: string | null
           company_settings?: Json
           created_at?: string
           gm_bonus_enabled?: boolean
@@ -77,6 +79,7 @@ export type Database = {
         Update: {
           account_type?: string
           billing_status?: string
+          brand_logo_url?: string | null
           company_settings?: Json
           created_at?: string
           gm_bonus_enabled?: boolean

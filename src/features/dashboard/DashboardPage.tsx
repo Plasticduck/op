@@ -15,6 +15,7 @@ import EmployeeDashboard from '@/features/dashboard/EmployeeDashboard'
 import AllSitesDashboard from '@/features/dashboard/AllSitesDashboard'
 import { SiteScorecard } from '@/features/dashboard/SiteScorecard'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
+import { AccountBrandLogo } from '@/features/dashboard/AccountBrandLogo'
 import { GoogleRatingTile } from '@/components/data/GoogleRating'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { cn } from '@/lib/utils'
@@ -166,6 +167,7 @@ function ManagerDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
+      <AccountBrandLogo />
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
           {greeting()}, {profile?.name.split(' ')[0]}

@@ -18,6 +18,7 @@ export type Profile = {
   email: string
   avatar_url: string | null
   gm_bonus_enabled: boolean
+  brand_logo_url: string | null
 }
 
 type AuthState = {
@@ -33,7 +34,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined)
 async function loadProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, account_id, location_ids, role, name, email, avatar_url, account:account_id(gm_bonus_enabled)')
+    .select('id, account_id, location_ids, role, name, email, avatar_url, account:account_id(gm_bonus_enabled, brand_logo_url)')
     .eq('id', userId)
     .maybeSingle()
   if (error) {
@@ -42,9 +43,8 @@ async function loadProfile(userId: string): Promise<Profile | null> {
     return null
   }
   if (!data) return null
-  const row = data as Record<string, unknown> & {
-    account?: { gm_bonus_enabled?: boolean } | { gm_bonus_enabled?: boolean }[] | null
-  }
+  type Acct = { gm_bonus_enabled?: boolean; brand_logo_url?: string | null }
+  const row = data as Record<string, unknown> & { account?: Acct | Acct[] | null }
   const acct = Array.isArray(row.account) ? row.account[0] : row.account
   return {
     id: row.id as string,
@@ -55,6 +55,7 @@ async function loadProfile(userId: string): Promise<Profile | null> {
     email: row.email as string,
     avatar_url: (row.avatar_url as string | null) ?? null,
     gm_bonus_enabled: acct?.gm_bonus_enabled ?? false,
+    brand_logo_url: acct?.brand_logo_url ?? null,
   }
 }
 
