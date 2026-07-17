@@ -217,7 +217,7 @@ export default function InventoryPage() {
             <Button size="sm" disabled={!division} onClick={() => division && setCountSession({ session: null, division })}>
               <Plus className="size-4" /> New Count
             </Button>
-            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportCountSheet(divisionLabel(division), visibleItems, division === 'chemical')}>
+            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportCountSheet(divisionLabel(division), visibleItems, division === 'chemical', profile?.brand_logo_url)}>
               <ClipboardList className="size-4" /> Count sheet
             </Button>
             <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportPdf(`Inventory Catalog - ${divisionLabel(division)}`, ITEM_COLUMNS, visibleItems)}>

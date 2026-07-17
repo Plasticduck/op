@@ -1,4 +1,5 @@
 import { format } from 'date-fns'
+import { loadPdfLogo, placePdfLogo } from '@/lib/pdfLogo'
 
 // A blank, printable inventory count sheet: one row per item with an empty
 // "Count" box to write the counted number in the field. jspdf loads on demand.
@@ -14,10 +15,13 @@ export async function exportCountSheet(
   divisionLabel: string,
   rows: CountSheetRow[],
   withOnline = false,
+  logoUrl?: string | null,
 ): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
+  const logo = await loadPdfLogo(logoUrl)
   const doc = new jsPDF()
+  placePdfLogo(doc, logo)
 
   doc.setFontSize(15)
   doc.text(`Inventory Count Sheet - ${divisionLabel}`, 14, 16)
