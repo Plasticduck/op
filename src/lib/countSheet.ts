@@ -8,7 +8,13 @@ const fileSafe = (s: string) => s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/
 
 export type CountSheetRow = { category: string | null; brand: string | null; item: string | null }
 
-export async function exportCountSheet(divisionLabel: string, rows: CountSheetRow[]): Promise<void> {
+// withOnline adds an empty "OL Count" column (used for chemicals, which record
+// both a physical count and an online reading).
+export async function exportCountSheet(
+  divisionLabel: string,
+  rows: CountSheetRow[],
+  withOnline = false,
+): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
   const doc = new jsPDF()
@@ -20,14 +26,22 @@ export async function exportCountSheet(divisionLabel: string, rows: CountSheetRo
   doc.text('Site: ____________________     Date: ______________     Counted by: ____________________', 14, 24)
   doc.setTextColor(0)
 
+  const head = withOnline
+    ? ['Category', 'Brand', 'Item', 'Count', 'OL Count']
+    : ['Category', 'Brand', 'Item', 'Count']
+
   autoTable(doc, {
     startY: 30,
-    head: [['Category', 'Brand', 'Item', 'Count']],
-    body: rows.map((r) => [r.category ?? '', r.brand ?? '', r.item ?? '', '']),
+    head: [head],
+    body: rows.map((r) =>
+      withOnline
+        ? [r.category ?? '', r.brand ?? '', r.item ?? '', '', '']
+        : [r.category ?? '', r.brand ?? '', r.item ?? '', ''],
+    ),
     // Taller rows and visible gridlines give room to hand-write each count.
     styles: { fontSize: 9, cellPadding: 3, minCellHeight: 10, lineColor: [170, 170, 170], lineWidth: 0.1 },
     headStyles: { fillColor: [37, 99, 235] },
-    columnStyles: { 3: { cellWidth: 42 } },
+    columnStyles: withOnline ? { 3: { cellWidth: 28 }, 4: { cellWidth: 28 } } : { 3: { cellWidth: 42 } },
     margin: { left: 14, right: 14 },
   })
 

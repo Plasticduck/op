@@ -217,7 +217,7 @@ export default function InventoryPage() {
             <Button size="sm" disabled={!division} onClick={() => division && setCountSession({ session: null, division })}>
               <Plus className="size-4" /> New Count
             </Button>
-            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportCountSheet(divisionLabel(division), visibleItems)}>
+            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportCountSheet(divisionLabel(division), visibleItems, division === 'chemical')}>
               <ClipboardList className="size-4" /> Count sheet
             </Button>
             <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportPdf(`Inventory Catalog - ${divisionLabel(division)}`, ITEM_COLUMNS, visibleItems)}>
@@ -609,9 +609,12 @@ function CountSession({ accountId, submitterId, submitterName, division, items, 
       ),
     [items],
   )
+  // Chemicals also record an online (OL) reading alongside the physical count.
+  const withOnline = division === 'chemical'
   const [locationId, setLocationId] = useState(session?.location_id ?? '')
   const [note, setNote] = useState(session?.note ?? '')
   const [qty, setQty] = useState<Record<string, string>>({})
+  const [ol, setOl] = useState<Record<string, string>>({})
   const [initialLines, setInitialLines] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -623,14 +626,15 @@ function CountSession({ accountId, submitterId, submitterName, division, items, 
     void inventory.sessionLines(session.id).then(({ data }) => {
       if (!active) return
       const map: Record<string, string> = {}
+      const olMap: Record<string, string> = {}
       const init: Record<string, boolean> = {}
       ;((data as InventoryCountLine[] | null) ?? []).forEach((l) => {
-        if (l.quantity != null) {
-          map[l.item_id] = String(l.quantity)
-          init[l.item_id] = true
-        }
+        if (l.quantity != null) map[l.item_id] = String(l.quantity)
+        if (l.online_quantity != null) olMap[l.item_id] = String(l.online_quantity)
+        if (l.quantity != null || l.online_quantity != null) init[l.item_id] = true
       })
       setQty(map)
+      setOl(olMap)
       setInitialLines(init)
       setLoadingLines(false)
     })
@@ -662,10 +666,19 @@ function CountSession({ accountId, submitterId, submitterName, division, items, 
     // Write a line for every item that has a number, plus any that had one before
     // and were cleared (so clearing a value persists as blank).
     const lines = sortedItems
-      .filter((it) => (qty[it.id] ?? '').trim() !== '' || initialLines[it.id])
+      .filter(
+        (it) =>
+          (qty[it.id] ?? '').trim() !== '' || (ol[it.id] ?? '').trim() !== '' || initialLines[it.id],
+      )
       .map((it) => {
         const v = (qty[it.id] ?? '').trim()
-        return { session_id: sid as string, item_id: it.id, quantity: v === '' ? null : Number(v) }
+        const o = (ol[it.id] ?? '').trim()
+        return {
+          session_id: sid as string,
+          item_id: it.id,
+          quantity: v === '' ? null : Number(v),
+          online_quantity: withOnline && o !== '' ? Number(o) : null,
+        }
       })
     const { error: lerr } = await inventory.saveLines(lines)
     setBusy(false)
@@ -703,6 +716,7 @@ function CountSession({ accountId, submitterId, submitterName, division, items, 
                 <tr>
                   <th className="px-3 py-2 font-medium">Item</th>
                   <th className="w-28 px-3 py-2 text-right font-medium">Count</th>
+                  {withOnline && <th className="w-28 px-3 py-2 text-right font-medium">OL Count</th>}
                 </tr>
               </thead>
               <tbody>
@@ -724,6 +738,20 @@ function CountSession({ accountId, submitterId, submitterName, division, items, 
                         aria-label={`Count for ${it.item ?? 'item'}`}
                       />
                     </td>
+                    {withOnline && (
+                      <td className="px-3 py-1.5 text-right">
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="1"
+                          value={ol[it.id] ?? ''}
+                          onChange={(e) => setOl((m) => ({ ...m, [it.id]: e.target.value }))}
+                          className="h-9 w-24 text-right"
+                          aria-label={`Online count for ${it.item ?? 'item'}`}
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

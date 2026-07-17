@@ -1948,6 +1948,7 @@ export type Database = {
         Row: {
           id: string
           item_id: string
+          online_quantity: number | null
           quantity: number | null
           session_id: string
           updated_at: string
@@ -1955,6 +1956,7 @@ export type Database = {
         Insert: {
           id?: string
           item_id: string
+          online_quantity?: number | null
           quantity?: number | null
           session_id: string
           updated_at?: string
@@ -1962,6 +1964,7 @@ export type Database = {
         Update: {
           id?: string
           item_id?: string
+          online_quantity?: number | null
           quantity?: number | null
           session_id?: string
           updated_at?: string
