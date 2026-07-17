@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BadgeDollarSign, Check, FileDown, RotateCcw, Save, X } from 'lucide-react'
+import { BadgeDollarSign, Check, ChevronLeft, ChevronRight, FileDown, RotateCcw, Save, X } from 'lucide-react'
 import { addMonths, format, parseISO, subMonths } from 'date-fns'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -265,12 +265,32 @@ export default function BonusesPage() {
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
           Month
-          <Input
-            type="month"
-            value={format(parseISO(period), 'yyyy-MM')}
-            onChange={(e) => e.target.value && setPeriod(toPeriod(e.target.value))}
-            className="h-9 w-44"
-          />
+          <div className="flex items-center gap-1">
+            <Button
+              variant="secondary"
+              size="icon"
+              className="size-9"
+              aria-label="Previous month"
+              onClick={() => setPeriod(prevPeriod(period))}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Input
+              type="month"
+              value={format(parseISO(period), 'yyyy-MM')}
+              onChange={(e) => e.target.value && setPeriod(toPeriod(e.target.value))}
+              className="h-9 w-44"
+            />
+            <Button
+              variant="secondary"
+              size="icon"
+              className="size-9"
+              aria-label="Next month"
+              onClick={() => setPeriod(nextPeriod(period))}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </label>
         <span className="pb-2 text-xs text-ink-subtle">
           {isAll
