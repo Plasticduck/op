@@ -33,6 +33,8 @@ import {
   MessageSquareWarning,
   PackageOpen,
   Palmtree,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   SearchCheck,
   Settings,
@@ -349,7 +351,15 @@ const STORAGE_KEY = 'tunnelsync.navGroups'
 
 // The grouped, collapsible nav body — shared by the desktop sidebar and the
 // mobile drawer. `onNavigate` lets the drawer close itself when a link is tapped.
-export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
+export function SidebarNav({
+  role,
+  onNavigate,
+  collapsed,
+}: {
+  role: Role
+  onNavigate?: () => void
+  collapsed?: boolean
+}) {
   const location = useLocation()
   const { profile } = useAuth()
   const [query, setQuery] = useState('')
@@ -410,6 +420,42 @@ export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () =
       }
       return next
     })
+  }
+
+  // Collapsed rail: icons only, no search or group headers. Every visible item
+  // gets a tooltip so it stays navigable. Filtering (role + account flags) is the
+  // same baseGroups the expanded nav uses.
+  if (collapsed) {
+    return (
+      <nav className="scrollbar-hover min-h-0 flex-1 overflow-y-auto px-2 py-4">
+        <ul className="flex flex-col items-center gap-1">
+          {baseGroups.flatMap((g) => g.items).map((item) => (
+            <li key={item.to} className="w-full">
+              <NavLink
+                to={item.to}
+                end={item.to === '/app/dashboard'}
+                onClick={onNavigate}
+                title={item.label}
+                aria-label={item.label}
+              >
+                {({ isActive }) => (
+                  <span
+                    className={cn(
+                      'mx-auto grid size-10 place-items-center rounded-lg transition',
+                      isActive
+                        ? 'bg-accent text-white'
+                        : 'text-ink-invert-muted ring-1 ring-inset ring-white/10 hover:bg-white/[0.06] hover:text-white',
+                    )}
+                  >
+                    <item.icon className="size-[18px]" strokeWidth={2.25} />
+                  </span>
+                )}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    )
   }
 
   return (
@@ -498,17 +544,60 @@ export function SidebarNav({ role, onNavigate }: { role: Role; onNavigate?: () =
   )
 }
 
+const COLLAPSE_KEY = 'tunnelsync.sidebarCollapsed'
+
 export function Sidebar({ role }: { role: Role }) {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggle = () =>
+    setCollapsed((c) => {
+      const next = !c
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
+      } catch {
+        /* ignore storage failures */
+      }
+      return next
+    })
+
   return (
-    <aside className="relative hidden h-dvh w-64 shrink-0 flex-col bg-shell text-ink-invert lg:flex">
+    <aside
+      className={cn(
+        'relative hidden h-dvh shrink-0 flex-col bg-shell text-ink-invert lg:flex',
+        collapsed ? 'w-16' : 'w-64',
+      )}
+    >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-white/[0.04] to-transparent" />
-      <div className="relative flex h-16 items-center px-5 border-b border-white/5">
-        <Logo invert size="lg" />
+      <div
+        className={cn(
+          'relative flex h-16 items-center border-b border-white/5',
+          collapsed ? 'justify-center px-2' : 'px-5',
+        )}
+      >
+        {!collapsed && <Logo invert size="lg" />}
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+          className={cn(
+            'rounded-md p-1.5 text-ink-invert-muted/70 transition hover:bg-white/[0.06] hover:text-white',
+            !collapsed && 'ml-auto',
+          )}
+        >
+          {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+        </button>
       </div>
-      <SidebarNav role={role} />
-      <div className="relative border-t border-white/5 p-3 text-[11px] uppercase tracking-wider text-ink-invert-muted/60">
-        v0.0.0 · {role}
-      </div>
+      <SidebarNav role={role} collapsed={collapsed} />
+      {!collapsed && (
+        <div className="relative border-t border-white/5 p-3 text-[11px] uppercase tracking-wider text-ink-invert-muted/60">
+          v0.0.0 · {role}
+        </div>
+      )}
     </aside>
   )
 }
