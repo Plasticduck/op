@@ -18,12 +18,13 @@ import { useOpsTable } from './useOpsTable'
 type CountRow = InventoryCount & { location: { name: string } | null }
 type Tab = 'catalog' | 'counts'
 type DateRange = 'all' | '7d' | '30d' | 'month' | 'year'
-type Division = 'lube' | 'wash' | 'maintenance'
+type Division = 'lube' | 'wash' | 'maintenance' | 'chemical'
 
 const DIVISIONS: { key: Division; label: string }[] = [
   { key: 'lube', label: 'Lube' },
   { key: 'wash', label: 'Wash' },
   { key: 'maintenance', label: 'Maintenance' },
+  { key: 'chemical', label: 'Chemical' },
 ]
 const divisionLabel = (key: string | null) =>
   DIVISIONS.find((d) => d.key === key)?.label ?? (key ?? '—')
@@ -72,7 +73,7 @@ export default function InventoryPage() {
   // Catalog is split by division and never shows everything at once: nothing is
   // listed until a division (Lube, Wash, or Maintenance) is picked.
   const divisionItemCounts = useMemo(() => {
-    const m: Record<Division, number> = { lube: 0, wash: 0, maintenance: 0 }
+    const m: Record<Division, number> = { lube: 0, wash: 0, maintenance: 0, chemical: 0 }
     for (const it of items) if (it.division in m) m[it.division as Division]++
     return m
   }, [items])
