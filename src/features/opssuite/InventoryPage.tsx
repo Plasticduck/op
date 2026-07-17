@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Boxes, FileSpreadsheet, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Boxes, ClipboardList, FileSpreadsheet, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { inventory, type InventoryItem, type InventoryCount } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
+import { exportCountSheet } from '@/lib/countSheet'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
 
@@ -205,6 +206,9 @@ export default function InventoryPage() {
       {tab === 'catalog' ? (
         division && (
           <div className="flex items-center justify-end gap-2">
+            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportCountSheet(divisionLabel(division), visibleItems)}>
+              <ClipboardList className="size-4" /> Count sheet
+            </Button>
             <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportPdf(`Inventory Catalog - ${divisionLabel(division)}`, ITEM_COLUMNS, visibleItems)}>
               <FileText className="size-4" /> PDF
             </Button>
