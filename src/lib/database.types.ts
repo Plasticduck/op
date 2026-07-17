@@ -2017,6 +2017,7 @@ export type Database = {
           division: string
           id: string
           item: string | null
+          value: number | null
         }
         Insert: {
           account_id: string
@@ -2026,6 +2027,7 @@ export type Database = {
           division?: string
           id?: string
           item?: string | null
+          value?: number | null
         }
         Update: {
           account_id?: string
@@ -2035,6 +2037,7 @@ export type Database = {
           division?: string
           id?: string
           item?: string | null
+          value?: number | null
         }
         Relationships: [
           {

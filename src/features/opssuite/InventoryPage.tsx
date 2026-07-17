@@ -7,7 +7,7 @@ import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { Field } from '@/components/forms/Field'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { shortDate } from '@/lib/format'
+import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { inventory, type InventoryItem, type InventoryCount } from '@/lib/queries/opsSuite'
@@ -28,12 +28,14 @@ const DIVISIONS: { key: Division; label: string }[] = [
 ]
 const divisionLabel = (key: string | null) =>
   DIVISIONS.find((d) => d.key === key)?.label ?? (key ?? '—')
+const fmtValue = (v: number | null) => (v == null ? '—' : currency(Number(v)))
 
 const ITEM_COLUMNS: ExportColumn<InventoryItem>[] = [
   { header: 'Division', value: (r) => divisionLabel(r.division) },
   { header: 'Category', value: (r) => r.category },
   { header: 'Brand', value: (r) => r.brand },
   { header: 'Item', value: (r) => r.item },
+  { header: 'Value', value: (r) => (r.value == null ? '' : currency(Number(r.value))) },
 ]
 const COUNT_COLUMNS: ExportColumn<CountRow>[] = [
   { header: 'Site', value: (r) => r.location?.name },
@@ -243,6 +245,7 @@ export default function InventoryPage() {
                   <th className="px-3 py-2.5 font-medium">Category</th>
                   <th className="px-3 py-2.5 font-medium">Brand</th>
                   <th className="px-3 py-2.5 font-medium">Item</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Value</th>
                   <th className="px-3 py-2.5 font-medium text-right"></th>
                 </tr>
               </thead>
@@ -252,6 +255,7 @@ export default function InventoryPage() {
                     <td className="px-3 py-2.5 text-ink-muted">{it.category ?? '—'}</td>
                     <td className="px-3 py-2.5 text-ink-muted">{it.brand ?? '—'}</td>
                     <td className="px-3 py-2.5 font-medium text-ink">{it.item ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{fmtValue(it.value)}</td>
                     <td className="px-3 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="sm" onClick={() => setEditingItem(it)} aria-label="Edit item">
@@ -357,6 +361,7 @@ function AddItem({ accountId, defaultDivision, onClose, onSaved }: {
   const [category, setCategory] = useState('')
   const [brand, setBrand] = useState('')
   const [item, setItem] = useState('')
+  const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -367,6 +372,7 @@ function AddItem({ accountId, defaultDivision, onClose, onSaved }: {
     const br = brand.trim()
     if (!cat) return setError('Enter a category')
     if (!it) return setError('Enter an item name')
+    if (value.trim() !== '' && isNaN(Number(value))) return setError('Enter a valid value')
     setBusy(true)
     const { error: err } = await inventory.createItem({
       account_id: accountId,
@@ -374,6 +380,7 @@ function AddItem({ accountId, defaultDivision, onClose, onSaved }: {
       category: cat,
       brand: br || null,
       item: it,
+      value: value.trim() === '' ? null : Number(value),
     })
     setBusy(false)
     if (err) return setError(err.message)
@@ -398,9 +405,14 @@ function AddItem({ accountId, defaultDivision, onClose, onSaved }: {
             {(id) => <Input id={id} value={brand} onChange={(e) => setBrand(e.target.value)} />}
           </Field>
         </div>
-        <Field label="Item" required>
-          {(id) => <Input id={id} value={item} onChange={(e) => setItem(e.target.value)} placeholder="Product name" />}
-        </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Item" required>
+            {(id) => <Input id={id} value={item} onChange={(e) => setItem(e.target.value)} placeholder="Product name" />}
+          </Field>
+          <Field label="Value" hint="Unit cost or price. Optional.">
+            {(id) => <Input id={id} type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.00" />}
+          </Field>
+        </div>
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -420,6 +432,7 @@ function EditItem({ item, onClose, onSaved }: {
   const [category, setCategory] = useState(item.category ?? '')
   const [brand, setBrand] = useState(item.brand ?? '')
   const [itemName, setItemName] = useState(item.item ?? '')
+  const [value, setValue] = useState(item.value != null ? String(item.value) : '')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -430,12 +443,14 @@ function EditItem({ item, onClose, onSaved }: {
     const br = brand.trim()
     if (!cat) return setError('Enter a category')
     if (!it) return setError('Enter an item name')
+    if (value.trim() !== '' && isNaN(Number(value))) return setError('Enter a valid value')
     setBusy(true)
     const { error: err } = await inventory.updateItem(item.id, {
       division: divisionValue,
       category: cat,
       brand: br || null,
       item: it,
+      value: value.trim() === '' ? null : Number(value),
     })
     setBusy(false)
     if (err) return setError(err.message)
@@ -460,9 +475,14 @@ function EditItem({ item, onClose, onSaved }: {
             {(id) => <Input id={id} value={brand} onChange={(e) => setBrand(e.target.value)} />}
           </Field>
         </div>
-        <Field label="Item" required>
-          {(id) => <Input id={id} value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="Product name" />}
-        </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Item" required>
+            {(id) => <Input id={id} value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="Product name" />}
+          </Field>
+          <Field label="Value" hint="Unit cost or price. Optional.">
+            {(id) => <Input id={id} type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.00" />}
+          </Field>
+        </div>
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
