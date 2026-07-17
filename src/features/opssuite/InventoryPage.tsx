@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Boxes, FileSpreadsheet, FileText, Plus, Trash2 } from 'lucide-react'
+import { Boxes, FileSpreadsheet, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
@@ -61,6 +61,7 @@ export default function InventoryPage() {
   const [countsQuery, setCountsQuery] = useState('')
   const [adding, setAdding] = useState(false)
   const [addingItem, setAddingItem] = useState(false)
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
 
   const load = () =>
     Promise.all([inventory.items(), inventory.counts()]).then(([i, c]) => {
@@ -252,18 +253,23 @@ export default function InventoryPage() {
                     <td className="px-3 py-2.5 text-ink-muted">{it.brand ?? '—'}</td>
                     <td className="px-3 py-2.5 font-medium text-ink">{it.item ?? '—'}</td>
                     <td className="px-3 py-2.5 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={async () => {
-                          if (!window.confirm(`Delete ${it.item ?? 'item'}?`)) return
-                          await inventory.deleteItem(it.id)
-                          await load()
-                        }}
-                        aria-label="Delete item"
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setEditingItem(it)} aria-label="Edit item">
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete ${it.item ?? 'item'}?`)) return
+                            await inventory.deleteItem(it.id)
+                            await load()
+                          }}
+                          aria-label="Delete item"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -329,6 +335,14 @@ export default function InventoryPage() {
           onSaved={() => { setAddingItem(false); void load() }}
         />
       )}
+
+      {editingItem && (
+        <EditItem
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaved={() => { setEditingItem(null); void load() }}
+        />
+      )}
     </div>
   )
 }
@@ -391,6 +405,68 @@ function AddItem({ accountId, defaultDivision, onClose, onSaved }: {
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save item'}</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function EditItem({ item, onClose, onSaved }: {
+  item: InventoryItem
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [divisionValue, setDivisionValue] = useState<Division>((item.division as Division) ?? 'lube')
+  const [category, setCategory] = useState(item.category ?? '')
+  const [brand, setBrand] = useState(item.brand ?? '')
+  const [itemName, setItemName] = useState(item.item ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    setError(null)
+    const cat = category.trim()
+    const it = itemName.trim()
+    const br = brand.trim()
+    if (!cat) return setError('Enter a category')
+    if (!it) return setError('Enter an item name')
+    setBusy(true)
+    const { error: err } = await inventory.updateItem(item.id, {
+      division: divisionValue,
+      category: cat,
+      brand: br || null,
+      item: it,
+    })
+    setBusy(false)
+    if (err) return setError(err.message)
+    onSaved()
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Edit catalog item">
+      <div className="flex flex-col gap-4">
+        <Field label="Division" required>
+          {(id) => (
+            <Select id={id} value={divisionValue} onChange={(e) => setDivisionValue(e.target.value as Division)}>
+              {DIVISIONS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </Select>
+          )}
+        </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Category" required>
+            {(id) => <Input id={id} value={category} onChange={(e) => setCategory(e.target.value)} />}
+          </Field>
+          <Field label="Brand">
+            {(id) => <Input id={id} value={brand} onChange={(e) => setBrand(e.target.value)} />}
+          </Field>
+        </div>
+        <Field label="Item" required>
+          {(id) => <Input id={id} value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="Product name" />}
+        </Field>
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</Button>
         </div>
       </div>
     </Modal>

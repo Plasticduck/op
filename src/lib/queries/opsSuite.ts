@@ -55,6 +55,8 @@ export const inventory = {
     supabase.from('inventory_items').insert(row).select().single(),
   createCount: (row: T['inventory_counts']['Insert']) =>
     supabase.from('inventory_counts').insert(row).select().single(),
+  updateItem: (id: string, patch: T['inventory_items']['Update']) =>
+    supabase.from('inventory_items').update(patch).eq('id', id),
   deleteItem: (id: string) => supabase.from('inventory_items').delete().eq('id', id),
 }
 export const capitalRequests = {
