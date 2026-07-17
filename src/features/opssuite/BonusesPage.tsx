@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, RotateCcw, Save, X } from 'lucide-react'
-import { format, parseISO, subMonths } from 'date-fns'
+import { addMonths, format, parseISO, subMonths } from 'date-fns'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -11,7 +11,7 @@ import { useLocations } from '@/lib/locations'
 import { compareLocationName } from '@/lib/utils'
 import { currency } from '@/lib/format'
 import { gmBonus, type GmBonusBase, type GmBonusMonth } from '@/lib/queries/gmBonus'
-import { computeGmBonus, type BaseSnapshot, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
+import { computeGmBonus, type AvgBase, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
 
 const num = (s: string) => {
   const n = Number(s)
@@ -27,6 +27,16 @@ type Form = typeof emptyForm
 const monthOf = (period: string) => format(parseISO(period), 'MMMM yyyy')
 const toPeriod = (monthInput: string) => `${monthInput}-01`
 const prevPeriod = (period: string) => format(subMonths(parseISO(period), 1), 'yyyy-MM-01')
+const nextPeriod = (period: string) => format(addMonths(parseISO(period), 1), 'yyyy-MM-01')
+
+// The baseline in effect for a given month is the latest reset of that kind that
+// took effect on or before that month. Resets entered in month M take effect M+1,
+// so they never change month M itself.
+function effectiveBaseline(baselines: GmBonusBase[], kind: 'membership' | 'avg', period: string) {
+  return baselines
+    .filter((b) => b.kind === kind && b.effective_from <= period)
+    .sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))[0] ?? null
+}
 
 export default function BonusesPage() {
   const { profile } = useAuth()
@@ -39,7 +49,7 @@ export default function BonusesPage() {
   const [locationId, setLocationId] = useState('')
   const [period, setPeriod] = useState(format(new Date(), 'yyyy-MM-01'))
   const [months, setMonths] = useState<GmBonusMonth[]>([])
-  const [base, setBase] = useState<GmBonusBase | null>(null)
+  const [baselines, setBaselines] = useState<GmBonusBase[]>([])
   const [form, setForm] = useState<Form>(emptyForm)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -54,8 +64,8 @@ export default function BonusesPage() {
     if (!locationId) return
     setLoading(true)
     setError(null)
-    const [b, m] = await Promise.all([gmBonus.base(locationId), gmBonus.months(locationId)])
-    setBase((b.data as GmBonusBase | null) ?? null)
+    const [b, m] = await Promise.all([gmBonus.baselines(locationId), gmBonus.months(locationId)])
+    setBaselines((b.data as GmBonusBase[] | null) ?? [])
     setMonths((m.data as GmBonusMonth[] | null) ?? [])
     setLoading(false)
   }, [locationId])
@@ -95,17 +105,18 @@ export default function BonusesPage() {
   const previous: PrevCounts = prevRow
     ? { mighty_count: prevRow.mighty_count, super_count: prevRow.super_count, wonder_count: prevRow.wonder_count }
     : null
-  const baseSnap: BaseSnapshot = base
+  const membershipRow = effectiveBaseline(baselines, 'membership', period)
+  const avgRow = effectiveBaseline(baselines, 'avg', period)
+  const membershipBase: MembershipBase = membershipRow
     ? {
-        base_date: base.base_date,
-        mighty_count: base.mighty_count,
-        super_count: base.super_count,
-        wonder_count: base.wonder_count,
-        avg_mos: Number(base.avg_mos),
+        mighty_count: membershipRow.mighty_count,
+        super_count: membershipRow.super_count,
+        wonder_count: membershipRow.wonder_count,
       }
     : null
+  const avgBase: AvgBase = avgRow ? Number(avgRow.avg_mos) : null
 
-  const result = computeGmBonus({ current, previous, base: baseSnap })
+  const result = computeGmBonus({ current, previous, membershipBase, avgBase })
 
   const saveMonth = async () => {
     if (!profile || !locationId) return
@@ -130,28 +141,30 @@ export default function BonusesPage() {
     await load()
   }
 
-  // The two one-time goals reset their baselines independently, matching the
-  // sheet: membership resets the level counts/date; lifetime resets only the
-  // average-months figure. With no baseline yet, either reset seeds both.
+  // Each one-time goal resets its own baseline independently. A reset takes
+  // effect the month AFTER the one being viewed, so this month keeps measuring
+  // against the prior baseline and only future months see the new one.
   const resetBase = async (which: 'membership' | 'avg') => {
     if (!profile || !locationId) return
     const label = which === 'membership' ? 'membership baseline' : 'average-months baseline'
-    if (!window.confirm(`Reset the ${label} to ${monthOf(period)}'s numbers?`)) return
+    const effective = nextPeriod(period)
+    if (!window.confirm(`Set the ${label} to ${monthOf(period)}'s numbers, effective ${monthOf(effective)}?`))
+      return
     setSaving(true)
     setError(null)
-    const row = {
+    const { error: err } = await gmBonus.upsertBaseline({
       account_id: profile.account_id,
       location_id: locationId,
-      base_date: which === 'membership' || !base ? period : base.base_date,
-      mighty_count: which === 'membership' || !base ? current.mighty_count : base.mighty_count,
-      super_count: which === 'membership' || !base ? current.super_count : base.super_count,
-      wonder_count: which === 'membership' || !base ? current.wonder_count : base.wonder_count,
-      avg_mos: which === 'avg' || !base ? current.avg_mos : Number(base.avg_mos),
-    }
-    const { error: err } = await gmBonus.upsertBase(row)
+      kind: which,
+      effective_from: effective,
+      mighty_count: which === 'membership' ? current.mighty_count : 0,
+      super_count: which === 'membership' ? current.super_count : 0,
+      wonder_count: which === 'membership' ? current.wonder_count : 0,
+      avg_mos: which === 'avg' ? current.avg_mos : 0,
+    })
     setSaving(false)
     if (err) return setError(err.message)
-    setNotice(`Reset ${label} to ${monthOf(period)}.`)
+    setNotice(`${label[0].toUpperCase()}${label.slice(1)} set from ${monthOf(effective)} onward.`)
     await load()
   }
 
@@ -214,7 +227,9 @@ export default function BonusesPage() {
 
             <div className="mt-4 rounded-md border border-border bg-content p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Baseline</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Baselines (in effect for {monthOf(period)})
+                </h3>
                 <div className="flex gap-2">
                   <Button variant="secondary" size="sm" onClick={() => resetBase('membership')} disabled={saving}>
                     <RotateCcw className="size-3.5" /> Reset membership
@@ -224,16 +239,24 @@ export default function BonusesPage() {
                   </Button>
                 </div>
               </div>
-              {base ? (
-                <p className="mt-2 text-xs text-ink-muted">
-                  Set {monthOf(base.base_date)} · Mighty {base.mighty_count}, Super {base.super_count}, Wonder{' '}
-                  {base.wonder_count} · Avg {Number(base.avg_mos)} mo
-                </p>
-              ) : (
-                <p className="mt-2 text-xs text-warn">
-                  No baseline set. One-time bonuses need a baseline. Use "Reset to this month" to set one.
-                </p>
-              )}
+              <p className="mt-2 text-xs text-ink-muted">
+                {membershipRow ? (
+                  <>Membership (since {monthOf(membershipRow.effective_from)}): Mighty {membershipRow.mighty_count},
+                    Super {membershipRow.super_count}, Wonder {membershipRow.wonder_count}</>
+                ) : (
+                  <span className="text-warn">Membership baseline not set for this month.</span>
+                )}
+              </p>
+              <p className="mt-1 text-xs text-ink-muted">
+                {avgRow ? (
+                  <>Avg months (since {monthOf(avgRow.effective_from)}): {Number(avgRow.avg_mos)} mo</>
+                ) : (
+                  <span className="text-warn">Average-months baseline not set for this month.</span>
+                )}
+              </p>
+              <p className="mt-1 text-xs text-ink-subtle">
+                A reset uses this month's numbers and takes effect next month, so it never changes this month.
+              </p>
             </div>
           </section>
 

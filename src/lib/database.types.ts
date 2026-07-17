@@ -1658,9 +1658,10 @@ export type Database = {
         Row: {
           account_id: string
           avg_mos: number
-          base_date: string
           created_at: string
+          effective_from: string
           id: string
+          kind: string
           location_id: string
           mighty_count: number
           super_count: number
@@ -1670,9 +1671,10 @@ export type Database = {
         Insert: {
           account_id: string
           avg_mos?: number
-          base_date: string
           created_at?: string
+          effective_from: string
           id?: string
+          kind: string
           location_id: string
           mighty_count?: number
           super_count?: number
@@ -1682,9 +1684,10 @@ export type Database = {
         Update: {
           account_id?: string
           avg_mos?: number
-          base_date?: string
           created_at?: string
+          effective_from?: string
           id?: string
+          kind?: string
           location_id?: string
           mighty_count?: number
           super_count?: number
@@ -1702,7 +1705,7 @@ export type Database = {
           {
             foreignKeyName: "gm_bonus_base_location_id_fkey"
             columns: ["location_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "locations"
             referencedColumns: ["id"]
           },

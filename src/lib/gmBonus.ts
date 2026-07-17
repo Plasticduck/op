@@ -12,19 +12,19 @@ export type MonthInputs = {
   conversion_pct: number
 }
 
-export type PrevCounts = {
+export type LevelCounts = {
   mighty_count: number
   super_count: number
   wonder_count: number
-} | null
+}
 
-export type BaseSnapshot = {
-  base_date: string
-  mighty_count: number
-  super_count: number
-  wonder_count: number
-  avg_mos: number
-} | null
+export type PrevCounts = LevelCounts | null
+
+// Baselines are independent, effective-dated series. The membership baseline
+// (level counts) and the average-months baseline reset separately, so they are
+// passed in separately. Either can be null when no baseline is in effect yet.
+export type MembershipBase = LevelCounts | null
+export type AvgBase = number | null
 
 export const LIFETIME_VALUE_BONUS = 1500
 export const MEMBERSHIP_BONUS = 1500
@@ -91,15 +91,17 @@ export type GmBonusResult = {
   conversion: { pct: number; amount: number; capped: boolean }
   gmTotal: number
   agmTotal: number
-  hasBase: boolean
+  hasMembershipBase: boolean
+  hasAvgBase: boolean
 }
 
 export function computeGmBonus(args: {
   current: MonthInputs
   previous: PrevCounts
-  base: BaseSnapshot
+  membershipBase: MembershipBase
+  avgBase: AvgBase
 }): GmBonusResult {
-  const { current, previous, base } = args
+  const { current, previous, membershipBase, avgBase } = args
 
   const counts: Record<LevelKey, number> = {
     mighty: current.mighty_count,
@@ -115,8 +117,8 @@ export function computeGmBonus(args: {
     ? prevCounts.mighty + prevCounts.super + prevCounts.wonder
     : null
 
-  const baseCounts: Record<LevelKey, number> | null = base
-    ? { mighty: base.mighty_count, super: base.super_count, wonder: base.wonder_count }
+  const baseCounts: Record<LevelKey, number> | null = membershipBase
+    ? { mighty: membershipBase.mighty_count, super: membershipBase.super_count, wonder: membershipBase.wonder_count }
     : null
   const baseTotal = baseCounts ? baseCounts.mighty + baseCounts.super + baseCounts.wonder : null
 
@@ -135,7 +137,7 @@ export function computeGmBonus(args: {
   })
 
   // Lifetime value: current avg months of active membership up at least 1 vs base.
-  const avgDelta = base ? current.avg_mos - base.avg_mos : null
+  const avgDelta = avgBase === null ? null : current.avg_mos - avgBase
   const lifeEarned = avgDelta === null ? null : avgDelta >= 1
   const lifetimeValue = {
     earned: lifeEarned,
@@ -169,7 +171,7 @@ export function computeGmBonus(args: {
     currentTotal,
     previousTotal,
     levels,
-    avgMos: { base: base ? base.avg_mos : null, current: current.avg_mos, delta: avgDelta },
+    avgMos: { base: avgBase, current: current.avg_mos, delta: avgDelta },
     lifetimeValue,
     membership,
     oneTimeTotal,
@@ -177,6 +179,7 @@ export function computeGmBonus(args: {
     conversion: { pct: current.conversion_pct, amount: convAmt, capped: convAmt < convUncapped },
     gmTotal,
     agmTotal,
-    hasBase: base !== null,
+    hasMembershipBase: membershipBase !== null,
+    hasAvgBase: avgBase !== null,
   }
 }
