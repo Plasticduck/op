@@ -9,7 +9,7 @@ export function AccountBrandLogo() {
     <img
       src={profile.brand_logo_url}
       alt="Company logo"
-      className="h-12 w-auto max-w-[45vw] object-contain sm:h-16"
+      className="h-20 w-auto max-w-[60vw] object-contain sm:h-28"
     />
   )
 }
