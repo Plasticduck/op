@@ -11,7 +11,6 @@ import { StatCardRow } from '@/components/data/StatCardRow'
 import { GoogleRatingBadge } from '@/components/data/GoogleRating'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
-import { AccountBrandLogo } from '@/features/dashboard/AccountBrandLogo'
 import { Select } from '@/components/ui/Select'
 
 // Vivid grade color by letter grade.
@@ -114,7 +113,6 @@ export default function AllSitesDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <AccountBrandLogo />
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
           {greeting()}, {profile?.name.split(' ')[0]}

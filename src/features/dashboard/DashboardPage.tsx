@@ -167,7 +167,6 @@ function ManagerDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <AccountBrandLogo />
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
           {greeting()}, {profile?.name.split(' ')[0]}
@@ -445,7 +444,12 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <ViewToggle view={view} onChange={setView} />
+      <div className="relative flex items-center">
+        <ViewToggle view={view} onChange={setView} />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <AccountBrandLogo />
+        </div>
+      </div>
       {view === 'all' ? <AllSitesDashboard /> : <ManagerDashboard />}
     </div>
   )
