@@ -446,7 +446,7 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6">
       <div className="relative flex items-center">
         <ViewToggle view={view} onChange={setView} />
-        <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="pointer-events-none absolute left-1/2 top-1/2 mt-6 -translate-x-1/2 -translate-y-1/2">
           <AccountBrandLogo />
         </div>
       </div>
