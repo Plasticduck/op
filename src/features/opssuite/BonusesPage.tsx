@@ -11,11 +11,24 @@ import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { compareLocationName } from '@/lib/utils'
 import { currency } from '@/lib/format'
+import { useCompany } from '@/lib/company'
+import type { RegionDef } from '@/lib/regions'
 import { gmBonus, type GmBonusBase, type GmBonusMonth } from '@/lib/queries/gmBonus'
-import { computeGmBonus, type AvgBase, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
-import { exportSiteBonusPdf, exportAllSitesBonusPdf, type AllSitesRow } from '@/lib/gmBonusPdf'
+import { computeGmBonus, type AvgBase, type GmBonusResult, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
+import { exportSiteBonusPdf, exportAllSitesBonusPdf, exportRegionalBonusPdf, type AllSitesRow, type RegionalRow } from '@/lib/gmBonusPdf'
 
 const ALL = '__all__'
+
+// Regional Manager quarterly bonus: each region's manager earns a fixed cut of
+// the combined GM monthly bonuses across that region's sites for the quarter.
+// Region names must match the account's saved regions (Company settings).
+const REGION_BONUS: { name: string; pct: number }[] = [
+  { name: 'Lubbock Region', pct: 0.24 },
+  { name: 'Permian Basin Region (A)', pct: 0.19 },
+  { name: 'Permian Basin Region (B)', pct: 0.56 },
+  { name: 'New Mexico Region', pct: 0.28 },
+  { name: 'Central Region', pct: 0.42 },
+]
 
 const num = (s: string) => {
   const n = Number(s)
@@ -42,14 +55,59 @@ function effectiveBaseline(baselines: GmBonusBase[], kind: 'membership' | 'avg',
     .sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1))[0] ?? null
 }
 
+// Compute one site's GM bonus for a month from the saved data, or null if the
+// month has no saved numbers. Shared by the All Sites and Regional views.
+function computeSiteMonth(
+  allMonths: GmBonusMonth[],
+  allBaselines: GmBonusBase[],
+  siteId: string,
+  period: string,
+): GmBonusResult | null {
+  const monthRow = allMonths.find((m) => m.location_id === siteId && m.period === period)
+  if (!monthRow) return null
+  const prevRow = allMonths.find((m) => m.location_id === siteId && m.period === prevPeriod(period)) ?? null
+  const siteBases = allBaselines.filter((b) => b.location_id === siteId)
+  const memRow = effectiveBaseline(siteBases, 'membership', period)
+  const aRow = effectiveBaseline(siteBases, 'avg', period)
+  return computeGmBonus({
+    current: {
+      mighty_count: monthRow.mighty_count,
+      super_count: monthRow.super_count,
+      wonder_count: monthRow.wonder_count,
+      avg_mos: Number(monthRow.avg_mos),
+      churn_pct: Number(monthRow.churn_pct),
+      conversion_pct: Number(monthRow.conversion_pct),
+    },
+    previous: prevRow
+      ? { mighty_count: prevRow.mighty_count, super_count: prevRow.super_count, wonder_count: prevRow.wonder_count }
+      : null,
+    membershipBase: memRow
+      ? { mighty_count: memRow.mighty_count, super_count: memRow.super_count, wonder_count: memRow.wonder_count }
+      : null,
+    avgBase: aRow ? Number(aRow.avg_mos) : null,
+  })
+}
+
+const quarterStartOf = (d: Date) => format(new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1), 'yyyy-MM-01')
+const quarterMonths = (qStart: string) => [0, 1, 2].map((i) => format(addMonths(parseISO(qStart), i), 'yyyy-MM-01'))
+const prevQuarter = (qStart: string) => format(subMonths(parseISO(qStart), 3), 'yyyy-MM-01')
+const nextQuarter = (qStart: string) => format(addMonths(parseISO(qStart), 3), 'yyyy-MM-01')
+const quarterLabel = (qStart: string) => {
+  const d = parseISO(qStart)
+  const q = Math.floor(d.getMonth() / 3) + 1
+  return `Q${q} ${format(d, 'yyyy')} (${format(d, 'MMM')} - ${format(addMonths(d, 2), 'MMM')})`
+}
+
 export default function BonusesPage() {
   const { profile } = useAuth()
   const { locations } = useLocations()
+  const { settings } = useCompany()
   const sortedLocations = useMemo(
     () => [...locations].sort((a, b) => compareLocationName(a.name, b.name)),
     [locations],
   )
 
+  const [mode, setMode] = useState<'gm' | 'regional'>('gm')
   const [locationId, setLocationId] = useState('')
   const [period, setPeriod] = useState(format(new Date(), 'yyyy-MM-01'))
   const [allMonths, setAllMonths] = useState<GmBonusMonth[]>([])
@@ -128,37 +186,14 @@ export default function BonusesPage() {
   const result = computeGmBonus({ current, previous, membershipBase, avgBase })
 
   // All Sites: each site's current-month result from saved data (no live editing).
-  const allRows: AllSitesRow[] = useMemo(() => {
-    return sortedLocations.map((loc) => {
-      const siteMonths = allMonths.filter((m) => m.location_id === loc.id)
-      const mRow = siteMonths.find((m) => m.period === period) ?? null
-      if (!mRow) return { site: loc.name, result: null }
-      const pRow = siteMonths.find((m) => m.period === prevPeriod(period)) ?? null
-      const siteBases = allBaselines.filter((b) => b.location_id === loc.id)
-      const memRow = effectiveBaseline(siteBases, 'membership', period)
-      const aRow = effectiveBaseline(siteBases, 'avg', period)
-      return {
+  const allRows: AllSitesRow[] = useMemo(
+    () =>
+      sortedLocations.map((loc) => ({
         site: loc.name,
-        result: computeGmBonus({
-          current: {
-            mighty_count: mRow.mighty_count,
-            super_count: mRow.super_count,
-            wonder_count: mRow.wonder_count,
-            avg_mos: Number(mRow.avg_mos),
-            churn_pct: Number(mRow.churn_pct),
-            conversion_pct: Number(mRow.conversion_pct),
-          },
-          previous: pRow
-            ? { mighty_count: pRow.mighty_count, super_count: pRow.super_count, wonder_count: pRow.wonder_count }
-            : null,
-          membershipBase: memRow
-            ? { mighty_count: memRow.mighty_count, super_count: memRow.super_count, wonder_count: memRow.wonder_count }
-            : null,
-          avgBase: aRow ? Number(aRow.avg_mos) : null,
-        }),
-      }
-    })
-  }, [sortedLocations, allMonths, allBaselines, period])
+        result: computeSiteMonth(allMonths, allBaselines, loc.id, period),
+      })),
+    [sortedLocations, allMonths, allBaselines, period],
+  )
 
   const monthLabel = monthOf(period)
   const allGmSum = allRows.reduce((a, r) => a + (r.result?.gmTotal ?? 0), 0)
@@ -235,26 +270,57 @@ export default function BonusesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="GM/AGM Bonuses"
-        subtitle="GM and AGM monthly bonus calculator. Admin only."
+        title="Bonuses"
+        subtitle="Admin only."
         actions={
-          <div className="flex flex-wrap gap-2">
-            {!isAll && (
-              <Button onClick={saveMonth} disabled={saving || !locationId}>
-                <Save className="size-4" /> {saving ? 'Saving…' : `Save ${format(parseISO(period), 'MMM yyyy')}`}
+          mode === 'gm' ? (
+            <div className="flex flex-wrap gap-2">
+              {!isAll && (
+                <Button onClick={saveMonth} disabled={saving || !locationId}>
+                  <Save className="size-4" /> {saving ? 'Saving…' : `Save ${format(parseISO(period), 'MMM yyyy')}`}
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                onClick={exportToPdf}
+                disabled={exporting || (isAll && !anyAllData)}
+              >
+                <FileDown className="size-4" /> {exporting ? 'Exporting…' : 'Export to PDF'}
               </Button>
-            )}
-            <Button
-              variant="secondary"
-              onClick={exportToPdf}
-              disabled={exporting || (isAll && !anyAllData)}
-            >
-              <FileDown className="size-4" /> {exporting ? 'Exporting…' : 'Export to PDF'}
-            </Button>
-          </div>
+            </div>
+          ) : undefined
         }
       />
 
+      <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-1">
+        {([
+          { key: 'gm', label: 'GM/AGM Monthly Bonuses' },
+          { key: 'regional', label: 'Regional Manager Quarterly Bonuses' },
+        ] as const).map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => setMode(o.key)}
+            className={
+              'rounded-md px-3 py-1.5 text-sm font-medium transition ' +
+              (mode === o.key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')
+            }
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'regional' ? (
+        <RegionalBonuses
+          allMonths={allMonths}
+          allBaselines={allBaselines}
+          regions={settings.regions ?? []}
+          logoUrl={profile?.brand_logo_url}
+          loading={loading}
+        />
+      ) : (
+      <>
       <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-card px-3 py-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
           Site
@@ -491,6 +557,116 @@ export default function BonusesPage() {
           </section>
         </div>
       )}
+      </>
+      )}
+    </div>
+  )
+}
+
+function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }: {
+  allMonths: GmBonusMonth[]
+  allBaselines: GmBonusBase[]
+  regions: RegionDef[]
+  logoUrl?: string | null
+  loading: boolean
+}) {
+  const [qStart, setQStart] = useState(() => quarterStartOf(new Date()))
+  const [exporting, setExporting] = useState(false)
+  const months = useMemo(() => quarterMonths(qStart), [qStart])
+
+  const rows: RegionalRow[] = useMemo(
+    () =>
+      REGION_BONUS.map((rb) => {
+        const def = regions.find((r) => r.name === rb.name)
+        const siteIds = def?.siteIds ?? []
+        let combined = 0
+        for (const sid of siteIds) {
+          for (const m of months) {
+            const res = computeSiteMonth(allMonths, allBaselines, sid, m)
+            if (res) combined += res.gmTotal
+          }
+        }
+        return { region: rb.name, pct: rb.pct, sites: siteIds.length, combined, bonus: combined * rb.pct }
+      }),
+    [regions, months, allMonths, allBaselines],
+  )
+  const totalCombined = rows.reduce((a, r) => a + r.combined, 0)
+  const totalBonus = rows.reduce((a, r) => a + r.bonus, 0)
+  const label = quarterLabel(qStart)
+
+  const doExport = async () => {
+    setExporting(true)
+    try {
+      await exportRegionalBonusPdf(label, rows, logoUrl)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-3">
+        <span className="text-xs font-medium text-ink-muted">Quarter</span>
+        <div className="flex items-center gap-1">
+          <Button variant="secondary" size="icon" className="size-9" aria-label="Previous quarter" onClick={() => setQStart(prevQuarter(qStart))}>
+            <ChevronLeft className="size-4" />
+          </Button>
+          <span className="w-44 text-center text-sm font-medium text-ink">{label}</span>
+          <Button variant="secondary" size="icon" className="size-9" aria-label="Next quarter" onClick={() => setQStart(nextQuarter(qStart))}>
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+        <Button variant="secondary" className="ml-auto" onClick={doExport} disabled={exporting || totalCombined === 0}>
+          <FileDown className="size-4" /> {exporting ? 'Exporting…' : 'Export to PDF'}
+        </Button>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-ink-muted">Loading…</p>
+      ) : regions.length === 0 ? (
+        <EmptyState
+          icon={BadgeDollarSign}
+          title="No regions configured"
+          description="Set up regions in Company settings to calculate regional manager bonuses."
+        />
+      ) : (
+        <div className="overflow-x-auto rounded-md border border-border bg-card">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
+              <tr>
+                <th className="px-3 py-2.5 font-medium">Region</th>
+                <th className="px-3 py-2.5 text-right font-medium">Sites</th>
+                <th className="px-3 py-2.5 text-right font-medium">Share</th>
+                <th className="px-3 py-2.5 text-right font-medium">Combined GM Bonus</th>
+                <th className="px-3 py-2.5 text-right font-medium">Regional Mgr Bonus</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.region} className="border-t border-border hover:bg-content">
+                  <td className="px-3 py-2.5 font-medium text-ink">{r.region}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{r.sites}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{Math.round(r.pct * 100)}%</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.combined)}</td>
+                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(r.bonus)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-border bg-content font-semibold">
+                <td className="px-3 py-2.5 text-ink" colSpan={3}>Total</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-ink">{currency(totalCombined)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-accent">{currency(totalBonus)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      <p className="text-xs text-ink-subtle">
+        Each regional manager earns their region's percentage of the combined GM monthly bonuses across that region's
+        sites for the three months of the quarter. Figures come straight from the GM/AGM Monthly Bonuses.
+      </p>
     </div>
   )
 }

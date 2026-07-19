@@ -152,3 +152,45 @@ export async function exportAllSitesBonusPdf(
 
   doc.save(`gm-bonus-all-sites-${fileSafe(monthLabel)}-${stamp()}.pdf`)
 }
+
+export type RegionalRow = { region: string; pct: number; sites: number; combined: number; bonus: number }
+
+export async function exportRegionalBonusPdf(
+  quarterLabel: string,
+  rows: RegionalRow[],
+  logoUrl?: string | null,
+): Promise<void> {
+  const { jsPDF, autoTable } = await loaders()
+  const logo = await loadPdfLogo(logoUrl)
+  const doc = new jsPDF() as Doc
+  placePdfLogo(doc, logo)
+  doc.setFontSize(15)
+  doc.text('Regional Manager Quarterly Bonus', 14, 16)
+  doc.setFontSize(10)
+  doc.setTextColor(120)
+  doc.text(`${quarterLabel} · Generated ${format(new Date(), 'PP')}`, 14, 22)
+  doc.setTextColor(0)
+
+  const totalCombined = rows.reduce((a, r) => a + r.combined, 0)
+  const totalBonus = rows.reduce((a, r) => a + r.bonus, 0)
+
+  autoTable(doc, {
+    startY: 28,
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: ACCENT },
+    footStyles: { fillColor: [237, 240, 245], textColor: 20, fontStyle: 'bold' },
+    margin: { left: 14, right: 14 },
+    head: [['Region', 'Sites', 'Share', 'Combined GM Bonus', 'Regional Mgr Bonus']],
+    body: rows.map((r) => [
+      r.region,
+      String(r.sites),
+      `${Math.round(r.pct * 100)}%`,
+      currency(r.combined),
+      currency(r.bonus),
+    ]),
+    foot: [['Total', '', '', currency(totalCombined), currency(totalBonus)]],
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+  })
+
+  doc.save(`regional-bonus-${fileSafe(quarterLabel)}-${stamp()}.pdf`)
+}
