@@ -29,20 +29,20 @@ export type AvgBase = number | null
 export const LIFETIME_VALUE_BONUS = 1500
 export const MEMBERSHIP_BONUS = 1500
 
-// Churn reward: lower bracket wins. <7 -> 600, [7,8) -> 520, ... , >=12 -> 0.
-export const CHURN_BRACKETS: { under: number; amount: number; label: string }[] = [
-  { under: 7, amount: 600, label: '0 - 7%' },
-  { under: 8, amount: 520, label: '7 - 8%' },
-  { under: 9, amount: 440, label: '8 - 9%' },
-  { under: 10, amount: 360, label: '9 - 10%' },
-  { under: 11, amount: 240, label: '10 - 11%' },
-  { under: 12, amount: 120, label: '11 - 12%' },
-  { under: Infinity, amount: 0, label: '12% +' },
+// Churn reward: first matching bracket wins. <7 -> 600, <=8 -> 520, <=9 -> 440,
+// <=10 -> 360, <=11 -> 240, <=12 -> 120, >12 -> 0.
+export const CHURN_BRACKETS: { test: (c: number) => boolean; amount: number; label: string }[] = [
+  { test: (c) => c < 7, amount: 600, label: '< 7%' },
+  { test: (c) => c <= 8, amount: 520, label: '<= 8%' },
+  { test: (c) => c <= 9, amount: 440, label: '<= 9%' },
+  { test: (c) => c <= 10, amount: 360, label: '<= 10%' },
+  { test: (c) => c <= 11, amount: 240, label: '<= 11%' },
+  { test: (c) => c <= 12, amount: 120, label: '<= 12%' },
+  { test: () => true, amount: 0, label: '> 12%' },
 ]
 
 export function churnReward(churnPct: number): number {
-  for (const b of CHURN_BRACKETS) if (churnPct < b.under) return b.amount
-  return 0
+  return (CHURN_BRACKETS.find((b) => b.test(churnPct)) ?? CHURN_BRACKETS[CHURN_BRACKETS.length - 1]).amount
 }
 
 // Conversion reward on INT(conversion%): >=15 -> 400, 14 -> 350, 13 -> 300,
@@ -160,7 +160,7 @@ export function computeGmBonus(args: {
   const oneTimeTotal = lifetimeValue.amount + membership.amount
 
   const churnAmt = churnReward(current.churn_pct)
-  const churnBracket = CHURN_BRACKETS.find((b) => current.churn_pct < b.under)?.label ?? '12% +'
+  const churnBracket = (CHURN_BRACKETS.find((b) => b.test(current.churn_pct)) ?? CHURN_BRACKETS[CHURN_BRACKETS.length - 1]).label
   const convAmt = conversionReward(current.conversion_pct, current.churn_pct)
   const convUncapped = conversionReward(current.conversion_pct, 0)
 
