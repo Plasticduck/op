@@ -40,9 +40,6 @@ export async function exportSiteBonusPdf(
   doc.setFontSize(10)
   doc.setTextColor(120)
   doc.text(`${site} · ${monthLabel} · Generated ${format(new Date(), 'PP')}`, 14, 22)
-  if (names?.gm || names?.agm) {
-    doc.text(`GM: ${names.gm || '—'}    AGM: ${names.agm || '—'}`, 14, 27)
-  }
   doc.setTextColor(0)
 
   const common = {
@@ -55,7 +52,7 @@ export async function exportSiteBonusPdf(
 
   autoTable(doc, {
     ...common,
-    startY: names?.gm || names?.agm ? 31 : 28,
+    startY: 28,
     head: [['Membership Level', 'Members', 'Share', 'Change vs Prev', 'Change vs Base']],
     body: r.levels.map((l) => [l.label, String(l.count), pct(l.pct), pts(l.pctChange), pts(l.pctChangeSinceBase)]),
     foot: [['Total', String(r.currentTotal), `prev ${r.previousTotal ?? '—'}`, '', '']],
@@ -100,8 +97,8 @@ export async function exportSiteBonusPdf(
     ...common,
     startY: next(),
     body: [
-      ['Total GM monthly bonus', currency(r.gmTotal)],
-      ['Total AGM monthly bonus (1/2 of GM)', currency(r.agmTotal)],
+      [`Total GM monthly bonus (GM: ${names?.gm || '—'})`, currency(r.gmTotal)],
+      [`Total AGM monthly bonus, 1/2 of GM (AGM: ${names?.agm || '—'})`, currency(r.agmTotal)],
     ],
     columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right', fontStyle: 'bold' } },
   })
