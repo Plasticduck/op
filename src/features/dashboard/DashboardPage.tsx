@@ -456,15 +456,13 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3">
-        <div className="relative flex items-center">
-          <ViewToggle value={sel} onChange={select} />
-          <div className="pointer-events-none absolute left-1/2 top-1/2 mt-6 -translate-x-1/2 -translate-y-1/2">
-            <AccountBrandLogo />
-          </div>
+      <div className="relative flex items-start">
+        <ViewToggle value={sel} onChange={select} />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 mt-6 -translate-x-1/2 -translate-y-1/2">
+          <AccountBrandLogo />
         </div>
         {regions.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="ml-auto flex flex-col items-end gap-1.5">
             {regions.map((r) => (
               <button
                 key={r.name}
