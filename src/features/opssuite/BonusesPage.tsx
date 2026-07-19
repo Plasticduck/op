@@ -89,6 +89,33 @@ function computeSiteMonth(
   })
 }
 
+// Regional manager names, effective-dated by quarter. Legacy flat `region ->
+// name` is coerced to apply to all quarters via an early sentinel key.
+type QuarterManagers = Record<string, Record<string, string>>
+const LEGACY_Q = '1900-01-01'
+function normalizeManagers(raw: unknown): QuarterManagers {
+  const out: QuarterManagers = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [region, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof val === 'string') {
+      if (val.trim()) out[region] = { [LEGACY_Q]: val }
+    } else if (val && typeof val === 'object') {
+      const inner: Record<string, string> = {}
+      for (const [q, name] of Object.entries(val as Record<string, unknown>)) {
+        if (typeof name === 'string' && name.trim()) inner[q] = name
+      }
+      if (Object.keys(inner).length) out[region] = inner
+    }
+  }
+  return out
+}
+// The manager in effect for a quarter is the latest assignment on or before it.
+function effectiveManager(perQuarter: Record<string, string> | undefined, qStart: string): string {
+  if (!perQuarter) return ''
+  const keys = Object.keys(perQuarter).filter((k) => k <= qStart).sort()
+  return keys.length ? perQuarter[keys[keys.length - 1]] : ''
+}
+
 const quarterStartOf = (d: Date) => format(new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1), 'yyyy-MM-01')
 const quarterMonths = (qStart: string) => [0, 1, 2].map((i) => format(addMonths(parseISO(qStart), i), 'yyyy-MM-01'))
 const prevQuarter = (qStart: string) => format(subMonths(parseISO(qStart), 3), 'yyyy-MM-01')
@@ -317,7 +344,7 @@ export default function BonusesPage() {
           allMonths={allMonths}
           allBaselines={allBaselines}
           regions={settings.regions ?? []}
-          managers={settings.regionalManagers ?? {}}
+          rawManagers={settings.regionalManagers}
           onSaveManagers={async (next) => {
             if (!profile) return
             await updateCompany(profile.account_id, { settings: { ...settings, regionalManagers: next } })
@@ -570,18 +597,26 @@ export default function BonusesPage() {
   )
 }
 
-function RegionalBonuses({ allMonths, allBaselines, regions, managers, onSaveManagers, logoUrl, loading }: {
+function RegionalBonuses({ allMonths, allBaselines, regions, rawManagers, onSaveManagers, logoUrl, loading }: {
   allMonths: GmBonusMonth[]
   allBaselines: GmBonusBase[]
   regions: RegionDef[]
-  managers: Record<string, string>
-  onSaveManagers: (next: Record<string, string>) => Promise<void>
+  rawManagers: unknown
+  onSaveManagers: (next: QuarterManagers) => Promise<void>
   logoUrl?: string | null
   loading: boolean
 }) {
   const [qStart, setQStart] = useState(() => quarterStartOf(new Date()))
   const [exporting, setExporting] = useState(false)
-  const [mgr, setMgr] = useState<Record<string, string>>(managers)
+  const managers = useMemo(() => normalizeManagers(rawManagers), [rawManagers])
+  // Names shown/edited for the currently viewed quarter. Reset when the quarter
+  // (or saved data) changes so each quarter shows its own effective manager.
+  const [mgr, setMgr] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const next: Record<string, string> = {}
+    for (const rb of REGION_BONUS) next[rb.name] = effectiveManager(managers[rb.name], qStart)
+    setMgr(next)
+  }, [managers, qStart])
   const months = useMemo(() => quarterMonths(qStart), [qStart])
 
   const rows: RegionalRow[] = useMemo(
@@ -604,11 +639,26 @@ function RegionalBonuses({ allMonths, allBaselines, regions, managers, onSaveMan
   const totalBonus = rows.reduce((a, r) => a + r.bonus, 0)
   const label = quarterLabel(qStart)
 
-  // Persist manager names on blur, only when something actually changed.
+  // Persist on blur. A change sets the name for the VIEWED quarter only (from
+  // this quarter forward), so earlier quarters keep their prior manager.
   const commitManagers = () => {
-    const cleaned: Record<string, string> = {}
-    for (const [k, v] of Object.entries(mgr)) if (v.trim()) cleaned[k] = v.trim()
-    if (JSON.stringify(cleaned) !== JSON.stringify(managers)) void onSaveManagers(cleaned)
+    const next: QuarterManagers = {}
+    for (const [region, perQ] of Object.entries(managers)) next[region] = { ...perQ }
+    let changed = false
+    for (const rb of REGION_BONUS) {
+      const region = rb.name
+      const val = (mgr[region] ?? '').trim()
+      if (val === effectiveManager(managers[region], qStart)) continue
+      changed = true
+      if (!next[region]) next[region] = {}
+      if (val === '') {
+        delete next[region][qStart]
+        if (Object.keys(next[region]).length === 0) delete next[region]
+      } else {
+        next[region][qStart] = val
+      }
+    }
+    if (changed) void onSaveManagers(next)
   }
 
   const doExport = async () => {
