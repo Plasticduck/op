@@ -636,7 +636,6 @@ function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }:
               <tr>
                 <th className="px-3 py-2.5 font-medium">Region</th>
                 <th className="px-3 py-2.5 text-right font-medium">Sites</th>
-                <th className="px-3 py-2.5 text-right font-medium">Share</th>
                 <th className="px-3 py-2.5 text-right font-medium">Combined GM Bonus</th>
                 <th className="px-3 py-2.5 text-right font-medium">Regional Mgr Bonus</th>
               </tr>
@@ -646,7 +645,6 @@ function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }:
                 <tr key={r.region} className="border-t border-border hover:bg-content">
                   <td className="px-3 py-2.5 font-medium text-ink">{r.region}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{r.sites}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{Math.round(r.pct * 100)}%</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.combined)}</td>
                   <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(r.bonus)}</td>
                 </tr>
@@ -654,7 +652,7 @@ function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }:
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-border bg-content font-semibold">
-                <td className="px-3 py-2.5 text-ink" colSpan={3}>Total</td>
+                <td className="px-3 py-2.5 text-ink" colSpan={2}>Total</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-ink">{currency(totalCombined)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-accent">{currency(totalBonus)}</td>
               </tr>
