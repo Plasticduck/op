@@ -178,7 +178,6 @@ export async function exportRegionalBonusPdf(
   doc.text(`${quarterLabel} · Generated ${format(new Date(), 'PP')}`, 14, 22)
   doc.setTextColor(0)
 
-  const totalCombined = rows.reduce((a, r) => a + r.combined, 0)
   const totalBonus = rows.reduce((a, r) => a + r.bonus, 0)
 
   autoTable(doc, {
@@ -187,17 +186,10 @@ export async function exportRegionalBonusPdf(
     headStyles: { fillColor: ACCENT },
     footStyles: { fillColor: [237, 240, 245], textColor: 20, fontStyle: 'bold' },
     margin: { left: 14, right: 14 },
-    head: [['Region', 'Regional Manager', 'Sites', 'Share', 'Combined GM Bonus', 'Regional Mgr Bonus']],
-    body: rows.map((r) => [
-      r.region,
-      r.manager ?? '',
-      String(r.sites),
-      `${Math.round(r.pct * 100)}%`,
-      currency(r.combined),
-      currency(r.bonus),
-    ]),
-    foot: [['Total', '', '', '', currency(totalCombined), currency(totalBonus)]],
-    columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+    head: [['Region', 'Regional Manager', 'Sites', 'Regional Mgr Bonus']],
+    body: rows.map((r) => [r.region, r.manager ?? '', String(r.sites), currency(r.bonus)]),
+    foot: [['Total', '', '', currency(totalBonus)]],
+    columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' } },
   })
 
   doc.save(`regional-bonus-${fileSafe(quarterLabel)}-${stamp()}.pdf`)
