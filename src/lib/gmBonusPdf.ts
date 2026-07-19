@@ -30,6 +30,7 @@ export async function exportSiteBonusPdf(
   r: GmBonusResult,
   logoUrl?: string | null,
   names?: { gm?: string; agm?: string },
+  override?: number | null,
 ): Promise<void> {
   const { jsPDF, autoTable } = await loaders()
   const logo = await loadPdfLogo(logoUrl)
@@ -97,8 +98,14 @@ export async function exportSiteBonusPdf(
     ...common,
     startY: next(),
     body: [
-      [`Total GM monthly bonus (GM: ${names?.gm || '—'})`, currency(names?.gm?.trim() ? r.gmTotal : 0)],
-      [`Total AGM monthly bonus, 1/2 of GM (AGM: ${names?.agm || '—'})`, currency(names?.agm?.trim() ? r.agmTotal : 0)],
+      [
+        `Total GM monthly bonus (GM: ${names?.gm || '—'})${override != null ? ' [override]' : ''}`,
+        currency(override != null ? override : names?.gm?.trim() ? r.gmTotal : 0),
+      ],
+      [
+        `Total AGM monthly bonus, 1/2 of GM (AGM: ${names?.agm || '—'})`,
+        currency(!names?.agm?.trim() ? 0 : override != null ? override / 2 : r.agmTotal),
+      ],
     ],
     columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right', fontStyle: 'bold' } },
   })
@@ -111,6 +118,7 @@ export type AllSitesRow = {
   site: string
   gmName?: string
   agmName?: string
+  override?: number | null
   result: GmBonusResult | null
 }
 
@@ -130,9 +138,11 @@ export async function exportAllSitesBonusPdf(
   doc.text(`${monthLabel} · Generated ${format(new Date(), 'PP')}`, 14, 22)
   doc.setTextColor(0)
 
-  // A bonus is only paid when a manager is named: an empty GM/AGM name -> $0.
-  const gmVal = (r: AllSitesRow) => (r.gmName?.trim() && r.result ? r.result.gmTotal : 0)
-  const agmVal = (r: AllSitesRow) => (r.agmName?.trim() && r.result ? r.result.agmTotal : 0)
+  // Empty GM/AGM name -> $0. An admin override replaces the calculated GM total.
+  const gmVal = (r: AllSitesRow) =>
+    r.override != null ? r.override : r.gmName?.trim() && r.result ? r.result.gmTotal : 0
+  const agmVal = (r: AllSitesRow) =>
+    !r.agmName?.trim() ? 0 : r.override != null ? r.override / 2 : r.result ? r.result.agmTotal : 0
   const gmSum = rows.reduce((a, r) => a + gmVal(r), 0)
   const agmSum = rows.reduce((a, r) => a + agmVal(r), 0)
 

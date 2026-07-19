@@ -22,6 +22,12 @@ export const gmBonus = {
       .upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'location_id,kind,effective_from' })
       .select()
       .single(),
+  // Admin override of a site's GM bonus for a month (null clears it). Upserts the
+  // month row without touching the input numbers.
+  setOverride: (params: { account_id: string; location_id: string; period: string; gm_override: number | null }) =>
+    supabase
+      .from('gm_bonus_months')
+      .upsert({ ...params, updated_at: new Date().toISOString() }, { onConflict: 'location_id,period' }),
   upsertMonth: (row: T['gm_bonus_months']['Insert']) =>
     supabase
       .from('gm_bonus_months')

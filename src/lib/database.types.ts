@@ -1721,6 +1721,7 @@ export type Database = {
           churn_pct: number
           conversion_pct: number
           created_at: string
+          gm_override: number | null
           id: string
           location_id: string
           mighty_count: number
@@ -1737,6 +1738,7 @@ export type Database = {
           churn_pct?: number
           conversion_pct?: number
           created_at?: string
+          gm_override?: number | null
           id?: string
           location_id: string
           mighty_count?: number
@@ -1753,6 +1755,7 @@ export type Database = {
           churn_pct?: number
           conversion_pct?: number
           created_at?: string
+          gm_override?: number | null
           id?: string
           location_id?: string
           mighty_count?: number

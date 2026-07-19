@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Modal } from '@/components/ui/Modal'
+import { Field } from '@/components/forms/Field'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { compareLocationName } from '@/lib/utils'
@@ -173,6 +175,7 @@ export default function BonusesPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [overrideOpen, setOverrideOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -276,25 +279,30 @@ export default function BonusesPage() {
   // All Sites: each site's current-month result from saved data (no live editing).
   const allRows: AllSitesRow[] = useMemo(
     () =>
-      sortedLocations.map((loc) => ({
-        id: loc.id,
-        site: loc.name,
-        gmName: effectiveManager(siteManagers[loc.id]?.gm, period),
-        agmName: effectiveManager(siteManagers[loc.id]?.agm, period),
-        result: computeSiteMonth(allMonths, allBaselines, loc.id, period),
-      })),
+      sortedLocations.map((loc) => {
+        const row = allMonths.find((m) => m.location_id === loc.id && m.period === period)
+        return {
+          id: loc.id,
+          site: loc.name,
+          gmName: effectiveManager(siteManagers[loc.id]?.gm, period),
+          agmName: effectiveManager(siteManagers[loc.id]?.agm, period),
+          override: row?.gm_override != null ? Number(row.gm_override) : null,
+          result: computeSiteMonth(allMonths, allBaselines, loc.id, period),
+        }
+      }),
     [sortedLocations, allMonths, allBaselines, period, siteManagers],
   )
 
   const monthLabel = monthOf(period)
   const prevShort = format(parseISO(prevPeriod(period)), 'MMM yyyy')
-  // A bonus is only paid when a manager is named. An empty GM/AGM name -> $0.
-  const gmAmount = (name: string | null | undefined, r: GmBonusResult | null) =>
-    name && name.trim() && r ? r.gmTotal : 0
-  const agmAmount = (name: string | null | undefined, r: GmBonusResult | null) =>
-    name && name.trim() && r ? r.agmTotal : 0
-  const allGmSum = allRows.reduce((a, r) => a + gmAmount(r.gmName, r.result), 0)
-  const allAgmSum = allRows.reduce((a, r) => a + agmAmount(r.agmName, r.result), 0)
+  // A bonus is only paid when a manager is named (empty name -> $0). An admin
+  // override, when set, replaces the calculated GM total (and AGM = override / 2).
+  const gmAmount = (name: string | null | undefined, r: GmBonusResult | null, override: number | null) =>
+    override != null ? override : name && name.trim() && r ? r.gmTotal : 0
+  const agmAmount = (name: string | null | undefined, r: GmBonusResult | null, override: number | null) =>
+    !name || !name.trim() ? 0 : override != null ? override / 2 : r ? r.agmTotal : 0
+  const allGmSum = allRows.reduce((a, r) => a + gmAmount(r.gmName, r.result, r.override ?? null), 0)
+  const allAgmSum = allRows.reduce((a, r) => a + agmAmount(r.agmName, r.result, r.override ?? null), 0)
   const anyAllData = allRows.some((r) => r.result)
 
   const exportToPdf = async () => {
@@ -304,14 +312,32 @@ export default function BonusesPage() {
         await exportAllSitesBonusPdf(monthLabel, allRows, profile?.brand_logo_url)
       } else {
         const siteName = sortedLocations.find((l) => l.id === locationId)?.name ?? 'Site'
-        await exportSiteBonusPdf(siteName, monthLabel, result, profile?.brand_logo_url, {
-          gm: nameFor(locationId, 'gm'),
-          agm: nameFor(locationId, 'agm'),
-        })
+        await exportSiteBonusPdf(
+          siteName,
+          monthLabel,
+          result,
+          profile?.brand_logo_url,
+          { gm: nameFor(locationId, 'gm'), agm: nameFor(locationId, 'agm') },
+          monthRow?.gm_override != null ? Number(monthRow.gm_override) : null,
+        )
       }
     } finally {
       setExporting(false)
     }
+  }
+
+  const saveOverride = async (value: number | null) => {
+    if (!profile || !locationId) return
+    const { error: err } = await gmBonus.setOverride({
+      account_id: profile.account_id,
+      location_id: locationId,
+      period,
+      gm_override: value,
+    })
+    setOverrideOpen(false)
+    if (err) return setError(err.message)
+    setNotice(value == null ? 'Override removed.' : `Override set to ${currency(value)}.`)
+    await load()
   }
 
   const saveMonth = async () => {
@@ -528,8 +554,8 @@ export default function BonusesPage() {
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.oneTimeTotal)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.churn.amount)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.conversion.amount)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(gmAmount(r.gmName, r.result))}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(agmAmount(r.agmName, r.result))}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(gmAmount(r.gmName, r.result, r.override ?? null))}{r.override != null && <span className="ml-1 text-[10px] font-normal text-warn">ovr</span>}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(agmAmount(r.agmName, r.result, r.override ?? null))}</td>
                       </>
                     ) : (
                       <td colSpan={5} className="px-3 py-2.5 text-right text-xs text-ink-subtle">No data</td>
@@ -693,12 +719,29 @@ export default function BonusesPage() {
               amount={result.conversion.amount}
             />
             <div className="mt-3 flex items-center justify-between rounded-md bg-accent-soft px-3 py-2">
-              <span className="text-sm font-semibold text-accent">Total GM monthly bonus</span>
-              <span className="text-lg font-bold tabular-nums text-accent">{currency(gmAmount(nameFor(locationId, 'gm'), result))}</span>
+              <span className="text-sm font-semibold text-accent">
+                Total GM monthly bonus
+                {monthRow?.gm_override != null && <span className="ml-1 text-xs font-normal text-warn">(override)</span>}
+              </span>
+              <span className="text-lg font-bold tabular-nums text-accent">
+                {currency(gmAmount(nameFor(locationId, 'gm'), result, monthRow?.gm_override != null ? Number(monthRow.gm_override) : null))}
+              </span>
             </div>
             <div className="mt-2 flex items-center justify-between rounded-md border border-border px-3 py-2">
               <span className="text-sm font-semibold text-ink">Total AGM monthly bonus</span>
-              <span className="text-lg font-bold tabular-nums text-ink">{currency(agmAmount(nameFor(locationId, 'agm'), result))}</span>
+              <span className="text-lg font-bold tabular-nums text-ink">
+                {currency(agmAmount(nameFor(locationId, 'agm'), result, monthRow?.gm_override != null ? Number(monthRow.gm_override) : null))}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-xs text-ink-muted">
+                {monthRow?.gm_override != null
+                  ? `Override set: ${currency(Number(monthRow.gm_override))}`
+                  : 'Bonus amount override'}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setOverrideOpen(true)} disabled={!locationId}>
+                {monthRow?.gm_override != null ? 'Edit override' : 'Override amount'}
+              </Button>
             </div>
             <p className="mt-1 text-right text-xs text-ink-subtle">AGM = 1/2 of GM total</p>
 
@@ -727,9 +770,79 @@ export default function BonusesPage() {
           </section>
         </div>
       )}
+
+      {overrideOpen && !isAll && locationId && (
+        <OverrideModal
+          site={sortedLocations.find((l) => l.id === locationId)?.name ?? 'Site'}
+          monthLabel={monthLabel}
+          current={monthRow?.gm_override != null ? Number(monthRow.gm_override) : null}
+          computed={gmAmount(nameFor(locationId, 'gm'), result, null)}
+          onSave={saveOverride}
+          onClose={() => setOverrideOpen(false)}
+        />
+      )}
       </>
       )}
     </div>
+  )
+}
+
+function OverrideModal({ site, monthLabel, current, computed, onSave, onClose }: {
+  site: string
+  monthLabel: string
+  current: number | null
+  computed: number
+  onSave: (value: number | null) => Promise<void>
+  onClose: () => void
+}) {
+  const [value, setValue] = useState(current != null ? String(current) : String(computed))
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    const n = Number(value)
+    if (value.trim() === '' || Number.isNaN(n)) return
+    if (
+      !window.confirm(
+        `Are you sure? This overrides the GM bonus for ${site} (${monthLabel}) to ${currency(n)}, replacing the calculated amount. AGM becomes half of it.`,
+      )
+    )
+      return
+    setBusy(true)
+    await onSave(n)
+  }
+  const clear = async () => {
+    if (!window.confirm(`Remove the override for ${site} (${monthLabel}) and use the calculated amount?`)) return
+    setBusy(true)
+    await onSave(null)
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Bonus amount override">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-ink-muted">
+          {site} · {monthLabel}. Calculated GM bonus: {currency(computed)}.
+        </p>
+        <Field label="Override GM bonus amount">
+          {(id) => (
+            <Input id={id} type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} />
+          )}
+        </Field>
+        <p className="text-xs text-ink-subtle">AGM becomes half of this amount. Applies to this month only.</p>
+        <div className="flex items-center justify-between gap-2">
+          {current != null ? (
+            <Button variant="ghost" className="text-danger hover:text-danger" onClick={clear} disabled={busy}>
+              Clear override
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+            <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save override'}</Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -764,9 +877,16 @@ function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawMa
         let combined = 0
         for (const sid of siteIds) {
           for (const m of months) {
-            const res = computeSiteMonth(allMonths, allBaselines, sid, m)
-            // A site's GM bonus only counts when it has a named GM that month.
-            if (res && effectiveManager(siteManagers[sid]?.gm, m).trim()) combined += res.gmTotal
+            const row = allMonths.find((x) => x.location_id === sid && x.period === m)
+            const ov = row?.gm_override != null ? Number(row.gm_override) : null
+            if (ov != null) {
+              // An admin override replaces the calculated GM total for that month.
+              combined += ov
+            } else {
+              const res = computeSiteMonth(allMonths, allBaselines, sid, m)
+              // Otherwise a site's GM bonus only counts with a named GM that month.
+              if (res && effectiveManager(siteManagers[sid]?.gm, m).trim()) combined += res.gmTotal
+            }
           }
         }
         return { region: rb.name, pct: rb.pct, sites: siteIds.length, combined, bonus: combined * rb.pct }
