@@ -49,7 +49,15 @@ function PagePermissionGate({ children }: { children: ReactNode }) {
       }
     }
   }
-  if (match && match.to !== '/app/dashboard' && !pageAllowed(profile.role, match.to, match.roles, settings.pagePermissions)) {
+  if (
+    match &&
+    match.to !== '/app/dashboard' &&
+    !pageAllowed(profile.role, match.to, match.roles, {
+      rolePerms: settings.pagePermissions,
+      userId: profile.id,
+      userPerms: settings.userPermissions,
+    })
+  ) {
     return <Navigate to="/app/dashboard" replace />
   }
   return <>{children}</>

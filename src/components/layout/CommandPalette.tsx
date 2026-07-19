@@ -27,13 +27,20 @@ export function CommandPalette() {
     for (const g of NAV_GROUPS) {
       if (g.roles && !g.roles.includes(role)) continue
       for (const i of g.items) {
-        if (!pageAllowed(role, i.to, i.roles, settings.pagePermissions)) continue
+        if (
+          !pageAllowed(role, i.to, i.roles, {
+            rolePerms: settings.pagePermissions,
+            userId: profile.id,
+            userPerms: settings.userPermissions,
+          })
+        )
+          continue
         if (i.flag === 'gm_bonus' && !profile.gm_bonus_enabled) continue
         flat.push({ to: i.to, label: i.label, group: g.label })
       }
     }
     return flat
-  }, [profile, settings.pagePermissions])
+  }, [profile, settings.pagePermissions, settings.userPermissions])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

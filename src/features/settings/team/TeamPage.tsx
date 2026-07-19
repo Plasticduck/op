@@ -49,6 +49,7 @@ export function TeamPage() {
   const [editUser, setEditUser] = useState<AccountUser | null>(null)
   const [convertTarget, setConvertTarget] = useState<Employee | null>(null)
   const [removeTarget, setRemoveTarget] = useState<AccountUser | null>(null)
+  const [permTarget, setPermTarget] = useState<AccountUser | null>(null)
   const [busy, setBusy] = useState(false)
 
   const locNameById = useMemo(
@@ -160,6 +161,11 @@ export function TeamPage() {
                   <td className="px-3 py-2.5 text-right">
                     {u.id !== profile?.id && u.role !== 'owner' && (
                       <div className="flex justify-end gap-1">
+                        {profile?.role === 'owner' && (
+                          <Button variant="ghost" size="sm" onClick={() => setPermTarget(u)}>
+                            Permissions
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => setEditUser(u)}>
                           Edit
                         </Button>
@@ -347,6 +353,10 @@ export function TeamPage() {
         />
       )}
 
+      {permTarget && (
+        <UserPermissionsModal user={permTarget} onClose={() => setPermTarget(null)} onSaved={() => setPermTarget(null)} />
+      )}
+
       <ConfirmDialog
         open={!!removeTarget}
         title={`Remove ${removeTarget?.name}?`}
@@ -425,8 +435,8 @@ function PermissionsEditor() {
       <div>
         <h2 className="text-sm font-semibold text-ink">Edit user permissions</h2>
         <p className="mt-0.5 text-xs text-ink-muted">
-          Choose which pages each role can use. Unchecked pages are hidden from the menu and blocked for that role.
-          Admins always have full access.
+          Choose which pages each role can use. Unchecked pages are hidden from the menu and blocked for that role. To
+          customize a single person, use the Permissions button on their row above. Admins always have full access.
         </p>
       </div>
       <div className="rounded-md border border-border bg-card p-4">
@@ -480,6 +490,101 @@ function PermissionsEditor() {
         </div>
       </div>
     </section>
+  )
+}
+
+// Per-person page access. Overrides the role default for one user only; stored
+// only where it differs from the role so role changes still flow through.
+function UserPermissionsModal({ user, onClose, onSaved }: {
+  user: AccountUser
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { profile } = useAuth()
+  const { settings, reload } = useCompany()
+  const role = user.role
+  const groups = useMemo(
+    () =>
+      NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
+        .map((g) => ({
+          label: g.label,
+          items: g.items.filter((i) => i.roles.includes(role) && i.to !== '/app/dashboard'),
+        }))
+        .filter((g) => g.items.length > 0),
+    [role],
+  )
+  const roleDefault = (to: string) => settings.pagePermissions?.[role]?.[to] !== false
+  const [allowed, setAllowed] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const userOv = settings.userPermissions?.[user.id] ?? {}
+    const map: Record<string, boolean> = {}
+    for (const g of groups) {
+      for (const i of g.items) {
+        const u = userOv[i.to]
+        map[i.to] = typeof u === 'boolean' ? u : roleDefault(i.to)
+      }
+    }
+    setAllowed(map)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id, settings, groups])
+
+  const toggle = (to: string) => setAllowed((p) => ({ ...p, [to]: !p[to] }))
+
+  const save = async () => {
+    if (!profile) return
+    setBusy(true)
+    const userOv: Record<string, boolean> = {}
+    for (const g of groups) {
+      for (const i of g.items) {
+        if (allowed[i.to] !== roleDefault(i.to)) userOv[i.to] = allowed[i.to]
+      }
+    }
+    const nextUserPerms = { ...(settings.userPermissions ?? {}) }
+    if (Object.keys(userOv).length) nextUserPerms[user.id] = userOv
+    else delete nextUserPerms[user.id]
+    await updateCompany(profile.account_id, { settings: { ...settings, userPermissions: nextUserPerms } })
+    await reload()
+    setBusy(false)
+    onSaved()
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Permissions · ${user.name}`} size="lg">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-ink-muted">
+          {ROLE_LABEL[role]}. Choose which pages {user.name.split(' ')[0]} can use. This applies to this person only and
+          overrides the role default.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {groups.map((g) => (
+            <div key={g.label} className="rounded-md border border-border p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{g.label}</div>
+              <ul className="flex flex-col gap-1.5">
+                {g.items.map((i) => (
+                  <li key={i.to}>
+                    <label className="flex items-center gap-2 text-sm text-ink">
+                      <input
+                        type="checkbox"
+                        className="size-4"
+                        checked={!!allowed[i.to]}
+                        onChange={() => toggle(i.to)}
+                      />
+                      {i.label}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save permissions'}</Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 

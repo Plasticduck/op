@@ -368,7 +368,11 @@ export function SidebarNav({
   const [query, setQuery] = useState('')
 
   const canSee = (i: NavItem) =>
-    pageAllowed(role, i.to, i.roles, settings.pagePermissions) &&
+    pageAllowed(role, i.to, i.roles, {
+      rolePerms: settings.pagePermissions,
+      userId: profile?.id,
+      userPerms: settings.userPermissions,
+    }) &&
     (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled))
 
   // Only the groups + items this role (and account) can see.
