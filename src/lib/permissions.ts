@@ -23,3 +23,19 @@ export function pageAllowed(
   if (typeof u === 'boolean') return u
   return opts?.rolePerms?.[role]?.[to] !== false
 }
+
+// Toggleable sections within a page. `key` is stored in the same permission maps
+// as pages (so it flows through role + user layering via pageAllowed). `page` is
+// the owning nav item's `to`; `roles` mirror that page's roles. To add a section:
+// add an entry here and call useSectionAllowed(key) where the section renders.
+export type SectionDef = { key: string; page: string; label: string; roles: Role[] }
+
+export const SECTION_CATALOG: SectionDef[] = [
+  { key: '/app/inventory#catalog', page: '/app/inventory', label: 'Catalog tab', roles: ['owner', 'manager', 'technician'] },
+  { key: '/app/inventory#counts', page: '/app/inventory', label: 'Counts tab', roles: ['owner', 'manager', 'technician'] },
+  { key: '/app/inventory#sessions', page: '/app/inventory', label: 'Saved Counts tab', roles: ['owner', 'manager', 'technician'] },
+]
+
+export function sectionsForPage(page: string): SectionDef[] {
+  return SECTION_CATALOG.filter((s) => s.page === page)
+}

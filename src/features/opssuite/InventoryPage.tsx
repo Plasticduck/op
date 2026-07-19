@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
+import { useSectionAllowed } from '@/lib/usePermissions'
 import { inventory, type InventoryItem, type InventoryCount, type InventoryCountSession, type InventoryCountLine } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
 import { exportCountSheet } from '@/lib/countSheet'
@@ -52,6 +53,13 @@ const COUNT_COLUMNS: ExportColumn<CountRow>[] = [
 export default function InventoryPage() {
   const { profile } = useAuth()
   const { locations } = useLocations()
+  // Section permissions: an admin can hide individual tabs per role/user.
+  const tabAllowed: Record<Tab, boolean> = {
+    catalog: useSectionAllowed('/app/inventory#catalog'),
+    counts: useSectionAllowed('/app/inventory#counts'),
+    sessions: useSectionAllowed('/app/inventory#sessions'),
+  }
+  const visibleTabs = (['catalog', 'counts', 'sessions'] as Tab[]).filter((t) => tabAllowed[t])
   const [tab, setTab] = useState<Tab>('catalog')
   const [items, setItems] = useState<InventoryItem[]>([])
   const [counts, setCounts] = useState<CountRow[]>([])
@@ -78,6 +86,11 @@ export default function InventoryPage() {
       setLoading(false)
     })
   useEffect(() => { void load() }, [])
+  // If the active tab is hidden by permissions, fall back to the first allowed.
+  useEffect(() => {
+    if (!tabAllowed[tab] && visibleTabs[0]) setTab(visibleTabs[0])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabAllowed.catalog, tabAllowed.counts, tabAllowed.sessions, tab])
 
   // Catalog is split by division and never shows everything at once: nothing is
   // listed until a division (Lube, Wash, or Maintenance) is picked.
@@ -140,7 +153,7 @@ export default function InventoryPage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-1.5">
-          {(['catalog', 'counts', 'sessions'] as Tab[]).map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t}
               type="button"

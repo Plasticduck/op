@@ -14,6 +14,7 @@ import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { updateCompany } from '@/lib/queries/companySettings'
 import { NAV_GROUPS } from '@/components/layout/Sidebar'
+import { SECTION_CATALOG } from '@/lib/permissions'
 import { ROLE_LABEL, type Role } from '@/lib/rbac'
 import {
   createInvitation,
@@ -464,19 +465,40 @@ function PermissionsEditor() {
                   </button>
                 </div>
                 <ul className="flex flex-col gap-1.5">
-                  {g.items.map((i) => (
-                    <li key={i.to}>
-                      <label className="flex items-center gap-2 text-sm text-ink">
-                        <input
-                          type="checkbox"
-                          checked={!disabled.has(i.to)}
-                          onChange={() => toggle(i.to)}
-                          className="size-4"
-                        />
-                        {i.label}
-                      </label>
-                    </li>
-                  ))}
+                  {g.items.map((i) => {
+                    const secs = SECTION_CATALOG.filter((s) => s.page === i.to && s.roles.includes(role))
+                    return (
+                      <li key={i.to}>
+                        <label className="flex items-center gap-2 text-sm text-ink">
+                          <input
+                            type="checkbox"
+                            checked={!disabled.has(i.to)}
+                            onChange={() => toggle(i.to)}
+                            className="size-4"
+                          />
+                          {i.label}
+                        </label>
+                        {secs.length > 0 && (
+                          <ul className="ml-6 mt-1 flex flex-col gap-1">
+                            {secs.map((s) => (
+                              <li key={s.key}>
+                                <label className="flex items-center gap-2 text-xs text-ink-muted">
+                                  <input
+                                    type="checkbox"
+                                    className="size-3.5"
+                                    checked={!disabled.has(s.key)}
+                                    disabled={disabled.has(i.to)}
+                                    onChange={() => toggle(s.key)}
+                                  />
+                                  {s.label}
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             )
@@ -517,6 +539,8 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
   const [allowed, setAllowed] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
 
+  const sectionsFor = (to: string) => SECTION_CATALOG.filter((s) => s.page === to && s.roles.includes(role))
+
   useEffect(() => {
     const userOv = settings.userPermissions?.[user.id] ?? {}
     const map: Record<string, boolean> = {}
@@ -524,6 +548,10 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
       for (const i of g.items) {
         const u = userOv[i.to]
         map[i.to] = typeof u === 'boolean' ? u : roleDefault(i.to)
+        for (const s of sectionsFor(i.to)) {
+          const us = userOv[s.key]
+          map[s.key] = typeof us === 'boolean' ? us : roleDefault(s.key)
+        }
       }
     }
     setAllowed(map)
@@ -539,6 +567,9 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
     for (const g of groups) {
       for (const i of g.items) {
         if (allowed[i.to] !== roleDefault(i.to)) userOv[i.to] = allowed[i.to]
+        for (const s of sectionsFor(i.to)) {
+          if (allowed[s.key] !== roleDefault(s.key)) userOv[s.key] = allowed[s.key]
+        }
       }
     }
     const nextUserPerms = { ...(settings.userPermissions ?? {}) }
@@ -562,19 +593,40 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
             <div key={g.label} className="rounded-md border border-border p-3">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{g.label}</div>
               <ul className="flex flex-col gap-1.5">
-                {g.items.map((i) => (
-                  <li key={i.to}>
-                    <label className="flex items-center gap-2 text-sm text-ink">
-                      <input
-                        type="checkbox"
-                        className="size-4"
-                        checked={!!allowed[i.to]}
-                        onChange={() => toggle(i.to)}
-                      />
-                      {i.label}
-                    </label>
-                  </li>
-                ))}
+                {g.items.map((i) => {
+                  const secs = sectionsFor(i.to)
+                  return (
+                    <li key={i.to}>
+                      <label className="flex items-center gap-2 text-sm text-ink">
+                        <input
+                          type="checkbox"
+                          className="size-4"
+                          checked={!!allowed[i.to]}
+                          onChange={() => toggle(i.to)}
+                        />
+                        {i.label}
+                      </label>
+                      {secs.length > 0 && (
+                        <ul className="ml-6 mt-1 flex flex-col gap-1">
+                          {secs.map((s) => (
+                            <li key={s.key}>
+                              <label className="flex items-center gap-2 text-xs text-ink-muted">
+                                <input
+                                  type="checkbox"
+                                  className="size-3.5"
+                                  checked={!!allowed[s.key]}
+                                  disabled={!allowed[i.to]}
+                                  onChange={() => toggle(s.key)}
+                                />
+                                {s.label}
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ))}
