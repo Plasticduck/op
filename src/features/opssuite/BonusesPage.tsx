@@ -368,17 +368,37 @@ export default function BonusesPage() {
     if (err) return setError(err.message)
     setNotice(`Saved ${monthOf(period)}.`)
     await load()
+    // When a one-time goal is reached, offer to reset that baseline (effective
+    // next month) so future months measure from here. Skip if already reset.
+    const effective = nextPeriod(period)
+    const alreadyReset = (kind: 'membership' | 'avg') =>
+      baselines.some((b) => b.kind === kind && b.effective_from === effective)
+    if (result.membership.goalReached && !alreadyReset('membership')) {
+      if (
+        window.confirm(
+          `The membership goal was reached for ${monthOf(period)}. This will change the membership baseline to this month's numbers, effective ${monthOf(effective)}, so future months measure from here. Proceed?`,
+        )
+      ) {
+        await persistBaseline('membership')
+      }
+    }
+    if (result.lifetimeValue.goalReached && !alreadyReset('avg')) {
+      if (
+        window.confirm(
+          `The lifetime-value goal (avg months +1) was reached for ${monthOf(period)}. This will change the average-months baseline to this month's numbers, effective ${monthOf(effective)}. Proceed?`,
+        )
+      ) {
+        await persistBaseline('avg')
+      }
+    }
   }
 
   // Each one-time goal resets its own baseline independently. A reset takes
   // effect the month AFTER the one being viewed, so this month keeps measuring
   // against the prior baseline and only future months see the new one.
-  const resetBase = async (which: 'membership' | 'avg') => {
+  const persistBaseline = async (which: 'membership' | 'avg') => {
     if (!profile || !locationId) return
-    const label = which === 'membership' ? 'membership baseline' : 'average-months baseline'
     const effective = nextPeriod(period)
-    if (!window.confirm(`Set the ${label} to ${monthOf(period)}'s numbers, effective ${monthOf(effective)}?`))
-      return
     setSaving(true)
     setError(null)
     const { error: err } = await gmBonus.upsertBaseline({
@@ -393,8 +413,16 @@ export default function BonusesPage() {
     })
     setSaving(false)
     if (err) return setError(err.message)
+    const label = which === 'membership' ? 'membership baseline' : 'average-months baseline'
     setNotice(`${label[0].toUpperCase()}${label.slice(1)} set from ${monthOf(effective)} onward.`)
     await load()
+  }
+  const resetBase = async (which: 'membership' | 'avg') => {
+    const label = which === 'membership' ? 'membership baseline' : 'average-months baseline'
+    const effective = nextPeriod(period)
+    if (!window.confirm(`Set the ${label} to ${monthOf(period)}'s numbers, effective ${monthOf(effective)}?`))
+      return
+    await persistBaseline(which)
   }
 
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -707,7 +735,7 @@ export default function BonusesPage() {
             </div>
             {(result.lifetimeValue.goalReached || result.membership.goalReached) && (
               <p className="mt-2 text-xs text-warn">
-                Goal reached. Reset the baseline once this bonus is paid so future months measure from here.
+                Goal reached. Saving this month will ask to reset the baseline so future months measure from here (or reset it manually above).
               </p>
             )}
           </section>
