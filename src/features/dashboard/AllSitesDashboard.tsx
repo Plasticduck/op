@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
-import { groupByRegions, resolveRegions } from '@/lib/regions'
+import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard } from '@/lib/scorecard'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { StatCardRow } from '@/components/data/StatCardRow'
@@ -45,10 +45,18 @@ type ScoredLocation = {
   googleRating: number | null
 }
 
-export default function AllSitesDashboard() {
+export default function AllSitesDashboard({ regionName }: { regionName?: string }) {
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations: allLocations } = useLocations()
   const { settings } = useCompany()
+
+  // Scope to a single region when one is selected in the dashboard toggle.
+  const locations = useMemo(() => {
+    if (!regionName) return allLocations
+    const def = resolveRegions(settings.regions).find((r) => r.name === regionName)
+    const ids = new Set(def?.siteIds ?? [])
+    return allLocations.filter((l) => ids.has(l.id))
+  }, [allLocations, regionName, settings.regions])
 
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [loading, setLoading] = useState(true)
@@ -93,7 +101,7 @@ export default function AllSitesDashboard() {
     () => groupByRegions(locations, resolveRegions(settings.regions)),
     [locations, settings.regions],
   )
-  const showRegions = groups.length > 1
+  const showRegions = !regionName && groups.length > 1
 
   // Portfolio roll-up across every site we have a card for.
   const scored = locations.map((l) => cards[l.id]).filter(Boolean) as Scorecard[]
@@ -118,7 +126,7 @@ export default function AllSitesDashboard() {
           {greeting()}, {profile?.name.split(' ')[0]}
         </h1>
         <p className="mt-1 text-sm text-ink-muted sm:text-base">
-          All sites overview · {format(new Date(), 'EEEE, MMMM d, yyyy')}
+          {regionName ? `${shortRegionLabel(regionName)} overview` : 'All sites overview'} · {format(new Date(), 'EEEE, MMMM d, yyyy')}
         </p>
         <CarWashFunFact />
       </div>

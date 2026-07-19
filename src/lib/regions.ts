@@ -41,6 +41,17 @@ export const DEFAULT_REGIONS: NamedRegion[] = [
   },
 ]
 
+// Short display labels for the dashboard region toggle. Names not listed show
+// as-is.
+export function shortRegionLabel(name: string): string {
+  const map: Record<string, string> = {
+    'Permian Basin Region (A)': 'PB Region A',
+    'Permian Basin Region (B)': 'PB Region B',
+    'New Mexico Region': 'NM Region',
+  }
+  return map[name] ?? name
+}
+
 // The effective regions for an account: exactly what it has saved, and nothing
 // otherwise. Regions are per-account, so one account's regions never appear on
 // another's. An account with no saved regions shows its sites ungrouped.

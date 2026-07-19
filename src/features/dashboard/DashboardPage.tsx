@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, Boxes, ClipboardList, DollarSign, Sparkles, Wrench } from 'lucide-react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
+import { useCompany } from '@/lib/company'
+import { resolveRegions, shortRegionLabel } from '@/lib/regions'
 import { StatCardRow } from '@/components/data/StatCardRow'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
 import { Badge } from '@/components/ui/Badge'
@@ -397,14 +399,14 @@ function greeting() {
 }
 
 function ViewToggle({
-  view,
+  value,
   onChange,
 }: {
-  view: 'all' | 'site'
-  onChange: (v: 'all' | 'site') => void
+  value: string
+  onChange: (v: string) => void
 }) {
   const { activeLocation } = useLocations()
-  const options: { key: 'all' | 'site'; label: string }[] = [
+  const options = [
     { key: 'all', label: 'All sites' },
     { key: 'site', label: activeLocation ? activeLocation.name : 'Current site' },
   ]
@@ -417,7 +419,7 @@ function ViewToggle({
           onClick={() => onChange(o.key)}
           className={cn(
             'rounded-md px-3 py-1.5 text-sm font-medium transition',
-            view === o.key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
+            value === o.key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
           )}
         >
           {o.label}
@@ -430,12 +432,22 @@ function ViewToggle({
 export default function DashboardPage() {
   const { profile } = useAuth()
   const { locations, loading } = useLocations()
-  // View is driven by the URL so a site card (?view=site) opens that site's
-  // single-site dashboard, and the toggle stays shareable/back-navigable.
+  const { settings } = useCompany()
+  // Selection is driven by the URL so a site card (?view=site) or a region
+  // (?region=Name) is shareable and back-navigable.
   const [searchParams, setSearchParams] = useSearchParams()
-  const view: 'all' | 'site' = searchParams.get('view') === 'site' ? 'site' : 'all'
-  const setView = (v: 'all' | 'site') =>
-    setSearchParams(v === 'site' ? { view: 'site' } : {}, { replace: true })
+  const regions = useMemo(
+    () => resolveRegions(settings.regions).filter((r) => r.siteIds.length > 0),
+    [settings.regions],
+  )
+  const regionParam = searchParams.get('region')
+  const activeRegion = regions.find((r) => r.name === regionParam)?.name ?? null
+  const sel = activeRegion ?? (searchParams.get('view') === 'site' ? 'site' : 'all')
+  const select = (v: string) => {
+    if (v === 'site') setSearchParams({ view: 'site' }, { replace: true })
+    else if (v === 'all') setSearchParams({}, { replace: true })
+    else setSearchParams({ region: v }, { replace: true })
+  }
 
   if (profile?.role === 'employee') return <EmployeeDashboard />
   if (loading) return null
@@ -444,13 +456,40 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="relative flex items-center">
-        <ViewToggle view={view} onChange={setView} />
-        <div className="pointer-events-none absolute left-1/2 top-1/2 mt-6 -translate-x-1/2 -translate-y-1/2">
-          <AccountBrandLogo />
+      <div className="flex flex-col gap-3">
+        <div className="relative flex items-center">
+          <ViewToggle value={sel} onChange={select} />
+          <div className="pointer-events-none absolute left-1/2 top-1/2 mt-6 -translate-x-1/2 -translate-y-1/2">
+            <AccountBrandLogo />
+          </div>
         </div>
+        {regions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {regions.map((r) => (
+              <button
+                key={r.name}
+                type="button"
+                onClick={() => select(r.name)}
+                className={cn(
+                  'rounded-md border px-3 py-1.5 text-sm font-medium transition',
+                  sel === r.name
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-border bg-card text-ink-muted hover:bg-content',
+                )}
+              >
+                {shortRegionLabel(r.name)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      {view === 'all' ? <AllSitesDashboard /> : <ManagerDashboard />}
+      {activeRegion ? (
+        <AllSitesDashboard regionName={activeRegion} />
+      ) : sel === 'site' ? (
+        <ManagerDashboard />
+      ) : (
+        <AllSitesDashboard />
+      )}
     </div>
   )
 }
