@@ -91,6 +91,24 @@ function computeSiteMonth(
   })
 }
 
+// The GM bonus paid for a site in a month: an admin override replaces the
+// calculated GM total; otherwise the calculated GM counts only when the site has
+// a named GM that month (empty name -> $0). One source of truth for the All
+// Sites and Regional totals so overrides always flow through.
+function effectiveGmAmount(
+  allMonths: GmBonusMonth[],
+  allBaselines: GmBonusBase[],
+  siteManagers: SiteManagers,
+  sid: string,
+  period: string,
+): number {
+  const row = allMonths.find((x) => x.location_id === sid && x.period === period)
+  if (row?.gm_override != null) return Number(row.gm_override)
+  const res = computeSiteMonth(allMonths, allBaselines, sid, period)
+  const gmName = effectiveManager(siteManagers[sid]?.gm, period)
+  return res && gmName.trim() ? res.gmTotal : 0
+}
+
 // Regional manager names, effective-dated by quarter. Legacy flat `region ->
 // name` is coerced to apply to all quarters via an early sentinel key.
 type QuarterManagers = Record<string, Record<string, string>>
@@ -948,16 +966,7 @@ function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawMa
         let combined = 0
         for (const sid of siteIds) {
           for (const m of months) {
-            const row = allMonths.find((x) => x.location_id === sid && x.period === m)
-            const ov = row?.gm_override != null ? Number(row.gm_override) : null
-            if (ov != null) {
-              // An admin override replaces the calculated GM total for that month.
-              combined += ov
-            } else {
-              const res = computeSiteMonth(allMonths, allBaselines, sid, m)
-              // Otherwise a site's GM bonus only counts with a named GM that month.
-              if (res && effectiveManager(siteManagers[sid]?.gm, m).trim()) combined += res.gmTotal
-            }
+            combined += effectiveGmAmount(allMonths, allBaselines, siteManagers, sid, m)
           }
         }
         return { region: rb.name, pct: rb.pct, sites: siteIds.length, combined, bonus: combined * rb.pct }
