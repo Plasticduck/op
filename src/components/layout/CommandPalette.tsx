@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CornerDownLeft, Search } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
+import { useCompany } from '@/lib/company'
+import { pageAllowed } from '@/lib/permissions'
 import { NAV_GROUPS } from '@/components/layout/Sidebar'
 import { cn } from '@/lib/utils'
 
@@ -10,6 +12,7 @@ import { cn } from '@/lib/utils'
 // the highlight; Esc closes; clicking outside also closes.
 export function CommandPalette() {
   const { profile } = useAuth()
+  const { settings } = useCompany()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -24,13 +27,13 @@ export function CommandPalette() {
     for (const g of NAV_GROUPS) {
       if (g.roles && !g.roles.includes(role)) continue
       for (const i of g.items) {
-        if (!i.roles.includes(role)) continue
+        if (!pageAllowed(role, i.to, i.roles, settings.pagePermissions)) continue
         if (i.flag === 'gm_bonus' && !profile.gm_bonus_enabled) continue
         flat.push({ to: i.to, label: i.label, group: g.label })
       }
     }
     return flat
-  }, [profile])
+  }, [profile, settings.pagePermissions])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

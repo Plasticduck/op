@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/lib/database.types'
 import type { RegionDef } from '@/lib/regions'
+import type { PagePermissions } from '@/lib/permissions'
 
 // `company_settings` is a jsonb column added in migration 0044. Until
 // database.types.ts is regenerated (npm run db:types) it isn't in the typed
@@ -38,6 +39,8 @@ export type CompanySettings = {
   // GM/AGM manager names per site, effective-dated by month (same rule as
   // regionalManagers): location id -> { gm|agm -> { month 'YYYY-MM-01' -> name } }.
   siteManagers?: Record<string, { gm?: Record<string, string>; agm?: Record<string, string> }>
+  // Per-role page access overrides, edited under Team settings.
+  pagePermissions?: PagePermissions
   // First day of the work week for scheduling: 0 = Sunday … 6 = Saturday.
   scheduleWeekStart?: number
   // Custom shift presets shown in the schedule builder's shift palette.

@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { SidebarNav } from '@/components/layout/Sidebar'
+import { useCompany } from '@/lib/company'
+import { pageAllowed } from '@/lib/permissions'
 import type { Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +30,7 @@ const TABS: Tab[] = [
 // Native-app-style bottom tab bar for phones/tablets (hidden at lg+, where the
 // fixed sidebar takes over). "More" opens a bottom sheet with the full menu.
 export function BottomNav({ role }: { role: Role }) {
+  const { settings } = useCompany()
   const [open, setOpen] = useState(false)
   // Keep the sheet mounted briefly while closing so the slide-down animation
   // can play (React would otherwise unmount the instant `open` flips false).
@@ -36,7 +39,7 @@ export function BottomNav({ role }: { role: Role }) {
   // true = settled at translate-y-0. Flipped on next paint after mount so the
   // browser actually animates the change instead of starting in its final state.
   const [visible, setVisible] = useState(false)
-  const tabs = TABS.filter((t) => t.roles.includes(role)).slice(0, 4)
+  const tabs = TABS.filter((t) => pageAllowed(role, t.to, t.roles, settings.pagePermissions)).slice(0, 4)
   // Hide the bottom bar on mobile detail routes so chat / WO / asset / part
   // detail screens get the full bottom area + native keyboard handling. The
   // user can still navigate back to the list with the in-page back button.

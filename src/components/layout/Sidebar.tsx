@@ -51,6 +51,8 @@ import {
 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { useAuth } from '@/lib/auth'
+import { useCompany } from '@/lib/company'
+import { pageAllowed } from '@/lib/permissions'
 import type { Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
@@ -362,10 +364,12 @@ export function SidebarNav({
 }) {
   const location = useLocation()
   const { profile } = useAuth()
+  const { settings } = useCompany()
   const [query, setQuery] = useState('')
 
   const canSee = (i: NavItem) =>
-    i.roles.includes(role) && (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled))
+    pageAllowed(role, i.to, i.roles, settings.pagePermissions) &&
+    (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled))
 
   // Only the groups + items this role (and account) can see.
   const baseGroups = NAV_GROUPS

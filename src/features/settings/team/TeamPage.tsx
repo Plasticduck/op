@@ -11,6 +11,9 @@ import { MultiLocationSelect } from '@/components/forms/MultiLocationSelect'
 import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { InviteModal } from '@/features/settings/team/InviteModal'
 import { useAuth } from '@/lib/auth'
+import { useCompany } from '@/lib/company'
+import { updateCompany } from '@/lib/queries/companySettings'
+import { NAV_GROUPS } from '@/components/layout/Sidebar'
 import { ROLE_LABEL, type Role } from '@/lib/rbac'
 import {
   createInvitation,
@@ -310,6 +313,8 @@ export function TeamPage() {
         </section>
       )}
 
+      {profile?.role === 'owner' && <PermissionsEditor />}
+
       <InviteModal
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
@@ -353,6 +358,128 @@ export function TeamPage() {
         onCancel={() => setRemoveTarget(null)}
       />
     </div>
+  )
+}
+
+// Admin control over which pages each non-admin role can use. Restrict-only:
+// unchecking a page hides it and blocks the route for that role. Owners (Admins)
+// always have full access, so they are not listed.
+function PermissionsEditor() {
+  const { profile } = useAuth()
+  const { settings, reload } = useCompany()
+  const [role, setRole] = useState<Role>('manager')
+  const [disabled, setDisabled] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const groups = useMemo(
+    () =>
+      NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
+        .map((g) => ({
+          label: g.label,
+          items: g.items.filter((i) => i.roles.includes(role) && i.to !== '/app/dashboard'),
+        }))
+        .filter((g) => g.items.length > 0),
+    [role],
+  )
+
+  useEffect(() => {
+    const rolePerms = settings.pagePermissions?.[role] ?? {}
+    const off = new Set<string>()
+    for (const [to, allowed] of Object.entries(rolePerms)) if (allowed === false) off.add(to)
+    setDisabled(off)
+    setSaved(false)
+  }, [role, settings.pagePermissions])
+
+  const toggle = (to: string) =>
+    setDisabled((prev) => {
+      const next = new Set(prev)
+      if (next.has(to)) next.delete(to)
+      else next.add(to)
+      return next
+    })
+  const setGroup = (items: { to: string }[], off: boolean) =>
+    setDisabled((prev) => {
+      const next = new Set(prev)
+      for (const i of items) {
+        if (off) next.add(i.to)
+        else next.delete(i.to)
+      }
+      return next
+    })
+
+  const save = async () => {
+    if (!profile) return
+    setBusy(true)
+    const rolePerms: Record<string, boolean> = {}
+    for (const to of disabled) rolePerms[to] = false
+    const nextPerms = { ...(settings.pagePermissions ?? {}), [role]: rolePerms }
+    await updateCompany(profile.account_id, { settings: { ...settings, pagePermissions: nextPerms } })
+    await reload()
+    setBusy(false)
+    setSaved(true)
+  }
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-sm font-semibold text-ink">Edit user permissions</h2>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          Choose which pages each role can use. Unchecked pages are hidden from the menu and blocked for that role.
+          Admins always have full access.
+        </p>
+      </div>
+      <div className="rounded-md border border-border bg-card p-4">
+        <label className="mb-4 flex w-56 flex-col gap-1 text-xs font-medium text-ink-muted">
+          Role
+          <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+            <option value="manager">{ROLE_LABEL.manager}</option>
+            <option value="employee">{ROLE_LABEL.employee}</option>
+            <option value="technician">{ROLE_LABEL.technician}</option>
+          </Select>
+        </label>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {groups.map((g) => {
+            const allOff = g.items.every((i) => disabled.has(i.to))
+            return (
+              <div key={g.label} className="rounded-md border border-border p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{g.label}</span>
+                  <button
+                    type="button"
+                    className="text-xs text-accent hover:underline"
+                    onClick={() => setGroup(g.items, !allOff)}
+                  >
+                    {allOff ? 'Enable all' : 'Disable all'}
+                  </button>
+                </div>
+                <ul className="flex flex-col gap-1.5">
+                  {g.items.map((i) => (
+                    <li key={i.to}>
+                      <label className="flex items-center gap-2 text-sm text-ink">
+                        <input
+                          type="checkbox"
+                          checked={!disabled.has(i.to)}
+                          onChange={() => toggle(i.to)}
+                          className="size-4"
+                        />
+                        {i.label}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+        <div className="mt-4 flex items-center justify-end gap-3">
+          {saved && <span className="text-xs text-ink-muted">Saved.</span>}
+          <Button onClick={save} disabled={busy}>
+            {busy ? 'Saving…' : 'Save permissions'}
+          </Button>
+        </div>
+      </div>
+    </section>
   )
 }
 
