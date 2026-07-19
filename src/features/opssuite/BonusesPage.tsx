@@ -234,6 +234,10 @@ export default function BonusesPage() {
     : null
   const membershipRow = effectiveBaseline(baselines, 'membership', period)
   const avgRow = effectiveBaseline(baselines, 'avg', period)
+  // A reset done this month takes effect next month; surface it so a save is visible.
+  const nextEff = nextPeriod(period)
+  const nextMembershipReset = baselines.find((b) => b.kind === 'membership' && b.effective_from === nextEff) ?? null
+  const nextAvgReset = baselines.find((b) => b.kind === 'avg' && b.effective_from === nextEff) ?? null
   const membershipBase: MembershipBase = membershipRow
     ? {
         mighty_count: membershipRow.mighty_count,
@@ -672,6 +676,15 @@ export default function BonusesPage() {
                   <span className="text-warn">Average-months baseline not set for this month.</span>
                 )}
               </p>
+              {(nextMembershipReset || nextAvgReset) && (
+                <p className="mt-1 text-xs text-accent">
+                  Reset saved, takes effect {monthOf(nextEff)}:
+                  {nextMembershipReset
+                    ? ` membership Mighty ${nextMembershipReset.mighty_count}, Super ${nextMembershipReset.super_count}, Wonder ${nextMembershipReset.wonder_count}.`
+                    : ''}
+                  {nextAvgReset ? ` avg months ${Number(nextAvgReset.avg_mos)}.` : ''}
+                </p>
+              )}
               <p className="mt-1 text-xs text-ink-subtle">
                 A reset uses this month's numbers and takes effect next month, so it never changes this month.
               </p>
