@@ -29,6 +29,7 @@ export async function exportSiteBonusPdf(
   monthLabel: string,
   r: GmBonusResult,
   logoUrl?: string | null,
+  names?: { gm?: string; agm?: string },
 ): Promise<void> {
   const { jsPDF, autoTable } = await loaders()
   const logo = await loadPdfLogo(logoUrl)
@@ -39,6 +40,9 @@ export async function exportSiteBonusPdf(
   doc.setFontSize(10)
   doc.setTextColor(120)
   doc.text(`${site} · ${monthLabel} · Generated ${format(new Date(), 'PP')}`, 14, 22)
+  if (names?.gm || names?.agm) {
+    doc.text(`GM: ${names.gm || '—'}    AGM: ${names.agm || '—'}`, 14, 27)
+  }
   doc.setTextColor(0)
 
   const common = {
@@ -51,7 +55,7 @@ export async function exportSiteBonusPdf(
 
   autoTable(doc, {
     ...common,
-    startY: 28,
+    startY: names?.gm || names?.agm ? 31 : 28,
     head: [['Membership Level', 'Members', 'Share', 'Change vs Prev', 'Change vs Base']],
     body: r.levels.map((l) => [l.label, String(l.count), pct(l.pct), pts(l.pctChange), pts(l.pctChangeSinceBase)]),
     foot: [['Total', String(r.currentTotal), `prev ${r.previousTotal ?? '—'}`, '', '']],
@@ -105,7 +109,13 @@ export async function exportSiteBonusPdf(
   doc.save(`gm-bonus-${fileSafe(site)}-${fileSafe(monthLabel)}-${stamp()}.pdf`)
 }
 
-export type AllSitesRow = { site: string; result: GmBonusResult | null }
+export type AllSitesRow = {
+  id?: string
+  site: string
+  gmName?: string
+  agmName?: string
+  result: GmBonusResult | null
+}
 
 export async function exportAllSitesBonusPdf(
   monthLabel: string,
@@ -114,7 +124,7 @@ export async function exportAllSitesBonusPdf(
 ): Promise<void> {
   const { jsPDF, autoTable } = await loaders()
   const logo = await loadPdfLogo(logoUrl)
-  const doc = new jsPDF() as Doc
+  const doc = new jsPDF({ orientation: 'landscape' }) as Doc
   placePdfLogo(doc, logo)
   doc.setFontSize(15)
   doc.text('GM / AGM Bonus - All Sites', 14, 16)
@@ -133,21 +143,23 @@ export async function exportAllSitesBonusPdf(
     headStyles: { fillColor: ACCENT },
     footStyles: { fillColor: [237, 240, 245], textColor: 20, fontStyle: 'bold' },
     margin: { left: 14, right: 14 },
-    head: [['Site', 'One-time', 'Churn', 'Conversion', 'GM Total', 'AGM Total']],
+    head: [['Site', 'GM', 'AGM', 'One-time', 'Churn', 'Conversion', 'GM Total', 'AGM Total']],
     body: rows.map((r) =>
       r.result
         ? [
             r.site,
+            r.gmName ?? '',
+            r.agmName ?? '',
             currency(r.result.oneTimeTotal),
             currency(r.result.churn.amount),
             currency(r.result.conversion.amount),
             currency(r.result.gmTotal),
             currency(r.result.agmTotal),
           ]
-        : [r.site, 'No data', '', '', '', ''],
+        : [r.site, r.gmName ?? '', r.agmName ?? '', 'No data', '', '', '', ''],
     ),
-    foot: [['Total', '', '', '', currency(gmSum), currency(agmSum)]],
-    columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' } },
+    foot: [['Total', '', '', '', '', '', currency(gmSum), currency(agmSum)]],
+    columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' } },
   })
 
   doc.save(`gm-bonus-all-sites-${fileSafe(monthLabel)}-${stamp()}.pdf`)

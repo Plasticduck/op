@@ -109,11 +109,38 @@ function normalizeManagers(raw: unknown): QuarterManagers {
   }
   return out
 }
-// The manager in effect for a quarter is the latest assignment on or before it.
-function effectiveManager(perQuarter: Record<string, string> | undefined, qStart: string): string {
-  if (!perQuarter) return ''
-  const keys = Object.keys(perQuarter).filter((k) => k <= qStart).sort()
-  return keys.length ? perQuarter[keys[keys.length - 1]] : ''
+// The manager in effect for a period is the latest assignment on or before it.
+// Works for quarter-start or month-start keys (both 'YYYY-MM-01').
+function effectiveManager(perPeriod: Record<string, string> | undefined, period: string): string {
+  if (!perPeriod) return ''
+  const keys = Object.keys(perPeriod).filter((k) => k <= period).sort()
+  return keys.length ? perPeriod[keys[keys.length - 1]] : ''
+}
+
+// GM/AGM manager names per site, effective-dated by month. Same shape rules as
+// normalizeManagers, one level deeper (per site, per role).
+type SiteRoleManagers = { gm: Record<string, string>; agm: Record<string, string> }
+type SiteManagers = Record<string, SiteRoleManagers>
+function normalizeSiteManagers(raw: unknown): SiteManagers {
+  const out: SiteManagers = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [loc, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (!val || typeof val !== 'object') continue
+    const roles = val as Record<string, unknown>
+    const pick = (r: unknown): Record<string, string> => {
+      const m: Record<string, string> = {}
+      if (r && typeof r === 'object') {
+        for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
+          if (typeof v === 'string' && v.trim()) m[k] = v
+        }
+      }
+      return m
+    }
+    const gm = pick(roles.gm)
+    const agm = pick(roles.agm)
+    if (Object.keys(gm).length || Object.keys(agm).length) out[loc] = { gm, agm }
+  }
+  return out
 }
 
 const quarterStartOf = (d: Date) => format(new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1), 'yyyy-MM-01')
@@ -213,14 +240,47 @@ export default function BonusesPage() {
 
   const result = computeGmBonus({ current, previous, membershipBase, avgBase })
 
+  // GM/AGM manager names per site, effective-dated by month. Edited names for the
+  // viewed month live in nameEdits and reset when the month (or saved data) changes.
+  const siteManagers = useMemo(() => normalizeSiteManagers(settings.siteManagers), [settings.siteManagers])
+  const [nameEdits, setNameEdits] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const next: Record<string, string> = {}
+    for (const loc of sortedLocations) {
+      next[`${loc.id}|gm`] = effectiveManager(siteManagers[loc.id]?.gm, period)
+      next[`${loc.id}|agm`] = effectiveManager(siteManagers[loc.id]?.agm, period)
+    }
+    setNameEdits(next)
+  }, [sortedLocations, siteManagers, period])
+  const nameFor = (siteId: string, role: 'gm' | 'agm') => nameEdits[`${siteId}|${role}`] ?? ''
+  const setName = (siteId: string, role: 'gm' | 'agm', value: string) =>
+    setNameEdits((m) => ({ ...m, [`${siteId}|${role}`]: value }))
+
+  // Persist on blur. A change applies from the VIEWED month forward, so earlier
+  // months keep their prior manager (same rule as the regional page).
+  const commitName = (siteId: string, role: 'gm' | 'agm') => {
+    if (!profile) return
+    const val = nameFor(siteId, role).trim()
+    if (val === effectiveManager(siteManagers[siteId]?.[role], period)) return
+    const next: SiteManagers = {}
+    for (const [loc, roles] of Object.entries(siteManagers)) next[loc] = { gm: { ...roles.gm }, agm: { ...roles.agm } }
+    if (!next[siteId]) next[siteId] = { gm: {}, agm: {} }
+    if (val === '') delete next[siteId][role][period]
+    else next[siteId][role][period] = val
+    void updateCompany(profile.account_id, { settings: { ...settings, siteManagers: next } }).then(() => reloadCompany())
+  }
+
   // All Sites: each site's current-month result from saved data (no live editing).
   const allRows: AllSitesRow[] = useMemo(
     () =>
       sortedLocations.map((loc) => ({
+        id: loc.id,
         site: loc.name,
+        gmName: effectiveManager(siteManagers[loc.id]?.gm, period),
+        agmName: effectiveManager(siteManagers[loc.id]?.agm, period),
         result: computeSiteMonth(allMonths, allBaselines, loc.id, period),
       })),
-    [sortedLocations, allMonths, allBaselines, period],
+    [sortedLocations, allMonths, allBaselines, period, siteManagers],
   )
 
   const monthLabel = monthOf(period)
@@ -235,7 +295,10 @@ export default function BonusesPage() {
         await exportAllSitesBonusPdf(monthLabel, allRows, profile?.brand_logo_url)
       } else {
         const siteName = sortedLocations.find((l) => l.id === locationId)?.name ?? 'Site'
-        await exportSiteBonusPdf(siteName, monthLabel, result, profile?.brand_logo_url)
+        await exportSiteBonusPdf(siteName, monthLabel, result, profile?.brand_logo_url, {
+          gm: nameFor(locationId, 'gm'),
+          agm: nameFor(locationId, 'agm'),
+        })
       }
     } finally {
       setExporting(false)
@@ -417,6 +480,8 @@ export default function BonusesPage() {
               <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
                   <th className="px-3 py-2.5 font-medium">Site</th>
+                  <th className="px-3 py-2.5 font-medium">GM</th>
+                  <th className="px-3 py-2.5 font-medium">AGM</th>
                   <th className="px-3 py-2.5 text-right font-medium">One-time</th>
                   <th className="px-3 py-2.5 text-right font-medium">Churn</th>
                   <th className="px-3 py-2.5 text-right font-medium">Conversion</th>
@@ -428,6 +493,26 @@ export default function BonusesPage() {
                 {allRows.map((r) => (
                   <tr key={r.site} className="border-t border-border hover:bg-content">
                     <td className="px-3 py-2.5 font-medium text-ink">{r.site}</td>
+                    <td className="px-3 py-1.5">
+                      <Input
+                        value={nameFor(r.id ?? '', 'gm')}
+                        onChange={(e) => setName(r.id ?? '', 'gm', e.target.value)}
+                        onBlur={() => commitName(r.id ?? '', 'gm')}
+                        placeholder="Add name"
+                        className="h-8 w-32"
+                        aria-label={`GM for ${r.site}`}
+                      />
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <Input
+                        value={nameFor(r.id ?? '', 'agm')}
+                        onChange={(e) => setName(r.id ?? '', 'agm', e.target.value)}
+                        onBlur={() => commitName(r.id ?? '', 'agm')}
+                        placeholder="Add name"
+                        className="h-8 w-32"
+                        aria-label={`AGM for ${r.site}`}
+                      />
+                    </td>
                     {r.result ? (
                       <>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.oneTimeTotal)}</td>
@@ -445,7 +530,7 @@ export default function BonusesPage() {
               <tfoot>
                 <tr className="border-t-2 border-border bg-content font-semibold">
                   <td className="px-3 py-2.5 text-ink">Total</td>
-                  <td colSpan={3} />
+                  <td colSpan={5} />
                   <td className="px-3 py-2.5 text-right tabular-nums text-accent">{currency(allGmSum)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-ink">{currency(allAgmSum)}</td>
                 </tr>
@@ -588,6 +673,29 @@ export default function BonusesPage() {
               <span className="text-lg font-bold tabular-nums text-ink">{currency(result.agmTotal)}</span>
             </div>
             <p className="mt-1 text-right text-xs text-ink-subtle">AGM = 1/2 of GM total</p>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3">
+              <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
+                GM name
+                <Input
+                  value={nameFor(locationId, 'gm')}
+                  onChange={(e) => setName(locationId, 'gm', e.target.value)}
+                  onBlur={() => commitName(locationId, 'gm')}
+                  placeholder="Add name"
+                  className="h-9"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
+                AGM name
+                <Input
+                  value={nameFor(locationId, 'agm')}
+                  onChange={(e) => setName(locationId, 'agm', e.target.value)}
+                  onBlur={() => commitName(locationId, 'agm')}
+                  placeholder="Add name"
+                  className="h-9"
+                />
+              </label>
+            </div>
           </section>
         </div>
       )}
