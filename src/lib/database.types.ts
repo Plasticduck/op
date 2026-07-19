@@ -1717,6 +1717,7 @@ export type Database = {
       gm_bonus_months: {
         Row: {
           account_id: string
+          agm_override: number | null
           avg_mos: number
           churn_pct: number
           conversion_pct: number
@@ -1734,6 +1735,7 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          agm_override?: number | null
           avg_mos?: number
           churn_pct?: number
           conversion_pct?: number
@@ -1751,6 +1753,7 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          agm_override?: number | null
           avg_mos?: number
           churn_pct?: number
           conversion_pct?: number

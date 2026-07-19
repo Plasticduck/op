@@ -286,7 +286,8 @@ export default function BonusesPage() {
           site: loc.name,
           gmName: effectiveManager(siteManagers[loc.id]?.gm, period),
           agmName: effectiveManager(siteManagers[loc.id]?.agm, period),
-          override: row?.gm_override != null ? Number(row.gm_override) : null,
+          gmOverride: row?.gm_override != null ? Number(row.gm_override) : null,
+          agmOverride: row?.agm_override != null ? Number(row.agm_override) : null,
           result: computeSiteMonth(allMonths, allBaselines, loc.id, period),
         }
       }),
@@ -295,14 +296,16 @@ export default function BonusesPage() {
 
   const monthLabel = monthOf(period)
   const prevShort = format(parseISO(prevPeriod(period)), 'MMM yyyy')
-  // A bonus is only paid when a manager is named (empty name -> $0). An admin
-  // override, when set, replaces the calculated GM total (and AGM = override / 2).
+  // A bonus is only paid when a manager is named (empty name -> $0). GM and AGM
+  // overrides are independent: each, when set, replaces its own total. A GM
+  // override does NOT feed the AGM. AGM only auto-calculates (half of the
+  // calculated GM) when its own override is unset.
   const gmAmount = (name: string | null | undefined, r: GmBonusResult | null, override: number | null) =>
     override != null ? override : name && name.trim() && r ? r.gmTotal : 0
   const agmAmount = (name: string | null | undefined, r: GmBonusResult | null, override: number | null) =>
-    !name || !name.trim() ? 0 : override != null ? override / 2 : r ? r.agmTotal : 0
-  const allGmSum = allRows.reduce((a, r) => a + gmAmount(r.gmName, r.result, r.override ?? null), 0)
-  const allAgmSum = allRows.reduce((a, r) => a + agmAmount(r.agmName, r.result, r.override ?? null), 0)
+    override != null ? override : name && name.trim() && r ? r.agmTotal : 0
+  const allGmSum = allRows.reduce((a, r) => a + gmAmount(r.gmName, r.result, r.gmOverride ?? null), 0)
+  const allAgmSum = allRows.reduce((a, r) => a + agmAmount(r.agmName, r.result, r.agmOverride ?? null), 0)
   const anyAllData = allRows.some((r) => r.result)
 
   const exportToPdf = async () => {
@@ -318,7 +321,10 @@ export default function BonusesPage() {
           result,
           profile?.brand_logo_url,
           { gm: nameFor(locationId, 'gm'), agm: nameFor(locationId, 'agm') },
-          monthRow?.gm_override != null ? Number(monthRow.gm_override) : null,
+          {
+            gm: monthRow?.gm_override != null ? Number(monthRow.gm_override) : null,
+            agm: monthRow?.agm_override != null ? Number(monthRow.agm_override) : null,
+          },
         )
       }
     } finally {
@@ -326,17 +332,18 @@ export default function BonusesPage() {
     }
   }
 
-  const saveOverride = async (value: number | null) => {
+  const saveOverride = async (gm: number | null, agm: number | null) => {
     if (!profile || !locationId) return
     const { error: err } = await gmBonus.setOverride({
       account_id: profile.account_id,
       location_id: locationId,
       period,
-      gm_override: value,
+      gm_override: gm,
+      agm_override: agm,
     })
     setOverrideOpen(false)
     if (err) return setError(err.message)
-    setNotice(value == null ? 'Override removed.' : `Override set to ${currency(value)}.`)
+    setNotice(gm == null && agm == null ? 'Overrides removed.' : 'Overrides saved.')
     await load()
   }
 
@@ -554,8 +561,8 @@ export default function BonusesPage() {
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.oneTimeTotal)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.churn.amount)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.conversion.amount)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(gmAmount(r.gmName, r.result, r.override ?? null))}{r.override != null && <span className="ml-1 text-[10px] font-normal text-warn">ovr</span>}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(agmAmount(r.agmName, r.result, r.override ?? null))}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(gmAmount(r.gmName, r.result, r.gmOverride ?? null))}{r.gmOverride != null && <span className="ml-1 text-[10px] font-normal text-warn">ovr</span>}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(agmAmount(r.agmName, r.result, r.agmOverride ?? null))}{r.agmOverride != null && <span className="ml-1 text-[10px] font-normal text-warn">ovr</span>}</td>
                       </>
                     ) : (
                       <td colSpan={5} className="px-3 py-2.5 text-right text-xs text-ink-subtle">No data</td>
@@ -728,19 +735,22 @@ export default function BonusesPage() {
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between rounded-md border border-border px-3 py-2">
-              <span className="text-sm font-semibold text-ink">Total AGM monthly bonus</span>
+              <span className="text-sm font-semibold text-ink">
+                Total AGM monthly bonus
+                {monthRow?.agm_override != null && <span className="ml-1 text-xs font-normal text-warn">(override)</span>}
+              </span>
               <span className="text-lg font-bold tabular-nums text-ink">
-                {currency(agmAmount(nameFor(locationId, 'agm'), result, monthRow?.gm_override != null ? Number(monthRow.gm_override) : null))}
+                {currency(agmAmount(nameFor(locationId, 'agm'), result, monthRow?.agm_override != null ? Number(monthRow.agm_override) : null))}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between">
               <span className="text-xs text-ink-muted">
-                {monthRow?.gm_override != null
-                  ? `Override set: ${currency(Number(monthRow.gm_override))}`
+                {monthRow?.gm_override != null || monthRow?.agm_override != null
+                  ? `Override set: GM ${monthRow?.gm_override != null ? currency(Number(monthRow.gm_override)) : 'auto'}, AGM ${monthRow?.agm_override != null ? currency(Number(monthRow.agm_override)) : 'auto'}`
                   : 'Bonus amount override'}
               </span>
               <Button variant="ghost" size="sm" onClick={() => setOverrideOpen(true)} disabled={!locationId}>
-                {monthRow?.gm_override != null ? 'Edit override' : 'Override amount'}
+                {monthRow?.gm_override != null || monthRow?.agm_override != null ? 'Edit override' : 'Override amount'}
               </Button>
             </div>
             <p className="mt-1 text-right text-xs text-ink-subtle">AGM = 1/2 of GM total</p>
@@ -775,8 +785,10 @@ export default function BonusesPage() {
         <OverrideModal
           site={sortedLocations.find((l) => l.id === locationId)?.name ?? 'Site'}
           monthLabel={monthLabel}
-          current={monthRow?.gm_override != null ? Number(monthRow.gm_override) : null}
-          computed={gmAmount(nameFor(locationId, 'gm'), result, null)}
+          currentGm={monthRow?.gm_override != null ? Number(monthRow.gm_override) : null}
+          currentAgm={monthRow?.agm_override != null ? Number(monthRow.agm_override) : null}
+          computedGm={gmAmount(nameFor(locationId, 'gm'), result, null)}
+          computedAgm={agmAmount(nameFor(locationId, 'agm'), result, null)}
           onSave={saveOverride}
           onClose={() => setOverrideOpen(false)}
         />
@@ -787,58 +799,76 @@ export default function BonusesPage() {
   )
 }
 
-function OverrideModal({ site, monthLabel, current, computed, onSave, onClose }: {
+function OverrideModal({ site, monthLabel, currentGm, currentAgm, computedGm, computedAgm, onSave, onClose }: {
   site: string
   monthLabel: string
-  current: number | null
-  computed: number
-  onSave: (value: number | null) => Promise<void>
+  currentGm: number | null
+  currentAgm: number | null
+  computedGm: number
+  computedAgm: number
+  onSave: (gm: number | null, agm: number | null) => Promise<void>
   onClose: () => void
 }) {
-  const [value, setValue] = useState(current != null ? String(current) : String(computed))
+  const [gm, setGm] = useState(currentGm != null ? String(currentGm) : '')
+  const [agm, setAgm] = useState(currentAgm != null ? String(currentAgm) : '')
   const [busy, setBusy] = useState(false)
 
+  const parse = (s: string): number | null | 'bad' => {
+    if (s.trim() === '') return null
+    const n = Number(s)
+    return Number.isNaN(n) ? 'bad' : n
+  }
+
   const save = async () => {
-    const n = Number(value)
-    if (value.trim() === '' || Number.isNaN(n)) return
+    const g = parse(gm)
+    const a = parse(agm)
+    if (g === 'bad' || a === 'bad') return
     if (
       !window.confirm(
-        `Are you sure? This overrides the GM bonus for ${site} (${monthLabel}) to ${currency(n)}, replacing the calculated amount. AGM becomes half of it.`,
+        `Are you sure? For ${site} (${monthLabel}) this sets GM to ${g == null ? 'auto (calculated)' : currency(g)} and AGM to ${a == null ? 'auto (half of calculated GM)' : currency(a)}.`,
       )
     )
       return
     setBusy(true)
-    await onSave(n)
+    await onSave(g, a)
   }
   const clear = async () => {
-    if (!window.confirm(`Remove the override for ${site} (${monthLabel}) and use the calculated amount?`)) return
+    if (!window.confirm(`Remove the GM and AGM overrides for ${site} (${monthLabel}) and use the calculated amounts?`))
+      return
     setBusy(true)
-    await onSave(null)
+    await onSave(null, null)
   }
 
   return (
     <Modal open onClose={onClose} title="Bonus amount override">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-ink-muted">
-          {site} · {monthLabel}. Calculated GM bonus: {currency(computed)}.
+          {site} · {monthLabel}. Calculated GM: {currency(computedGm)}, AGM: {currency(computedAgm)}. Leave a field
+          blank to auto-calculate it. Applies to this month only.
         </p>
-        <Field label="Override GM bonus amount">
-          {(id) => (
-            <Input id={id} type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} />
-          )}
-        </Field>
-        <p className="text-xs text-ink-subtle">AGM becomes half of this amount. Applies to this month only.</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="GM override" hint="Blank = use calculated GM.">
+            {(id) => (
+              <Input id={id} type="number" min="0" step="0.01" value={gm} onChange={(e) => setGm(e.target.value)} placeholder="Auto" />
+            )}
+          </Field>
+          <Field label="AGM override" hint="Blank = half of calculated GM.">
+            {(id) => (
+              <Input id={id} type="number" min="0" step="0.01" value={agm} onChange={(e) => setAgm(e.target.value)} placeholder="Auto" />
+            )}
+          </Field>
+        </div>
         <div className="flex items-center justify-between gap-2">
-          {current != null ? (
+          {currentGm != null || currentAgm != null ? (
             <Button variant="ghost" className="text-danger hover:text-danger" onClick={clear} disabled={busy}>
-              Clear override
+              Clear overrides
             </Button>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save override'}</Button>
+            <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save overrides'}</Button>
           </div>
         </div>
       </div>
