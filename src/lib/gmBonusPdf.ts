@@ -153,7 +153,14 @@ export async function exportAllSitesBonusPdf(
   doc.save(`gm-bonus-all-sites-${fileSafe(monthLabel)}-${stamp()}.pdf`)
 }
 
-export type RegionalRow = { region: string; pct: number; sites: number; combined: number; bonus: number }
+export type RegionalRow = {
+  region: string
+  manager?: string
+  pct: number
+  sites: number
+  combined: number
+  bonus: number
+}
 
 export async function exportRegionalBonusPdf(
   quarterLabel: string,
@@ -180,16 +187,17 @@ export async function exportRegionalBonusPdf(
     headStyles: { fillColor: ACCENT },
     footStyles: { fillColor: [237, 240, 245], textColor: 20, fontStyle: 'bold' },
     margin: { left: 14, right: 14 },
-    head: [['Region', 'Sites', 'Share', 'Combined GM Bonus', 'Regional Mgr Bonus']],
+    head: [['Region', 'Regional Manager', 'Sites', 'Share', 'Combined GM Bonus', 'Regional Mgr Bonus']],
     body: rows.map((r) => [
       r.region,
+      r.manager ?? '',
       String(r.sites),
       `${Math.round(r.pct * 100)}%`,
       currency(r.combined),
       currency(r.bonus),
     ]),
-    foot: [['Total', '', '', currency(totalCombined), currency(totalBonus)]],
-    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+    foot: [['Total', '', '', '', currency(totalCombined), currency(totalBonus)]],
+    columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
   })
 
   doc.save(`regional-bonus-${fileSafe(quarterLabel)}-${stamp()}.pdf`)

@@ -12,6 +12,7 @@ import { useLocations } from '@/lib/locations'
 import { compareLocationName } from '@/lib/utils'
 import { currency } from '@/lib/format'
 import { useCompany } from '@/lib/company'
+import { updateCompany } from '@/lib/queries/companySettings'
 import type { RegionDef } from '@/lib/regions'
 import { gmBonus, type GmBonusBase, type GmBonusMonth } from '@/lib/queries/gmBonus'
 import { computeGmBonus, type AvgBase, type GmBonusResult, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
@@ -101,7 +102,7 @@ const quarterLabel = (qStart: string) => {
 export default function BonusesPage() {
   const { profile } = useAuth()
   const { locations } = useLocations()
-  const { settings } = useCompany()
+  const { settings, reload: reloadCompany } = useCompany()
   const sortedLocations = useMemo(
     () => [...locations].sort((a, b) => compareLocationName(a.name, b.name)),
     [locations],
@@ -316,6 +317,12 @@ export default function BonusesPage() {
           allMonths={allMonths}
           allBaselines={allBaselines}
           regions={settings.regions ?? []}
+          managers={settings.regionalManagers ?? {}}
+          onSaveManagers={async (next) => {
+            if (!profile) return
+            await updateCompany(profile.account_id, { settings: { ...settings, regionalManagers: next } })
+            await reloadCompany()
+          }}
           logoUrl={profile?.brand_logo_url}
           loading={loading}
         />
@@ -563,15 +570,18 @@ export default function BonusesPage() {
   )
 }
 
-function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }: {
+function RegionalBonuses({ allMonths, allBaselines, regions, managers, onSaveManagers, logoUrl, loading }: {
   allMonths: GmBonusMonth[]
   allBaselines: GmBonusBase[]
   regions: RegionDef[]
+  managers: Record<string, string>
+  onSaveManagers: (next: Record<string, string>) => Promise<void>
   logoUrl?: string | null
   loading: boolean
 }) {
   const [qStart, setQStart] = useState(() => quarterStartOf(new Date()))
   const [exporting, setExporting] = useState(false)
+  const [mgr, setMgr] = useState<Record<string, string>>(managers)
   const months = useMemo(() => quarterMonths(qStart), [qStart])
 
   const rows: RegionalRow[] = useMemo(
@@ -594,10 +604,17 @@ function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }:
   const totalBonus = rows.reduce((a, r) => a + r.bonus, 0)
   const label = quarterLabel(qStart)
 
+  // Persist manager names on blur, only when something actually changed.
+  const commitManagers = () => {
+    const cleaned: Record<string, string> = {}
+    for (const [k, v] of Object.entries(mgr)) if (v.trim()) cleaned[k] = v.trim()
+    if (JSON.stringify(cleaned) !== JSON.stringify(managers)) void onSaveManagers(cleaned)
+  }
+
   const doExport = async () => {
     setExporting(true)
     try {
-      await exportRegionalBonusPdf(label, rows, logoUrl)
+      await exportRegionalBonusPdf(label, rows.map((r) => ({ ...r, manager: mgr[r.region] ?? '' })), logoUrl)
     } finally {
       setExporting(false)
     }
@@ -635,6 +652,7 @@ function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }:
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-3 py-2.5 font-medium">Region</th>
+                <th className="px-3 py-2.5 font-medium">Regional Manager</th>
                 <th className="px-3 py-2.5 text-right font-medium">Sites</th>
                 <th className="px-3 py-2.5 text-right font-medium">Regional Mgr Bonus</th>
               </tr>
@@ -643,6 +661,16 @@ function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }:
               {rows.map((r) => (
                 <tr key={r.region} className="border-t border-border hover:bg-content">
                   <td className="px-3 py-2.5 font-medium text-ink">{r.region}</td>
+                  <td className="px-3 py-2.5">
+                    <Input
+                      value={mgr[r.region] ?? ''}
+                      onChange={(e) => setMgr((m) => ({ ...m, [r.region]: e.target.value }))}
+                      onBlur={commitManagers}
+                      placeholder="Add name"
+                      className="h-8 w-48"
+                      aria-label={`Regional manager for ${r.region}`}
+                    />
+                  </td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{r.sites}</td>
                   <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(r.bonus)}</td>
                 </tr>
@@ -650,7 +678,7 @@ function RegionalBonuses({ allMonths, allBaselines, regions, logoUrl, loading }:
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-border bg-content font-semibold">
-                <td className="px-3 py-2.5 text-ink" colSpan={2}>Total</td>
+                <td className="px-3 py-2.5 text-ink" colSpan={3}>Total</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-accent">{currency(totalBonus)}</td>
               </tr>
             </tfoot>
