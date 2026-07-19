@@ -130,8 +130,10 @@ function normalizeSiteManagers(raw: unknown): SiteManagers {
     const pick = (r: unknown): Record<string, string> => {
       const m: Record<string, string> = {}
       if (r && typeof r === 'object') {
+        // Keep empty strings: an explicit blank means "no manager this month",
+        // which must persist and not fall back to an earlier month.
         for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
-          if (typeof v === 'string' && v.trim()) m[k] = v
+          if (typeof v === 'string') m[k] = v
         }
       }
       return m
@@ -265,8 +267,9 @@ export default function BonusesPage() {
     const next: SiteManagers = {}
     for (const [loc, roles] of Object.entries(siteManagers)) next[loc] = { gm: { ...roles.gm }, agm: { ...roles.agm } }
     if (!next[siteId]) next[siteId] = { gm: {}, agm: {} }
-    if (val === '') delete next[siteId][role][period]
-    else next[siteId][role][period] = val
+    // Store the value for this month, including an explicit blank (no manager),
+    // so it holds from this month forward instead of re-showing the prior name.
+    next[siteId][role][period] = val
     void updateCompany(profile.account_id, { settings: { ...settings, siteManagers: next } }).then(() => reloadCompany())
   }
 
@@ -285,8 +288,13 @@ export default function BonusesPage() {
 
   const monthLabel = monthOf(period)
   const prevShort = format(parseISO(prevPeriod(period)), 'MMM yyyy')
-  const allGmSum = allRows.reduce((a, r) => a + (r.result?.gmTotal ?? 0), 0)
-  const allAgmSum = allRows.reduce((a, r) => a + (r.result?.agmTotal ?? 0), 0)
+  // A bonus is only paid when a manager is named. An empty GM/AGM name -> $0.
+  const gmAmount = (name: string | null | undefined, r: GmBonusResult | null) =>
+    name && name.trim() && r ? r.gmTotal : 0
+  const agmAmount = (name: string | null | undefined, r: GmBonusResult | null) =>
+    name && name.trim() && r ? r.agmTotal : 0
+  const allGmSum = allRows.reduce((a, r) => a + gmAmount(r.gmName, r.result), 0)
+  const allAgmSum = allRows.reduce((a, r) => a + agmAmount(r.agmName, r.result), 0)
   const anyAllData = allRows.some((r) => r.result)
 
   const exportToPdf = async () => {
@@ -408,6 +416,7 @@ export default function BonusesPage() {
           allMonths={allMonths}
           allBaselines={allBaselines}
           regions={settings.regions ?? []}
+          siteManagers={siteManagers}
           rawManagers={settings.regionalManagers}
           onSaveManagers={async (next) => {
             if (!profile) return
@@ -519,8 +528,8 @@ export default function BonusesPage() {
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.oneTimeTotal)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.churn.amount)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.conversion.amount)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(r.result.gmTotal)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(r.result.agmTotal)}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(gmAmount(r.gmName, r.result))}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(agmAmount(r.agmName, r.result))}</td>
                       </>
                     ) : (
                       <td colSpan={5} className="px-3 py-2.5 text-right text-xs text-ink-subtle">No data</td>
@@ -685,11 +694,11 @@ export default function BonusesPage() {
             />
             <div className="mt-3 flex items-center justify-between rounded-md bg-accent-soft px-3 py-2">
               <span className="text-sm font-semibold text-accent">Total GM monthly bonus</span>
-              <span className="text-lg font-bold tabular-nums text-accent">{currency(result.gmTotal)}</span>
+              <span className="text-lg font-bold tabular-nums text-accent">{currency(gmAmount(nameFor(locationId, 'gm'), result))}</span>
             </div>
             <div className="mt-2 flex items-center justify-between rounded-md border border-border px-3 py-2">
               <span className="text-sm font-semibold text-ink">Total AGM monthly bonus</span>
-              <span className="text-lg font-bold tabular-nums text-ink">{currency(result.agmTotal)}</span>
+              <span className="text-lg font-bold tabular-nums text-ink">{currency(agmAmount(nameFor(locationId, 'agm'), result))}</span>
             </div>
             <p className="mt-1 text-right text-xs text-ink-subtle">AGM = 1/2 of GM total</p>
 
@@ -724,10 +733,11 @@ export default function BonusesPage() {
   )
 }
 
-function RegionalBonuses({ allMonths, allBaselines, regions, rawManagers, onSaveManagers, logoUrl, loading }: {
+function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawManagers, onSaveManagers, logoUrl, loading }: {
   allMonths: GmBonusMonth[]
   allBaselines: GmBonusBase[]
   regions: RegionDef[]
+  siteManagers: SiteManagers
   rawManagers: unknown
   onSaveManagers: (next: QuarterManagers) => Promise<void>
   logoUrl?: string | null
@@ -755,12 +765,13 @@ function RegionalBonuses({ allMonths, allBaselines, regions, rawManagers, onSave
         for (const sid of siteIds) {
           for (const m of months) {
             const res = computeSiteMonth(allMonths, allBaselines, sid, m)
-            if (res) combined += res.gmTotal
+            // A site's GM bonus only counts when it has a named GM that month.
+            if (res && effectiveManager(siteManagers[sid]?.gm, m).trim()) combined += res.gmTotal
           }
         }
         return { region: rb.name, pct: rb.pct, sites: siteIds.length, combined, bonus: combined * rb.pct }
       }),
-    [regions, months, allMonths, allBaselines],
+    [regions, months, allMonths, allBaselines, siteManagers],
   )
   const totalCombined = rows.reduce((a, r) => a + r.combined, 0)
   const totalBonus = rows.reduce((a, r) => a + r.bonus, 0)

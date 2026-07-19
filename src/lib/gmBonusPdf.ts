@@ -97,8 +97,8 @@ export async function exportSiteBonusPdf(
     ...common,
     startY: next(),
     body: [
-      [`Total GM monthly bonus (GM: ${names?.gm || '—'})`, currency(r.gmTotal)],
-      [`Total AGM monthly bonus, 1/2 of GM (AGM: ${names?.agm || '—'})`, currency(r.agmTotal)],
+      [`Total GM monthly bonus (GM: ${names?.gm || '—'})`, currency(names?.gm?.trim() ? r.gmTotal : 0)],
+      [`Total AGM monthly bonus, 1/2 of GM (AGM: ${names?.agm || '—'})`, currency(names?.agm?.trim() ? r.agmTotal : 0)],
     ],
     columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right', fontStyle: 'bold' } },
   })
@@ -130,9 +130,11 @@ export async function exportAllSitesBonusPdf(
   doc.text(`${monthLabel} · Generated ${format(new Date(), 'PP')}`, 14, 22)
   doc.setTextColor(0)
 
-  const withData = rows.filter((r) => r.result)
-  const gmSum = withData.reduce((a, r) => a + (r.result?.gmTotal ?? 0), 0)
-  const agmSum = withData.reduce((a, r) => a + (r.result?.agmTotal ?? 0), 0)
+  // A bonus is only paid when a manager is named: an empty GM/AGM name -> $0.
+  const gmVal = (r: AllSitesRow) => (r.gmName?.trim() && r.result ? r.result.gmTotal : 0)
+  const agmVal = (r: AllSitesRow) => (r.agmName?.trim() && r.result ? r.result.agmTotal : 0)
+  const gmSum = rows.reduce((a, r) => a + gmVal(r), 0)
+  const agmSum = rows.reduce((a, r) => a + agmVal(r), 0)
 
   autoTable(doc, {
     startY: 28,
@@ -150,8 +152,8 @@ export async function exportAllSitesBonusPdf(
             currency(r.result.oneTimeTotal),
             currency(r.result.churn.amount),
             currency(r.result.conversion.amount),
-            currency(r.result.gmTotal),
-            currency(r.result.agmTotal),
+            currency(gmVal(r)),
+            currency(agmVal(r)),
           ]
         : [r.site, r.gmName ?? '', r.agmName ?? '', 'No data', '', '', '', ''],
     ),
