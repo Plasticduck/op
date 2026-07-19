@@ -454,31 +454,41 @@ export default function DashboardPage() {
   // Single-site accounts get the classic per-site dashboard directly.
   if (locations.length <= 1) return <ManagerDashboard />
 
+  const regionButtons = regions.map((r) => (
+    <button
+      key={r.name}
+      type="button"
+      onClick={() => select(r.name)}
+      className={cn(
+        'rounded-md border px-3 py-1.5 text-sm font-medium transition',
+        sel === r.name
+          ? 'border-accent bg-accent-soft text-accent'
+          : 'border-border bg-card text-ink-muted hover:bg-content',
+      )}
+    >
+      {shortRegionLabel(r.name)}
+    </button>
+  ))
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="relative flex items-start">
-        <ViewToggle value={sel} onChange={select} />
-        <div className="pointer-events-none absolute left-1/2 top-1/2 mt-6 -translate-x-1/2 -translate-y-1/2">
+      <div>
+        <div className="relative flex items-start">
+          <ViewToggle value={sel} onChange={select} />
+          {/* Desktop: logo centered, region buttons stacked top-right. */}
+          <div className="pointer-events-none absolute left-1/2 top-1/2 mt-6 hidden -translate-x-1/2 -translate-y-1/2 sm:block">
+            <AccountBrandLogo />
+          </div>
+          {regions.length > 0 && (
+            <div className="ml-auto hidden flex-col items-end gap-1.5 sm:flex">{regionButtons}</div>
+          )}
+        </div>
+        {/* Mobile: logo, then region buttons, in-flow below the toggle. */}
+        <div className="mt-4 flex justify-center sm:hidden">
           <AccountBrandLogo />
         </div>
         {regions.length > 0 && (
-          <div className="ml-auto flex flex-col items-end gap-1.5">
-            {regions.map((r) => (
-              <button
-                key={r.name}
-                type="button"
-                onClick={() => select(r.name)}
-                className={cn(
-                  'rounded-md border px-3 py-1.5 text-sm font-medium transition',
-                  sel === r.name
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-border bg-card text-ink-muted hover:bg-content',
-                )}
-              >
-                {shortRegionLabel(r.name)}
-              </button>
-            ))}
-          </div>
+          <div className="mt-3 flex flex-wrap justify-center gap-1.5 sm:hidden">{regionButtons}</div>
         )}
       </div>
       {activeRegion ? (
