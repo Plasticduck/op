@@ -284,6 +284,7 @@ export default function BonusesPage() {
   )
 
   const monthLabel = monthOf(period)
+  const prevShort = format(parseISO(prevPeriod(period)), 'MMM yyyy')
   const allGmSum = allRows.reduce((a, r) => a + (r.result?.gmTotal ?? 0), 0)
   const allAgmSum = allRows.reduce((a, r) => a + (r.result?.agmTotal ?? 0), 0)
   const anyAllData = allRows.some((r) => r.result)
@@ -548,10 +549,28 @@ export default function BonusesPage() {
               <NumField label="Super Shine" value={form.super} onChange={set('super')} />
               <NumField label="Wonder Clean" value={form.wonder} onChange={set('wonder')} />
               <NumField label="Total members" value={String(result.currentTotal)} readOnly />
-              <NumField label="Avg months active" value={form.avgMos} onChange={set('avgMos')} step="0.1" />
+              <NumField
+                label="Avg months active"
+                value={form.avgMos}
+                onChange={set('avgMos')}
+                step="0.1"
+                sub={`${prevShort}: ${prevRow ? Number(prevRow.avg_mos) : '—'}`}
+              />
               <div />
-              <NumField label="Churn %" value={form.churn} onChange={set('churn')} step="0.1" />
-              <NumField label="Conversion %" value={form.conversion} onChange={set('conversion')} step="0.1" />
+              <NumField
+                label="Churn %"
+                value={form.churn}
+                onChange={set('churn')}
+                step="0.1"
+                sub={`${prevShort}: ${prevRow ? `${Number(prevRow.churn_pct)}%` : '—'}`}
+              />
+              <NumField
+                label="Conversion %"
+                value={form.conversion}
+                onChange={set('conversion')}
+                step="0.1"
+                sub={`${prevShort}: ${prevRow ? `${Number(prevRow.conversion_pct)}%` : '—'}`}
+              />
             </div>
 
             <div className="mt-4 rounded-md border border-border bg-content p-3">
@@ -858,12 +877,14 @@ function NumField({
   onChange,
   readOnly,
   step,
+  sub,
 }: {
   label: string
   value: string
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void
   readOnly?: boolean
   step?: string
+  sub?: string
 }) {
   return (
     <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
@@ -877,6 +898,7 @@ function NumField({
         readOnly={readOnly}
         className={readOnly ? 'h-9 bg-content' : 'h-9'}
       />
+      {sub !== undefined && <span className="text-[11px] font-normal text-ink-subtle">{sub}</span>}
     </label>
   )
 }
