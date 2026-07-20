@@ -14,7 +14,8 @@ import { useLocations } from '@/lib/locations'
 import { compareLocationName } from '@/lib/utils'
 import { currency } from '@/lib/format'
 import { useCompany } from '@/lib/company'
-import { updateCompany } from '@/lib/queries/companySettings'
+import { updateCompany, setSiteManagers } from '@/lib/queries/companySettings'
+import { useSectionAllowed } from '@/lib/usePermissions'
 import type { RegionDef } from '@/lib/regions'
 import { gmBonus, type GmBonusBase, type GmBonusMonth } from '@/lib/queries/gmBonus'
 import { computeGmBonus, type AvgBase, type GmBonusResult, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
@@ -185,6 +186,11 @@ export default function BonusesPage() {
   )
 
   const [mode, setMode] = useState<'gm' | 'regional'>('gm')
+  // Regional is owner-only; managers granted Bonuses see GM/AGM only.
+  const canRegional = useSectionAllowed('/app/bonuses#regional')
+  useEffect(() => {
+    if (!canRegional && mode === 'regional') setMode('gm')
+  }, [canRegional, mode])
   const [locationId, setLocationId] = useState('')
   const [period, setPeriod] = useState(format(new Date(), 'yyyy-MM-01'))
   const [allMonths, setAllMonths] = useState<GmBonusMonth[]>([])
@@ -295,7 +301,7 @@ export default function BonusesPage() {
     // Store the value for this month, including an explicit blank (no manager),
     // so it holds from this month forward instead of re-showing the prior name.
     next[siteId][role][period] = val
-    void updateCompany(profile.account_id, { settings: { ...settings, siteManagers: next } }).then(() => reloadCompany())
+    void setSiteManagers(profile.account_id, next).then(() => reloadCompany())
   }
 
   // All Sites: each site's current-month result from saved data (no live editing).
@@ -475,24 +481,26 @@ export default function BonusesPage() {
         }
       />
 
-      <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-1">
-        {([
-          { key: 'gm', label: 'GM/AGM Monthly Bonuses' },
-          { key: 'regional', label: 'Regional Manager Quarterly Bonuses' },
-        ] as const).map((o) => (
-          <button
-            key={o.key}
-            type="button"
-            onClick={() => setMode(o.key)}
-            className={
-              'rounded-md px-3 py-1.5 text-sm font-medium transition ' +
-              (mode === o.key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')
-            }
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
+      {canRegional && (
+        <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-1">
+          {([
+            { key: 'gm', label: 'GM/AGM Monthly Bonuses' },
+            { key: 'regional', label: 'Regional Manager Quarterly Bonuses' },
+          ] as const).map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => setMode(o.key)}
+              className={
+                'rounded-md px-3 py-1.5 text-sm font-medium transition ' +
+                (mode === o.key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')
+              }
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {mode === 'regional' ? (
         <RegionalBonuses

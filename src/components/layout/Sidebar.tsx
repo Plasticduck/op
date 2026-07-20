@@ -63,6 +63,8 @@ type NavItem = {
   roles: Role[]
   // Item only shows when the account has this feature flag enabled.
   flag?: 'gm_bonus'
+  // Roles that can be granted this page but default to OFF (admin opts them in).
+  optIn?: Role[]
 }
 
 type NavGroup = {
@@ -127,7 +129,8 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/bonuses',
         label: 'Bonuses',
         icon: BadgeDollarSign,
-        roles: ['owner'],
+        roles: ['owner', 'manager'],
+        optIn: ['manager'],
         flag: 'gm_bonus',
       },
       {
@@ -372,6 +375,7 @@ export function SidebarNav({
       rolePerms: settings.pagePermissions,
       userId: profile?.id,
       userPerms: settings.userPermissions,
+      optInRoles: i.optIn,
     }) &&
     (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled))
 

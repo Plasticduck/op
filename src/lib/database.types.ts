@@ -4594,6 +4594,10 @@ export type Database = {
       gen_invoice_inbox_token: { Args: never; Returns: string }
       get_invitation_email: { Args: { p_token: string }; Returns: string }
       get_invitation_info: { Args: { p_token: string }; Returns: Json }
+      gm_bonus_set_site_managers: {
+        Args: { p_account_id: string; p_site_managers: Json }
+        Returns: undefined
+      }
       kiosk_punch: {
         Args: { p_employee_id: string; p_pin: string }
         Returns: string

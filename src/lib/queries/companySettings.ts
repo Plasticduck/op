@@ -69,6 +69,15 @@ export async function getCompany(
   }
 }
 
+// Managers can save GM/AGM manager names via a definer function that only
+// touches the siteManagers key (see migration 0064), without owner-level write.
+export async function setSiteManagers(accountId: string, siteManagers: unknown) {
+  return supabase.rpc('gm_bonus_set_site_managers', {
+    p_account_id: accountId,
+    p_site_managers: siteManagers as never,
+  })
+}
+
 export async function setSitePlan(accountId: string, sitePlan: SitePlan) {
   return supabase
     .from('accounts')

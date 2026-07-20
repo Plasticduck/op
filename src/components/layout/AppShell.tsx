@@ -41,11 +41,11 @@ function PagePermissionGate({ children }: { children: ReactNode }) {
   const { settings } = useCompany()
   const location = useLocation()
   if (!profile) return <>{children}</>
-  let match: { to: string; roles: Role[] } | null = null
+  let match: { to: string; roles: Role[]; optIn?: Role[] } | null = null
   for (const g of NAV_GROUPS) {
     for (const i of g.items) {
       if (location.pathname === i.to || location.pathname.startsWith(i.to + '/')) {
-        if (!match || i.to.length > match.to.length) match = { to: i.to, roles: i.roles }
+        if (!match || i.to.length > match.to.length) match = { to: i.to, roles: i.roles, optIn: i.optIn }
       }
     }
   }
@@ -56,6 +56,7 @@ function PagePermissionGate({ children }: { children: ReactNode }) {
       rolePerms: settings.pagePermissions,
       userId: profile.id,
       userPerms: settings.userPermissions,
+      optInRoles: match.optIn,
     })
   ) {
     return <Navigate to="/app/dashboard" replace />

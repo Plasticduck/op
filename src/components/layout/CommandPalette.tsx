@@ -32,6 +32,7 @@ export function CommandPalette() {
             rolePerms: settings.pagePermissions,
             userId: profile.id,
             userPerms: settings.userPermissions,
+            optInRoles: i.optIn,
           })
         )
           continue

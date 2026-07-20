@@ -14,5 +14,6 @@ export function useSectionAllowed(sectionKey: string): boolean {
     rolePerms: settings.pagePermissions,
     userId: profile.id,
     userPerms: settings.userPermissions,
+    optInRoles: sec.optIn,
   })
 }

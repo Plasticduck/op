@@ -39,6 +39,21 @@ import { employees, type Employee } from '@/lib/queries/people'
 // in sync with resendInvitation / the invitations.expires_at default.
 const INVITE_TTL_MS = 72 * 3600 * 1000
 
+// Permission defaults. Some pages/sections are grantable but default to OFF for a
+// role (opt-in), so the editor must reflect the right unchecked/checked baseline.
+const NAV_ITEM_BY_TO = new Map(NAV_GROUPS.flatMap((g) => g.items).map((i) => [i.to, i]))
+function optInForKey(key: string): Role[] | undefined {
+  const item = NAV_ITEM_BY_TO.get(key)
+  if (item) return item.optIn
+  return SECTION_CATALOG.find((s) => s.key === key)?.optIn
+}
+function pureDefault(role: Role, key: string): boolean {
+  return !(optInForKey(key)?.includes(role))
+}
+function sectionsForRole(to: string, role: Role) {
+  return SECTION_CATALOG.filter((s) => s.page === to && s.roles.includes(role))
+}
+
 export function TeamPage() {
   const { profile } = useAuth()
   const [users, setUsers] = useState<AccountUser[]>([])
@@ -379,7 +394,7 @@ function PermissionsEditor() {
   const { profile } = useAuth()
   const { settings, reload } = useCompany()
   const [role, setRole] = useState<Role>('manager')
-  const [disabled, setDisabled] = useState<Set<string>>(new Set())
+  const [allowed, setAllowed] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -388,43 +403,57 @@ function PermissionsEditor() {
       NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
         .map((g) => ({
           label: g.label,
-          items: g.items.filter((i) => i.roles.includes(role) && i.to !== '/app/dashboard'),
+          items: g.items.filter(
+            (i) =>
+              i.roles.includes(role) &&
+              i.to !== '/app/dashboard' &&
+              (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)),
+          ),
         }))
         .filter((g) => g.items.length > 0),
     [role],
   )
 
   useEffect(() => {
-    const rolePerms = settings.pagePermissions?.[role] ?? {}
-    const off = new Set<string>()
-    for (const [to, allowed] of Object.entries(rolePerms)) if (allowed === false) off.add(to)
-    setDisabled(off)
-    setSaved(false)
-  }, [role, settings.pagePermissions])
-
-  const toggle = (to: string) =>
-    setDisabled((prev) => {
-      const next = new Set(prev)
-      if (next.has(to)) next.delete(to)
-      else next.add(to)
-      return next
-    })
-  const setGroup = (items: { to: string }[], off: boolean) =>
-    setDisabled((prev) => {
-      const next = new Set(prev)
-      for (const i of items) {
-        if (off) next.add(i.to)
-        else next.delete(i.to)
+    const rp = settings.pagePermissions?.[role] ?? {}
+    const map: Record<string, boolean> = {}
+    for (const g of groups) {
+      for (const i of g.items) {
+        map[i.to] = typeof rp[i.to] === 'boolean' ? rp[i.to] : pureDefault(role, i.to)
+        for (const s of sectionsForRole(i.to, role)) {
+          map[s.key] = typeof rp[s.key] === 'boolean' ? rp[s.key] : pureDefault(role, s.key)
+        }
       }
+    }
+    setAllowed(map)
+    setSaved(false)
+  }, [role, settings.pagePermissions, groups])
+
+  const toggle = (key: string) => setAllowed((p) => ({ ...p, [key]: !p[key] }))
+  const setGroup = (items: { to: string }[], on: boolean) =>
+    setAllowed((p) => {
+      const next = { ...p }
+      for (const i of items) next[i.to] = on
       return next
     })
 
   const save = async () => {
     if (!profile) return
     setBusy(true)
+    // Store only where it differs from the role's default, so opt-in stays off
+    // and future default changes still flow through.
     const rolePerms: Record<string, boolean> = {}
-    for (const to of disabled) rolePerms[to] = false
-    const nextPerms = { ...(settings.pagePermissions ?? {}), [role]: rolePerms }
+    for (const g of groups) {
+      for (const i of g.items) {
+        if (allowed[i.to] !== pureDefault(role, i.to)) rolePerms[i.to] = allowed[i.to]
+        for (const s of sectionsForRole(i.to, role)) {
+          if (allowed[s.key] !== pureDefault(role, s.key)) rolePerms[s.key] = allowed[s.key]
+        }
+      }
+    }
+    const nextPerms = { ...(settings.pagePermissions ?? {}) }
+    if (Object.keys(rolePerms).length) nextPerms[role] = rolePerms
+    else delete nextPerms[role]
     await updateCompany(profile.account_id, { settings: { ...settings, pagePermissions: nextPerms } })
     await reload()
     setBusy(false)
@@ -451,7 +480,7 @@ function PermissionsEditor() {
         </label>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {groups.map((g) => {
-            const allOff = g.items.every((i) => disabled.has(i.to))
+            const allOn = g.items.every((i) => allowed[i.to])
             return (
               <div key={g.label} className="rounded-md border border-border p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -459,20 +488,20 @@ function PermissionsEditor() {
                   <button
                     type="button"
                     className="text-xs text-accent hover:underline"
-                    onClick={() => setGroup(g.items, !allOff)}
+                    onClick={() => setGroup(g.items, !allOn)}
                   >
-                    {allOff ? 'Enable all' : 'Disable all'}
+                    {allOn ? 'Disable all' : 'Enable all'}
                   </button>
                 </div>
                 <ul className="flex flex-col gap-1.5">
                   {g.items.map((i) => {
-                    const secs = SECTION_CATALOG.filter((s) => s.page === i.to && s.roles.includes(role))
+                    const secs = sectionsForRole(i.to, role)
                     return (
                       <li key={i.to}>
                         <label className="flex items-center gap-2 text-sm text-ink">
                           <input
                             type="checkbox"
-                            checked={!disabled.has(i.to)}
+                            checked={!!allowed[i.to]}
                             onChange={() => toggle(i.to)}
                             className="size-4"
                           />
@@ -486,8 +515,8 @@ function PermissionsEditor() {
                                   <input
                                     type="checkbox"
                                     className="size-3.5"
-                                    checked={!disabled.has(s.key)}
-                                    disabled={disabled.has(i.to)}
+                                    checked={!!allowed[s.key]}
+                                    disabled={!allowed[i.to]}
                                     onChange={() => toggle(s.key)}
                                   />
                                   {s.label}
@@ -530,12 +559,21 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
       NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
         .map((g) => ({
           label: g.label,
-          items: g.items.filter((i) => i.roles.includes(role) && i.to !== '/app/dashboard'),
+          items: g.items.filter(
+            (i) =>
+              i.roles.includes(role) &&
+              i.to !== '/app/dashboard' &&
+              (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)),
+          ),
         }))
         .filter((g) => g.items.length > 0),
     [role],
   )
-  const roleDefault = (to: string) => settings.pagePermissions?.[role]?.[to] !== false
+  // The role's effective allowance for a key (role override, else opt-in default).
+  const roleDefault = (to: string) => {
+    const r = settings.pagePermissions?.[role]?.[to]
+    return typeof r === 'boolean' ? r : pureDefault(role, to)
+  }
   const [allowed, setAllowed] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
 

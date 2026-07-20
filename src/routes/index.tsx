@@ -134,10 +134,6 @@ const tech = (el: ReactNode) => (
 const emp = (el: ReactNode) => (
   <RequireRole allow={['owner', 'manager', 'employee']}>{s(el)}</RequireRole>
 )
-// Admin-only pages (owner is the Admin role).
-const adm = (el: ReactNode) => (
-  <RequireRole allow={['owner']}>{s(el)}</RequireRole>
-)
 
 export const router = createBrowserRouter([
   // Public marketing
@@ -209,7 +205,7 @@ export const router = createBrowserRouter([
           { path: 'violations', element: mgr(<SiteViolationsPage />) },
           { path: 'signage', element: mgr(<SignagePage />) },
           { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
-          { path: 'bonuses', element: adm(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
+          { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
           { path: 'employees/:id', element: mgr(<EmployeeDetailPage />) },
