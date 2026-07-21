@@ -114,6 +114,38 @@ export async function fetchWeather(lat: number, lon: number): Promise<DayForecas
   })
 }
 
+// Historical daily weather via Open-Meteo (free, no key). `past_days` returns up
+// to ~92 days of recent history plus today, so previous days can be pulled to
+// explain how a day performed. Older than that would need the archive endpoint.
+export type WeatherDay = { date: string; code: number; tMax: number; tMin: number; precip: number }
+
+export async function fetchWeatherHistory(lat: number, lon: number, days: number): Promise<WeatherDay[]> {
+  const past = Math.max(1, Math.min(92, Math.round(days)))
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum` +
+    `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto&past_days=${past}&forecast_days=1`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('weather history fetch failed')
+  const j = (await res.json()) as {
+    daily: {
+      time: string[]
+      weather_code: number[]
+      temperature_2m_max: number[]
+      temperature_2m_min: number[]
+      precipitation_sum: (number | null)[]
+    }
+  }
+  const d = j.daily
+  return d.time.map((date, i) => ({
+    date,
+    code: d.weather_code[i],
+    tMax: Math.round(d.temperature_2m_max[i]),
+    tMin: Math.round(d.temperature_2m_min[i]),
+    precip: Math.round((d.precipitation_sum[i] ?? 0) * 100) / 100,
+  }))
+}
+
 // WMO weather code → short label + Lucide icon + a playful color and gentle
 // motion. `color` is a hex applied inline (independent of the theme palette);
 // `anim` is a CSS class defined in index.css (sun spins, clouds bob, rain drips,

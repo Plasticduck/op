@@ -19,6 +19,7 @@ import { SiteScorecard } from '@/features/dashboard/SiteScorecard'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { AccountBrandLogo } from '@/features/dashboard/AccountBrandLogo'
 import { SitePerformanceCard } from '@/features/dashboard/SitePerformanceCard'
+import { WeatherLog } from '@/features/dashboard/WeatherLog'
 import { GoogleRatingTile } from '@/components/data/GoogleRating'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { cn } from '@/lib/utils'
@@ -195,6 +196,15 @@ function ManagerDashboard() {
 
       {isManagerPlus && profile?.site_performance_enabled && (
         <SitePerformanceCard locationName={activeLocation.name} />
+      )}
+
+      {isManagerPlus && (
+        <WeatherLog
+          latitude={activeLocation.latitude ?? null}
+          longitude={activeLocation.longitude ?? null}
+          locationName={activeLocation.name}
+          perfEnabled={!!profile?.site_performance_enabled}
+        />
       )}
 
       {isManagerPlus && (
