@@ -1,14 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity } from 'lucide-react'
 import { compareLocationName } from '@/lib/utils'
 import { currency } from '@/lib/format'
-import {
-  fetchSitePerformance,
-  siteMetrics,
-  siteNumber,
-  type SitePerformanceFeed,
-} from '@/lib/queries/sitePerformance'
+import { siteMetrics, siteNumber } from '@/lib/queries/sitePerformance'
+import { useSitePerformanceFeed } from '@/lib/useSitePerformanceFeed'
 
 type Loc = { id: string; name: string }
 
@@ -23,17 +19,7 @@ const money = (v: number | null) => (v == null ? '—' : currency(v))
 
 // Per-site Site Performance for a single region, with a region-average footer.
 export function SitePerformanceSites({ locations }: { locations: Loc[] }) {
-  const [feed, setFeed] = useState<SitePerformanceFeed | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    fetchSitePerformance()
-      .then((f) => { if (active) { setFeed(f); setLoading(false) } })
-      .catch(() => { if (active) { setError(true); setLoading(false) } })
-    return () => { active = false }
-  }, [])
+  const { feed, loading, error } = useSitePerformanceFeed(true)
 
   const rows = useMemo(() => {
     if (!feed) return []

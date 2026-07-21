@@ -1,25 +1,35 @@
 import { supabase } from '@/lib/supabase'
 
-// Site Scorecard: a single letter grade per location, computed live from five
-// operational factors. No stored state — every load recomputes from the same
-// tables the rest of the app uses, so the grade always matches reality.
+// Site Scorecard: a single letter grade per location, computed live. No stored
+// state, always recomputed. The grade is a weighted average over whatever
+// factors have data, renormalized to 100, so a site with sparse data (or an
+// account without the live performance feed) still gets a fair grade.
 //
-// Factors and weights (sum 100):
-//   workOrders  25  — penalty for open high-priority WOs and overdue WOs
-//   assets      25  — % of non-retired assets currently online
-//   checklists  20  — days in the last 7 with at least one checklist completion
-//   closeouts   15  — days in the last 7 with a submitted closeout
-//   parts       15  — % of stocked parts at or above their minimum
+// Operational factors (from the app's own tables):
+//   workOrders  penalty for open high-priority / overdue / stale WOs
+//   assets      % of non-retired assets online
+//   checklists  days in the last 7 with a completion
+//   parts       % of stocked parts at or above minimum
+//
+// Performance factors (from the live Site Performance feed, when available):
+//   conversion  membership conversion %, higher is better
+//   churn       voluntary churn %, lower is better
+//   throughput  cars per man-hour, higher is better (rewards volume, size-fair)
+//   labor       labor %, lower is better
+//   rating      Google rating, higher is better
+
+export type ScorecardKey =
+  | 'workOrders' | 'assets' | 'checklists' | 'parts'
+  | 'conversion' | 'churn' | 'throughput' | 'labor' | 'rating'
 
 export type ScorecardFactor = {
-  key: 'workOrders' | 'assets' | 'checklists' | 'closeouts' | 'parts'
+  key: ScorecardKey
   label: string
   score: number      // 0..100
-  weight: number     // contribution weight, sums to 100 across factors
+  weight: number     // effective weight (%), renormalized across included factors
   detail: string     // one-line human explanation
 }
 
-// Raw priority signals for a site (surfaced on the multi-site dashboard).
 export type SiteSignals = {
   openWorkOrders: number
   highPriority: number
@@ -33,6 +43,15 @@ export type Scorecard = {
   letter: string      // A+ .. F
   factors: ScorecardFactor[]
   signals: SiteSignals
+}
+
+// Benchmarks for scoring live metrics 0..100. Tune here to recalibrate grades.
+export const BENCHMARKS = {
+  conversion: { lo: 8, hi: 22 }, // %
+  churn: { good: 5, bad: 15 }, // %
+  throughput: { lo: 3, hi: 8 }, // cars / man-hour
+  labor: { good: 25, bad: 45 }, // %
+  rating: { lo: 3.5, hi: 4.8 }, // stars
 }
 
 export function letterFor(total: number): string {
@@ -52,20 +71,33 @@ export function letterFor(total: number): string {
 }
 
 const clamp = (n: number) => Math.max(0, Math.min(100, n))
+// Higher value -> higher score.
+const mapUp = (v: number, lo: number, hi: number) => clamp(((v - lo) / (hi - lo)) * 100)
+// Lower value -> higher score.
+const mapDown = (v: number, good: number, bad: number) => clamp(((bad - v) / (bad - good)) * 100)
 
-// The rows a single site's scorecard is computed from. Used both by the live
-// per-site fetch below and by the batched multi-site dashboard (which fetches
-// account-wide once and groups by location_id).
+// Live performance metrics for one site, sourced from the Site Performance feed.
+export type SitePerformanceInput = {
+  carsPerHour?: number | null
+  laborPct?: number | null
+  conversion?: number | null
+  churn?: number | null
+  googleRating?: number | null
+}
+
 export type ScorecardInput = {
   workOrders: { status: string | null; priority: string | null; due_at: string | null; created_at: string }[]
   equipment: { status: string | null }[]
   checklistCompletions: { completed_at: string }[]
-  closeouts: { date: string }[]
   parts: { quantity_on_hand: number | string | null; minimum_in_stock: number | string | null }[]
+  performance?: SitePerformanceInput
   now?: Date
 }
 
-// Pure scoring — no I/O. Given a site's rows, produce its grade + signals.
+type Candidate = ScorecardFactor & { rawWeight: number; include: boolean }
+
+// Pure scoring, no I/O. Factors without data are excluded, and the remaining
+// weights are renormalized to 100 so the total stays comparable.
 export function scoreFrom(input: ScorecardInput): Scorecard {
   const now = input.now ?? new Date()
 
@@ -87,61 +119,84 @@ export function scoreFrom(input: ScorecardInput): Scorecard {
   const checklistDays = new Set(input.checklistCompletions.map((c) => c.completed_at.slice(0, 10)))
   const checklistScore = clamp((checklistDays.size / 7) * 100)
 
-  // -- Closeouts: distinct days with a closeout in the last 7 -----------------
-  const closeoutDays = new Set(input.closeouts.map((c) => c.date))
-  const closeoutScore = clamp((closeoutDays.size / 7) * 100)
-
   // -- Parts: share of stock rows at/above minimum ----------------------------
   const stock = input.parts
   const okStock = stock.filter((s) => Number(s.quantity_on_hand) >= Number(s.minimum_in_stock ?? 0)).length
   const lowStock = stock.length - okStock
   const partsScore = stock.length === 0 ? 100 : clamp((okStock / stock.length) * 100)
 
-  const factors: ScorecardFactor[] = [
+  const p = input.performance ?? {}
+  const has = (v: number | null | undefined): v is number => v != null && Number.isFinite(v)
+
+  const candidates: Candidate[] = [
     {
-      key: 'workOrders', label: 'Work Orders', score: woScore, weight: 25,
+      key: 'workOrders', label: 'Work Orders', score: woScore, rawWeight: 15, include: true, weight: 0,
       detail: wos.length === 0 ? 'No open work orders'
         : `${wos.length} open${openHigh ? `, ${openHigh} high-priority` : ''}${overdue ? `, ${overdue} overdue` : ''}`,
     },
     {
-      key: 'assets', label: 'Asset Health', score: assetScore, weight: 25,
+      key: 'assets', label: 'Asset Health', score: assetScore, rawWeight: 13, include: assets.length > 0, weight: 0,
       detail: assets.length === 0 ? 'No assets tracked yet' : `${online} of ${assets.length} assets online`,
     },
     {
-      key: 'checklists', label: 'Checklists', score: checklistScore, weight: 20,
+      key: 'checklists', label: 'Checklists', score: checklistScore, rawWeight: 10, include: true, weight: 0,
       detail: `Completed on ${checklistDays.size} of the last 7 days`,
     },
     {
-      key: 'closeouts', label: 'Closeouts', score: closeoutScore, weight: 15,
-      detail: `Submitted on ${closeoutDays.size} of the last 7 days`,
+      key: 'parts', label: 'Parts Stock', score: partsScore, rawWeight: 6, include: stock.length > 0, weight: 0,
+      detail: stock.length === 0 ? 'No parts tracked yet' : `${okStock} of ${stock.length} parts at or above minimum`,
     },
     {
-      key: 'parts', label: 'Parts Stock', score: partsScore, weight: 15,
-      detail: stock.length === 0 ? 'No parts tracked yet' : `${okStock} of ${stock.length} parts at or above minimum`,
+      key: 'conversion', label: 'Conversion', score: has(p.conversion) ? mapUp(p.conversion, BENCHMARKS.conversion.lo, BENCHMARKS.conversion.hi) : 0,
+      rawWeight: 18, include: has(p.conversion), weight: 0,
+      detail: has(p.conversion) ? `Conversion ${p.conversion}%` : 'No conversion data',
+    },
+    {
+      key: 'churn', label: 'Churn', score: has(p.churn) ? mapDown(p.churn, BENCHMARKS.churn.good, BENCHMARKS.churn.bad) : 0,
+      rawWeight: 14, include: has(p.churn), weight: 0,
+      detail: has(p.churn) ? `Churn ${p.churn}%` : 'No churn data',
+    },
+    {
+      key: 'throughput', label: 'Throughput', score: has(p.carsPerHour) ? mapUp(p.carsPerHour, BENCHMARKS.throughput.lo, BENCHMARKS.throughput.hi) : 0,
+      rawWeight: 12, include: has(p.carsPerHour), weight: 0,
+      detail: has(p.carsPerHour) ? `${p.carsPerHour} cars per man-hour` : 'No throughput data',
+    },
+    {
+      key: 'labor', label: 'Labor Efficiency', score: has(p.laborPct) ? mapDown(p.laborPct, BENCHMARKS.labor.good, BENCHMARKS.labor.bad) : 0,
+      rawWeight: 8, include: has(p.laborPct), weight: 0,
+      detail: has(p.laborPct) ? `Labor ${p.laborPct}% of sales` : 'No labor data',
+    },
+    {
+      key: 'rating', label: 'Google Rating', score: has(p.googleRating) ? mapUp(p.googleRating, BENCHMARKS.rating.lo, BENCHMARKS.rating.hi) : 0,
+      rawWeight: 8, include: has(p.googleRating), weight: 0,
+      detail: has(p.googleRating) ? `${p.googleRating.toFixed(1)} stars` : 'No rating yet',
     },
   ]
 
-  const total = Math.round(factors.reduce((a, f) => a + (f.score * f.weight) / 100, 0))
+  const included = candidates.filter((c) => c.include)
+  const wsum = included.reduce((a, c) => a + c.rawWeight, 0) || 1
+  const factors: ScorecardFactor[] = included.map((c) => ({
+    key: c.key, label: c.label, score: c.score, detail: c.detail, weight: Math.round((c.rawWeight / wsum) * 100),
+  }))
+  const total = Math.round(included.reduce((a, c) => a + c.score * (c.rawWeight / wsum), 0))
+
   return {
     total,
     letter: letterFor(total),
     factors,
-    signals: {
-      openWorkOrders: wos.length,
-      highPriority: openHigh,
-      overdue,
-      equipmentDown,
-      lowStock,
-    },
+    signals: { openWorkOrders: wos.length, highPriority: openHigh, overdue, equipmentDown, lowStock },
   }
 }
 
-// Live per-site scorecard: fetch this location's rows, then score them.
-export async function computeScorecard(locationId: string): Promise<Scorecard> {
+// Live per-site scorecard. Pass live performance metrics to fold them in.
+export async function computeScorecard(
+  locationId: string,
+  performance?: SitePerformanceInput,
+): Promise<Scorecard> {
   const now = new Date()
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toISOString()
 
-  const [woRes, assetRes, checklistRes, closeoutRes, partsRes] = await Promise.all([
+  const [woRes, assetRes, checklistRes, partsRes] = await Promise.all([
     supabase
       .from('work_orders')
       .select('id, status, priority, due_at, created_at')
@@ -154,11 +209,6 @@ export async function computeScorecard(locationId: string): Promise<Scorecard> {
       .eq('location_id', locationId)
       .gte('completed_at', sevenDaysAgo),
     supabase
-      .from('closeouts')
-      .select('date')
-      .eq('location_id', locationId)
-      .gte('date', sevenDaysAgo.slice(0, 10)),
-    supabase
       .from('parts_inventory')
       .select('quantity_on_hand, minimum_in_stock')
       .eq('location_id', locationId),
@@ -169,22 +219,22 @@ export async function computeScorecard(locationId: string): Promise<Scorecard> {
     workOrders: woRes.data ?? [],
     equipment: assetRes.data ?? [],
     checklistCompletions: (checklistRes.data ?? []) as { completed_at: string }[],
-    closeouts: (closeoutRes.data ?? []) as { date: string }[],
     parts: partsRes.data ?? [],
+    performance,
   })
 }
 
-// Batched multi-site scorecards: fetch account-wide once, group by location,
-// and score each. Returns a map keyed by location id. Far cheaper than calling
-// computeScorecard per site (5 queries total instead of 5 x N).
+// Batched multi-site scorecards: fetch account-wide once and score each. Pass a
+// per-location performance map to fold live metrics into each site's grade.
 export async function computeScorecards(
   locationIds: string[],
+  perfByLocation?: Record<string, SitePerformanceInput>,
 ): Promise<Record<string, Scorecard>> {
   const now = new Date()
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toISOString()
   const wanted = new Set(locationIds)
 
-  const [woRes, assetRes, checklistRes, closeoutRes, partsRes] = await Promise.all([
+  const [woRes, assetRes, checklistRes, partsRes] = await Promise.all([
     supabase
       .from('work_orders')
       .select('location_id, status, priority, due_at, created_at')
@@ -194,11 +244,9 @@ export async function computeScorecards(
       .from('checklist_completions')
       .select('location_id, completed_at')
       .gte('completed_at', sevenDaysAgo),
-    supabase.from('closeouts').select('location_id, date').gte('date', sevenDaysAgo.slice(0, 10)),
     supabase.from('parts_inventory').select('location_id, quantity_on_hand, minimum_in_stock'),
   ])
 
-  // Group each result set by location id.
   const bucket = <T extends { location_id: string | null }>(rows: T[] | null) => {
     const m = new Map<string, T[]>()
     for (const r of rows ?? []) {
@@ -213,7 +261,6 @@ export async function computeScorecards(
   const wo = bucket(woRes.data as ({ location_id: string | null } & ScorecardInput['workOrders'][number])[] | null)
   const eq = bucket(assetRes.data as ({ location_id: string | null } & { status: string | null })[] | null)
   const cl = bucket(checklistRes.data as ({ location_id: string | null } & { completed_at: string })[] | null)
-  const co = bucket(closeoutRes.data as ({ location_id: string | null } & { date: string })[] | null)
   const pt = bucket(partsRes.data as ({ location_id: string | null } & ScorecardInput['parts'][number])[] | null)
 
   const out: Record<string, Scorecard> = {}
@@ -223,8 +270,8 @@ export async function computeScorecards(
       workOrders: wo.get(id) ?? [],
       equipment: eq.get(id) ?? [],
       checklistCompletions: cl.get(id) ?? [],
-      closeouts: co.get(id) ?? [],
       parts: pt.get(id) ?? [],
+      performance: perfByLocation?.[id],
     })
   }
   return out

@@ -1,28 +1,15 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity } from 'lucide-react'
 import { StatCardRow } from '@/components/data/StatCardRow'
 import { currency } from '@/lib/format'
-import { fetchSitePerformance, siteMetrics, siteNumber, type SitePerformanceFeed } from '@/lib/queries/sitePerformance'
+import { siteMetrics, siteNumber } from '@/lib/queries/sitePerformance'
+import { useSitePerformanceFeed } from '@/lib/useSitePerformanceFeed'
 
 const pct = (v: number | null | undefined) => (v == null ? '—' : `${v.toFixed(1)}%`)
 
 // Per-site slice of the Site Performance feed, shown on that site's dashboard.
 export function SitePerformanceCard({ locationName }: { locationName: string }) {
-  const [feed, setFeed] = useState<SitePerformanceFeed | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    setLoading(true)
-    setError(false)
-    fetchSitePerformance()
-      .then((f) => { if (active) { setFeed(f); setLoading(false) } })
-      .catch(() => { if (active) { setError(true); setLoading(false) } })
-    return () => { active = false }
-  }, [])
-
+  const { feed, loading, error } = useSitePerformanceFeed(true)
   const m = siteMetrics(feed, siteNumber(locationName))
   const hasData = m.cars != null || m.sales != null || m.conversion != null || m.churn != null
 

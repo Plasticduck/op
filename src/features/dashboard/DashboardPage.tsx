@@ -186,7 +186,11 @@ function ManagerDashboard() {
       />
 
       {isManagerPlus && (
-        <SiteScorecard locationId={activeLocation.id} locationName={activeLocation.name} />
+        <SiteScorecard
+          locationId={activeLocation.id}
+          locationName={activeLocation.name}
+          googleRating={googleRating?.rating ?? null}
+        />
       )}
 
       {isManagerPlus && profile?.site_performance_enabled && (

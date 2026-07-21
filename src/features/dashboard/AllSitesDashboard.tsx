@@ -5,8 +5,10 @@ import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
 import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
-import { computeScorecards, letterFor, type Scorecard } from '@/lib/scorecard'
+import { computeScorecards, letterFor, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
+import { useSitePerformanceFeed } from '@/lib/useSitePerformanceFeed'
+import { siteMetrics, siteNumber } from '@/lib/queries/sitePerformance'
 import { StatCardRow } from '@/components/data/StatCardRow'
 import { GoogleRatingBadge } from '@/components/data/GoogleRating'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
@@ -67,6 +69,24 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
   const locIds = useMemo(() => locations.map((l) => l.id), [locations])
   const locIdsKey = locIds.join(',')
 
+  // Live performance metrics per location, folded into each site's scorecard.
+  const perfEnabled = !!profile?.site_performance_enabled
+  const { feed } = useSitePerformanceFeed(perfEnabled)
+  const perfByLoc = useMemo(() => {
+    const out: Record<string, SitePerformanceInput> = {}
+    for (const l of locations) {
+      const m = perfEnabled && feed ? siteMetrics(feed, siteNumber(l.name)) : null
+      out[l.id] = {
+        carsPerHour: m?.carsPerHour ?? null,
+        laborPct: m?.laborPct ?? null,
+        conversion: m?.conversion ?? null,
+        churn: m?.churn ?? null,
+        googleRating: ratingsMap[l.id]?.rating ?? null,
+      }
+    }
+    return out
+  }, [locations, perfEnabled, feed, ratingsMap])
+
   useEffect(() => {
     if (locIds.length === 0) {
       setLoading(false)
@@ -74,7 +94,7 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
     }
     let active = true
     setLoading(true)
-    computeScorecards(locIds).then((res) => {
+    computeScorecards(locIds, perfByLoc).then((res) => {
       if (!active) return
       setCards(res)
       setLoading(false)
@@ -82,7 +102,8 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
     return () => {
       active = false
     }
-  }, [locIds])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locIdsKey, perfByLoc])
 
   useEffect(() => {
     if (locIds.length === 0) return

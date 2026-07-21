@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
 import { ChevronDown, Gauge } from 'lucide-react'
-import { computeScorecard, type Scorecard } from '@/lib/scorecard'
+import { computeScorecard, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
+import { useAuth } from '@/lib/auth'
+import { useSitePerformanceFeed } from '@/lib/useSitePerformanceFeed'
+import { siteMetrics, siteNumber } from '@/lib/queries/sitePerformance'
 import { cn } from '@/lib/utils'
 
-// Letter-grade site scorecard for the owner/manager dashboard. The letter is
-// the headline; expanding the card shows the five weighted factors with bars.
+// Letter-grade site scorecard for the owner/manager dashboard. The letter is the
+// headline; expanding the card shows the weighted factors with bars. It folds in
+// live performance metrics (conversion, churn, throughput, labor) when the
+// account has the Site Performance feed, plus the site's Google rating.
 
 function gradeColor(letter: string): { text: string; bg: string; bar: string } {
   const head = letter[0]
@@ -14,16 +19,38 @@ function gradeColor(letter: string): { text: string; bg: string; bar: string } {
   return { text: 'text-danger', bg: 'bg-danger-soft', bar: 'bg-danger' }
 }
 
-export function SiteScorecard({ locationId, locationName }: { locationId: string; locationName: string }) {
+export function SiteScorecard({
+  locationId,
+  locationName,
+  googleRating,
+}: {
+  locationId: string
+  locationName: string
+  googleRating?: number | null
+}) {
+  const { profile } = useAuth()
+  const enabled = !!profile?.site_performance_enabled
+  const { feed, loading: feedLoading } = useSitePerformanceFeed(enabled)
   const [card, setCard] = useState<Scorecard | null>(null)
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
+    // Wait for the feed on accounts that have it, so performance factors are
+    // included on the first render rather than popping in after.
+    if (enabled && feedLoading) return
     let alive = true
     setCard(null)
-    void computeScorecard(locationId).then((c) => { if (alive) setCard(c) })
+    const m = enabled && feed ? siteMetrics(feed, siteNumber(locationName)) : null
+    const perf: SitePerformanceInput = {
+      carsPerHour: m?.carsPerHour ?? null,
+      laborPct: m?.laborPct ?? null,
+      conversion: m?.conversion ?? null,
+      churn: m?.churn ?? null,
+      googleRating: googleRating ?? null,
+    }
+    void computeScorecard(locationId, perf).then((c) => { if (alive) setCard(c) })
     return () => { alive = false }
-  }, [locationId])
+  }, [locationId, locationName, enabled, feedLoading, feed, googleRating])
 
   if (!card) {
     return (
@@ -54,7 +81,7 @@ export function SiteScorecard({ locationId, locationName }: { locationId: string
             <Gauge className="size-4 text-ink-muted" /> Site Scorecard
           </div>
           <p className="truncate text-xs text-ink-muted">
-            {locationName} scores <span className={cn('font-semibold', color.text)}>{card.total}/100</span> across work orders, assets, checklists, closeouts, and parts.
+            {locationName} scores <span className={cn('font-semibold', color.text)}>{card.total}/100</span> across {card.factors.length} weighted operations and performance factors.
           </p>
         </div>
         <ChevronDown className={cn('size-4 shrink-0 text-ink-subtle transition', open && 'rotate-180')} />
