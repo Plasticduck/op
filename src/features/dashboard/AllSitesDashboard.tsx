@@ -12,6 +12,7 @@ import { GoogleRatingBadge } from '@/components/data/GoogleRating'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { SitePerformanceByRegion } from '@/features/dashboard/SitePerformanceByRegion'
+import { SitePerformanceSites } from '@/features/dashboard/SitePerformanceSites'
 import { Select } from '@/components/ui/Select'
 
 // Vivid grade color by letter grade.
@@ -144,11 +145,13 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
         ]}
       />
 
-      {!regionName &&
-        profile?.site_performance_enabled &&
-        (profile.role === 'owner' || profile.role === 'manager') && (
+      {profile?.site_performance_enabled &&
+        (profile.role === 'owner' || profile.role === 'manager') &&
+        (regionName ? (
+          <SitePerformanceSites locations={locations} />
+        ) : (
           <SitePerformanceByRegion locations={locations} />
-        )}
+        ))}
 
       {showRegions ? (
         groups.map((g) => (

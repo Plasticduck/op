@@ -143,6 +143,41 @@ export async function fetchSitePerformance(): Promise<SitePerformanceFeed> {
   return data as SitePerformanceFeed
 }
 
+// ---------- Per-site metric extraction ----------
+//
+// The feeds name sites inconsistently, so pull a site's headline numbers by its
+// site NUMBER. Shared by the dashboard cards and region views.
+
+function findByNumber<T>(rec: Record<string, T> | null | undefined, n: number | null): T | undefined {
+  if (!rec || n == null) return undefined
+  for (const [k, v] of Object.entries(rec)) if (siteNumber(k) === n) return v
+  return undefined
+}
+
+export type SiteMetrics = {
+  cars: number | null
+  sales: number | null
+  carsPerHour: number | null
+  conversion: number | null
+  churn: number | null
+  rechargeMtd: number | null
+}
+
+export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null): SiteMetrics {
+  const days = findByNumber<SiteDay[]>(feed?.report?.sites, n)
+  const day = days && days.length ? days[days.length - 1] : undefined
+  const msaRow = feed?.msa?.rows?.find((r) => siteNumber(r.site) === n)
+  const churn = findByNumber(feed?.churn?.sites, n)
+  return {
+    cars: day?.cars ?? null,
+    sales: day?.sales ?? msaRow?.today_sales ?? null,
+    carsPerHour: day?.cars_per_hour ?? null,
+    conversion: msaRow?.today_conversion_pct ?? null,
+    churn: churn?.voluntary_churn_pct ?? null,
+    rechargeMtd: findByNumber<number>(feed?.recharge_revenue?.mtd_by_site, n) ?? null,
+  }
+}
+
 // ---------- Region mapping ----------
 //
 // The dashboard names sites inconsistently across feeds ("MightyWash 001",

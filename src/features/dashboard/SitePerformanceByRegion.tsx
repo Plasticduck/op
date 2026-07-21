@@ -4,35 +4,9 @@ import { Activity } from 'lucide-react'
 import { useCompany } from '@/lib/company'
 import { groupByRegions, resolveRegions } from '@/lib/regions'
 import { currency } from '@/lib/format'
-import {
-  fetchSitePerformance,
-  siteNumber,
-  type SitePerformanceFeed,
-  type SiteDay,
-} from '@/lib/queries/sitePerformance'
+import { fetchSitePerformance, siteMetrics, siteNumber, type SitePerformanceFeed } from '@/lib/queries/sitePerformance'
 
 type Loc = { id: string; name: string }
-
-// Pull one site's headline metrics out of the feed (feeds name sites
-// inconsistently, so everything matches on site number).
-function siteMetrics(feed: SitePerformanceFeed | null, n: number | null) {
-  const byNumber = <T,>(rec: Record<string, T> | null | undefined): T | undefined => {
-    if (!rec || n == null) return undefined
-    for (const [k, v] of Object.entries(rec)) if (siteNumber(k) === n) return v
-    return undefined
-  }
-  const days = byNumber<SiteDay[]>(feed?.report?.sites)
-  const day = days && days.length ? days[days.length - 1] : undefined
-  const msaRow = feed?.msa?.rows?.find((r) => siteNumber(r.site) === n)
-  const churn = byNumber(feed?.churn?.sites)
-  return {
-    cars: day?.cars ?? null,
-    sales: day?.sales ?? msaRow?.today_sales ?? null,
-    carsPerHour: day?.cars_per_hour ?? null,
-    conversion: msaRow?.today_conversion_pct ?? null,
-    churn: churn?.voluntary_churn_pct ?? null,
-  }
-}
 
 const avg = (vals: (number | null)[]) => {
   const nums = vals.filter((v): v is number => v != null)
