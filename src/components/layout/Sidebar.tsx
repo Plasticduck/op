@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
+  Activity,
   AlarmClockOff,
   AlertTriangle,
   Award,
@@ -101,6 +102,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Operations',
     roles: ['owner', 'manager', 'employee', 'technician'],
     items: [
+      {
+        to: '/app/site-performance',
+        label: 'Site Performance',
+        icon: Activity,
+        roles: ['owner', 'manager'],
+      },
       {
         to: '/app/checklists',
         label: 'Checklists',

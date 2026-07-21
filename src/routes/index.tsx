@@ -110,6 +110,9 @@ const MarketResearchDetailPage = lz(() => import('@/features/opssuite/MarketRese
 const SiteViolationsPage = lz(() => import('@/features/opssuite/SiteViolationsPage'))
 const SignagePage = lz(() => import('@/features/opssuite/SignagePage'))
 const SalesReportsPage = lz(() => import('@/features/opssuite/SalesReportsPage'))
+// Live dashboard feed is paused; show a "coming soon" placeholder. Restore by
+// pointing this back at '@/features/opssuite/SitePerformancePage'.
+const SitePerformancePage = lz(() => import('@/features/opssuite/SitePerformanceComingSoon'))
 const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
@@ -205,6 +208,7 @@ export const router = createBrowserRouter([
           { path: 'violations', element: mgr(<SiteViolationsPage />) },
           { path: 'signage', element: mgr(<SignagePage />) },
           { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
+          { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
