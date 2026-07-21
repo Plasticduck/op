@@ -263,14 +263,71 @@ type ViewProps = { feed: SitePerformanceFeed; idx: RegionIndex }
 
 // ---------- By Site ----------
 
+// Date-range presets over the report feed's ~30-day daily window. Computed
+// relative to the latest date the feed carries (its "today").
+const RANGE_PRESETS = [
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: '7', label: 'Last 7' },
+  { key: '14', label: 'Last 14' },
+  { key: '30', label: 'Last 30' },
+  { key: 'month', label: 'This month' },
+] as const
+
+function presetRange(key: string, allDates: string[]): [string, string] {
+  const max = allDates[allDates.length - 1] ?? ''
+  const min = allDates[0] ?? ''
+  if (!max) return ['', '']
+  if (key === 'today') return [max, max]
+  if (key === 'yesterday') { const y = allDates[allDates.length - 2] ?? max; return [y, y] }
+  if (key === 'month') { const start = max.slice(0, 8) + '01'; return [start < min ? min : start, max] }
+  const n = parseInt(key, 10)
+  if (!Number.isNaN(n)) return [allDates[Math.max(0, allDates.length - n)] ?? min, max]
+  return [min, max]
+}
+
+const dateInputCls = 'rounded-md border border-border bg-content px-2 py-1 text-xs text-ink'
+
 function BySite({ feed, idx }: ViewProps) {
   const report = feed.report
   const [metric, setMetric] = useState<'cars_per_hour' | 'labor_pct'>('cars_per_hour')
-  const [days, setDays] = useState<7 | 14 | 30>(7)
+  const allDates = useMemo(
+    () => (report ? Array.from(new Set(Object.values(report.sites).flatMap((ds) => ds.map((d) => d.date)))).sort() : []),
+    [report],
+  )
+  const [range, setRange] = useState<{ key: string; start: string; end: string }>({ key: '7', start: '', end: '' })
   if (!report || !Object.keys(report.sites).length) return <Empty />
 
+  const [defStart, defEnd] = presetRange('7', allDates)
+  const start = range.start || defStart
+  const end = range.end || defEnd
+  const dates = allDates.filter((d) => d >= start && d <= end)
+  const inRange = (d: SiteDay) => d.date >= start && d.date <= end
+  const rangeLabel = start === end ? start : `${start} to ${end}`
+  const minDate = allDates[0]
+  const maxDate = allDates[allDates.length - 1]
+
   const today = Object.entries(report.sites).map(([site, ds]) => ({ site, ...ds[ds.length - 1] }))
-  const groups = groupByRegion(today, (r) => r.site, idx)
+  const todayGroups = groupByRegion(today, (r) => r.site, idx)
+
+  // Per-site totals/averages over the selected range.
+  const rangeRows = Object.entries(report.sites).map(([site, ds]) => {
+    const d = ds.filter(inRange)
+    const cars = sum(d, (x) => x.cars)
+    const hours = sum(d, (x) => x.hours)
+    const sales = sum(d, (x) => x.sales)
+    const labor = sum(d, (x) => x.labor_cost)
+    return {
+      site,
+      cars,
+      hours,
+      sales,
+      labor,
+      cph: hours > 0 ? round(cars / hours, 2) : null,
+      laborPct: sales > 0 ? round((labor / sales) * 100, 1) : null,
+    }
+  })
+  const rangeGroups = groupByRegion(rangeRows, (r) => r.site, idx)
 
   return (
     <div className="flex flex-col gap-5">
@@ -282,7 +339,7 @@ function BySite({ feed, idx }: ViewProps) {
             ))}
           </>}
         >
-          {groups.map((g) => {
+          {todayGroups.map((g) => {
             const rows = [...g.items].sort((a, b) => (b.cars_per_hour ?? -1) - (a.cars_per_hour ?? -1))
             const cars = sum(rows, (r) => r.cars)
             const hours = sum(rows, (r) => r.hours)
@@ -318,16 +375,88 @@ function BySite({ feed, idx }: ViewProps) {
       </Panel>
 
       <Panel
+        title="Selected Range"
+        sub={`Totals and averages per site for ${rangeLabel}`}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Seg
+              value={range.key}
+              tone="neutral"
+              options={RANGE_PRESETS.map((p) => ({ key: p.key, label: p.label }))}
+              onChange={(k) => { const [s, e] = presetRange(k, allDates); setRange({ key: k, start: s, end: e }) }}
+            />
+            <input
+              type="date"
+              min={minDate}
+              max={maxDate}
+              value={start}
+              onChange={(e) => setRange({ key: 'custom', start: e.target.value, end: end < e.target.value ? e.target.value : end })}
+              className={dateInputCls}
+            />
+            <span className="text-xs text-ink-muted">to</span>
+            <input
+              type="date"
+              min={minDate}
+              max={maxDate}
+              value={end}
+              onChange={(e) => setRange({ key: 'custom', start: start > e.target.value ? e.target.value : start, end: e.target.value })}
+              className={dateInputCls}
+            />
+          </div>
+        }
+      >
+        <TableShell
+          head={<>
+            {['Site', 'Cars', 'Hours', 'Cars/Man-Hr', 'Sales', 'Labor %'].map((h) => (
+              <th key={h} className={th}>{h}</th>
+            ))}
+          </>}
+        >
+          {rangeGroups.map((g) => {
+            const rows = [...g.items].sort((a, b) => (b.cph ?? -1) - (a.cph ?? -1))
+            const cars = sum(rows, (r) => r.cars)
+            const hours = sum(rows, (r) => r.hours)
+            const sales = sum(rows, (r) => r.sales)
+            const labor = sum(rows, (r) => r.labor)
+            const cph = hours > 0 ? round(cars / hours, 2) : null
+            const laborPct = sales > 0 ? round((labor / sales) * 100, 1) : null
+            return (
+              <FragmentRegion key={g.region}>
+                <RegionHead region={g.region} count={rows.length} />
+                {rows.map((r) => (
+                  <tr key={r.site}>
+                    <td className={td} title={r.site}>{siteLabel(r.site)}</td>
+                    <td className={td}>{r.cars}</td>
+                    <td className={td}>{round(r.hours, 1)}</td>
+                    <td className={td} style={{ color: heatFor(r.cph, 'cph') }}>{r.cph ?? DASH}</td>
+                    <td className={td}>{money(r.sales)}</td>
+                    <td className={td} style={{ color: heatFor(r.laborPct, 'labor') }}>{r.laborPct !== null ? r.laborPct + '%' : DASH}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold text-ink">
+                  <td className={td}>Subtotal</td>
+                  <td className={td}>{cars}</td>
+                  <td className={td}>{round(hours, 1)}</td>
+                  <td className={td} style={{ color: heatFor(cph, 'cph') }}>{cph ?? DASH}</td>
+                  <td className={td}>{money(sales)}</td>
+                  <td className={td} style={{ color: heatFor(laborPct, 'labor') }}>{laborPct !== null ? laborPct + '%' : DASH}</td>
+                </tr>
+              </FragmentRegion>
+            )
+          })}
+        </TableShell>
+      </Panel>
+
+      <Panel
         title="Day by Day"
-        sub="Heat-mapped trend across every site"
-        actions={<div className="flex flex-wrap gap-2">
+        sub="Heat-mapped trend across every site for the selected range"
+        actions={
           <Seg value={metric} onChange={setMetric} tone="neutral"
             options={[{ key: 'cars_per_hour', label: 'Cars/Man-Hr' }, { key: 'labor_pct', label: 'Labor %' }]} />
-          <DaysSeg value={days} onChange={setDays} />
-        </div>}
+        }
       >
         <Heatmap
-          report={report} idx={idx} days={days}
+          report={report} idx={idx} dates={dates}
           value={(d) => d[metric]}
           format={(v) => (v === null ? DASH : metric === 'labor_pct' ? v + '%' : String(v))}
           color={(v) => heatFor(v, metric === 'labor_pct' ? 'labor' : 'cph')}
@@ -336,24 +465,23 @@ function BySite({ feed, idx }: ViewProps) {
       <Footnote>
         Cars = physical washes rung up. Hours = clocked labor across every employee at the site.
         Labor % = (hours x wage rate) / sales. Region subtotals weight Cars/Man-Hr and Labor % by the region total.
+        Ranges cover the ~30 days the feed carries; older history is not available.
       </Footnote>
     </div>
   )
 }
 
 function Heatmap({
-  report, idx, days, value, format, color,
+  report, idx, dates, value, format, color,
 }: {
   report: NonNullable<SitePerformanceFeed['report']>
   idx: RegionIndex
-  days: number
+  dates: string[]
   value: (d: SiteDay) => number | null
   format: (v: number | null) => string
   color: (v: number | null) => string
 }) {
   const siteNames = Object.keys(report.sites)
-  const first = report.sites[siteNames[0]] ?? []
-  const dates = first.slice(-days).map((d) => d.date)
   const groups = groupByRegion(siteNames.map((s) => ({ site: s })), (r) => r.site, idx)
   return (
     <TableShell
@@ -366,13 +494,14 @@ function Heatmap({
         <FragmentRegion key={g.region}>
           <RegionHead region={g.region} count={g.items.length} />
           {g.items.map(({ site }) => {
-            const ds = report.sites[site].slice(-days)
+            const byDate = new Map(report.sites[site].map((d) => [d.date, d]))
             return (
               <tr key={site}>
                 <td className={td} title={site}>{siteLabel(site)}</td>
-                {ds.map((d) => {
-                  const v = value(d)
-                  return <td key={d.date} className={td} style={{ color: color(v) }}>{format(v)}</td>
+                {dates.map((date) => {
+                  const d = byDate.get(date)
+                  const v = d ? value(d) : null
+                  return <td key={date} className={td} style={{ color: color(v) }}>{d ? format(v) : DASH}</td>
                 })}
               </tr>
             )
@@ -810,12 +939,6 @@ function SiteBreakdown({ feed, idx }: ViewProps) {
 }
 
 // ---------- small shared bits ----------
-
-function DaysSeg({ value, onChange }: { value: 7 | 14 | 30; onChange: (v: 7 | 14 | 30) => void }) {
-  return <Seg value={String(value) as '7' | '14' | '30'} tone="neutral"
-    onChange={(k) => onChange(Number(k) as 7 | 14 | 30)}
-    options={[{ key: '7', label: '7d' }, { key: '14', label: '14d' }, { key: '30', label: '30d' }]} />
-}
 
 function Pill({ tone, children }: { tone: 'ok' | 'danger' | 'accent'; children: ReactNode }) {
   const cls = tone === 'ok' ? 'bg-ok-soft text-ok' : tone === 'danger' ? 'bg-danger-soft text-danger' : 'bg-accent-soft text-accent'
