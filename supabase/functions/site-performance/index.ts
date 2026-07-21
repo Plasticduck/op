@@ -14,6 +14,12 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const DEFAULT_BASE = 'https://dashboard.tail1e050b.ts.net'
 
+// The dashboard now sits behind Cloudflare, which blocks requests with no
+// User-Agent. Send a browser-like UA on every request so the login and feeds go
+// through.
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+
 // Restrict browser CORS to the known origins. JWT verification below is the real
 // auth gate; this just keeps the surface tight.
 const ALLOWED_ORIGINS = new Set<string>([
@@ -57,7 +63,7 @@ const FEEDS: Record<string, string> = {
 async function login(base: string, password: string): Promise<string> {
   const res = await fetch(`${base}/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': BROWSER_UA },
     body: `password=${encodeURIComponent(password)}`,
     redirect: 'manual',
   })
@@ -116,7 +122,7 @@ Deno.serve(async (req) => {
   const entries = await Promise.all(
     Object.entries(FEEDS).map(async ([key, path]) => {
       try {
-        const res = await fetch(`${base}${path}`, { headers: { Cookie: cookie } })
+        const res = await fetch(`${base}${path}`, { headers: { Cookie: cookie, 'User-Agent': BROWSER_UA } })
         if (!res.ok) return [key, null] as const
         return [key, await res.json()] as const
       } catch {
