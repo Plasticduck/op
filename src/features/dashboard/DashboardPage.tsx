@@ -18,6 +18,7 @@ import AllSitesDashboard from '@/features/dashboard/AllSitesDashboard'
 import { SiteScorecard } from '@/features/dashboard/SiteScorecard'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { AccountBrandLogo } from '@/features/dashboard/AccountBrandLogo'
+import { SitePerformanceCard } from '@/features/dashboard/SitePerformanceCard'
 import { GoogleRatingTile } from '@/components/data/GoogleRating'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { cn } from '@/lib/utils'
@@ -187,6 +188,8 @@ function ManagerDashboard() {
       {isManagerPlus && (
         <SiteScorecard locationId={activeLocation.id} locationName={activeLocation.name} />
       )}
+
+      {isManagerPlus && <SitePerformanceCard locationName={activeLocation.name} />}
 
       {isManagerPlus && (
         <GoogleRatingTile
