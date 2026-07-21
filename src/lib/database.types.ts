@@ -52,6 +52,7 @@ export type Database = {
           is_demo: boolean
           name: string
           plan: string | null
+          site_performance_enabled: boolean
           site_plan: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -70,6 +71,7 @@ export type Database = {
           is_demo?: boolean
           name: string
           plan?: string | null
+          site_performance_enabled?: boolean
           site_plan?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -88,6 +90,7 @@ export type Database = {
           is_demo?: boolean
           name?: string
           plan?: string | null
+          site_performance_enabled?: boolean
           site_plan?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null

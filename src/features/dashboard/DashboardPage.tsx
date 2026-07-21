@@ -189,7 +189,9 @@ function ManagerDashboard() {
         <SiteScorecard locationId={activeLocation.id} locationName={activeLocation.name} />
       )}
 
-      {isManagerPlus && <SitePerformanceCard locationName={activeLocation.name} />}
+      {isManagerPlus && profile?.site_performance_enabled && (
+        <SitePerformanceCard locationName={activeLocation.name} />
+      )}
 
       {isManagerPlus && (
         <GoogleRatingTile
