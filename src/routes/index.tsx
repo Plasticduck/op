@@ -84,7 +84,6 @@ const DowntimePage = lz(() => import('@/features/ops/downtime/DowntimePage'))
 const ChecklistsPage = lz(() => import('@/features/ops/checklists/ChecklistsPage'))
 const ChecklistsTemplatesPage = lz(() => import('@/features/ops/checklists/ChecklistsTemplatesPage'))
 const ChecklistDetailPage = lz(() => import('@/features/ops/checklists/ChecklistDetailPage'))
-const CloseoutsPage = lz(() => import('@/features/ops/closeouts/CloseoutsPage'))
 const DocumentsPage = lz(() => import('@/features/ops/documents/DocumentsPage'))
 const ContactsPage = lz(() => import('@/features/ops/contacts/ContactsPage'))
 const SuppliesPage = lz(() => import('@/features/ops/supplies/SuppliesPage'))
@@ -192,7 +191,6 @@ export const router = createBrowserRouter([
           { path: 'downtime', element: tech(<DowntimePage />) },
           { path: 'parts', element: tech(<PartsPage />) },
           { path: 'parts/:id', element: tech(<PartsPage />) },
-          { path: 'closeouts', element: mgr(<CloseoutsPage />) },
           { path: 'documents', element: s(<DocumentsPage />) },
           { path: 'contacts', element: tech(<ContactsPage />) },
           { path: 'supplies', element: s(<SuppliesPage />) },

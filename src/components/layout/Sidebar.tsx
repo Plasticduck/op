@@ -24,7 +24,6 @@ import {
   FileClock,
   Folders,
   Gauge,
-  HandCoins,
   ListChecks,
   Building2,
   Map,
@@ -119,12 +118,6 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Supplies',
         icon: PackageOpen,
         roles: ['owner', 'manager', 'employee', 'technician'],
-      },
-      {
-        to: '/app/closeouts',
-        label: 'Closeouts',
-        icon: HandCoins,
-        roles: ['owner', 'manager'],
       },
       {
         to: '/app/tips',

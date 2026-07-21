@@ -320,18 +320,11 @@ function RecentSales({ rows }: { rows: RecentCloseout[] }) {
           <DollarSign className="size-4 text-ink-muted" />
           Recent sales
         </h2>
-        <Link to="/app/closeouts" className="text-xs font-medium text-accent hover:underline">
-          View all
-        </Link>
       </header>
 
       {rows.length === 0 ? (
         <div className="rounded-md border border-border bg-card p-4 text-sm text-ink-muted">
-          No closeouts in the last 14 days.{' '}
-          <Link to="/app/closeouts" className="text-accent hover:underline">
-            Submit one from the Closeouts page
-          </Link>{' '}
-          to start seeing sales here.
+          No sales in the last 14 days.
         </div>
       ) : (
         <>
