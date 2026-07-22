@@ -49,7 +49,8 @@ function Inner({ locationId }: { locationId: string }) {
     setGoogle({ connected: !!r?.connected, email: r?.email, events: r?.events ?? [] })
     if (r?.connected && r?.error === 'fetch_failed') {
       const d = r.detail ? ` (${r.detail}${r.detailMsg ? `: ${r.detailMsg}` : ''})` : ''
-      setGoogleNotice(`Connected, but reading your Google Calendar failed${d}.`)
+      const s = r.grantedScopes ? ` Granted scopes: ${r.grantedScopes}` : ''
+      setGoogleNotice(`Connected, but reading your Google Calendar failed${d}.${s}`)
     } else if (r?.connected && r?.error === 'refresh_failed') {
       setGoogleNotice(
         'Connected, but the Google session could not be refreshed. Disconnect and connect again.',

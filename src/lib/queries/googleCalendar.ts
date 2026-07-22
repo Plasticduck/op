@@ -17,6 +17,7 @@ export type GoogleEventsResult = {
   error?: string
   detail?: string
   detailMsg?: string
+  grantedScopes?: string
 }
 
 export const googleCalendar = {

@@ -105,6 +105,18 @@ Deno.serve(async (req) => {
   if (!res.ok) {
     const detail =
       data?.error?.status ?? data?.error?.errors?.[0]?.reason ?? String(res.status)
+    // Ask Google which scopes this token actually carries — the definitive
+    // signal for "insufficient scopes" (is calendar.readonly present or not?).
+    let grantedScopes = ''
+    try {
+      const ti = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken ?? '')}`,
+      )
+      const tij = await ti.json()
+      grantedScopes = tij.scope ?? ''
+    } catch {
+      grantedScopes = ''
+    }
     return json({
       connected: true,
       email: conn.email,
@@ -112,6 +124,7 @@ Deno.serve(async (req) => {
       error: 'fetch_failed',
       detail,
       detailMsg: data?.error?.message ?? '',
+      grantedScopes,
     })
   }
 
