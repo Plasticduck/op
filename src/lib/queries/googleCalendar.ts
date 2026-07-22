@@ -15,6 +15,8 @@ export type GoogleEventsResult = {
   email?: string
   events?: GoogleEvent[]
   error?: string
+  detail?: string
+  detailMsg?: string
 }
 
 export const googleCalendar = {

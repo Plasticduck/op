@@ -103,7 +103,16 @@ Deno.serve(async (req) => {
   })
   const data = await res.json()
   if (!res.ok) {
-    return json({ connected: true, email: conn.email, events: [], error: 'fetch_failed' })
+    const detail =
+      data?.error?.status ?? data?.error?.errors?.[0]?.reason ?? String(res.status)
+    return json({
+      connected: true,
+      email: conn.email,
+      events: [],
+      error: 'fetch_failed',
+      detail,
+      detailMsg: data?.error?.message ?? '',
+    })
   }
 
   type GEvent = {
