@@ -76,18 +76,24 @@ Deno.serve(async (req) => {
   const state = `${payload}.${sig}`
 
   const redirectUri = `${url}/functions/v1/google-oauth-callback`
-  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-  authUrl.searchParams.set('client_id', clientId)
-  authUrl.searchParams.set('redirect_uri', redirectUri)
-  authUrl.searchParams.set('response_type', 'code')
-  authUrl.searchParams.set(
-    'scope',
-    'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email',
-  )
-  authUrl.searchParams.set('access_type', 'offline')
-  authUrl.searchParams.set('prompt', 'consent')
-  authUrl.searchParams.set('include_granted_scopes', 'true')
-  authUrl.searchParams.set('state', state)
+  const scope =
+    'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email'
+  // Build the query by hand so the scope separator is sent as %20, not `+`.
+  // Google's newer sign-in flow can discard the whole scope list when the
+  // separator arrives as `+`, silently downgrading to an auth-only consent.
+  const q = [
+    ['client_id', clientId],
+    ['redirect_uri', redirectUri],
+    ['response_type', 'code'],
+    ['scope', scope],
+    ['access_type', 'offline'],
+    ['prompt', 'consent'],
+    ['include_granted_scopes', 'true'],
+    ['state', state],
+  ]
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&')
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${q}`
 
-  return json({ url: authUrl.toString() })
+  return json({ url: authUrl })
 })
