@@ -472,7 +472,7 @@ export default function DashboardPage() {
       type="button"
       onClick={() => select(r.name)}
       className={cn(
-        'rounded-md border px-3 py-1.5 text-sm font-medium transition',
+        'rounded-md border px-2.5 py-1 text-xs font-medium transition',
         sel === r.name
           ? 'border-accent bg-accent-soft text-accent'
           : 'border-border bg-card text-ink-muted hover:bg-content',
@@ -483,16 +483,16 @@ export default function DashboardPage() {
   ))
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-3">
       <div>
         <div className="relative flex items-start">
           <ViewToggle value={sel} onChange={select} />
-          {/* Desktop: logo centered, region buttons stacked top-right. */}
-          <div className="pointer-events-none absolute left-1/2 top-1/2 mt-6 hidden -translate-x-1/2 -translate-y-1/2 sm:block">
+          {/* Desktop: logo centered at the top, region buttons stacked top-right. */}
+          <div className="pointer-events-none absolute left-1/2 top-0 hidden -translate-x-1/2 sm:block">
             <AccountBrandLogo />
           </div>
           {regions.length > 0 && (
-            <div className="ml-auto hidden flex-col items-end gap-1.5 sm:flex">{regionButtons}</div>
+            <div className="ml-auto hidden flex-col items-end gap-1 sm:flex">{regionButtons}</div>
           )}
         </div>
         {/* Mobile: logo, then region buttons, in-flow below the toggle. */}
