@@ -8,11 +8,14 @@ import { cn } from '@/lib/utils'
 import {
   buildRegionIndex,
   fetchSitePerformance,
+  fetchSitePerformanceHistory,
+  fetchSitePerformanceHistoryBounds,
   groupByRegion,
   siteNumber,
   type MsaRow,
   type RegionIndex,
   type SiteDay,
+  type SitePerfDayRow,
   type SitePerformanceFeed,
 } from '@/lib/queries/sitePerformance'
 
@@ -21,11 +24,12 @@ const REFRESH_MS = 60_000
 const PLAN_ORDER = ['Mighty Plan', 'Super Plan', 'Wonder Plan', 'MVP Plan']
 
 type ViewKey =
-  | 'site' | 'msa' | 'recharge_revenue' | 'recharge_audit' | 'rinsed'
+  | 'site' | 'history' | 'msa' | 'recharge_revenue' | 'recharge_audit' | 'rinsed'
   | 'under15' | 'churn' | 'records' | 'sitebreak'
 
 const VIEWS: { key: ViewKey; label: string }[] = [
   { key: 'site', label: 'By Site' },
+  { key: 'history', label: 'History' },
   { key: 'msa', label: 'By MSA' },
   { key: 'recharge_revenue', label: 'Recharge $' },
   { key: 'recharge_audit', label: 'Recharge Audit' },
@@ -38,6 +42,7 @@ const VIEWS: { key: ViewKey; label: string }[] = [
 
 const FRESHNESS: Record<ViewKey, string> = {
   site: 'Live, updates every 60s',
+  history: 'Archived daily; covers every day since the archive began',
   msa: 'Live, updates every 60s',
   recharge_revenue: 'Updated nightly, not continuously live',
   recharge_audit: 'Live, updates every 60s',
@@ -226,33 +231,40 @@ export default function SitePerformancePage() {
       </div>
       <p className="-mt-2 text-xs text-ink-subtle">{FRESHNESS[view]}</p>
 
-      {error && !feed && (
-        <div className="flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          <div>
-            <p className="font-medium">Could not load performance data.</p>
-            <p className="mt-0.5 text-danger/80">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {!feed && !error && (
-        <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-ink-muted">
-          Warming up. First load can take ~20s.
-        </p>
-      )}
-
-      {feed && (
+      {/* History reads the archive, not the live feed, so it renders on its own. */}
+      {view === 'history' ? (
+        <History idx={regionIndex} />
+      ) : (
         <>
-          {view === 'site' && <BySite feed={feed} idx={regionIndex} />}
-          {view === 'msa' && <ByMsa feed={feed} idx={regionIndex} />}
-          {view === 'recharge_revenue' && <RechargeRevenue feed={feed} idx={regionIndex} />}
-          {view === 'recharge_audit' && <RechargeAudit feed={feed} idx={regionIndex} />}
-          {view === 'rinsed' && <Conversions feed={feed} idx={regionIndex} />}
-          {view === 'under15' && <Under15 feed={feed} idx={regionIndex} />}
-          {view === 'churn' && <Churn feed={feed} idx={regionIndex} />}
-          {view === 'records' && <CompanyRecords feed={feed} />}
-          {view === 'sitebreak' && <SiteBreakdown feed={feed} idx={regionIndex} />}
+          {error && !feed && (
+            <div className="flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+              <div>
+                <p className="font-medium">Could not load performance data.</p>
+                <p className="mt-0.5 text-danger/80">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {!feed && !error && (
+            <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-ink-muted">
+              Warming up. First load can take ~20s.
+            </p>
+          )}
+
+          {feed && (
+            <>
+              {view === 'site' && <BySite feed={feed} idx={regionIndex} />}
+              {view === 'msa' && <ByMsa feed={feed} idx={regionIndex} />}
+              {view === 'recharge_revenue' && <RechargeRevenue feed={feed} idx={regionIndex} />}
+              {view === 'recharge_audit' && <RechargeAudit feed={feed} idx={regionIndex} />}
+              {view === 'rinsed' && <Conversions feed={feed} idx={regionIndex} />}
+              {view === 'under15' && <Under15 feed={feed} idx={regionIndex} />}
+              {view === 'churn' && <Churn feed={feed} idx={regionIndex} />}
+              {view === 'records' && <CompanyRecords feed={feed} />}
+              {view === 'sitebreak' && <SiteBreakdown feed={feed} idx={regionIndex} />}
+            </>
+          )}
         </>
       )}
     </div>
@@ -934,6 +946,211 @@ function SiteBreakdown({ feed, idx }: ViewProps) {
           </TableShell>
         )}
       </Panel>
+    </div>
+  )
+}
+
+// ---------- History (from the site_performance_days archive) ----------
+
+const HIST_PRESETS = [
+  { key: 'last30', label: 'Last 30' },
+  { key: 'last90', label: 'Last 90' },
+  { key: 'thismonth', label: 'This month' },
+  { key: 'lastmonth', label: 'Last month' },
+  { key: 'thisquarter', label: 'This quarter' },
+  { key: 'lastquarter', label: 'Last quarter' },
+  { key: 'thisyear', label: 'This year' },
+  { key: 'lastyear', label: 'Last year' },
+] as const
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function histPreset(key: string): [string, string] {
+  const now = new Date()
+  const today = ymd(now)
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const startOfMonth = (yy: number, mm: number) => ymd(new Date(yy, mm, 1))
+  const endOfMonth = (yy: number, mm: number) => ymd(new Date(yy, mm + 1, 0))
+  const back = (n: number) => { const s = new Date(now); s.setDate(s.getDate() - n); return ymd(s) }
+  switch (key) {
+    case 'last30': return [back(29), today]
+    case 'last90': return [back(89), today]
+    case 'thismonth': return [startOfMonth(y, m), today]
+    case 'lastmonth': {
+      const pm = m === 0 ? 11 : m - 1
+      const py = m === 0 ? y - 1 : y
+      return [startOfMonth(py, pm), endOfMonth(py, pm)]
+    }
+    case 'thisquarter': return [startOfMonth(y, Math.floor(m / 3) * 3), today]
+    case 'lastquarter': {
+      let q = Math.floor(m / 3) * 3 - 3
+      let qy = y
+      if (q < 0) { q += 12; qy -= 1 }
+      return [startOfMonth(qy, q), endOfMonth(qy, q + 2)]
+    }
+    case 'thisyear': return [`${y}-01-01`, today]
+    case 'lastyear': return [`${y - 1}-01-01`, `${y - 1}-12-31`]
+    default: return [back(29), today]
+  }
+}
+
+function History({ idx }: { idx: RegionIndex }) {
+  const [rangeKey, setRangeKey] = useState('last30')
+  const [start, setStart] = useState(() => histPreset('last30')[0])
+  const [end, setEnd] = useState(() => histPreset('last30')[1])
+  const [rows, setRows] = useState<SitePerfDayRow[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [bounds, setBounds] = useState<{ min: string | null; max: string | null }>({ min: null, max: null })
+
+  useEffect(() => {
+    void fetchSitePerformanceHistoryBounds().then(setBounds).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    setError(null)
+    fetchSitePerformanceHistory(start, end)
+      .then((r) => { if (alive) setRows(r) })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [start, end])
+
+  const applyPreset = (k: string) => {
+    const [s, e] = histPreset(k)
+    setRangeKey(k)
+    setStart(s)
+    setEnd(e)
+  }
+
+  const bySite = useMemo(() => {
+    const map = new Map<string, { site: string; cars: number; hours: number; sales: number; labor: number; recharge: number }>()
+    for (const r of rows ?? []) {
+      const cur = map.get(r.site) ?? { site: r.site, cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 }
+      cur.cars += Number(r.cars) || 0
+      cur.hours += Number(r.hours) || 0
+      cur.sales += Number(r.sales) || 0
+      cur.labor += Number(r.labor_cost) || 0
+      cur.recharge += Number(r.recharge) || 0
+      map.set(r.site, cur)
+    }
+    return Array.from(map.values()).map((s) => ({
+      ...s,
+      cph: s.hours > 0 ? round(s.cars / s.hours, 2) : null,
+      laborPct: s.sales > 0 ? round((s.labor / s.sales) * 100, 1) : null,
+    }))
+  }, [rows])
+
+  const groups = groupByRegion(bySite, (r) => r.site, idx)
+  const tot = bySite.reduce(
+    (a, s) => ({ cars: a.cars + s.cars, hours: a.hours + s.hours, sales: a.sales + s.sales, recharge: a.recharge + s.recharge }),
+    { cars: 0, hours: 0, sales: 0, recharge: 0 },
+  )
+  const rangeLabel = start === end ? start : `${start} to ${end}`
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Panel
+        title="History"
+        sub={`Per-site totals for ${rangeLabel}`}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Seg
+              value={rangeKey}
+              tone="neutral"
+              options={HIST_PRESETS.map((p) => ({ key: p.key, label: p.label }))}
+              onChange={applyPreset}
+            />
+            <input
+              type="date"
+              value={start}
+              max={end}
+              onChange={(e) => { setRangeKey('custom'); setStart(e.target.value) }}
+              className={dateInputCls}
+            />
+            <span className="text-xs text-ink-muted">to</span>
+            <input
+              type="date"
+              value={end}
+              min={start}
+              onChange={(e) => { setRangeKey('custom'); setEnd(e.target.value) }}
+              className={dateInputCls}
+            />
+          </div>
+        }
+      >
+        {loading ? (
+          <p className="px-5 pb-5 text-sm text-ink-muted">Loading…</p>
+        ) : error ? (
+          <p className="px-5 pb-5 text-sm text-danger">{error}</p>
+        ) : bySite.length === 0 ? (
+          <p className="px-5 pb-5 text-sm text-ink-muted">No archived data in this range.</p>
+        ) : (
+          <TableShell
+            head={<>
+              {['Site', 'Cars', 'Hours', 'Cars/Man-Hr', 'Sales', 'Labor %', 'Recharge $'].map((h) => (
+                <th key={h} className={th}>{h}</th>
+              ))}
+            </>}
+          >
+            {groups.map((g) => {
+              const rs = [...g.items].sort((a, b) => (b.cph ?? -1) - (a.cph ?? -1))
+              const cars = sum(rs, (r) => r.cars)
+              const hours = sum(rs, (r) => r.hours)
+              const sales = sum(rs, (r) => r.sales)
+              const labor = sum(rs, (r) => r.labor)
+              const recharge = sum(rs, (r) => r.recharge)
+              const cph = hours > 0 ? round(cars / hours, 2) : null
+              const laborPct = sales > 0 ? round((labor / sales) * 100, 1) : null
+              return (
+                <FragmentRegion key={g.region}>
+                  <RegionHead region={g.region} count={rs.length} />
+                  {rs.map((r) => (
+                    <tr key={r.site}>
+                      <td className={td} title={r.site}>{siteLabel(r.site)}</td>
+                      <td className={td}>{round(r.cars, 0)}</td>
+                      <td className={td}>{round(r.hours, 1)}</td>
+                      <td className={td} style={{ color: heatFor(r.cph, 'cph') }}>{r.cph ?? DASH}</td>
+                      <td className={td}>{money(r.sales)}</td>
+                      <td className={td} style={{ color: heatFor(r.laborPct, 'labor') }}>{r.laborPct !== null ? r.laborPct + '%' : DASH}</td>
+                      <td className={td}>{money(r.recharge)}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold text-ink">
+                    <td className={td}>Subtotal</td>
+                    <td className={td}>{round(cars, 0)}</td>
+                    <td className={td}>{round(hours, 1)}</td>
+                    <td className={td} style={{ color: heatFor(cph, 'cph') }}>{cph ?? DASH}</td>
+                    <td className={td}>{money(sales)}</td>
+                    <td className={td} style={{ color: heatFor(laborPct, 'labor') }}>{laborPct !== null ? laborPct + '%' : DASH}</td>
+                    <td className={td}>{money(recharge)}</td>
+                  </tr>
+                </FragmentRegion>
+              )
+            })}
+            <tr className="border-t-2 border-border font-bold text-ink">
+              <td className={td}>Company Total</td>
+              <td className={td}>{round(tot.cars, 0)}</td>
+              <td className={td}>{round(tot.hours, 1)}</td>
+              <td className={td}>{tot.hours > 0 ? round(tot.cars / tot.hours, 2) : DASH}</td>
+              <td className={td}>{money(tot.sales)}</td>
+              <td className={td}>{DASH}</td>
+              <td className={td}>{money(tot.recharge)}</td>
+            </tr>
+          </TableShell>
+        )}
+      </Panel>
+      <Footnote>
+        History is archived daily from the live dashboard.
+        {bounds.min ? ` Available from ${bounds.min} to ${bounds.max}.` : ' Building up as of today.'}
+        {' '}Dates before the archive began are not available. Totals sum each day in the range;
+        Cars/Man-Hr and Labor % are computed on the range totals.
+      </Footnote>
     </div>
   )
 }

@@ -3492,6 +3492,65 @@ export type Database = {
           },
         ]
       }
+      site_performance_days: {
+        Row: {
+          account_id: string
+          cars: number | null
+          cars_per_hour: number | null
+          created_at: string
+          date: string
+          hours: number | null
+          id: string
+          labor_cost: number | null
+          labor_pct: number | null
+          recharge: number | null
+          sales: number | null
+          site: string
+          site_number: number | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          cars?: number | null
+          cars_per_hour?: number | null
+          created_at?: string
+          date: string
+          hours?: number | null
+          id?: string
+          labor_cost?: number | null
+          labor_pct?: number | null
+          recharge?: number | null
+          sales?: number | null
+          site: string
+          site_number?: number | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          cars?: number | null
+          cars_per_hour?: number | null
+          created_at?: string
+          date?: string
+          hours?: number | null
+          id?: string
+          labor_cost?: number | null
+          labor_pct?: number | null
+          recharge?: number | null
+          sales?: number | null
+          site?: string
+          site_number?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_performance_days_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_violations: {
         Row: {
           account_id: string

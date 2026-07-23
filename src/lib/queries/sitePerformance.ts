@@ -143,6 +143,49 @@ export async function fetchSitePerformance(): Promise<SitePerformanceFeed> {
   return data as SitePerformanceFeed
 }
 
+// ---------- Historical archive (site_performance_days) ----------
+//
+// The live feed only carries ~30 days; this archive accumulates daily so any
+// date range can be queried. Rows are scoped to the caller's account by RLS.
+export type SitePerfDayRow = {
+  site: string
+  site_number: number | null
+  date: string
+  cars: number | null
+  hours: number | null
+  cars_per_hour: number | null
+  sales: number | null
+  labor_cost: number | null
+  labor_pct: number | null
+  recharge: number | null
+}
+
+export async function fetchSitePerformanceHistory(
+  startDate: string,
+  endDate: string,
+): Promise<SitePerfDayRow[]> {
+  const { data, error } = await supabase
+    .from('site_performance_days')
+    .select('site, site_number, date, cars, hours, cars_per_hour, sales, labor_cost, labor_pct, recharge')
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date')
+  if (error) throw new Error(error.message)
+  return (data as SitePerfDayRow[] | null) ?? []
+}
+
+// Earliest and latest archived dates, so the UI can show what history exists.
+export async function fetchSitePerformanceHistoryBounds(): Promise<{ min: string | null; max: string | null }> {
+  const [{ data: lo }, { data: hi }] = await Promise.all([
+    supabase.from('site_performance_days').select('date').order('date', { ascending: true }).limit(1),
+    supabase.from('site_performance_days').select('date').order('date', { ascending: false }).limit(1),
+  ])
+  return {
+    min: (lo as { date: string }[] | null)?.[0]?.date ?? null,
+    max: (hi as { date: string }[] | null)?.[0]?.date ?? null,
+  }
+}
+
 // ---------- Per-site metric extraction ----------
 //
 // The feeds name sites inconsistently, so pull a site's headline numbers by its
