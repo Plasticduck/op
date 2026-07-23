@@ -92,7 +92,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         to: '/app/ask',
-        label: 'Ask Operator',
+        label: 'Operator AI',
         icon: Sparkles,
         roles: ['owner', 'manager', 'employee', 'technician'],
       },

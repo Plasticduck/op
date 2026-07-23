@@ -75,7 +75,7 @@ export default function AskOperatorPage() {
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col px-4 py-4 lg:px-8">
       <PageHeader
-        title="Ask Operator"
+        title="Operator AI"
         subtitle="Ask questions about your data in plain English. Answers stay scoped to what you can access."
       />
 
