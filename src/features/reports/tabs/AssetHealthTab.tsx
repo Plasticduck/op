@@ -98,8 +98,8 @@ export function AssetHealthTab() {
                   <th className="px-3 py-2 font-medium">Location</th>
                   <th className="px-3 py-2 font-medium">Type</th>
                   <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 text-right font-medium">Open WOs</th>
-                  <th className="px-3 py-2 text-right font-medium">Total WOs</th>
+                  <th className="px-3 py-2 text-right font-medium">Open W.O.s</th>
+                  <th className="px-3 py-2 text-right font-medium">Total W.O.s</th>
                   <th className="px-3 py-2 text-right font-medium">Est. Cost</th>
                 </tr>
               </thead>

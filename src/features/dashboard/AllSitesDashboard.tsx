@@ -161,7 +161,7 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
           { label: 'Average grade', value: loading ? '—' : letterFor(avgTotal) },
           { label: 'Avg Google rating', value: avgGoogle != null ? `${avgGoogle.toFixed(1)} ★` : '—' },
           { label: 'Needs attention', value: loading ? '—' : needsAttention },
-          { label: 'High-priority WOs', value: loading ? '—' : sum((c) => c.signals.highPriority) },
+          { label: 'High-priority W.O.s', value: loading ? '—' : sum((c) => c.signals.highPriority) },
           { label: 'Equipment down', value: loading ? '—' : sum((c) => c.signals.equipmentDown) },
         ]}
       />

@@ -240,7 +240,7 @@ function InsightsTab({ asset, history, historyLoading }: { asset: Detail; histor
       </section>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Open WOs" value={openWO.length} tone={openWO.length > 0 ? 'warn' : 'ok'} />
+        <StatTile label="Open W.O.s" value={openWO.length} tone={openWO.length > 0 ? 'warn' : 'ok'} />
         <StatTile label="Completed (30d)" value={last30.length} />
         <StatTile label="Sub-Assets" value={asset.sub_assets.length} />
         <StatTile label="Criticality" value={CRITICALITY_LABEL[asset.criticality]} tone={CRITICALITY_TONE[asset.criticality]} />
