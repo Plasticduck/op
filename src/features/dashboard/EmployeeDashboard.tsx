@@ -14,6 +14,7 @@ import {
 import { isNativeShell } from '@/lib/nativeBridge'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
 import {
   breaks as breaksQ,
@@ -131,13 +132,16 @@ export default function EmployeeDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
-          {greeting()}, {profile?.name.split(' ')[0]}
-        </h1>
-        <p className="mt-1 text-sm text-ink-muted sm:text-base">
-          {activeLocation?.name} · {format(new Date(), 'EEEE, MMMM d')}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+            {greeting()}, {profile?.name.split(' ')[0]}
+          </h1>
+          <p className="mt-1 text-sm text-ink-muted sm:text-base">
+            {activeLocation?.name} · {format(new Date(), 'EEEE, MMMM d')}
+          </p>
+        </div>
+        <ThemeToggle variant="pill" />
       </div>
 
       <WeatherOutlook

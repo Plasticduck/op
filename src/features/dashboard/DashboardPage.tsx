@@ -11,6 +11,7 @@ import { StatCardRow } from '@/components/data/StatCardRow'
 import { WeatherOutlook } from '@/components/data/WeatherOutlook'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { insights as insightsQ, type Insight } from '@/lib/queries/insights'
 import { currency, shortDate } from '@/lib/format'
 import EmployeeDashboard from '@/features/dashboard/EmployeeDashboard'
@@ -51,7 +52,9 @@ type RecentCloseout = {
 
 const priorityTone = { high: 'danger', medium: 'warn', low: 'neutral' } as const
 
-function ManagerDashboard() {
+// `showThemeToggle` is off when this renders inside the multi-site dashboard,
+// which puts the toggle in its own header row instead.
+function ManagerDashboard({ showThemeToggle = true }: { showThemeToggle?: boolean }) {
   const { profile } = useAuth()
   const { activeLocation, loading: locLoading } = useLocations()
   const [stats, setStats] = useState<Stats | null>(null)
@@ -171,14 +174,17 @@ function ManagerDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
-          {greeting()}, {profile?.name.split(' ')[0]}
-        </h1>
-        <p className="mt-1 text-sm text-ink-muted sm:text-base">
-          {activeLocation.name} · {format(new Date(), 'EEEE, MMMM d, yyyy')}
-        </p>
-        <CarWashFunFact />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+            {greeting()}, {profile?.name.split(' ')[0]}
+          </h1>
+          <p className="mt-1 text-sm text-ink-muted sm:text-base">
+            {activeLocation.name} · {format(new Date(), 'EEEE, MMMM d, yyyy')}
+          </p>
+          <CarWashFunFact />
+        </div>
+        {showThemeToggle && <ThemeToggle variant="pill" />}
       </div>
 
       <WeatherOutlook
@@ -491,9 +497,12 @@ export default function DashboardPage() {
           <div className="pointer-events-none absolute left-1/2 top-0 hidden -translate-x-1/2 sm:block">
             <AccountBrandLogo />
           </div>
-          {regions.length > 0 && (
-            <div className="ml-auto hidden flex-col items-end gap-1 sm:flex">{regionButtons}</div>
-          )}
+          <div className="ml-auto flex flex-col items-end gap-1.5">
+            <ThemeToggle variant="pill" />
+            {regions.length > 0 && (
+              <div className="hidden flex-col items-end gap-1 sm:flex">{regionButtons}</div>
+            )}
+          </div>
         </div>
         {/* Mobile: logo, then region buttons, in-flow below the toggle. */}
         <div className="mt-4 flex justify-center sm:hidden">
@@ -506,7 +515,7 @@ export default function DashboardPage() {
       {activeRegion ? (
         <AllSitesDashboard regionName={activeRegion} />
       ) : sel === 'site' ? (
-        <ManagerDashboard />
+        <ManagerDashboard showThemeToggle={false} />
       ) : (
         <AllSitesDashboard />
       )}
