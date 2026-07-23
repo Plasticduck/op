@@ -300,6 +300,49 @@ function presetRange(key: string, allDates: string[]): [string, string] {
 
 const dateInputCls = 'rounded-md border border-border bg-content px-2 py-1 text-xs text-ink'
 
+type Range = { key: string; start: string; end: string }
+
+function resolveRange(range: Range, allDates: string[]): [string, string] {
+  const [defStart, defEnd] = presetRange(range.key === 'custom' ? '30' : range.key, allDates)
+  return [range.start || defStart, range.end || defEnd]
+}
+
+// Reusable preset + custom date-range control over a feed's ~30-day daily window.
+function RangeActions({
+  range, setRange, allDates,
+}: { range: Range; setRange: (r: Range) => void; allDates: string[] }) {
+  const [start, end] = resolveRange(range, allDates)
+  const minDate = allDates[0]
+  const maxDate = allDates[allDates.length - 1]
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Seg
+        value={range.key}
+        tone="neutral"
+        options={RANGE_PRESETS.map((p) => ({ key: p.key, label: p.label }))}
+        onChange={(k) => { const [s, e] = presetRange(k, allDates); setRange({ key: k, start: s, end: e }) }}
+      />
+      <input
+        type="date"
+        min={minDate}
+        max={maxDate}
+        value={start}
+        onChange={(e) => setRange({ key: 'custom', start: e.target.value, end: end < e.target.value ? e.target.value : end })}
+        className={dateInputCls}
+      />
+      <span className="text-xs text-ink-muted">to</span>
+      <input
+        type="date"
+        min={minDate}
+        max={maxDate}
+        value={end}
+        onChange={(e) => setRange({ key: 'custom', start: start > e.target.value ? e.target.value : start, end: e.target.value })}
+        className={dateInputCls}
+      />
+    </div>
+  )
+}
+
 function BySite({ feed, idx }: ViewProps) {
   const report = feed.report
   const [metric, setMetric] = useState<'cars_per_hour' | 'labor_pct'>('cars_per_hour')
@@ -594,16 +637,29 @@ function ByMsa({ feed, idx }: ViewProps) {
 
 function RechargeRevenue({ feed, idx }: ViewProps) {
   const rr = feed.recharge_revenue
+  const allDates = useMemo(
+    () => (rr ? Array.from(new Set(Object.values(rr.sites).flatMap((ds) => ds.map((d) => d.date)))).sort() : []),
+    [rr],
+  )
+  const [range, setRange] = useState<Range>({ key: '7', start: '', end: '' })
   if (!rr || !Object.keys(rr.sites).length) return <Empty />
+  const [start, end] = resolveRange(range, allDates)
+  const rangeLabel = start === end ? start : `${start} to ${end}`
+  const inRange = (d: { date: string }) => d.date >= start && d.date <= end
+
   const rows = Object.entries(rr.sites).map(([site, ds]) => ({
-    site, amount: ds[ds.length - 1]?.amount ?? 0, mtd: rr.mtd_by_site[site] ?? 0,
+    site, amount: sum(ds.filter(inRange), (d) => d.amount), mtd: rr.mtd_by_site[site] ?? 0,
   }))
   const groups = groupByRegion(rows, (r) => r.site, idx)
-  const totalToday = rr.totals[rr.totals.length - 1]
+  const totalRange = sum((rr.totals ?? []).filter(inRange), (t) => t.amount)
 
   return (
     <div className="flex flex-col gap-5">
-      <Panel title="Recharge Revenue" sub="ARM recharge $ by site, today and month-to-date">
+      <Panel
+        title="Recharge Revenue"
+        sub={`ARM recharge $ by site for ${rangeLabel}, plus month-to-date`}
+        actions={<RangeActions range={range} setRange={setRange} allDates={allDates} />}
+      >
         <TableShell head={<>{['Site', 'Recharge $', 'MTD $'].map((h) => <th key={h} className={th}>{h}</th>)}</>}>
           {groups.map((g) => {
             const rs = [...g.items].sort((a, b) => b.amount - a.amount)
@@ -629,13 +685,13 @@ function RechargeRevenue({ feed, idx }: ViewProps) {
           })}
           <tr className="border-t-2 border-border font-bold text-ink">
             <td className={td}>Company Total</td>
-            <td className={td}>{money(totalToday?.amount ?? 0)}{totalToday?.source === 'sitewatch' ? ' *' : ''}</td>
+            <td className={td}>{money(totalRange)}</td>
             <td className={td}>{money(rr.mtd_total)}</td>
           </tr>
         </TableShell>
       </Panel>
       <Footnote>
-        Per-site amounts are SiteWatch's own RECHARGEAMOUNT, refreshed nightly. The Company Total uses the official combined SiteWatch + FlexWash number (marked * where today's is still SiteWatch-only). FlexWash #17/#18 rebilled revenue only appears in the total, not the per-site rows.
+        Per-site amounts are SiteWatch's own RECHARGEAMOUNT, summed over the selected range (the feed carries ~30 days). MTD is the official month-to-date figure. FlexWash #17/#18 rebilled revenue only appears in the company total, not the per-site rows.
       </Footnote>
     </div>
   )
@@ -645,27 +701,45 @@ function RechargeRevenue({ feed, idx }: ViewProps) {
 
 function RechargeAudit({ feed, idx }: ViewProps) {
   const ra = feed.recharge_audit
+  const allDates = useMemo(
+    () => (ra ? Array.from(new Set(Object.values(ra.sites).flatMap((ds) => ds.map((d) => d.date)))).sort() : []),
+    [ra],
+  )
+  const [range, setRange] = useState<Range>({ key: '7', start: '', end: '' })
   if (!ra || !Object.keys(ra.sites).length) return <Empty />
-  const rows = Object.entries(ra.sites).map(([site, ds]) => ({ site, ...ds[ds.length - 1] }))
+  const [start, end] = resolveRange(range, allDates)
+  const rangeLabel = start === end ? start : `${start} to ${end}`
+  const inRange = (d: { date: string }) => d.date >= start && d.date <= end
+
+  const rows = Object.entries(ra.sites).map(([site, ds]) => {
+    const d = ds.filter(inRange)
+    return { site, count: sum(d, (x) => x.count), passed: d.filter((x) => x.passed).length, days: d.length }
+  })
   const groups = groupByRegion(rows, (r) => r.site, idx)
   return (
     <div className="flex flex-col gap-5">
-      <Panel title="Recharge Audit" sub="Did every site get an ARM recharge batch today">
-        <TableShell head={<>{['Site', 'Recharges Today', 'Status'].map((h) => <th key={h} className={th}>{h}</th>)}</>}>
+      <Panel
+        title="Recharge Audit"
+        sub={`Did every site get an ARM recharge batch, for ${rangeLabel}`}
+        actions={<RangeActions range={range} setRange={setRange} allDates={allDates} />}
+      >
+        <TableShell head={<>{['Site', 'Recharges', 'Days Passed'].map((h) => <th key={h} className={th}>{h}</th>)}</>}>
           {groups.map((g) => {
-            const rs = [...g.items].sort((a, b) => a.count - b.count)
-            const failing = rs.filter((r) => !r.passed).length
+            const rs = [...g.items].sort((a, b) => (a.passed / (a.days || 1)) - (b.passed / (b.days || 1)))
+            const missing = rs.filter((r) => r.passed < r.days).length
             return (
               <FragmentRegion key={g.region}>
-                <RegionHead region={g.region} count={rs.length} right={failing ? `${failing} failing` : 'all clear'} />
+                <RegionHead region={g.region} count={rs.length} right={missing ? `${missing} with misses` : 'all clear'} />
                 {rs.map((r) => (
                   <tr key={r.site}>
                     <td className={td} title={r.site}>{siteLabel(r.site)}</td>
                     <td className={td}>{r.count}</td>
                     <td className={td}>
-                      {r.passed
-                        ? <Pill tone="ok">Pass</Pill>
-                        : <Pill tone="danger">0 recharges</Pill>}
+                      {r.days === 0
+                        ? DASH
+                        : r.passed === r.days
+                          ? <Pill tone="ok">{r.passed}/{r.days}</Pill>
+                          : <Pill tone="danger">{r.passed}/{r.days}</Pill>}
                     </td>
                   </tr>
                 ))}
@@ -674,7 +748,7 @@ function RechargeAudit({ feed, idx }: ViewProps) {
           })}
         </TableShell>
       </Panel>
-      <Footnote>Same check and site set as the 7:00 AM Daily Recharge Audit email, recomputed live.</Footnote>
+      <Footnote>Same check and site set as the 7:00 AM Daily Recharge Audit email. Recharges = ARM batches counted across the range; Days Passed = days the site got at least one.</Footnote>
     </div>
   )
 }
@@ -683,17 +757,31 @@ function RechargeAudit({ feed, idx }: ViewProps) {
 
 function Conversions({ feed, idx }: ViewProps) {
   const rin = feed.rinsed
+  const allDates = useMemo(
+    () => (rin ? Array.from(new Set(Object.values(rin.sites).flatMap((s) => (s.days ?? []).map((d) => d.date)))).sort() : []),
+    [rin],
+  )
+  const [range, setRange] = useState<Range>({ key: '7', start: '', end: '' })
   if (!rin || !Object.keys(rin.sites).length) return <Empty />
-  const rows = Object.entries(rin.sites).map(([site, d]) => ({
-    site, live: d.live_conversion_pct, mtd: d.avg_to_date,
-  }))
+  const [start, end] = resolveRange(range, allDates)
+  const rangeLabel = start === end ? start : `${start} to ${end}`
+
+  const rows = Object.entries(rin.sites).map(([site, d]) => {
+    const days = (d.days ?? []).filter((x) => x.date >= start && x.date <= end && x.conversion_pct != null)
+    const avg = days.length ? round(days.reduce((a, x) => a + (x.conversion_pct as number), 0) / days.length, 1) : null
+    return { site, live: d.live_conversion_pct, avg }
+  })
   const groups = groupByRegion(rows, (r) => r.site, idx)
   return (
     <div className="flex flex-col gap-5">
-      <Panel title="Conversions" sub="Every site's conversion %, live and month-to-date">
-        <TableShell head={<>{['Site', 'Live', 'MTD Conversion'].map((h) => <th key={h} className={th}>{h}</th>)}</>}>
+      <Panel
+        title="Conversions"
+        sub={`Every site's conversion %, live and averaged over ${rangeLabel}`}
+        actions={<RangeActions range={range} setRange={setRange} allDates={allDates} />}
+      >
+        <TableShell head={<>{['Site', 'Live', 'Range Avg'].map((h) => <th key={h} className={th}>{h}</th>)}</>}>
           {groups.map((g) => {
-            const rs = [...g.items].sort((a, b) => (b.mtd ?? -1) - (a.mtd ?? -1))
+            const rs = [...g.items].sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
             return (
               <FragmentRegion key={g.region}>
                 <RegionHead region={g.region} count={rs.length} />
@@ -701,7 +789,7 @@ function Conversions({ feed, idx }: ViewProps) {
                   <tr key={r.site}>
                     <td className={td} title={r.site}>{siteLabel(r.site)}</td>
                     <td className={td} style={{ color: heatFor(r.live, 'conv') }}>{r.live !== null && r.live !== undefined ? r.live + '%' : DASH}</td>
-                    <td className={td} style={{ color: heatFor(r.mtd, 'conv') }}>{r.mtd !== null ? r.mtd + '%' : DASH}</td>
+                    <td className={td} style={{ color: heatFor(r.avg, 'conv') }}>{r.avg !== null ? r.avg + '%' : DASH}</td>
                   </tr>
                 ))}
               </FragmentRegion>
@@ -710,7 +798,7 @@ function Conversions({ feed, idx }: ViewProps) {
         </TableShell>
       </Panel>
       <Footnote>
-        MTD comes from the same "Monthly sale % by site" sheet the Rinsed/FlexWash automation writes to. Live is genuinely live for the SiteWatch sites (site-wide, not roster-filtered). {rin.company_avg != null && `Company average ${rin.company_avg}%.`}
+        Live is genuinely live for the SiteWatch sites (site-wide, not roster-filtered). Range Avg is the mean of each day's conversion % over the selected range (the feed carries ~30 days). {rin.company_avg != null && `Company MTD average ${rin.company_avg}%.`}
       </Footnote>
     </div>
   )
