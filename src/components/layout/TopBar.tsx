@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Bell, Check, ChevronDown, CreditCard, LogOut, Search, Wrench } from 'lucide-react'
+import { AlertTriangle, Bell, Check, ChevronDown, CreditCard, LogOut, Moon, Search, Sun, Wrench } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { useAuth } from '@/lib/auth'
+import { useTheme } from '@/lib/theme'
 import { useLocations } from '@/lib/locations'
 import { useNotifications, type Notification } from '@/lib/notifications'
 import { timeAgo } from '@/lib/format'
@@ -31,6 +32,7 @@ function renderNotification(n: Notification): { icon: typeof Bell; text: string;
 
 export function TopBar() {
   const { profile, signOut } = useAuth()
+  const { resolved, setTheme } = useTheme()
   const { locations, activeLocation, setActiveId } = useLocations()
   const { items, unread, markRead, markAllRead } = useNotifications()
   const [locOpen, setLocOpen] = useState(false)
@@ -110,6 +112,16 @@ export function TopBar() {
             )}
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={() => setTheme(resolved === 'dark' ? 'light' : 'dark')}
+          aria-label={resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={resolved === 'dark' ? 'Light mode' : 'Dark mode'}
+          className="rounded-md p-1.5 text-ink-muted hover:bg-content hover:text-ink"
+        >
+          {resolved === 'dark' ? <Sun className="size-5" /> : <Moon className="size-5" />}
+        </button>
 
         <div className="relative" ref={bellRef}>
           <button

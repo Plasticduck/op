@@ -36,6 +36,38 @@
   --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 
+/* Dark theme. The whole UI is built on these semantic tokens, so re-pointing the
+   color variables under `.dark` (toggled on <html> by src/lib/theme.ts) re-themes
+   the app wholesale. The sidebar (shell) is dark in both themes, so `ink-invert`
+   stays light and is left untouched. */
+:root.dark {
+  --color-shell: #070a0e;
+  --color-shell-elevated: #121821;
+  --color-content: #0d1219;
+  --color-card: #161d27;
+  --color-border: #29313d;
+  --color-border-strong: #3c4653;
+
+  --color-ink: #e7eaef;
+  --color-ink-muted: #9aa4b2;
+  --color-ink-subtle: #6a7280;
+
+  --color-accent: #3b82f6;
+  --color-accent-hover: #60a5fa;
+  --color-accent-soft: #17253d;
+
+  --color-warn: #e0a44a;
+  --color-warn-soft: #3a2c11;
+  --color-danger: #f26d6d;
+  --color-danger-soft: #3a1a1c;
+  --color-ok: #34d399;
+  --color-ok-soft: #113026;
+}
+
+:root.dark body {
+  color-scheme: dark;
+}
+
 @layer base {
   html {
     /* Larger base size for easier reading. Tailwind's rem-based sizing/spacing
