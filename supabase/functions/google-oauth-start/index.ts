@@ -52,6 +52,27 @@ Deno.serve(async (req) => {
   const clientId = Deno.env.get('GOOGLE_CLIENT_ID')
   if (!clientId) return json({ error: 'no_key', message: 'Google is not configured.' }, 503)
 
+  // TEMP debug: return the constructed auth URL (dummy state) to verify the
+  // scope encoding without a user session. Remove after diagnosing.
+  if (req.headers.get('x-debug') === 'scopecheck') {
+    const dbgUrlBase = Deno.env.get('SUPABASE_URL')!
+    const dbgScope =
+      'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.email'
+    const dbgQ = [
+      ['client_id', clientId],
+      ['redirect_uri', `${dbgUrlBase}/functions/v1/google-oauth-callback`],
+      ['response_type', 'code'],
+      ['scope', dbgScope],
+      ['access_type', 'offline'],
+      ['prompt', 'consent'],
+      ['include_granted_scopes', 'true'],
+      ['state', 'DEBUG'],
+    ]
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join('&')
+    return json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${dbgQ}` })
+  }
+
   const url = Deno.env.get('SUPABASE_URL')!
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

@@ -25,6 +25,7 @@ import { BillingGate } from '@/components/layout/BillingGate'
 // the padded wrapper. The new tabbed /app/reports is also padded since its
 // content is normal scrolling charts, not a chat thread.
 const FULL_BLEED_PATTERNS = [
+  /^\/app\/ask($|\/)/,
   /^\/app\/messages($|\/)/,
   /^\/app\/work-orders($|\/)/,
   /^\/app\/assets($|\/)/,

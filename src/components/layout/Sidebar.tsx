@@ -13,6 +13,7 @@ import {
   BookUser,
   Banknote,
   BrainCircuit,
+  Sparkles,
   CalendarClock,
   CalendarHeart,
   ChartNoAxesCombined,
@@ -87,6 +88,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/messages',
         label: 'Messages',
         icon: MessageCircle,
+        roles: ['owner', 'manager', 'employee', 'technician'],
+      },
+      {
+        to: '/app/ask',
+        label: 'Ask Operator',
+        icon: Sparkles,
         roles: ['owner', 'manager', 'employee', 'technician'],
       },
       {

@@ -114,6 +114,7 @@ const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
 const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
+const AskOperatorPage = lz(() => import('@/features/ask/AskOperatorPage'))
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
 const TipPage = lz(() => import('@/features/tips/TipPage'))
@@ -172,6 +173,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/app/dashboard" replace /> },
           { path: 'dashboard', element: s(<DashboardPage />) },
 
+          { path: 'ask', element: s(<AskOperatorPage />) },
           { path: 'insights', element: tech(<InsightsPage />) },
           { path: 'reports', element: tech(<ReportingPage />) },
           { path: 'reports/:reportKey', element: tech(<PreBuiltReportPage />) },
