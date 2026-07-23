@@ -241,7 +241,10 @@ export default function AskOperatorPage() {
       </div>
 
       <form onSubmit={onSubmit} className="mt-auto">
-        <div className="flex items-end gap-2 rounded-[26px] border border-border bg-card p-2 pl-4 shadow-sm transition duration-200 focus-within:border-accent/60 focus-within:shadow-md">
+        <div className="flex items-end gap-2 rounded-[28px] border border-border bg-card py-2 pl-5 pr-2 shadow-sm transition duration-200 focus-within:border-accent/60 focus-within:shadow-md">
+          {/* border-0 + focus:ring-0 + px-0 undo @tailwindcss/forms, which runs
+              in base strategy and otherwise draws a square 1px box with
+              border-radius 0 inside this pill. */}
           <textarea
             ref={inputRef}
             value={input}
@@ -254,12 +257,12 @@ export default function AskOperatorPage() {
             }}
             rows={1}
             placeholder="Ask about cars washed, work orders, inventory, staff…"
-            className="max-h-40 flex-1 resize-none bg-transparent py-2.5 text-[15px] text-ink outline-none placeholder:text-ink-subtle"
+            className="max-h-40 min-h-11 flex-1 resize-none border-0 bg-transparent px-0 py-2.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-ink-subtle focus:ring-0"
           />
           <button
             type="submit"
             disabled={busy || !input.trim()}
-            className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-white transition duration-200 hover:bg-accent-hover active:scale-95 disabled:opacity-40"
+            className="mb-0.5 grid size-10 shrink-0 place-items-center rounded-full bg-accent text-white transition duration-200 hover:bg-accent-hover active:scale-95 disabled:opacity-40"
             aria-label={busy ? 'Working' : 'Send'}
           >
             {busy ? <StarMark active className="size-5" /> : <ArrowUp className="size-5" />}
