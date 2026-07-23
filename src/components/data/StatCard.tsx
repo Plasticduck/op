@@ -3,7 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export type StatCardProps = {
-  label: string
+  label: ReactNode
   value: ReactNode
   delta?: { value: number; suffix?: string; direction?: 'up-good' | 'up-bad' }
   hint?: string

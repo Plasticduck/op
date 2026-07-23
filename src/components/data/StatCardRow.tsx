@@ -14,8 +14,8 @@ export function StatCardRow({ items, className }: StatCardRowProps) {
         className,
       )}
     >
-      {items.map((item) => (
-        <StatCard key={item.label} {...item} />
+      {items.map((item, i) => (
+        <StatCard key={i} {...item} />
       ))}
     </div>
   )

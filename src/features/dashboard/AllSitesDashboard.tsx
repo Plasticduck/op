@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
+import { Wos } from '@/components/ui/Wos'
 import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
@@ -161,7 +162,7 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
           { label: 'Average grade', value: loading ? '—' : letterFor(avgTotal) },
           { label: 'Avg Google rating', value: avgGoogle != null ? `${avgGoogle.toFixed(1)} ★` : '—' },
           { label: 'Needs attention', value: loading ? '—' : needsAttention },
-          { label: 'High-priority W.O.s', value: loading ? '—' : sum((c) => c.signals.highPriority) },
+          { label: <>High-priority <Wos /></>, value: loading ? '—' : sum((c) => c.signals.highPriority) },
           { label: 'Equipment down', value: loading ? '—' : sum((c) => c.signals.equipmentDown) },
         ]}
       />

@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import { QrCodeImage } from '@/components/data/QrCodeImage'
+import { Wos } from '@/components/ui/Wos'
 import { format } from 'date-fns'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -240,7 +241,7 @@ function InsightsTab({ asset, history, historyLoading }: { asset: Detail; histor
       </section>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Open W.O.s" value={openWO.length} tone={openWO.length > 0 ? 'warn' : 'ok'} />
+        <StatTile label={<>Open <Wos /></>} value={openWO.length} tone={openWO.length > 0 ? 'warn' : 'ok'} />
         <StatTile label="Completed (30d)" value={last30.length} />
         <StatTile label="Sub-Assets" value={asset.sub_assets.length} />
         <StatTile label="Criticality" value={CRITICALITY_LABEL[asset.criticality]} tone={CRITICALITY_TONE[asset.criticality]} />
@@ -262,7 +263,7 @@ function InsightsTab({ asset, history, historyLoading }: { asset: Detail; histor
   )
 }
 
-function StatTile({ label, value, tone }: { label: string; value: React.ReactNode; tone?: 'ok' | 'warn' | 'danger' | 'neutral' }) {
+function StatTile({ label, value, tone }: { label: React.ReactNode; value: React.ReactNode; tone?: 'ok' | 'warn' | 'danger' | 'neutral' }) {
   const cls =
     tone === 'warn' ? 'text-warn' :
     tone === 'danger' ? 'text-danger' :

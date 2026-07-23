@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Donut, StatTile } from '@/components/data/Charts'
+import { Wos } from '@/components/ui/Wos'
 import { reporting } from '@/lib/queries/reporting'
 import { CRITICALITY_TONE, STATUS_LABEL, type AssetCriticality, type AssetStatus } from '@/lib/queries/assets'
 import { currency } from '@/lib/format'
@@ -98,8 +99,8 @@ export function AssetHealthTab() {
                   <th className="px-3 py-2 font-medium">Location</th>
                   <th className="px-3 py-2 font-medium">Type</th>
                   <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 text-right font-medium">Open W.O.s</th>
-                  <th className="px-3 py-2 text-right font-medium">Total W.O.s</th>
+                  <th className="px-3 py-2 text-right font-medium">Open <Wos /></th>
+                  <th className="px-3 py-2 text-right font-medium">Total <Wos /></th>
                   <th className="px-3 py-2 text-right font-medium">Est. Cost</th>
                 </tr>
               </thead>
