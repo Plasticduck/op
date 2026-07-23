@@ -195,9 +195,17 @@ function QueryDetails({ steps }: { steps: AskStep[] }) {
         <div className="mt-2 space-y-2">
           {steps.map((s, i) => (
             <div key={i} className="rounded-md border border-border bg-content p-2">
-              <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-ink-muted">
-                {s.sql}
-              </pre>
+              {s.sql ? (
+                <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-ink-muted">
+                  {s.sql}
+                </pre>
+              ) : (
+                <p className="font-mono text-[11px] text-ink-muted">
+                  {s.tool === 'get_site_performance'
+                    ? 'Pulled live site performance data'
+                    : (s.tool ?? 'tool')}
+                </p>
+              )}
               <p className="mt-1 text-[11px] text-ink-subtle">
                 {s.error ? `error: ${s.error}` : `${s.rowCount ?? 0} row(s)`}
               </p>

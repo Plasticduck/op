@@ -1,10 +1,14 @@
 // ask-operator — Supabase Edge Function (Deno).
 // A read-only data assistant: the user asks a plain-English question about their
-// Operator data, Claude writes SELECT queries against the Postgres schema, we run
-// them via the operator_ask_sql RPC (SECURITY INVOKER, so row-level security
-// scopes every result to the caller's account + locations), and Claude turns the
-// rows into an answer. The client never sees SQL unless it asks; the model can
-// never reach another tenant's data because it runs under the user's own RLS.
+// Operator data, and Claude answers using two tools:
+//   run_sql              — SELECT against Postgres via operator_ask_sql (SECURITY
+//                          INVOKER, so row-level security scopes every result to
+//                          the caller's account + locations).
+//   get_site_performance — the live Mighty Wash dashboard feed (cars, cars/hour,
+//                          labor %, conversion, recharge revenue, churn), pulled
+//                          through the site-performance function and scoped to the
+//                          sites the caller can see. Only offered to owner/manager
+//                          on accounts with site performance enabled.
 //
 // Secrets required (set via `supabase secrets set`):
 //   ANTHROPIC_API_KEY   — Claude API key (function returns 503 'no_key' if absent)
@@ -80,44 +84,181 @@ calendar_events(id, location_id, title, start_at, end_at, all_day)
 documents(id, location_id, name, category, archived, created_at)
 notes: joins are by the *_id columns. Use locations.name to label sites; join via location_id. Employee names are first_name + last_name. work_orders.status values include 'open','in_progress','on_hold','done'. Dates are timestamptz unless typed date.`
 
-const SYSTEM = `You are the data assistant inside Operator (a.k.a. WashLyfe), operations software for car wash companies. You answer questions about the user's own business data by querying a read-only Postgres database.
+const SYSTEM = `You are the data assistant inside Operator (a.k.a. WashLyfe), operations software for car wash companies. You answer questions about the user's own business data.
 
-You have one tool, run_sql, which executes a single read-only SELECT and returns rows as JSON. Row-level security automatically restricts every query to the current user's account and the locations they are allowed to see, so:
-- NEVER add account_id filters or ownership checks yourself; just query the tables.
-- If a query returns [] it means there is no data the user can see, not necessarily that none exists.
+You have two tools:
 
-Rules for writing SQL:
-- One statement, SELECT (or WITH ... SELECT) only. No semicolons except an optional trailing one. No writes.
-- Alias every output column to a unique, human-readable name (the result is wrapped, so duplicate column names error).
-- Prefer readable labels: join to locations for site names, build employee names as first_name || ' ' || last_name.
-- Aggregate and limit sensibly. Do not select huge raw tables; summarize.
-- For "this week/month/last month" use the provided current date and Postgres date functions.
-- If a query errors, read the error and try a corrected query (up to a few attempts).
+1. run_sql — executes a single read-only SELECT and returns rows as JSON. Row-level security automatically restricts every query to the current user's account and the locations they can see, so:
+   - NEVER add account_id filters or ownership checks yourself; just query the tables.
+   - If a query returns [] it means there is no data the user can see, not that none exists.
+   Rules for SQL:
+   - One statement, SELECT (or WITH ... SELECT) only. No writes. No semicolons except an optional trailing one.
+   - Alias every output column to a unique, human-readable name (the result is wrapped, so duplicate names error).
+   - Join to locations for site names; build employee names as first_name || ' ' || last_name. Aggregate and limit sensibly.
+   - If a query errors, read the error and try a corrected query.
+
+2. get_site_performance — the LIVE operations feed from the Mighty Wash dashboard. This is the ONLY source for these metrics (they are NOT in the SQL database):
+   - Car counts (cars washed) per day and per site
+   - cars_per_hour (cars per labor hour — "cars per manpower")
+   - labor_pct (labor cost as a percent of sales) and labor hours
+   - conversion_pct (membership conversion) — today and month-to-date
+   - recharge revenue (member recharge dollars) — month-to-date and daily
+   - churn (voluntary_churn_pct, cc_churn_pct) per site
+   Call it with no arguments to get a month-to-date/rolling summary for every site the user can see (window_totals covers roughly the last 30 days). Pass {"site": "<name or number>"} to get that one site's day-by-day detail (cars, hours, cars_per_hour, sales, labor_pct, recharge). Optionally pass {"days": N}.
+
+Choosing a tool:
+- Use get_site_performance for anything about cars washed, car counts, cars per hour/manpower, labor %, membership conversion, recharge revenue, or churn.
+- Use run_sql for everything else (work orders, equipment, inventory, checklists, staff, invoices, audits, violations, tips, bonuses, etc.).
+- Combine both when a question spans them (e.g. cars washed vs. work-order downtime).
 
 Answering:
-- After you have the data, give a concise, direct answer in plain language. Use short markdown tables or bullet lists when it helps.
-- Cite the concrete numbers you found. Never invent data. If the data cannot answer the question, say so plainly and suggest what is available.
-- Keep it business-focused and brief. Do not describe your SQL unless asked.
+- Give a concise, direct answer in plain language. Use short markdown tables or bullet lists when helpful.
+- Cite concrete numbers. Never invent data. If the data cannot answer the question, say so and suggest what is available.
+- Keep it brief and business-focused. Do not describe your SQL or tools unless asked.
 
-Schema:
+Schema for run_sql:
 ${SCHEMA}`
 
-const TOOLS: Anthropic.Tool[] = [
-  {
-    name: 'run_sql',
-    description:
-      'Run a single read-only Postgres SELECT against the user\'s data and return rows as JSON (max 1000 rows). Results are already scoped to the user by row-level security.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'A single SELECT or WITH...SELECT statement.' },
-      },
-      required: ['query'],
+const RUN_SQL_TOOL: Anthropic.Tool = {
+  name: 'run_sql',
+  description:
+    "Run a single read-only Postgres SELECT against the user's data and return rows as JSON (max 1000 rows). Results are already scoped to the user by row-level security.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'A single SELECT or WITH...SELECT statement.' },
+    },
+    required: ['query'],
+  },
+}
+
+const PERF_TOOL: Anthropic.Tool = {
+  name: 'get_site_performance',
+  description:
+    'Get live Mighty Wash site performance metrics (car counts, cars_per_hour, labor_pct, conversion, recharge revenue, churn). No arguments = summary for all visible sites. Pass "site" (name or number) for one site\'s daily detail. Optional "days" (default 30).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      site: { type: 'string', description: 'Optional site name or number to drill into.' },
+      days: { type: 'number', description: 'Optional trailing-day window (1-31, default 30).' },
     },
   },
-]
+}
 
-type Step = { sql: string; rowCount?: number; error?: string }
+type Step = { sql?: string; tool?: string; rowCount?: number; error?: string }
+
+// First run of digits in a site name: "MightyWash 001" -> 1, "Mighty Wash #24" -> 24.
+function siteNum(name: unknown): number | null {
+  const m = String(name ?? '').match(/(\d+)/)
+  return m ? parseInt(m[1], 10) : null
+}
+function findByNum<T>(rec: Record<string, T> | null | undefined, n: number | null): T | undefined {
+  if (!rec || n == null) return undefined
+  for (const [k, v] of Object.entries(rec)) if (siteNum(k) === n) return v
+  return undefined
+}
+function round(x: unknown, d = 0): number | null {
+  const v = typeof x === 'number' ? x : Number(x)
+  return Number.isFinite(v) ? Number(v.toFixed(d)) : null
+}
+
+// deno-lint-ignore no-explicit-any
+function buildPerf(feed: any, allowed: Set<number> | null, siteFilter: string | null, days: number) {
+  const report = feed?.report?.sites ?? {}
+  const msaRows = (feed?.msa?.rows ?? []) as any[] // deno-lint-ignore-line no-explicit-any
+  const rechargeSites = feed?.recharge_revenue?.sites ?? {}
+  const rechargeMtd = feed?.recharge_revenue?.mtd_by_site ?? {}
+  const churnSites = feed?.churn?.sites ?? {}
+
+  // Union of site numbers -> a display name.
+  const byNum = new Map<number, string>()
+  for (const name of Object.keys(report)) {
+    const n = siteNum(name)
+    if (n != null && !byNum.has(n)) byNum.set(n, name)
+  }
+  for (const r of msaRows) {
+    const n = siteNum(r.site)
+    if (n != null && !byNum.has(n)) byNum.set(n, r.site)
+  }
+
+  const filterNum = siteFilter != null && /\d/.test(siteFilter) ? siteNum(siteFilter) : null
+  const filterText = siteFilter != null && filterNum == null ? siteFilter.toLowerCase() : null
+
+  const drill = siteFilter != null
+  const out: unknown[] = []
+  for (const [n, name] of byNum) {
+    if (allowed && !allowed.has(n)) continue
+    if (filterNum != null && n !== filterNum) continue
+    if (filterText != null && !String(name).toLowerCase().includes(filterText)) continue
+
+    const seriesAll = (findByNum<any[]>(report, n) ?? []) as any[] // deno-lint-ignore-line no-explicit-any
+    const series = seriesAll.slice(-days)
+    const msa = msaRows.find((r) => siteNum(r.site) === n)
+    const churn = findByNum<any>(churnSites, n) // deno-lint-ignore-line no-explicit-any
+    const totals = series.reduce(
+      (a: any, d: any) => ({ // deno-lint-ignore-line no-explicit-any
+        cars: a.cars + (Number(d.cars) || 0),
+        sales: a.sales + (Number(d.sales) || 0),
+        hours: a.hours + (Number(d.hours) || 0),
+        labor_cost: a.labor_cost + (Number(d.labor_cost) || 0),
+      }),
+      { cars: 0, sales: 0, hours: 0, labor_cost: 0 },
+    )
+    const latest = series.length ? series[series.length - 1] : null
+
+    const entry: Record<string, unknown> = {
+      site: name,
+      number: n,
+      window_days: series.length,
+      latest: latest && {
+        date: latest.date,
+        cars: latest.cars,
+        sales: round(latest.sales),
+        cars_per_hour: latest.cars_per_hour,
+        labor_pct: latest.labor_pct,
+        hours: latest.hours,
+      },
+      window_totals: {
+        cars: totals.cars,
+        sales: round(totals.sales),
+        hours: round(totals.hours, 1),
+        cars_per_hour: totals.hours ? round(totals.cars / totals.hours, 2) : null,
+        labor_pct: totals.sales ? round((100 * totals.labor_cost) / totals.sales, 1) : null,
+      },
+      mtd: msa && {
+        conversion_pct: msa.mtd_conversion_pct,
+        eligible_washes: msa.mtd_eligible_washes,
+        sales: round(msa.mtd_sales),
+        days_worked: msa.mtd_days_worked ?? null,
+      },
+      today: msa && {
+        conversion_pct: msa.today_conversion_pct,
+        eligible_washes: msa.today_eligible_washes,
+        sales: round(msa.today_sales),
+        hours_worked: msa.today_hours_worked ?? null,
+      },
+      recharge_mtd: round(findByNum<number>(rechargeMtd, n)),
+      churn: churn && {
+        voluntary_churn_pct: churn.voluntary_churn_pct,
+        cc_churn_pct: churn.cc_churn_pct,
+      },
+    }
+    if (drill) {
+      entry.days = series.map((d: any) => ({ // deno-lint-ignore-line no-explicit-any
+        date: d.date,
+        cars: d.cars,
+        hours: d.hours,
+        cars_per_hour: d.cars_per_hour,
+        sales: round(d.sales),
+        labor_pct: d.labor_pct,
+      }))
+      const rc = (findByNum<any[]>(rechargeSites, n) ?? []) as any[] // deno-lint-ignore-line no-explicit-any
+      entry.recharge_days = rc.slice(-days).map((d: any) => ({ date: d.date, amount: round(d.amount) })) // deno-lint-ignore-line no-explicit-any
+    }
+    out.push(entry)
+  }
+  return out
+}
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
@@ -130,15 +271,47 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get('SUPABASE_URL')!
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const authHeader = req.headers.get('Authorization') ?? ''
 
-  // The user client carries the caller's JWT so the RPC runs under their RLS.
+  // The user client carries the caller's JWT so the RPC (and site-performance
+  // proxy) run under their identity and RLS.
   const userClient = createClient(url, anonKey, {
     global: { headers: { Authorization: authHeader } },
   })
   const { data: userData } = await userClient.auth.getUser()
   const uid = userData.user?.id
   if (!uid) return json({ error: 'unauthorized' }, 401, origin)
+
+  const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
+  const { data: profile } = await svc
+    .from('users')
+    .select('account_id, role, location_ids')
+    .eq('id', uid)
+    .single()
+  if (!profile) return json({ error: 'no_profile' }, 400, origin)
+
+  // Site performance is a Mighty-Wash-only, owner/manager feature. Offer that
+  // tool only when it applies, and scope a manager's view to their own sites.
+  const { data: acct } = await svc
+    .from('accounts')
+    .select('site_performance_enabled')
+    .eq('id', profile.account_id)
+    .single()
+  const isManagerPlus = profile.role === 'owner' || profile.role === 'manager'
+  const perfAvailable = !!acct?.site_performance_enabled && isManagerPlus
+
+  let allowedNumbers: Set<number> | null = null // null = all sites (owner)
+  if (perfAvailable && profile.role === 'manager') {
+    const ids = (profile.location_ids ?? []) as string[]
+    const { data: locs } = await svc
+      .from('locations')
+      .select('name')
+      .in('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000'])
+    allowedNumbers = new Set(
+      (locs ?? []).map((l) => siteNum(l.name)).filter((n): n is number => n != null),
+    )
+  }
 
   let body: { question?: string; history?: { role: 'user' | 'assistant'; content: string }[] } = {}
   try {
@@ -151,9 +324,8 @@ Deno.serve(async (req) => {
 
   const today = new Date().toISOString().slice(0, 10)
   const anthropic = new Anthropic({ apiKey })
+  const tools = perfAvailable ? [RUN_SQL_TOOL, PERF_TOOL] : [RUN_SQL_TOOL]
 
-  // Rebuild the conversation from prior plain-text turns for context, then add
-  // the new question. Tool exchanges live only within this request.
   const messages: Anthropic.MessageParam[] = []
   for (const h of (body.history ?? []).slice(-8)) {
     if (h?.content && (h.role === 'user' || h.role === 'assistant')) {
@@ -163,6 +335,12 @@ Deno.serve(async (req) => {
   messages.push({ role: 'user', content: question })
 
   const steps: Step[] = []
+  // deno-lint-ignore no-explicit-any
+  let feedCache: any = undefined // fetch the site-performance feed at most once per request
+
+  const perfNote = perfAvailable
+    ? 'The get_site_performance tool IS available for this user.'
+    : 'The get_site_performance tool is NOT available (site performance is not enabled for this account, or the user is not a manager). If asked about car counts, recharge, conversion, or churn, tell them live site-performance data is not enabled for their account.'
 
   try {
     for (let i = 0; i < MAX_STEPS; i++) {
@@ -171,9 +349,9 @@ Deno.serve(async (req) => {
         max_tokens: 1500,
         system: [
           { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
-          { type: 'text', text: `Today is ${today}. Answer for this user's data only.` },
+          { type: 'text', text: `Today is ${today}. Answer for this user's data only. ${perfNote}` },
         ],
-        tools: TOOLS,
+        tools,
         messages,
       })
 
@@ -186,27 +364,70 @@ Deno.serve(async (req) => {
         return json({ answer: answer || 'I could not find an answer.', steps }, 200, origin)
       }
 
-      // Execute each requested query and feed results back to the model.
       messages.push({ role: 'assistant', content: resp.content })
       const toolResults: Anthropic.ToolResultBlockParam[] = []
       for (const block of resp.content) {
-        if (block.type !== 'tool_use' || block.name !== 'run_sql') continue
-        const query = String((block.input as { query?: string })?.query ?? '')
-        const step: Step = { sql: query }
-        let content: string
-        const { data, error } = await userClient.rpc('operator_ask_sql', { query })
-        if (error) {
-          step.error = error.message
-          content = `ERROR: ${error.message}`
-        } else {
-          const rows = (data ?? []) as unknown[]
-          step.rowCount = rows.length
-          let text = JSON.stringify(rows)
-          if (text.length > 16000) text = text.slice(0, 16000) + '…(truncated)'
-          content = text
+        if (block.type !== 'tool_use') continue
+
+        if (block.name === 'run_sql') {
+          const query = String((block.input as { query?: string })?.query ?? '')
+          const step: Step = { tool: 'run_sql', sql: query }
+          let content: string
+          const { data, error } = await userClient.rpc('operator_ask_sql', { query })
+          if (error) {
+            step.error = error.message
+            content = `ERROR: ${error.message}`
+          } else {
+            const rows = (data ?? []) as unknown[]
+            step.rowCount = rows.length
+            let text = JSON.stringify(rows)
+            if (text.length > 16000) text = text.slice(0, 16000) + '…(truncated)'
+            content = text
+          }
+          steps.push(step)
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
+          continue
         }
-        steps.push(step)
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
+
+        if (block.name === 'get_site_performance' && perfAvailable) {
+          const input = (block.input ?? {}) as { site?: string; days?: number }
+          const days = Math.max(1, Math.min(31, Math.round(input.days ?? 30)))
+          const step: Step = { tool: 'get_site_performance' }
+          let content: string
+          try {
+            if (feedCache === undefined) {
+              const { data, error } = await userClient.functions.invoke('site-performance', {
+                body: {},
+              })
+              if (error || (data && (data as { error?: string }).error)) {
+                throw new Error(
+                  (data as { message?: string })?.message ?? 'Could not load site performance.',
+                )
+              }
+              feedCache = data
+            }
+            const site = input.site != null ? String(input.site) : null
+            const summary = buildPerf(feedCache, allowedNumbers, site, days)
+            step.rowCount = summary.length
+            let text = JSON.stringify({ as_of: feedCache?.fetched_at, sites: summary })
+            if (text.length > 18000) text = text.slice(0, 18000) + '…(truncated)'
+            content = text
+          } catch (e) {
+            step.error = e instanceof Error ? e.message : String(e)
+            content = `ERROR: ${step.error}`
+          }
+          steps.push(step)
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
+          continue
+        }
+
+        // Unknown / unavailable tool.
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: 'ERROR: that tool is not available.',
+          is_error: true,
+        })
       }
       messages.push({ role: 'user', content: toolResults })
     }
