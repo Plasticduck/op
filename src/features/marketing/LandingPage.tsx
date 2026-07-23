@@ -16,6 +16,15 @@ export default function LandingPage() {
 
       {/* Hero (centered) */}
       <section className="mx-auto w-full max-w-3xl px-4 pt-16 pb-10 text-center sm:px-6 lg:pt-24">
+        {/* Icon-only mark, cropped from the lockup so it carries no white
+            plate: the app icons in public/ are opaque and would show a square
+            against the dark theme. Decorative, since the nav names the brand. */}
+        <img
+          src="/operator-mark.png"
+          alt=""
+          aria-hidden="true"
+          className="mx-auto mb-7 h-14 w-auto sm:h-16"
+        />
         <h1 className="text-4xl font-semibold leading-tight tracking-tight text-ink sm:text-5xl">
           Everything your car wash runs on, in one place.
         </h1>
