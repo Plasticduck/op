@@ -179,6 +179,18 @@ const QUERY_DASHBOARD_TOOL: Anthropic.Tool = {
 
 type Step = { sql?: string; tool?: string; rowCount?: number; error?: string }
 
+// Progress events pushed to the client while an answer is still forming. The
+// non-streaming path passes a no-op, so both modes run the same loop.
+type Emit = (ev: Record<string, unknown>) => void
+const NO_EMIT: Emit = () => {}
+
+// What the UI says it is doing while each tool runs.
+const TOOL_DETAIL: Record<string, string> = {
+  run_sql: 'Running a query on your data',
+  get_site_performance: 'Pulling live site performance',
+  query_dashboard: 'Comparing every site on the dashboard',
+}
+
 // First run of digits in a site name: "MightyWash 001" -> 1, "Mighty Wash #24" -> 24.
 function siteNum(name: unknown): number | null {
   const m = String(name ?? '').match(/(\d+)/)
@@ -345,7 +357,11 @@ Deno.serve(async (req) => {
     )
   }
 
-  let body: { question?: string; history?: { role: 'user' | 'assistant'; content: string }[] } = {}
+  let body: {
+    question?: string
+    history?: { role: 'user' | 'assistant'; content: string }[]
+    stream?: boolean
+  } = {}
   try {
     body = await req.json()
   } catch {
@@ -376,9 +392,12 @@ Deno.serve(async (req) => {
     ? 'The get_site_performance and query_dashboard tools ARE available for this user.'
     : 'The get_site_performance tool is NOT available (site performance is not enabled for this account, or the user is not a manager). If asked about car counts, recharge, conversion, or churn, tell them live site-performance data is not enabled for their account.'
 
-  try {
+  // The tool-use loop, instrumented so a streaming caller can narrate each
+  // phase and receive the answer token by token as it is written.
+  async function run(emit: Emit): Promise<{ answer: string; steps: Step[] }> {
     for (let i = 0; i < MAX_STEPS; i++) {
-      const resp = await anthropic.messages.create({
+      emit({ t: 'phase', phase: 'thinking' })
+      const turn = anthropic.messages.stream({
         model: MODEL,
         max_tokens: 1500,
         system: [
@@ -388,6 +407,12 @@ Deno.serve(async (req) => {
         tools,
         messages,
       })
+      for await (const ev of turn) {
+        if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
+          emit({ t: 'delta', text: ev.delta.text })
+        }
+      }
+      const resp = await turn.finalMessage()
 
       if (resp.stop_reason !== 'tool_use') {
         const answer = resp.content
@@ -395,13 +420,23 @@ Deno.serve(async (req) => {
           .map((b) => b.text)
           .join('\n')
           .trim()
-        return json({ answer: answer || 'I could not find an answer.', steps }, 200, origin)
+        return { answer: answer || 'I could not find an answer.', steps }
       }
+
+      // Whatever it said before reaching for a tool was narration, not the
+      // answer. Tell the client to move it out of the answer bubble.
+      emit({ t: 'preamble' })
 
       messages.push({ role: 'assistant', content: resp.content })
       const toolResults: Anthropic.ToolResultBlockParam[] = []
       for (const block of resp.content) {
         if (block.type !== 'tool_use') continue
+        emit({
+          t: 'phase',
+          phase: 'tool',
+          tool: block.name,
+          detail: TOOL_DETAIL[block.name] ?? 'Working through your data',
+        })
 
         if (block.name === 'run_sql') {
           const query = String((block.input as { query?: string })?.query ?? '')
@@ -419,6 +454,7 @@ Deno.serve(async (req) => {
             content = text
           }
           steps.push(step)
+          emit({ t: 'step', step })
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
           continue
         }
@@ -451,6 +487,7 @@ Deno.serve(async (req) => {
             content = `ERROR: ${step.error}`
           }
           steps.push(step)
+          emit({ t: 'step', step })
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
           continue
         }
@@ -481,6 +518,7 @@ Deno.serve(async (req) => {
             content = `ERROR: ${step.error}`
           }
           steps.push(step)
+          emit({ t: 'step', step })
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
           continue
         }
@@ -496,13 +534,68 @@ Deno.serve(async (req) => {
       messages.push({ role: 'user', content: toolResults })
     }
 
-    return json(
-      { answer: 'That took too many steps to work out. Try narrowing the question.', steps },
-      200,
-      origin,
-    )
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e)
-    return json({ error: 'internal', message, steps }, 500, origin)
+    return {
+      answer: 'That took too many steps to work out. Try narrowing the question.',
+      steps,
+    }
   }
+
+  // Single-shot JSON, for callers that predate the streaming client.
+  if (body.stream !== true) {
+    try {
+      const { answer } = await run(NO_EMIT)
+      return json({ answer, steps }, 200, origin)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      return json({ error: 'internal', message, steps }, 500, origin)
+    }
+  }
+
+  // Server-sent events. Everything that can fail before the first token
+  // (missing key, bad auth, no profile) has already returned above, so once we
+  // hand back a 200 the only way to report a failure is an `error` event.
+  const encoder = new TextEncoder()
+  const sse = new ReadableStream({
+    async start(controller) {
+      let open = true
+      const send: Emit = (ev) => {
+        if (!open) return
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`))
+        } catch {
+          open = false // client hung up mid-answer
+        }
+      }
+      try {
+        const { answer } = await run(send)
+        send({ t: 'done', answer, steps })
+      } catch (e) {
+        send({
+          t: 'error',
+          error: 'internal',
+          message: e instanceof Error ? e.message : String(e),
+          steps,
+        })
+      } finally {
+        open = false
+        try {
+          controller.close()
+        } catch {
+          // already closed by the client disconnecting
+        }
+      }
+    },
+  })
+
+  return new Response(sse, {
+    status: 200,
+    headers: {
+      ...corsHeaders(origin),
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      // Tell any proxy in front of us not to buffer, or the whole point of
+      // streaming is lost.
+      'X-Accel-Buffering': 'no',
+    },
+  })
 })

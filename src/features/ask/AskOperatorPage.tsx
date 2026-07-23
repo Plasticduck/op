@@ -1,13 +1,16 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ArrowUp, Database, Sparkles, TriangleAlert } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { askOperator, type AskResult, type AskStep, type AskTurn } from '@/lib/queries/askOperator'
+import { askOperator, type AskStep, type AskTurn } from '@/lib/queries/askOperator'
+import { washWord, type WashPhase } from '@/features/ask/washWords'
 import { cn } from '@/lib/utils'
 
 type Msg = {
   role: 'user' | 'assistant'
   content: string
   steps?: AskStep[]
+  // Anything the assistant said on its way to an answer, before it ran a tool.
+  notes?: string[]
   error?: boolean
 }
 
@@ -23,11 +26,24 @@ export default function AskOperatorPage() {
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  // Live state for the answer currently streaming in.
+  const [draft, setDraft] = useState('')
+  const [notes, setNotes] = useState<string[]>([])
+  const [phase, setPhase] = useState<WashPhase>('thinking')
+  const [detail, setDetail] = useState('')
+  const [tick, setTick] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, busy])
+  }, [messages, draft, busy])
+
+  // Rotate the car wash verb while it works.
+  useEffect(() => {
+    if (!busy) return
+    const t = setInterval(() => setTick((n) => n + 1), 1400)
+    return () => clearInterval(t)
+  }, [busy])
 
   const send = async (text: string) => {
     const question = text.trim()
@@ -38,33 +54,79 @@ export default function AskOperatorPage() {
       .map((m) => ({ role: m.role, content: m.content }))
     setMessages((m) => [...m, { role: 'user', content: question }])
     setBusy(true)
-    const { data, error } = await askOperator.ask(question, history)
-    setBusy(false)
+    setDraft('')
+    setNotes([])
+    setPhase('thinking')
+    setDetail('')
 
-    if (error) {
-      const ctx = (error as unknown as { context?: Response }).context
-      let msg = 'Something went wrong answering that.'
-      if (ctx) {
-        try {
-          const body = await ctx.json()
-          if (body?.error === 'no_key') msg = 'The assistant needs an Anthropic API key configured.'
-          else if (body?.message) msg = body.message
-        } catch {
-          // keep default
-        }
-      }
-      setMessages((m) => [...m, { role: 'assistant', content: msg, error: true }])
-      return
+    // Events land faster than React state settles, so accumulate in plain
+    // locals and mirror them into state for rendering.
+    let answer = ''
+    const collectedNotes: string[] = []
+    let collectedSteps: AskStep[] = []
+    let settled = false
+
+    const finish = (content: string, error = false) => {
+      settled = true
+      setMessages((m) => [
+        ...m,
+        {
+          role: 'assistant',
+          content,
+          steps: collectedSteps.length ? collectedSteps : undefined,
+          notes: !error && collectedNotes.length ? collectedNotes : undefined,
+          error,
+        },
+      ])
     }
-    const r = data as AskResult | null
-    setMessages((m) => [
-      ...m,
-      {
-        role: 'assistant',
-        content: r?.answer ?? 'I could not find an answer.',
-        steps: r?.steps,
-      },
-    ])
+
+    try {
+      await askOperator.askStream(question, history, (ev) => {
+        switch (ev.t) {
+          case 'phase':
+            setPhase(ev.phase === 'tool' ? 'tool' : 'thinking')
+            setDetail(ev.detail ?? '')
+            break
+          case 'delta':
+            answer += ev.text
+            setDraft(answer)
+            setPhase('writing')
+            setDetail('Writing the answer')
+            break
+          case 'preamble': {
+            // That text was narration, not the answer. Keep it as a note.
+            const note = answer.trim()
+            if (note) {
+              collectedNotes.push(note)
+              setNotes([...collectedNotes])
+            }
+            answer = ''
+            setDraft('')
+            break
+          }
+          case 'step':
+            collectedSteps.push(ev.step)
+            break
+          case 'done':
+            if (ev.steps) collectedSteps = ev.steps
+            finish((ev.answer ?? answer).trim() || 'I could not find an answer.')
+            break
+          case 'error':
+            finish(ev.message ?? 'Something went wrong answering that.', true)
+            break
+        }
+      })
+      // Stream ended without a terminal event (server restart, dropped
+      // connection). Keep whatever text arrived rather than losing it.
+      if (!settled) finish(answer.trim() || 'The answer was cut off. Try asking again.')
+    } catch (e) {
+      finish(e instanceof Error ? e.message : 'Something went wrong answering that.', true)
+    } finally {
+      setBusy(false)
+      setDraft('')
+      setNotes([])
+      setDetail('')
+    }
   }
 
   const onSubmit = (e: React.FormEvent) => {
@@ -106,10 +168,20 @@ export default function AskOperatorPage() {
           messages.map((m, i) => <MessageBubble key={i} msg={m} />)
         )}
 
+        {busy && (notes.length > 0 || draft) && (
+          <div className="flex justify-start">
+            <div className="max-w-[92%] rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-3 text-sm text-ink">
+              <Notes notes={notes} />
+              {draft && <AnswerText text={draft} />}
+            </div>
+          </div>
+        )}
+
         {busy && (
-          <div className="flex items-center gap-2 text-sm text-ink-muted">
-            <Sparkles className="size-4 animate-pulse text-accent" />
-            Looking through your data…
+          <div className="flex items-center gap-2 text-sm">
+            <Sparkles className="size-4 shrink-0 animate-pulse text-accent" />
+            <span className="font-medium text-ink">{washWord(phase, tick)}</span>
+            {detail && <span className="truncate text-ink-muted">· {detail}</span>}
           </div>
         )}
       </div>
@@ -172,10 +244,24 @@ function MessageBubble({ msg }: { msg: Msg }) {
             <TriangleAlert className="size-4" /> Error
           </div>
         )}
+        {msg.notes && <Notes notes={msg.notes} />}
         <AnswerText text={msg.content} />
         {msg.steps && msg.steps.length > 0 && <QueryDetails steps={msg.steps} />}
       </div>
     </div>
+  )
+}
+
+// What the assistant said on the way to the answer, kept above it so the work
+// it did is visible without cluttering the answer itself.
+function Notes({ notes }: { notes: string[] }) {
+  if (notes.length === 0) return null
+  return (
+    <ul className="mb-2 space-y-1 border-l-2 border-border pl-3 text-xs text-ink-subtle">
+      {notes.map((n, i) => (
+        <li key={i}>{n}</li>
+      ))}
+    </ul>
   )
 }
 
