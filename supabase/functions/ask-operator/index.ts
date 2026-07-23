@@ -82,6 +82,7 @@ uniform_requests(id, employee_id, item, size, quantity, status, requested_at)
 social_posts(id, account_id, post_date, platform, status, title, ai_generated)
 calendar_events(id, location_id, title, start_at, end_at, all_day)
 documents(id, location_id, name, category, archived, created_at)
+weather_days(id, account_id, location_id, date, weather_code, conditions, temp_max, temp_min, precip_in): archived daily weather per site. conditions is a label (Clear, Partly cloudy, Overcast, Fog, Drizzle, Rain, Snow, Showers, Snow showers, Storm). temp in fahrenheit, precip_in in inches. Use this to explain a day's results (rain/snow suppress car counts).
 notes: joins are by the *_id columns. Use locations.name to label sites; join via location_id. Employee names are first_name + last_name. work_orders.status values include 'open','in_progress','on_hold','done'. Dates are timestamptz unless typed date.`
 
 const SYSTEM = `You are the data assistant inside Operator (a.k.a. WashLyfe), operations software for car wash companies. You answer questions about the user's own business data.
@@ -108,8 +109,8 @@ You have two tools:
 
 Choosing a tool:
 - Use get_site_performance for anything about cars washed, car counts, cars per hour/manpower, labor %, membership conversion, recharge revenue, or churn.
-- Use run_sql for everything else (work orders, equipment, inventory, checklists, staff, invoices, audits, violations, tips, bonuses, etc.).
-- Combine both when a question spans them (e.g. cars washed vs. work-order downtime).
+- Use run_sql for everything else (work orders, equipment, inventory, checklists, staff, invoices, audits, violations, tips, bonuses, weather, etc.).
+- Combine both when a question spans them. Example: to explain why a day's car count was low, get that site's daily cars from get_site_performance AND query weather_days for that location and date, then relate them (e.g. heavy rain or snow that day). Match a site to its location_id via the site name/number in locations.name.
 
 Answering:
 - Give a concise, direct answer in plain language. Use short markdown tables or bullet lists when helpful.
