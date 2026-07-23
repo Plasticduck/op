@@ -46,7 +46,7 @@ function Inner({ locationId }: { locationId: string }) {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Performance reviews"
+        title="Performance Reviews"
         subtitle="Schedule and record employee reviews."
         actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> New review</Button>}
       />

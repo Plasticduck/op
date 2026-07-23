@@ -285,7 +285,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         to: '/app/reviews',
-        label: 'Reviews',
+        label: 'Performance Reviews',
         icon: Award,
         roles: ['owner', 'manager'],
       },
