@@ -21,6 +21,7 @@ import {
 } from 'date-fns'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { Field } from '@/components/forms/Field'
 import { cn } from '@/lib/utils'
@@ -53,6 +54,8 @@ export default function SalesReportsPage() {
   const [uploadingDate, setUploadingDate] = useState<string | null>(null)
   const [uploadingMonth, setUploadingMonth] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmTarget, setConfirmTarget] = useState<SalesReportFile | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const uploadTargetRef = useRef<{ kind: 'day' | 'month'; key: string } | null>(null)
 
@@ -168,8 +171,12 @@ export default function SalesReportsPage() {
     URL.revokeObjectURL(url)
   }
 
-  const removeReport = async (id: string) => {
-    const { error: err } = await salesReports.remove(id)
+  const confirmRemove = async () => {
+    if (!confirmTarget) return
+    setDeleting(true)
+    const { error: err } = await salesReports.remove(confirmTarget.id)
+    setDeleting(false)
+    setConfirmTarget(null)
     if (err) return setError(err.message)
     load()
   }
@@ -255,7 +262,7 @@ export default function SalesReportsPage() {
                 {isOwner && (
                   <button
                     type="button"
-                    onClick={() => void removeReport(r.id)}
+                    onClick={() => setConfirmTarget(r)}
                     title="Remove"
                     className="rounded p-0.5 text-accent hover:text-danger"
                   >
@@ -338,7 +345,7 @@ export default function SalesReportsPage() {
                         {isOwner && (
                           <button
                             type="button"
-                            onClick={() => void removeReport(r.id)}
+                            onClick={() => setConfirmTarget(r)}
                             title="Remove"
                             className="hidden rounded p-0.5 text-accent hover:text-danger group-hover:block"
                           >
@@ -354,6 +361,32 @@ export default function SalesReportsPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        open={confirmTarget != null}
+        onClose={() => (deleting ? undefined : setConfirmTarget(null))}
+        title="Delete sales report?"
+        size="sm"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-ink-muted">
+            This permanently deletes{' '}
+            <span className="font-medium text-ink">{confirmTarget?.file_name ?? 'this report'}</span>
+            {confirmTarget?.label ? (
+              <> for <span className="font-medium text-ink">{confirmTarget.label}</span></>
+            ) : null}
+            . This cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setConfirmTarget(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => void confirmRemove()} disabled={deleting}>
+              {deleting && <Loader2 className="size-4 animate-spin" />} Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
