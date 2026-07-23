@@ -1,3 +1,4 @@
+import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
 // Two brand lockups:
@@ -9,7 +10,10 @@ import { cn } from '@/lib/utils'
 //     pre-date the rebrand.
 //
 // Both ship as a pair of pre-rendered PNGs: a dark-on-light variant and a
-// light-on-dark variant. `invert` toggles between them.
+// light-on-dark variant. The light-on-dark (white wordmark) one is used
+// whenever the surface underneath is dark: either because the caller passed
+// `invert` (the sidebar rail and kiosk are dark in both themes) or because the
+// app is in dark mode, where the dark-ink wordmark would be unreadable.
 
 const WIDTHS: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'w-20',
@@ -43,11 +47,13 @@ export function Logo({
   size?: 'sm' | 'md' | 'lg'
   brand?: Brand
 }) {
+  const { resolved } = useTheme()
   const src = SRC[brand]
+  const onDark = invert || resolved === 'dark'
   return (
     <span className={cn('inline-block max-w-full', WIDTHS[size], className)}>
       <img
-        src={invert ? src.dark : src.light}
+        src={onDark ? src.dark : src.light}
         alt={src.alt}
         className="block h-auto w-full object-contain"
       />
