@@ -122,6 +122,36 @@ export const timeEntries = {
   },
 }
 
+// Biometric (facial-recognition) consent — required before the kiosk may capture
+// an employee's face. Recorded and revoked through SECURITY DEFINER RPCs.
+export type ConsentStatusRow = {
+  employee_id: string
+  name: string
+  consented: boolean
+  consented_at: string | null
+  revoked_at: string | null
+}
+export const biometricConsent = {
+  recordKiosk: (
+    locationId: string,
+    pin: string,
+    fullName: string,
+    policyVersion: string,
+    userAgent: string,
+  ) =>
+    supabase.rpc('kiosk_record_biometric_consent', {
+      p_location_id: locationId,
+      p_pin: pin,
+      p_full_name: fullName,
+      p_policy_version: policyVersion,
+      p_user_agent: userAgent,
+    }),
+  status: (locationId: string) =>
+    supabase.rpc('biometric_consent_status', { p_location_id: locationId }),
+  revoke: (employeeId: string) =>
+    supabase.rpc('revoke_biometric_consent', { p_employee_id: employeeId }),
+}
+
 export const reviews = {
   list: (employeeIds: string[]) =>
     supabase.from('reviews').select('*').in('employee_id', employeeIds).order('created_at', { ascending: false }),

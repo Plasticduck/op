@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Clock, MapPin, Monitor, ShieldAlert, ShieldCheck, X } from 'lucide-react'
+import { Clock, MapPin, Monitor, ScanFace, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import { addDays } from 'date-fns'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { dateTime, durationHm } from '@/lib/format'
-import { timeEntries } from '@/lib/queries/people'
+import { timeEntries, biometricConsent, type ConsentStatusRow } from '@/lib/queries/people'
 
 type Entry = {
   id: string
@@ -84,6 +84,8 @@ function Inner({ locationId }: { locationId: string }) {
           </ul>
         )}
       </section>
+
+      <BiometricConsentSection locationId={locationId} />
 
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
@@ -161,6 +163,80 @@ function Inner({ locationId }: { locationId: string }) {
         </Modal>
       )}
     </div>
+  )
+}
+
+// Biometric (facial-recognition) consent status for active employees, with a
+// manager control to revoke. Revoking turns face verification off for that
+// employee until they consent again at the kiosk.
+function BiometricConsentSection({ locationId }: { locationId: string }) {
+  const [rows, setRows] = useState<ConsentStatusRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await biometricConsent.status(locationId)
+    setRows((data as ConsentStatusRow[] | null) ?? [])
+    setLoading(false)
+  }, [locationId])
+
+  useEffect(() => { void load() }, [load])
+
+  const revoke = async (employeeId: string) => {
+    setBusyId(employeeId)
+    await biometricConsent.revoke(employeeId)
+    await load()
+    setBusyId(null)
+  }
+
+  return (
+    <section className="rounded-md border border-border bg-card p-4">
+      <div className="mb-1 flex items-center gap-2">
+        <ScanFace className="size-4 text-ink-muted" />
+        <h2 className="text-sm font-semibold text-ink">Biometric consent (facial recognition)</h2>
+      </div>
+      <p className="mb-3 text-xs text-ink-muted">
+        Employees must consent before the time clock captures their face. Consent is collected at
+        the kiosk on their first face-verified punch. Revoking turns off face verification for that
+        person until they consent again.
+      </p>
+      {loading ? (
+        <p className="text-sm text-ink-muted">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-ink-muted">No active employees at this site.</p>
+      ) : (
+        <ul className="divide-y divide-border text-sm">
+          {rows.map((r) => (
+            <li key={r.employee_id} className="flex items-center justify-between gap-3 py-2">
+              <span className="text-ink">{r.name}</span>
+              <div className="flex items-center gap-3">
+                {r.consented ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-ok">
+                    <ShieldCheck className="size-3.5" />
+                    Consented{r.consented_at ? ` · ${dateTime(r.consented_at)}` : ''}
+                  </span>
+                ) : r.revoked_at ? (
+                  <Badge tone="neutral">revoked</Badge>
+                ) : (
+                  <span className="text-xs text-ink-subtle">Not consented</span>
+                )}
+                {r.consented && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void revoke(r.employee_id)}
+                    disabled={busyId === r.employee_id}
+                  >
+                    Revoke
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 

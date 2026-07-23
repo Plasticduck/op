@@ -269,6 +269,83 @@ export type Database = {
           },
         ]
       }
+      biometric_consents: {
+        Row: {
+          account_id: string
+          consented_at: string
+          created_at: string
+          employee_id: string
+          full_name: string | null
+          id: string
+          location_id: string | null
+          method: string
+          policy_version: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          updated_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          account_id: string
+          consented_at?: string
+          created_at?: string
+          employee_id: string
+          full_name?: string | null
+          id?: string
+          location_id?: string | null
+          method?: string
+          policy_version?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          account_id?: string
+          consented_at?: string
+          created_at?: string
+          employee_id?: string
+          full_name?: string | null
+          id?: string
+          location_id?: string | null
+          method?: string
+          policy_version?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "biometric_consents_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_consents_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_consents_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biometric_consents_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       breaks: {
         Row: {
           created_at: string
@@ -4003,6 +4080,66 @@ export type Database = {
           },
         ]
       }
+      weather_days: {
+        Row: {
+          account_id: string
+          conditions: string | null
+          created_at: string
+          date: string
+          id: string
+          location_id: string
+          precip_in: number | null
+          source: string
+          temp_max: number | null
+          temp_min: number | null
+          updated_at: string
+          weather_code: number | null
+        }
+        Insert: {
+          account_id: string
+          conditions?: string | null
+          created_at?: string
+          date: string
+          id?: string
+          location_id: string
+          precip_in?: number | null
+          source?: string
+          temp_max?: number | null
+          temp_min?: number | null
+          updated_at?: string
+          weather_code?: number | null
+        }
+        Update: {
+          account_id?: string
+          conditions?: string | null
+          created_at?: string
+          date?: string
+          id?: string
+          location_id?: string
+          precip_in?: number | null
+          source?: string
+          temp_max?: number | null
+          temp_min?: number | null
+          updated_at?: string
+          weather_code?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_days_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_days_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_order_assignees: {
         Row: {
           assigned_at: string
@@ -4584,6 +4721,16 @@ export type Database = {
       auth_is_manager_plus: { Args: never; Returns: boolean }
       auth_location_ids: { Args: never; Returns: string[] }
       auth_role: { Args: never; Returns: string }
+      biometric_consent_status: {
+        Args: { p_location_id: string }
+        Returns: {
+          consented: boolean
+          consented_at: string
+          employee_id: string
+          name: string
+          revoked_at: string
+        }[]
+      }
       currently_working: { Args: { p_location_id: string }; Returns: Json }
       employee_has_pin: { Args: { p_employee_id: string }; Returns: boolean }
       ensure_checklist_instance: {
@@ -4618,13 +4765,28 @@ export type Database = {
         }
         Returns: Json
       }
+      kiosk_record_biometric_consent: {
+        Args: {
+          p_full_name: string
+          p_location_id: string
+          p_pin: string
+          p_policy_version: string
+          p_user_agent?: string
+        }
+        Returns: Json
+      }
       notify_location_managers: {
         Args: { p_kind: string; p_location_id: string; p_payload: Json }
         Returns: undefined
       }
+      operator_ask_sql: { Args: { query: string }; Returns: Json }
       resolve_kiosk_pin: {
         Args: { p_location_id: string; p_pin: string }
         Returns: Json
+      }
+      revoke_biometric_consent: {
+        Args: { p_employee_id: string }
+        Returns: undefined
       }
       set_employee_pin: {
         Args: { p_employee_id: string; p_pin: string }

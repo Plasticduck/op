@@ -16,7 +16,8 @@ import { LocationGate } from '@/components/layout/LocationGate'
 import { Logo } from '@/components/ui/Logo'
 import { Button } from '@/components/ui/Button'
 import { useLocations } from '@/lib/locations'
-import { timeEntries } from '@/lib/queries/people'
+import { timeEntries, biometricConsent } from '@/lib/queries/people'
+import { BIOMETRIC_CONSENT_VERSION, BIOMETRIC_CONSENT_POINTS } from '@/lib/biometricConsent'
 import {
   captureFrame,
   checkLocationFence,
@@ -32,6 +33,7 @@ type Resolved = {
   account_id: string
   name: string
   next_action: 'in' | 'out'
+  has_biometric_consent?: boolean
 }
 
 type FinalResult = { action: 'in' | 'out'; name: string }
@@ -156,22 +158,34 @@ function Inner({ locationId }: { locationId: string }) {
         </div>
       </div>
 
-      {resolved && (
-        <VerifyAndPunch
-          resolved={resolved}
-          locationId={locationId}
-          fenceCenter={fenceCenter}
-          fenceRadius={fenceRadius}
-          requireGeo={requireGeo}
-          requirePhoto={requirePhoto}
-          onCancel={() => setResolved(null)}
-          onPunched={(r) => {
-            setResolved(null)
-            setResult(r)
-            setTimeout(() => setResult(null), 3500)
-          }}
-        />
-      )}
+      {resolved &&
+        (requirePhoto && !resolved.has_biometric_consent ? (
+          // Face verification is on and this employee has not consented yet.
+          // Capture written consent before the camera ever opens.
+          <BiometricConsent
+            resolved={resolved}
+            locationId={locationId}
+            onAgree={() =>
+              setResolved((r) => (r ? { ...r, has_biometric_consent: true } : r))
+            }
+            onCancel={() => setResolved(null)}
+          />
+        ) : (
+          <VerifyAndPunch
+            resolved={resolved}
+            locationId={locationId}
+            fenceCenter={fenceCenter}
+            fenceRadius={fenceRadius}
+            requireGeo={requireGeo}
+            requirePhoto={requirePhoto}
+            onCancel={() => setResolved(null)}
+            onPunched={(r) => {
+              setResolved(null)
+              setResult(r)
+              setTimeout(() => setResult(null), 3500)
+            }}
+          />
+        ))}
     </div>
   )
 }
@@ -369,6 +383,121 @@ function VerifyAndPunch({
             {punching ? <Loader2 className="size-4 animate-spin" /> : (resolved.next_action === 'in' ? <LogIn className="size-5" /> : <LogOut className="size-5" />)}
             {resolved.next_action === 'in' ? 'Clock in' : 'Clock out'}
           </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Written biometric-consent capture, shown once before an employee's first
+// face-verified punch. Records the consent (typed-name signature + the notice
+// version they saw) and only then lets the camera open.
+function BiometricConsent({
+  resolved,
+  locationId,
+  onAgree,
+  onCancel,
+}: {
+  resolved: Resolved & { pin: string }
+  locationId: string
+  onAgree: () => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState('')
+  const [agree, setAgree] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async () => {
+    if (!name.trim() || !agree || busy) return
+    setBusy(true)
+    setError(null)
+    const { error: err } = await biometricConsent.recordKiosk(
+      locationId,
+      resolved.pin,
+      name.trim(),
+      BIOMETRIC_CONSENT_VERSION,
+      navigator.userAgent,
+    )
+    setBusy(false)
+    if (err) {
+      setError('Could not save your consent. Please try again.')
+      return
+    }
+    onAgree()
+  }
+
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col bg-shell">
+      <div className="flex items-center justify-between px-6 py-4">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-ink-invert-muted">Biometric consent</div>
+          <div className="text-xl font-semibold text-white">{resolved.name}</div>
+        </div>
+        <button onClick={onCancel} className="text-ink-invert-muted hover:text-white" aria-label="Cancel">
+          <X className="size-6" />
+        </button>
+      </div>
+
+      <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 pb-6">
+        <div className="flex w-full max-w-md flex-col gap-4">
+          <p className="text-sm text-ink-invert-muted">
+            This time clock uses facial recognition to verify your identity when you clock in and
+            out. Please review and agree before your first punch.
+          </p>
+
+          <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-4">
+            {BIOMETRIC_CONSENT_POINTS.map((p) => (
+              <div key={p.label}>
+                <div className="text-xs font-semibold uppercase tracking-wide text-white">{p.label}</div>
+                <div className="mt-0.5 text-sm text-ink-invert-muted">{p.text}</div>
+              </div>
+            ))}
+          </div>
+
+          <label className="flex items-start gap-2 text-sm text-white">
+            <input
+              type="checkbox"
+              checked={agree}
+              onChange={(e) => setAgree(e.target.checked)}
+              className="mt-0.5 size-4 rounded border-white/20 bg-transparent"
+            />
+            <span>
+              I have read the notice above and consent to the collection and use of my facial
+              recognition data for time-clock verification.
+            </span>
+          </label>
+
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-wide text-ink-invert-muted">
+              Type your full name to sign
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Full name"
+              className="h-11 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-white placeholder:text-ink-invert-muted/60 focus:outline-none focus:ring-2 focus:ring-accent/60"
+            />
+          </div>
+
+          {error && (
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
+          )}
+
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={onCancel} className="flex-1">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void submit()}
+              disabled={!name.trim() || !agree || busy}
+              size="lg"
+              className="flex-[2] text-base"
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-5" />}
+              I agree
+            </Button>
+          </div>
         </div>
       </div>
     </div>
