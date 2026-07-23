@@ -1737,6 +1737,44 @@ export type Database = {
           },
         ]
       }
+      flexwash_sites: {
+        Row: {
+          account_id: string
+          active: boolean
+          car_wash_id: string
+          created_at: string
+          id: string
+          name: string | null
+          site_number: number
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          car_wash_id: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          site_number: number
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          car_wash_id?: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          site_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flexwash_sites_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gm_bonus_base: {
         Row: {
           account_id: string
@@ -3309,6 +3347,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      service_tokens: {
+        Row: {
+          expires_at: string
+          provider: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          expires_at: string
+          provider: string
+          token: string
+          updated_at?: string
+        }
+        Update: {
+          expires_at?: string
+          provider?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       shifts: {
         Row: {

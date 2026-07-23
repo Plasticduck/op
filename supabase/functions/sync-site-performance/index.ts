@@ -133,14 +133,27 @@ Deno.serve(async (req) => {
   const accountIds = ((accts ?? []) as { id: string }[]).map((a) => a.id)
   if (!accountIds.length) return json({ accounts: 0, upserted: 0 }, 200, origin)
 
+  // Sites owned by FlexWash (MW17/18/...) are archived by sync-flexwash, which is
+  // authoritative for them. Skip those site numbers here so the two feeds don't
+  // both claim the same site.
+  const { data: flexRows } = await svc.from('flexwash_sites').select('account_id, site_number')
+  const flexByAccount = new Map<string, Set<number>>()
+  for (const f of (flexRows ?? []) as { account_id: string; site_number: number }[]) {
+    const set = flexByAccount.get(f.account_id) ?? new Set<number>()
+    set.add(f.site_number)
+    flexByAccount.set(f.account_id, set)
+  }
+
   const now = new Date().toISOString()
   let upserted = 0
   const errors: string[] = []
 
   for (const accountId of accountIds) {
+    const flexNums = flexByAccount.get(accountId) ?? new Set<number>()
     const rows: Record<string, unknown>[] = []
     for (const [name, days] of Object.entries(reportSites)) {
       const n = siteNum(name)
+      if (n != null && flexNums.has(n)) continue
       for (const d of days) {
         if (d?.date == null) continue
         rows.push({
