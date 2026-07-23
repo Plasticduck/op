@@ -7,11 +7,16 @@ import { useLocations } from '@/lib/locations'
 import { cn } from '@/lib/utils'
 import {
   buildRegionIndex,
+  fetchGuidedQueryOptions,
   fetchSitePerformance,
   fetchSitePerformanceHistory,
   fetchSitePerformanceHistoryBounds,
   groupByRegion,
+  runCustomSql,
+  runGuidedQuery,
   siteNumber,
+  type CustomQueryResult,
+  type GuidedOptions,
   type MsaRow,
   type RegionIndex,
   type SiteDay,
@@ -25,11 +30,12 @@ const PLAN_ORDER = ['Mighty Plan', 'Super Plan', 'Wonder Plan', 'MVP Plan']
 
 type ViewKey =
   | 'site' | 'history' | 'msa' | 'recharge_revenue' | 'recharge_audit' | 'rinsed'
-  | 'under15' | 'churn' | 'records' | 'sitebreak'
+  | 'under15' | 'churn' | 'records' | 'sitebreak' | 'custom_query'
 
 const VIEWS: { key: ViewKey; label: string }[] = [
   { key: 'site', label: 'By Site' },
   { key: 'history', label: 'History' },
+  { key: 'custom_query', label: 'Custom Query' },
   { key: 'msa', label: 'By MSA' },
   { key: 'recharge_revenue', label: 'Recharge $' },
   { key: 'recharge_audit', label: 'Recharge Audit' },
@@ -43,6 +49,7 @@ const VIEWS: { key: ViewKey; label: string }[] = [
 const FRESHNESS: Record<ViewKey, string> = {
   site: 'Live, updates every 60s',
   history: 'Archived daily; covers every day since the archive began',
+  custom_query: 'Runs fresh against the SiteWatch DB each time you click Run',
   msa: 'Live, updates every 60s',
   recharge_revenue: 'Updated nightly, not continuously live',
   recharge_audit: 'Live, updates every 60s',
@@ -231,9 +238,11 @@ export default function SitePerformancePage() {
       </div>
       <p className="-mt-2 text-xs text-ink-subtle">{FRESHNESS[view]}</p>
 
-      {/* History reads the archive, not the live feed, so it renders on its own. */}
+      {/* History and Custom Query don't use the live feed, so they render on their own. */}
       {view === 'history' ? (
         <History idx={regionIndex} />
+      ) : view === 'custom_query' ? (
+        <CustomQuery />
       ) : (
         <>
           {error && !feed && (
@@ -1238,6 +1247,176 @@ function History({ idx }: { idx: RegionIndex }) {
         {bounds.min ? ` Available from ${bounds.min} to ${bounds.max}.` : ' Building up as of today.'}
         {' '}Dates before the archive began are not available. Totals sum each day in the range;
         Cars/Man-Hr and Labor % are computed on the range totals.
+      </Footnote>
+    </div>
+  )
+}
+
+// ---------- Custom Query (dashboard guided builder + raw SQL) ----------
+
+function CustomQuery() {
+  const [mode, setMode] = useState<'easy' | 'sql'>('easy')
+  const [options, setOptions] = useState<GuidedOptions | null>(null)
+  const [metric, setMetric] = useState('')
+  const [sites, setSites] = useState<Set<string>>(new Set())
+  const [start, setStart] = useState(() => histPreset('last30')[0])
+  const [end, setEnd] = useState(() => histPreset('last30')[1])
+  const [sql, setSql] = useState('')
+  const [result, setResult] = useState<CustomQueryResult | null>(null)
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void fetchGuidedQueryOptions()
+      .then((o) => {
+        setOptions(o)
+        setMetric((m) => m || o.metrics[0]?.key || '')
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }, [])
+
+  const run = async () => {
+    setRunning(true)
+    setError(null)
+    setResult(null)
+    try {
+      const r =
+        mode === 'sql'
+          ? await runCustomSql(sql)
+          : await runGuidedQuery({ metric, sites: [...sites], start, end })
+      if (r?.error) setError(r.error)
+      else setResult(r)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const toggleSite = (name: string) =>
+    setSites((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Panel
+        title="Custom Query"
+        sub="Pull any tracked metric for the sites and dates you choose, or write raw SQL."
+        actions={
+          <Seg
+            value={mode}
+            tone="neutral"
+            options={[{ key: 'easy', label: 'Guided' }, { key: 'sql', label: 'SQL' }]}
+            onChange={setMode}
+          />
+        }
+      >
+        <div className="flex flex-col gap-4 px-4 pb-4 sm:px-5">
+          {mode === 'easy' ? (
+            <>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1 text-xs text-ink-muted">
+                  Metric
+                  <Select value={metric} onChange={(e) => setMetric(e.target.value)} className="h-9 w-56">
+                    {(options?.metrics ?? []).map((m) => (
+                      <option key={m.key} value={m.key}>{m.label}</option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-ink-muted">
+                  From
+                  <input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} className={cn(dateInputCls, 'h-9')} />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-ink-muted">
+                  To
+                  <input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} className={cn(dateInputCls, 'h-9')} />
+                </label>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-xs text-ink-muted">
+                  <span>Sites</span>
+                  {sites.size > 0 && (
+                    <button type="button" onClick={() => setSites(new Set())} className="text-accent hover:underline">
+                      clear ({sites.size})
+                    </button>
+                  )}
+                  <span className="text-ink-subtle">none selected = every site</span>
+                </div>
+                <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-md border border-border bg-content p-2">
+                  {(options?.sites ?? []).map((s) => (
+                    <button
+                      key={s.name}
+                      type="button"
+                      onClick={() => toggleSite(s.name)}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-xs',
+                        sites.has(s.name)
+                          ? 'border-accent bg-accent-soft text-accent'
+                          : 'border-border bg-card text-ink-muted hover:text-ink',
+                      )}
+                    >
+                      {siteLabel(s.name)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <textarea
+              value={sql}
+              onChange={(e) => setSql(e.target.value)}
+              onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') void run() }}
+              rows={5}
+              spellCheck={false}
+              placeholder="SELECT ... FROM ...  (read-only, runs against the SiteWatch DB; Ctrl+Enter to run)"
+              className="w-full rounded-md border border-border bg-content px-3 py-2 font-mono text-xs text-ink outline-none focus:border-accent"
+            />
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void run()}
+              disabled={running || (mode === 'easy' ? !metric : !sql.trim())}
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-40"
+            >
+              {running ? <RefreshCw className="size-4 animate-spin" /> : null} Run
+            </button>
+            {result && (
+              <span className="text-xs text-ink-muted">
+                {result.row_count} row{result.row_count === 1 ? '' : 's'}
+                {result.truncated ? ' (capped, narrow the query for more)' : ''}
+              </span>
+            )}
+          </div>
+
+          {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        </div>
+
+        {result && result.columns.length > 0 && (
+          <TableShell head={<>{result.columns.map((c, i) => <th key={i} className={th}>{c}</th>)}</>}>
+            {result.rows.length === 0 ? (
+              <tr><td className={td} colSpan={result.columns.length}>No rows returned.</td></tr>
+            ) : (
+              result.rows.map((row, ri) => (
+                <tr key={ri}>
+                  {row.map((v, ci) => (
+                    <td key={ci} className={td}>{v === null ? DASH : String(v)}</td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </TableShell>
+        )}
+      </Panel>
+      <Footnote>
+        Guided mode pulls one metric across the sites and dates you pick. SQL mode runs read-only
+        against the SiteWatch database and is row-capped. Both run fresh on each Run, not on the 60s
+        auto-refresh.
       </Footnote>
     </div>
   )

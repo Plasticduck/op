@@ -174,6 +174,47 @@ export async function fetchSitePerformanceHistory(
   return (data as SitePerfDayRow[] | null) ?? []
 }
 
+// ---------- Custom Query (dashboard's guided + raw-SQL query feature) ----------
+//
+// Proxied through the site-performance function's /api passthrough, which reaches
+// the dashboard's own query endpoints under the shared authenticated session.
+export type CustomQueryResult = {
+  columns: string[]
+  rows: (string | number | null)[][]
+  row_count: number
+  truncated?: boolean
+  error?: string
+}
+export type GuidedOption = { key: string; label: string }
+export type GuidedSite = { name: string; interior_capable?: boolean }
+export type GuidedOptions = { metrics: GuidedOption[]; sites: GuidedSite[] }
+
+async function dashApi(path: string, method: 'GET' | 'POST', apiBody?: unknown): Promise<unknown> {
+  const { data, error } = await supabase.functions.invoke('site-performance', {
+    body: { api: { path, method, body: apiBody } },
+  })
+  if (error) {
+    const msg = await fnErrorMessage(error, data, 'Dashboard request failed.')
+    throw new Error(msg)
+  }
+  return (data as { data?: unknown } | null)?.data ?? null
+}
+
+export async function fetchGuidedQueryOptions(): Promise<GuidedOptions> {
+  return (await dashApi('/api/guided_query_options', 'GET')) as GuidedOptions
+}
+export async function runGuidedQuery(p: {
+  metric: string
+  sites: string[]
+  start: string
+  end: string
+}): Promise<CustomQueryResult> {
+  return (await dashApi('/api/guided_query', 'POST', p)) as CustomQueryResult
+}
+export async function runCustomSql(sql: string): Promise<CustomQueryResult> {
+  return (await dashApi('/api/custom_query', 'POST', { sql })) as CustomQueryResult
+}
+
 // Earliest and latest archived dates, so the UI can show what history exists.
 export async function fetchSitePerformanceHistoryBounds(): Promise<{ min: string | null; max: string | null }> {
   const [{ data: lo }, { data: hi }] = await Promise.all([

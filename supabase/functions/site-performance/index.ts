@@ -75,9 +75,27 @@ async function login(base: string, password: string): Promise<string> {
   return match[0]
 }
 
+function jwtRole(auth: string): string | null {
+  const token = auth.replace(/^Bearer\s+/i, '')
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  try {
+    return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? null
+  } catch {
+    return null
+  }
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) })
+
+  let body: { api?: { path?: string; method?: string; body?: unknown } } = {}
+  try {
+    body = await req.json()
+  } catch {
+    body = {}
+  }
 
   const password = Deno.env.get('MW_DASHBOARD_PASSWORD')
   if (!password) {
@@ -92,21 +110,18 @@ Deno.serve(async (req) => {
   // Identify the caller and confirm they are an owner/manager, matching the
   // access level of the other opssuite performance pages.
   const authHeader = req.headers.get('Authorization') ?? ''
-  const userClient = createClient(url, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  })
-  const { data: userData } = await userClient.auth.getUser()
-  const uid = userData.user?.id
-  if (!uid) return json({ error: 'unauthorized' }, 401, origin)
-
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
-  const { data: profile } = await svc
-    .from('users')
-    .select('role')
-    .eq('id', uid)
-    .single()
-  if (!profile || (profile.role !== 'owner' && profile.role !== 'manager')) {
-    return json({ error: 'forbidden' }, 403, origin)
+  if (jwtRole(authHeader) !== 'service_role') {
+    const userClient = createClient(url, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
+    const { data: userData } = await userClient.auth.getUser()
+    const uid = userData.user?.id
+    if (!uid) return json({ error: 'unauthorized' }, 401, origin)
+    const { data: profile } = await svc.from('users').select('role').eq('id', uid).single()
+    if (!profile || (profile.role !== 'owner' && profile.role !== 'manager')) {
+      return json({ error: 'forbidden' }, 403, origin)
+    }
   }
 
   let cookie: string
@@ -114,6 +129,25 @@ Deno.serve(async (req) => {
     cookie = await login(base, password)
   } catch (e) {
     return json({ error: 'login_failed', message: String(e) }, 502, origin)
+  }
+
+  // Proxy a dashboard /api/ endpoint through the authenticated session. Used by
+  // the Custom Query tab (guided_query_options, guided_query, custom_query).
+  // Restricted to /api/ paths; the dashboard owns its own query safety + row caps.
+  const api = body.api
+  if (api && typeof api.path === 'string' && api.path.startsWith('/api/')) {
+    const method = api.method === 'GET' ? 'GET' : 'POST'
+    const r = await fetch(`${base}${api.path}`, {
+      method,
+      headers: {
+        Cookie: cookie,
+        'User-Agent': BROWSER_UA,
+        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: method === 'POST' ? JSON.stringify(api.body ?? {}) : undefined,
+    })
+    const data = await r.json().catch(() => null)
+    return json({ status: r.status, data }, r.ok ? 200 : 502, origin)
   }
 
   // Pull every feed in parallel. A single feed failing (or returning a
