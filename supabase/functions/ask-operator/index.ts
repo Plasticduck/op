@@ -109,7 +109,8 @@ You have two tools:
    Call it with no arguments to get a month-to-date/rolling summary for every site the user can see (window_totals covers roughly the last 30 days). Pass {"site": "<name or number>"} to get that one site's day-by-day detail (cars, hours, cars_per_hour, sales, labor_pct, recharge). Optionally pass {"days": N}.
 
 Choosing a tool:
-- Use get_site_performance for anything about cars washed, car counts, cars per hour/manpower, labor %, membership conversion, recharge revenue, or churn.
+- Use get_site_performance for anything about cars washed, car counts, cars per hour/manpower, labor %, membership conversion, recharge revenue, or churn (today / recent daily detail).
+- Use query_dashboard to compare ONE tracked metric across ALL sites totaled over a specific date range (e.g. "cars washed per site last month", "plans sold - Mighty by site this quarter", "revenue by site 6/1 to 6/30"). It returns one row per site. Pick the closest metric key.
 - Use run_sql for everything else (work orders, equipment, inventory, checklists, staff, invoices, audits, violations, tips, bonuses, weather, etc.).
 - Combine both when a question spans them.
 
@@ -151,6 +152,28 @@ const PERF_TOOL: Anthropic.Tool = {
       site: { type: 'string', description: 'Optional site name or number to drill into.' },
       days: { type: 'number', description: 'Optional trailing-day window (1-31, default 30).' },
     },
+  },
+}
+
+const DASHBOARD_METRICS = [
+  'cars', 'revenue', 'recharge', 'conversion_pct',
+  'plans_mighty', 'plans_super', 'plans_wonder', 'plans_mvp', 'plans_total',
+  'hustles', 'intro_mvp_sales', 'mighty_mvp_sales', 'extras',
+  'churn_voluntary', 'churn_cc',
+]
+
+const QUERY_DASHBOARD_TOOL: Anthropic.Tool = {
+  name: 'query_dashboard',
+  description:
+    "Run the Mighty Wash dashboard's guided query: get one tracked business metric for EVERY site, totaled over a date range. Returns { columns, rows } with one row per site. Use this for cross-site comparisons of a metric over a period (e.g. cars washed per site last month, conversion % by site, plans sold by tier). Metric keys: cars (cars washed), revenue (gross sales $), recharge (recharge $), conversion_pct, plans_mighty/plans_super/plans_wonder/plans_mvp/plans_total (plans sold by tier), hustles (detail upsells), intro_mvp_sales, mighty_mvp_sales, extras (details $), churn_voluntary, churn_cc (last-month churn %). For daily detail or one site, prefer get_site_performance or site_performance_days instead.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      metric: { type: 'string', description: `One metric key: ${DASHBOARD_METRICS.join(', ')}.` },
+      start: { type: 'string', description: 'Start date YYYY-MM-DD.' },
+      end: { type: 'string', description: 'End date YYYY-MM-DD.' },
+    },
+    required: ['metric', 'start', 'end'],
   },
 }
 
@@ -333,7 +356,9 @@ Deno.serve(async (req) => {
 
   const today = new Date().toISOString().slice(0, 10)
   const anthropic = new Anthropic({ apiKey })
-  const tools = perfAvailable ? [RUN_SQL_TOOL, PERF_TOOL] : [RUN_SQL_TOOL]
+  const tools = perfAvailable
+    ? [RUN_SQL_TOOL, PERF_TOOL, QUERY_DASHBOARD_TOOL]
+    : [RUN_SQL_TOOL]
 
   const messages: Anthropic.MessageParam[] = []
   for (const h of (body.history ?? []).slice(-8)) {
@@ -348,7 +373,7 @@ Deno.serve(async (req) => {
   let feedCache: any = undefined // fetch the site-performance feed at most once per request
 
   const perfNote = perfAvailable
-    ? 'The get_site_performance tool IS available for this user.'
+    ? 'The get_site_performance and query_dashboard tools ARE available for this user.'
     : 'The get_site_performance tool is NOT available (site performance is not enabled for this account, or the user is not a manager). If asked about car counts, recharge, conversion, or churn, tell them live site-performance data is not enabled for their account.'
 
   try {
@@ -419,6 +444,36 @@ Deno.serve(async (req) => {
             const summary = buildPerf(feedCache, allowedNumbers, site, days)
             step.rowCount = summary.length
             let text = JSON.stringify({ as_of: feedCache?.fetched_at, sites: summary })
+            if (text.length > 18000) text = text.slice(0, 18000) + '…(truncated)'
+            content = text
+          } catch (e) {
+            step.error = e instanceof Error ? e.message : String(e)
+            content = `ERROR: ${step.error}`
+          }
+          steps.push(step)
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
+          continue
+        }
+
+        if (block.name === 'query_dashboard' && perfAvailable) {
+          const input = (block.input ?? {}) as { metric?: string; start?: string; end?: string }
+          const step: Step = { tool: 'query_dashboard' }
+          let content: string
+          try {
+            const { data, error } = await userClient.functions.invoke('site-performance', {
+              body: {
+                api: {
+                  path: '/api/guided_query',
+                  method: 'POST',
+                  body: { metric: input.metric, sites: [], start: input.start, end: input.end },
+                },
+              },
+            })
+            if (error) throw new Error('Dashboard query failed.')
+            const res = (data as { data?: { columns?: string[]; rows?: unknown[]; error?: string } })?.data
+            if (res?.error) throw new Error(res.error)
+            step.rowCount = res?.rows?.length ?? 0
+            let text = JSON.stringify(res ?? {})
             if (text.length > 18000) text = text.slice(0, 18000) + '…(truncated)'
             content = text
           } catch (e) {
