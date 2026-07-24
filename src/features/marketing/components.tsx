@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Logo } from '@/components/ui/Logo'
+import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { cn } from '@/lib/utils'
 
 // Fades + lifts its children into view the first time they enter the viewport.
@@ -49,6 +50,9 @@ export function MarketingNav() {
           <Logo brand="washlyfe" />
         </Link>
         <nav className="flex items-center gap-1 sm:gap-3">
+          {/* Public-side theme switch. The app has its own in the top bar; the
+              marketing surface has no top bar, so it lives here. */}
+          <ThemeToggle />
           <Link to="/pricing" className="px-3 py-1.5 text-sm text-ink-muted hover:text-ink">
             Pricing
           </Link>
