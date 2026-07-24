@@ -94,6 +94,7 @@ const TimeClockPage = lz(() => import('@/features/people/timeclock/TimeClockPage
 const KioskPage = lz(() => import('@/features/people/timeclock/KioskPage'))
 const TimesheetsPage = lz(() => import('@/features/people/timesheets/TimesheetsPage'))
 const ReviewsPage = lz(() => import('@/features/people/reviews/ReviewsPage'))
+const TrainingPage = lz(() => import('@/features/people/training/TrainingPage'))
 const CounselingPage = lz(() => import('@/features/people/counseling/CounselingPage'))
 const InjuriesPage = lz(() => import('@/features/people/injuries/InjuriesPage'))
 const UniformsPage = lz(() => import('@/features/people/uniforms/UniformsPage'))
@@ -216,6 +217,7 @@ export const router = createBrowserRouter([
           { path: 'timeclock/kiosk', element: mgr(<KioskPage />) },
           { path: 'timesheets', element: mgr(<TimesheetsPage />) },
           { path: 'reviews', element: mgr(<ReviewsPage />) },
+          { path: 'training', element: emp(<TrainingPage />) },
           { path: 'counseling', element: mgr(<CounselingPage />) },
           { path: 'injuries', element: mgr(<InjuriesPage />) },
           { path: 'uniforms', element: emp(<UniformsPage />) },

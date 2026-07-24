@@ -544,6 +544,83 @@ export type Database = {
           },
         ]
       }
+      certifications: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          document_url: string | null
+          employee_id: string
+          expires_on: string | null
+          id: string
+          issued_on: string | null
+          issuer: string | null
+          location_id: string | null
+          name: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          document_url?: string | null
+          employee_id: string
+          expires_on?: string | null
+          id?: string
+          issued_on?: string | null
+          issuer?: string | null
+          location_id?: string | null
+          name: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          document_url?: string | null
+          employee_id?: string
+          expires_on?: string | null
+          id?: string
+          issued_on?: string | null
+          issuer?: string | null
+          location_id?: string | null
+          name?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "certifications_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "certifications_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "certifications_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "certifications_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checklist_completions: {
         Row: {
           checklist_id: string
@@ -1570,6 +1647,71 @@ export type Database = {
             columns: ["reported_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_onboarding: {
+        Row: {
+          account_id: string
+          completed_at: string | null
+          employee_id: string
+          id: string
+          location_id: string | null
+          started_at: string
+          step_state: Json
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          completed_at?: string | null
+          employee_id: string
+          id?: string
+          location_id?: string | null
+          started_at?: string
+          step_state?: Json
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          completed_at?: string | null
+          employee_id?: string
+          id?: string
+          location_id?: string | null
+          started_at?: string
+          step_state?: Json
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_onboarding_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_onboarding_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_onboarding_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_onboarding_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "onboarding_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -2676,6 +2818,54 @@ export type Database = {
           {
             foreignKeyName: "notifications_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_templates: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          steps: Json
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          steps?: Json
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          steps?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_templates_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_templates_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -4024,6 +4214,157 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_assignments: {
+        Row: {
+          account_id: string
+          assigned_at: string
+          assigned_by: string | null
+          completed_at: string | null
+          completed_by: string | null
+          due_date: string | null
+          employee_id: string
+          id: string
+          location_id: string | null
+          notes: string | null
+          training_item_id: string
+        }
+        Insert: {
+          account_id: string
+          assigned_at?: string
+          assigned_by?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          due_date?: string | null
+          employee_id: string
+          id?: string
+          location_id?: string | null
+          notes?: string | null
+          training_item_id: string
+        }
+        Update: {
+          account_id?: string
+          assigned_at?: string
+          assigned_by?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          due_date?: string | null
+          employee_id?: string
+          id?: string
+          location_id?: string | null
+          notes?: string | null
+          training_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_assignments_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_assignments_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_assignments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_assignments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_assignments_training_item_id_fkey"
+            columns: ["training_item_id"]
+            isOneToOne: false
+            referencedRelation: "training_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_items: {
+        Row: {
+          account_id: string
+          active: boolean
+          body: string | null
+          category: string | null
+          content_type: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          required: boolean
+          roles: string[] | null
+          title: string
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          body?: string | null
+          category?: string | null
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          required?: boolean
+          roles?: string[] | null
+          title: string
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          body?: string | null
+          category?: string | null
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          required?: boolean
+          roles?: string[] | null
+          title?: string
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

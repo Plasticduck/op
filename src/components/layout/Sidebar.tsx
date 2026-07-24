@@ -13,6 +13,7 @@ import {
   BookUser,
   Banknote,
   BrainCircuit,
+  GraduationCap,
   Sparkles,
   CalendarClock,
   CalendarHeart,
@@ -288,6 +289,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Performance Reviews',
         icon: Award,
         roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/training',
+        label: 'Training',
+        icon: GraduationCap,
+        roles: ['owner', 'manager', 'employee'],
       },
       {
         to: '/app/counseling',
