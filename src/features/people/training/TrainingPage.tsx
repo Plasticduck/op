@@ -4,6 +4,7 @@ import {
   ExternalLink,
   GraduationCap,
   ListChecks,
+  Medal,
   Plus,
   Trash2,
   X,
@@ -24,6 +25,15 @@ import {
   type StepState,
   type TrainingItem,
 } from '@/lib/queries/training'
+import { BadgeChips } from '@/components/ui/BadgeChips'
+import {
+  AUTO_BADGES,
+  badges as badgesQ,
+  badgesFor,
+  type AutoBadgeInput,
+  type BadgeDef,
+  type EmployeeBadge,
+} from '@/lib/queries/badges'
 import { cn } from '@/lib/utils'
 
 const inputCls =
@@ -31,7 +41,7 @@ const inputCls =
 const labelCls = 'mb-1 block text-xs font-medium text-ink-muted'
 
 type Emp = { id: string; first_name: string; last_name: string; user_id: string | null }
-type Tab = 'training' | 'onboarding' | 'certs'
+type Tab = 'training' | 'onboarding' | 'certs' | 'badges'
 
 // deno-lint style loose rows for the joined selects
 type AssignRow = {
@@ -58,6 +68,7 @@ const TABS: { key: Tab; label: string; icon: typeof GraduationCap }[] = [
   { key: 'training', label: 'Training', icon: GraduationCap },
   { key: 'onboarding', label: 'Onboarding', icon: ListChecks },
   { key: 'certs', label: 'Certifications', icon: BadgeCheck },
+  { key: 'badges', label: 'Badges', icon: Medal },
 ]
 
 function Inner({ locationId }: { locationId: string }) {
@@ -71,18 +82,24 @@ function Inner({ locationId }: { locationId: string }) {
   const [templates, setTemplates] = useState<TemplateRow[]>([])
   const [onbs, setOnbs] = useState<OnbRow[]>([])
   const [certs, setCerts] = useState<CertRow[]>([])
+  const [badgeDefs, setBadgeDefs] = useState<BadgeDef[]>([])
+  const [awards, setAwards] = useState<EmployeeBadge[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [e, i, a, t, o, c] = await Promise.all([
+    const [e, i, a, t, o, c, bd, aw] = await Promise.all([
       employeesQ.listActive(locationId),
       training.listItems(),
       training.listAssignments(),
       training.listTemplates(),
       training.listOnboarding(),
       training.listCertifications(),
+      badgesQ.listDefs(),
+      badgesQ.listAwards(),
     ])
+    setBadgeDefs((bd.data as BadgeDef[] | null) ?? [])
+    setAwards((aw.data as unknown as EmployeeBadge[] | null) ?? [])
     setEmps((e.data as Emp[] | null) ?? [])
     setItems((i.data as TrainingItem[] | null) ?? [])
     setAssigns((a.data as unknown as AssignRow[] | null) ?? [])
@@ -155,7 +172,7 @@ function Inner({ locationId }: { locationId: string }) {
           userName={profile?.name ?? 'Manager'}
           reload={load}
         />
-      ) : (
+      ) : tab === 'certs' ? (
         <CertsTab
           isManager={isManager}
           certs={visibleCerts}
@@ -163,6 +180,22 @@ function Inner({ locationId }: { locationId: string }) {
           accountId={profile?.account_id ?? ''}
           userId={profile?.id ?? ''}
           locationId={locationId}
+          reload={load}
+        />
+      ) : (
+        <BadgesTab
+          isManager={isManager}
+          defs={badgeDefs}
+          awards={awards}
+          emps={emps}
+          autoInput={{
+            onboardings: onbs,
+            assignments: assigns,
+            certifications: certs,
+          }}
+          accountId={profile?.account_id ?? ''}
+          userId={profile?.id ?? ''}
+          userName={profile?.name ?? 'Manager'}
           reload={load}
         />
       )}
@@ -937,6 +970,276 @@ function CertModal({
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button onClick={() => void save()} disabled={busy || !name.trim()}>Save</Button>
           </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ---------------- Badges tab ----------------
+
+function BadgesTab({
+  isManager, defs, awards, emps, autoInput, accountId, userId, userName, reload,
+}: {
+  isManager: boolean
+  defs: BadgeDef[]
+  awards: EmployeeBadge[]
+  emps: Emp[]
+  autoInput: AutoBadgeInput
+  accountId: string
+  userId: string
+  userName: string
+  reload: () => void
+}) {
+  const [defModal, setDefModal] = useState<BadgeDef | 'new' | null>(null)
+  const [awardModal, setAwardModal] = useState(false)
+
+  return (
+    <div className="flex flex-col gap-5">
+      <section className="rounded-md border border-border bg-card p-4">
+        <h2 className="mb-1 text-sm font-semibold text-ink">Automatic badges</h2>
+        <p className="mb-3 text-xs text-ink-muted">
+          These are awarded on their own from what Operator already tracks, so they always reflect
+          current data. Nothing to maintain.
+        </p>
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {Object.entries(AUTO_BADGES).map(([key, b]) => (
+            <li key={key} className="flex items-center gap-2">
+              <BadgeChips badges={[{ key, auto: true, ...b }]} showLabels />
+              <span className="text-xs text-ink-muted">{b.description}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {isManager && (
+        <section className="rounded-md border border-border bg-card">
+          <div className="flex items-center justify-between gap-3 border-b border-border p-4">
+            <h2 className="text-sm font-semibold text-ink">Recognition badges</h2>
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setDefModal('new')}>
+                <Plus className="size-4" /> New badge
+              </Button>
+              <Button size="sm" onClick={() => setAwardModal(true)} disabled={defs.length === 0 || emps.length === 0}>
+                <Medal className="size-4" /> Award
+              </Button>
+            </div>
+          </div>
+          {defs.length === 0 ? (
+            <p className="p-4 text-sm text-ink-muted">
+              No recognition badges yet. Create one (Employee of the Month, Safety Star, 5 Years) and award it.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {defs.map((d) => (
+                <li key={d.id} className="flex items-center justify-between gap-3 p-3">
+                  <div className="flex items-center gap-2">
+                    <BadgeChips
+                      badges={[{ key: d.id, name: d.name, description: d.description, emoji: d.emoji, tone: (d.tone as 'accent') ?? 'accent', auto: false }]}
+                      showLabels
+                    />
+                    <span className="text-xs text-ink-muted">{d.description}</span>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={() => setDefModal(d)}>Edit</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      <section className="rounded-md border border-border bg-card">
+        <div className="border-b border-border p-4">
+          <h2 className="text-sm font-semibold text-ink">Who has what</h2>
+        </div>
+        {emps.length === 0 ? (
+          <p className="p-4 text-sm text-ink-muted">No active employees at this site.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {emps.map((e) => {
+              const earned = badgesFor(e.id, awards, autoInput)
+              return (
+                <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
+                  <span className="text-sm text-ink">{e.first_name} {e.last_name}</span>
+                  {earned.length === 0 ? (
+                    <span className="text-xs text-ink-subtle">No badges yet</span>
+                  ) : (
+                    <BadgeChips badges={earned} max={8} showLabels />
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+
+      {defModal && (
+        <BadgeDefModal
+          def={defModal === 'new' ? null : defModal}
+          accountId={accountId}
+          userId={userId}
+          onClose={() => setDefModal(null)}
+          onSaved={() => { setDefModal(null); reload() }}
+        />
+      )}
+      {awardModal && (
+        <AwardModal
+          defs={defs}
+          emps={emps}
+          accountId={accountId}
+          userId={userId}
+          userName={userName}
+          onClose={() => setAwardModal(false)}
+          onSaved={() => { setAwardModal(false); reload() }}
+        />
+      )}
+    </div>
+  )
+}
+
+const TONES = ['accent', 'ok', 'warn', 'danger', 'neutral'] as const
+
+function BadgeDefModal({
+  def, accountId, userId, onClose, onSaved,
+}: {
+  def: BadgeDef | null
+  accountId: string
+  userId: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(def?.name ?? '')
+  const [description, setDescription] = useState(def?.description ?? '')
+  const [emoji, setEmoji] = useState(def?.emoji ?? '🏆')
+  const [tone, setTone] = useState(def?.tone ?? 'accent')
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    if (!name.trim()) return
+    setBusy(true)
+    const payload = {
+      account_id: accountId,
+      name: name.trim(),
+      description: description.trim() || null,
+      emoji: emoji.trim() || null,
+      tone,
+    }
+    if (def) await badgesQ.updateDef(def.id, payload)
+    else await badgesQ.createDef({ ...payload, created_by: userId })
+    setBusy(false)
+    onSaved()
+  }
+
+  return (
+    <Modal open onClose={onClose} title={def ? 'Edit badge' : 'New badge'} size="sm">
+      <div className="flex flex-col gap-3">
+        <div>
+          <label className={labelCls}>Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Employee of the Month" />
+        </div>
+        <div>
+          <label className={labelCls}>Description</label>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Emoji</label>
+            <input value={emoji} onChange={(e) => setEmoji(e.target.value)} className={inputCls} maxLength={4} />
+          </div>
+          <div>
+            <label className={labelCls}>Color</label>
+            <select value={tone} onChange={(e) => setTone(e.target.value)} className={inputCls}>
+              {TONES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-between gap-2 pt-1">
+          {def ? (
+            <Button variant="danger" onClick={async () => { await badgesQ.deleteDef(def.id); onSaved() }}>
+              <Trash2 className="size-4" /> Delete
+            </Button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button onClick={() => void save()} disabled={busy || !name.trim()}>Save</Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function AwardModal({
+  defs, emps, accountId, userId, userName, onClose, onSaved,
+}: {
+  defs: BadgeDef[]
+  emps: Emp[]
+  accountId: string
+  userId: string
+  userName: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [badgeId, setBadgeId] = useState(defs[0]?.id ?? '')
+  const [note, setNote] = useState('')
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    if (!badgeId || picked.size === 0) return
+    setBusy(true)
+    await badgesQ.award(
+      [...picked].map((employee_id) => ({
+        account_id: accountId,
+        employee_id,
+        badge_id: badgeId,
+        awarded_by: userId,
+        awarded_by_name: userName,
+        note: note.trim() || null,
+      })),
+    )
+    setBusy(false)
+    onSaved()
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Award badge" size="md">
+      <div className="flex flex-col gap-3">
+        <div>
+          <label className={labelCls}>Badge</label>
+          <select value={badgeId} onChange={(e) => setBadgeId(e.target.value)} className={inputCls}>
+            {defs.map((d) => <option key={d.id} value={d.id}>{d.emoji ? `${d.emoji} ` : ''}{d.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>Note (optional)</label>
+          <input value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} placeholder="For outstanding service in July" />
+        </div>
+        <div>
+          <label className={labelCls}>Employees ({picked.size} selected)</label>
+          <div className="max-h-56 overflow-y-auto rounded-md border border-border p-2">
+            {emps.map((e) => (
+              <label key={e.id} className="flex items-center gap-2 py-1 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={picked.has(e.id)}
+                  onChange={() =>
+                    setPicked((p) => {
+                      const n = new Set(p)
+                      if (n.has(e.id)) n.delete(e.id)
+                      else n.add(e.id)
+                      return n
+                    })
+                  }
+                />
+                {e.first_name} {e.last_name}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => void save()} disabled={busy || !badgeId || picked.size === 0}>Award</Button>
         </div>
       </div>
     </Modal>

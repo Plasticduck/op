@@ -12,6 +12,9 @@ import { shortDate } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
 import { employees, type Employee } from '@/lib/queries/people'
 import { listAllLocations, type LocationFull } from '@/lib/queries/account'
+import { BadgeChips } from '@/components/ui/BadgeChips'
+import { badges as badgesQ, badgesFor, type AutoBadgeInput, type EmployeeBadge } from '@/lib/queries/badges'
+import { training } from '@/lib/queries/training'
 import { InviteModal } from '@/features/settings/team/InviteModal'
 import { EmployeeModal } from './EmployeeModal'
 
@@ -23,12 +26,31 @@ function Inner({ locationId }: { locationId: string }) {
   const [showInactive, setShowInactive] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [awards, setAwards] = useState<EmployeeBadge[]>([])
+  const [autoInput, setAutoInput] = useState<AutoBadgeInput>({
+    onboardings: [],
+    assignments: [],
+    certifications: [],
+  })
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [emp, locs] = await Promise.all([employees.list(locationId), listAllLocations()])
+    const [emp, locs, aw, onb, asg, cer] = await Promise.all([
+      employees.list(locationId),
+      listAllLocations(),
+      badgesQ.listAwards(),
+      training.listOnboarding(),
+      training.listAssignments(),
+      training.listCertifications(),
+    ])
     setRows((emp.data as Employee[] | null) ?? [])
     setLocations((locs.data as LocationFull[] | null) ?? [])
+    setAwards((aw.data as unknown as EmployeeBadge[] | null) ?? [])
+    setAutoInput({
+      onboardings: (onb.data as unknown as AutoBadgeInput['onboardings'] | null) ?? [],
+      assignments: (asg.data as unknown as AutoBadgeInput['assignments'] | null) ?? [],
+      certifications: (cer.data as unknown as AutoBadgeInput['certifications'] | null) ?? [],
+    })
     setLoading(false)
   }, [locationId])
 
@@ -91,6 +113,7 @@ function Inner({ locationId }: { locationId: string }) {
                     <Link to={`/app/employees/${e.id}`} className="font-medium text-ink hover:text-accent">
                       {e.first_name} {e.last_name}
                     </Link>
+                    <BadgeChips badges={badgesFor(e.id, awards, autoInput)} className="ml-1.5" />
                     {e.email && <p className="text-xs text-ink-muted">{e.email}</p>}
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">{e.role_title ?? '—'}</td>

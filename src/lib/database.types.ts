@@ -269,6 +269,57 @@ export type Database = {
           },
         ]
       }
+      badges: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          created_by: string | null
+          description: string | null
+          emoji: string | null
+          id: string
+          name: string
+          tone: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          emoji?: string | null
+          id?: string
+          name: string
+          tone?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          emoji?: string | null
+          id?: string
+          name?: string
+          tone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "badges_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "badges_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       biometric_consents: {
         Row: {
           account_id: string
@@ -1647,6 +1698,68 @@ export type Database = {
             columns: ["reported_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_badges: {
+        Row: {
+          account_id: string
+          awarded_by: string | null
+          awarded_by_name: string | null
+          badge_id: string
+          earned_at: string
+          employee_id: string
+          id: string
+          note: string | null
+        }
+        Insert: {
+          account_id: string
+          awarded_by?: string | null
+          awarded_by_name?: string | null
+          badge_id: string
+          earned_at?: string
+          employee_id: string
+          id?: string
+          note?: string | null
+        }
+        Update: {
+          account_id?: string
+          awarded_by?: string | null
+          awarded_by_name?: string | null
+          badge_id?: string
+          earned_at?: string
+          employee_id?: string
+          id?: string
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_badges_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_badges_awarded_by_fkey"
+            columns: ["awarded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_badges_badge_id_fkey"
+            columns: ["badge_id"]
+            isOneToOne: false
+            referencedRelation: "badges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_badges_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
             referencedColumns: ["id"]
           },
         ]
