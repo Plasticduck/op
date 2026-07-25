@@ -162,8 +162,17 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
   const [sided, setSided] = useState<'single' | 'double'>('single')
   const [quantity, setQuantity] = useState('1')
   const [file, setFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Live preview of the selected PDF, cleaned up when it changes or unmounts.
+  useEffect(() => {
+    if (!file) { setPreviewUrl(null); return }
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
 
   const typeOptions = signTypeOptions(category)
   const spec = flagSpec(signType) // present only for flag types
@@ -303,6 +312,16 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
             </div>
           )}
         </Field>
+        {previewUrl && (
+          <div>
+            <p className="mb-1 text-xs font-medium text-ink-muted">Artwork preview</p>
+            <iframe
+              title="Artwork preview"
+              src={previewUrl}
+              className="h-80 w-full rounded-md border border-border bg-content"
+            />
+          </div>
+        )}
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
