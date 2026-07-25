@@ -6,16 +6,35 @@ export type AskTurn = { role: 'user' | 'assistant'; content: string }
 export type AskStep = { tool?: string; sql?: string; rowCount?: number; error?: string }
 export type AskResult = { answer?: string; steps?: AskStep[]; error?: string; message?: string }
 
+// A choice the assistant offers the user to pick from.
+export type AskChoice = { label: string; hint?: string }
+
+// A structured report the assistant hands off for the client to render as a PDF.
+export type ReportSection =
+  | { type: 'text'; heading?: string; body?: string }
+  | { type: 'table'; heading?: string; columns?: string[]; rows?: string[][] }
+  | { type: 'stats'; heading?: string; items?: { label: string; value: string }[] }
+export type ReportSpec = { title: string; subtitle?: string; sections: ReportSection[] }
+
+// A structured action the assistant emits alongside text: a picker to show, or
+// a report to render.
+export type AskAction =
+  | { kind: 'choices'; options: AskChoice[]; allow_custom?: boolean }
+  | { kind: 'report'; spec: ReportSpec }
+
 // Progress the function reports while the answer is still being written.
 //   phase    — what it is doing right now (drives the status line)
 //   delta    — answer text, token by token
 //   preamble — the text so far was narration before a tool call, not the answer
 //   step     — a tool finished (feeds the "queries I ran" panel)
+//   action   — a picker or report to render alongside the answer
 export type AskEvent =
   | { t: 'phase'; phase: 'thinking' | 'tool'; tool?: string; detail?: string }
   | { t: 'delta'; text: string }
   | { t: 'preamble' }
   | { t: 'step'; step: AskStep }
+  | { t: 'action'; kind: 'choices'; payload: { options?: AskChoice[]; allow_custom?: boolean } }
+  | { t: 'action'; kind: 'report'; payload: ReportSpec }
   | { t: 'done'; answer?: string; steps?: AskStep[] }
   | { t: 'error'; error?: string; message?: string }
 

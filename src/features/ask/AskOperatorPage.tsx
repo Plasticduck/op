@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUp, Boxes, Car, Database, Gauge, TriangleAlert, Wrench } from 'lucide-react'
-import { askOperator, type AskStep, type AskTurn } from '@/lib/queries/askOperator'
+import {
+  askOperator,
+  type AskAction,
+  type AskStep,
+  type AskTurn,
+} from '@/lib/queries/askOperator'
 import { useLocations } from '@/lib/locations'
 import { washWord, type WashPhase } from '@/features/ask/washWords'
 import { ActivityTrail, type Activity } from '@/features/ask/ActivityTrail'
 import { AnswerBody } from '@/features/ask/AnswerBody'
+import { ChoicePicker } from '@/features/ask/ChoicePicker'
+import { ReportCard } from '@/features/ask/ReportCard'
 import { buildSiteMatcher } from '@/features/ask/siteLinks'
 import { StarMark } from '@/features/ask/StarMark'
 import { useTypewriter } from '@/features/ask/useTypewriter'
@@ -16,6 +23,7 @@ type Msg = {
   content: string
   activities?: Activity[]
   steps?: AskStep[]
+  actions?: AskAction[]
   error?: boolean
 }
 
@@ -103,6 +111,7 @@ export default function AskOperatorPage() {
     let acts: Activity[] = []
     let actId = 0
     let collectedSteps: AskStep[] = []
+    const collectedActions: AskAction[] = []
     let settled = false
 
     const startAct = (label: string) => {
@@ -125,6 +134,7 @@ export default function AskOperatorPage() {
         content,
         activities: acts.length ? acts : undefined,
         steps: collectedSteps.length ? collectedSteps : undefined,
+        actions: collectedActions.length ? collectedActions : undefined,
         error,
       })
     }
@@ -165,6 +175,17 @@ export default function AskOperatorPage() {
           case 'step':
             collectedSteps.push(ev.step)
             closeActs({ rows: ev.step.rowCount, error: ev.step.error })
+            break
+          case 'action':
+            if (ev.kind === 'choices') {
+              collectedActions.push({
+                kind: 'choices',
+                options: ev.payload.options ?? [],
+                allow_custom: ev.payload.allow_custom !== false,
+              })
+            } else if (ev.kind === 'report' && ev.payload?.title) {
+              collectedActions.push({ kind: 'report', spec: ev.payload })
+            }
             break
           case 'done': {
             if (ev.steps) collectedSteps = ev.steps
@@ -232,7 +253,16 @@ export default function AskOperatorPage() {
         ) : (
           <div className="space-y-7">
             {messages.map((m, i) => (
-              <Turn key={i} msg={m} sites={siteMatcher} onSiteClick={openSite} />
+              <Turn
+                key={i}
+                msg={m}
+                sites={siteMatcher}
+                onSiteClick={openSite}
+                // A picker is spent once anything follows it (the user's pick
+                // appends a new turn) or a new answer is streaming in.
+                answered={i < messages.length - 1 || busy}
+                onPick={(t) => void send(t)}
+              />
             ))}
 
             {busy && (
@@ -295,10 +325,14 @@ function Turn({
   msg,
   sites,
   onSiteClick,
+  answered,
+  onPick,
 }: {
   msg: Msg
   sites: ReturnType<typeof buildSiteMatcher>
   onSiteClick: (id: string) => void
+  answered: boolean
+  onPick: (text: string) => void
 }) {
   if (msg.role === 'user') {
     return (
@@ -324,6 +358,19 @@ function Turn({
           </div>
         ) : (
           <AnswerBody text={msg.content} sites={sites} onSiteClick={onSiteClick} />
+        )}
+        {msg.actions?.map((a, i) =>
+          a.kind === 'choices' ? (
+            <ChoicePicker
+              key={i}
+              options={a.options}
+              allowCustom={a.allow_custom ?? true}
+              answered={answered}
+              onPick={onPick}
+            />
+          ) : (
+            <ReportCard key={i} spec={a.spec} />
+          ),
         )}
         {msg.steps && msg.steps.length > 0 && <QueryDetails steps={msg.steps} />}
       </div>

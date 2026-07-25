@@ -125,6 +125,13 @@ Answering:
 - Give a concise, direct answer in plain language. Use short markdown tables or bullet lists when helpful.
 - Cite concrete numbers. Never invent data. If the data cannot answer the question, say so and suggest what is available.
 - Keep it brief and business-focused. Do not describe your SQL or tools unless asked.
+- When you name a site, use the exact site name from the locations table so the app can link it.
+
+Two more tools let you go beyond text:
+
+present_choices — when the user's request is broad or could go several ways (e.g. "make a marketing plan", "help me improve conversion"), do NOT guess. Ask ONE short clarifying question in your text, then call present_choices with 2-5 concrete options plus allow_custom:true so they can type their own. After calling it, STOP — the user's pick arrives as their next message. Use this instead of a long generic answer to an under-specified request.
+
+build_report — when the user asks for a report, export, or a written summary they could hand to someone or file away (especially something the built-in reports don't cover), gather the data with run_sql/site tools, then call build_report with a title and structured sections. The app renders it as a downloadable, Operator-branded PDF. Prefer real tables of actual numbers over prose. After calling it, add one short sentence telling them the report is ready to download. Only build a report when they asked for one; a quick question just needs a text answer.
 
 Schema for run_sql:
 ${SCHEMA}`
@@ -177,6 +184,79 @@ const QUERY_DASHBOARD_TOOL: Anthropic.Tool = {
   },
 }
 
+// Present a set of choices and pause for the user to pick. Client-side: the app
+// renders a picker; the selection comes back as the next question.
+const PRESENT_CHOICES_TOOL: Anthropic.Tool = {
+  name: 'present_choices',
+  description:
+    "Show the user a small set of clickable choices and pause for their pick. Use for broad or ambiguous requests where guessing would waste their time. Ask the actual question in your text; this tool only carries the options. After calling it your turn ends and the user's choice arrives as their next message.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      options: {
+        type: 'array',
+        description: '2 to 5 concrete, distinct choices.',
+        items: {
+          type: 'object',
+          properties: {
+            label: { type: 'string', description: 'Short button text the user sees.' },
+            hint: { type: 'string', description: 'Optional one-line clarifier under the label.' },
+          },
+          required: ['label'],
+        },
+      },
+      allow_custom: {
+        type: 'boolean',
+        description: 'Whether to offer an "Other" free-text option (default true).',
+      },
+    },
+    required: ['options'],
+  },
+}
+
+// Hand the client a structured report to render as a branded, downloadable PDF.
+const BUILD_REPORT_TOOL: Anthropic.Tool = {
+  name: 'build_report',
+  description:
+    "Deliver a downloadable, Operator-branded PDF report. Gather the real numbers first with the data tools, then call this with a title and structured sections. Prefer tables of actual values over prose. Use when the user asks for a report, export, or a shareable written summary.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'Report title.' },
+      subtitle: { type: 'string', description: 'Optional one-line subtitle (scope, date range, site).' },
+      sections: {
+        type: 'array',
+        description: 'Report body, in order.',
+        items: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['table', 'text', 'stats'] },
+            heading: { type: 'string', description: 'Optional section heading.' },
+            body: { type: 'string', description: 'For type=text: a paragraph.' },
+            columns: { type: 'array', items: { type: 'string' }, description: 'For type=table: column headers.' },
+            rows: {
+              type: 'array',
+              items: { type: 'array', items: { type: 'string' } },
+              description: 'For type=table: rows, each a list of cell strings matching columns.',
+            },
+            items: {
+              type: 'array',
+              description: 'For type=stats: labelled figures.',
+              items: {
+                type: 'object',
+                properties: { label: { type: 'string' }, value: { type: 'string' } },
+                required: ['label', 'value'],
+              },
+            },
+          },
+          required: ['type'],
+        },
+      },
+    },
+    required: ['title', 'sections'],
+  },
+}
+
 type Step = { sql?: string; tool?: string; rowCount?: number; error?: string }
 
 // Progress events pushed to the client while an answer is still forming. The
@@ -189,6 +269,8 @@ const TOOL_DETAIL: Record<string, string> = {
   run_sql: 'Running a query on your data',
   get_site_performance: 'Pulling live site performance',
   query_dashboard: 'Comparing every site on the dashboard',
+  present_choices: 'Putting some options together',
+  build_report: 'Building your report',
 }
 
 // First run of digits in a site name: "MightyWash 001" -> 1, "Mighty Wash #24" -> 24.
@@ -372,9 +454,11 @@ Deno.serve(async (req) => {
 
   const today = new Date().toISOString().slice(0, 10)
   const anthropic = new Anthropic({ apiKey })
+  // present_choices and build_report are universal; the data tools depend on
+  // the account's feature flags.
   const tools = perfAvailable
-    ? [RUN_SQL_TOOL, PERF_TOOL, QUERY_DASHBOARD_TOOL]
-    : [RUN_SQL_TOOL]
+    ? [RUN_SQL_TOOL, PERF_TOOL, QUERY_DASHBOARD_TOOL, PRESENT_CHOICES_TOOL, BUILD_REPORT_TOOL]
+    : [RUN_SQL_TOOL, PRESENT_CHOICES_TOOL, BUILD_REPORT_TOOL]
 
   const messages: Anthropic.MessageParam[] = []
   for (const h of (body.history ?? []).slice(-8)) {
@@ -423,12 +507,19 @@ Deno.serve(async (req) => {
         return { answer: answer || 'I could not find an answer.', steps }
       }
 
-      // Whatever it said before reaching for a tool was narration, not the
-      // answer. Tell the client to move it out of the answer bubble.
-      emit({ t: 'preamble' })
+      // Text before a DATA tool is narration — move it to the activity trail.
+      // Text before a presentational tool (choices/report) is the real answer
+      // (the question, or the report confirmation), so keep it in place.
+      const usedDataTool = resp.content.some(
+        (b) =>
+          b.type === 'tool_use' &&
+          (b.name === 'run_sql' || b.name === 'get_site_performance' || b.name === 'query_dashboard'),
+      )
+      if (usedDataTool) emit({ t: 'preamble' })
 
       messages.push({ role: 'assistant', content: resp.content })
       const toolResults: Anthropic.ToolResultBlockParam[] = []
+      let pausedForChoices = false
       for (const block of resp.content) {
         if (block.type !== 'tool_use') continue
         emit({
@@ -523,6 +614,41 @@ Deno.serve(async (req) => {
           continue
         }
 
+        if (block.name === 'present_choices') {
+          const input = (block.input ?? {}) as {
+            options?: { label?: string; hint?: string }[]
+            allow_custom?: boolean
+          }
+          const options = (input.options ?? [])
+            .filter((o) => o && typeof o.label === 'string' && o.label.trim())
+            .slice(0, 5)
+            .map((o) => ({ label: String(o.label).trim(), hint: o.hint ? String(o.hint) : undefined }))
+          emit({
+            t: 'action',
+            kind: 'choices',
+            payload: { options, allow_custom: input.allow_custom !== false },
+          })
+          steps.push({ tool: 'present_choices' })
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: 'Choices shown to the user. Turn ends; their selection arrives as the next message.',
+          })
+          pausedForChoices = true
+          continue
+        }
+
+        if (block.name === 'build_report') {
+          emit({ t: 'action', kind: 'report', payload: block.input ?? {} })
+          steps.push({ tool: 'build_report' })
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: 'Report delivered to the user as a downloadable PDF. Add one short sentence confirming it is ready.',
+          })
+          continue
+        }
+
         // Unknown / unavailable tool.
         toolResults.push({
           type: 'tool_result',
@@ -532,6 +658,17 @@ Deno.serve(async (req) => {
         })
       }
       messages.push({ role: 'user', content: toolResults })
+
+      // present_choices ends the turn: the picker is on screen and we wait for
+      // the user. Return the text streamed before the tool call as the answer.
+      if (pausedForChoices) {
+        const answer = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map((b) => b.text)
+          .join('\n')
+          .trim()
+        return { answer, steps }
+      }
     }
 
     return {
