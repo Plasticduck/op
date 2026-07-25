@@ -4070,31 +4070,46 @@ export type Database = {
       }
       supplies_requests: {
         Row: {
+          category: string | null
+          category_other: string | null
           created_at: string
+          first_name: string | null
           id: string
           item: string
+          last_name: string | null
           location_id: string
           notes: string | null
+          priority: string
           quantity: number
           requested_by: string | null
           status: string
         }
         Insert: {
+          category?: string | null
+          category_other?: string | null
           created_at?: string
+          first_name?: string | null
           id?: string
           item: string
+          last_name?: string | null
           location_id: string
           notes?: string | null
+          priority?: string
           quantity?: number
           requested_by?: string | null
           status?: string
         }
         Update: {
+          category?: string | null
+          category_other?: string | null
           created_at?: string
+          first_name?: string | null
           id?: string
           item?: string
+          last_name?: string | null
           location_id?: string
           notes?: string | null
+          priority?: string
           quantity?: number
           requested_by?: string | null
           status?: string
