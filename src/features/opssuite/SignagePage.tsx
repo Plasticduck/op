@@ -14,6 +14,7 @@ import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import {
   SIGN_CATEGORIES,
+  flagSpec,
   signage,
   signTypeLabel,
   signTypeOptions,
@@ -91,9 +92,11 @@ function Inner({ locationId }: { locationId: string }) {
                     {r.sign_type && <div className="text-xs text-ink-muted">{r.sign_type}</div>}
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">
-                    {r.width && r.height
-                      ? `${r.width} x ${r.height} ${r.size_unit === 'ft' ? 'ft' : 'in'}`
-                      : '—'}
+                    {r.size_option
+                      ? `${r.size_option}${r.sided ? ` · ${r.sided === 'double' ? 'Double' : 'Single'} sided` : ''}`
+                      : r.width && r.height
+                        ? `${r.width} x ${r.height} ${r.size_unit === 'ft' ? 'ft' : 'in'}`
+                        : '—'}
                   </td>
                   <td className="px-3 py-2.5 numeric tabular text-ink-muted">{r.quantity}</td>
                   <td className="px-3 py-2.5">
@@ -149,21 +152,31 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
   const [pf, ...pl] = (profile?.name ?? '').trim().split(' ')
   const [firstName, setFirstName] = useState(pf ?? '')
   const [lastName, setLastName] = useState(pl.join(' '))
+  const firstType = signTypeOptions(SIGN_CATEGORIES[0])[0] ?? ''
   const [category, setCategory] = useState<string>(SIGN_CATEGORIES[0])
-  const [signType, setSignType] = useState<string>(signTypeOptions(SIGN_CATEGORIES[0])[0] ?? '')
+  const [signType, setSignType] = useState<string>(firstType)
   const [width, setWidth] = useState('')
   const [height, setHeight] = useState('')
   const [unit, setUnit] = useState<'in' | 'ft'>('in')
+  const [sizeOption, setSizeOption] = useState('')
+  const [sided, setSided] = useState<'single' | 'double'>('single')
   const [quantity, setQuantity] = useState('1')
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const typeOptions = signTypeOptions(category)
+  const spec = flagSpec(signType) // present only for flag types
 
+  const applyType = (t: string) => {
+    setSignType(t)
+    const s = flagSpec(t)
+    setSizeOption(s?.sizes[0] ?? '')
+    setSided('single')
+  }
   const onCategory = (c: string) => {
     setCategory(c)
-    setSignType(signTypeOptions(c)[0] ?? '')
+    applyType(signTypeOptions(c)[0] ?? '')
   }
 
   const onFile = (f: File | null) => {
@@ -199,9 +212,12 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
       last_name: lastName.trim(),
       sign_category: category,
       sign_type: signType,
-      width: width ? Number(width) : null,
-      height: height ? Number(height) : null,
+      // Flags use a preset size + sided; other categories use width x height.
+      width: spec ? null : width ? Number(width) : null,
+      height: spec ? null : height ? Number(height) : null,
       size_unit: unit,
+      size_option: spec ? sizeOption : null,
+      sided: spec ? (spec.sided ? sided : 'single') : null,
       quantity: Number(quantity) || 1,
       artwork_path: artworkPath,
       artwork_name: artworkName,
@@ -230,24 +246,48 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
         </Field>
         <Field label={signTypeLabel(category)} required>
           {(id) => (
-            <Select id={id} value={signType} onChange={(e) => setSignType(e.target.value)}>
+            <Select id={id} value={signType} onChange={(e) => applyType(e.target.value)}>
               {typeOptions.map((o) => <option key={o} value={o}>{o}</option>)}
             </Select>
           )}
         </Field>
-        <Field label="Size">
-          {() => (
-            <div className="flex items-center gap-2">
-              <Input type="number" min="0" step="0.1" value={width} onChange={(e) => setWidth(e.target.value)} placeholder="Width" />
-              <span className="text-ink-muted">x</span>
-              <Input type="number" min="0" step="0.1" value={height} onChange={(e) => setHeight(e.target.value)} placeholder="Height" />
-              <Select value={unit} onChange={(e) => setUnit(e.target.value as 'in' | 'ft')} className="w-28">
-                <option value="in">Inches</option>
-                <option value="ft">Feet</option>
-              </Select>
-            </div>
-          )}
-        </Field>
+        {spec ? (
+          <>
+            <Field label="Size" required>
+              {(id) => (
+                <Select id={id} value={sizeOption} onChange={(e) => setSizeOption(e.target.value)}>
+                  {spec.sizes.map((s) => <option key={s} value={s}>{s}</option>)}
+                </Select>
+              )}
+            </Field>
+            <Field label="Sided">
+              {(id) =>
+                spec.sided ? (
+                  <Select id={id} value={sided} onChange={(e) => setSided(e.target.value as 'single' | 'double')}>
+                    <option value="single">Single sided</option>
+                    <option value="double">Double sided</option>
+                  </Select>
+                ) : (
+                  <Input id={id} value="Single sided only" readOnly className="bg-content text-ink-muted" />
+                )
+              }
+            </Field>
+          </>
+        ) : (
+          <Field label="Size">
+            {() => (
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="0.1" value={width} onChange={(e) => setWidth(e.target.value)} placeholder="Width" />
+                <span className="text-ink-muted">x</span>
+                <Input type="number" min="0" step="0.1" value={height} onChange={(e) => setHeight(e.target.value)} placeholder="Height" />
+                <Select value={unit} onChange={(e) => setUnit(e.target.value as 'in' | 'ft')} className="w-28">
+                  <option value="in">Inches</option>
+                  <option value="ft">Feet</option>
+                </Select>
+              </div>
+            )}
+          </Field>
+        )}
         <Field label="Quantity" required>{(id) => <Input id={id} type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />}</Field>
         <Field label="Upload artwork (PDF only)">
           {(id) => (

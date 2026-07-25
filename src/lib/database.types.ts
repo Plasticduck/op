@@ -3734,8 +3734,10 @@ export type Database = {
           notes: string | null
           quantity: number
           requested_by: string | null
+          sided: string | null
           sign_category: string
           sign_type: string | null
+          size_option: string | null
           size_unit: string
           status: string
           width: number | null
@@ -3753,8 +3755,10 @@ export type Database = {
           notes?: string | null
           quantity?: number
           requested_by?: string | null
+          sided?: string | null
           sign_category: string
           sign_type?: string | null
+          size_option?: string | null
           size_unit?: string
           status?: string
           width?: number | null
@@ -3772,8 +3776,10 @@ export type Database = {
           notes?: string | null
           quantity?: number
           requested_by?: string | null
+          sided?: string | null
           sign_category?: string
           sign_type?: string | null
+          size_option?: string | null
           size_unit?: string
           status?: string
           width?: number | null

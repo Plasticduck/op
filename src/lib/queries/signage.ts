@@ -61,6 +61,22 @@ export function signTypeLabel(category: string): string {
   return category === 'Banner' ? 'Material' : 'Sign type'
 }
 
+// Per-flag preset sizes + whether the customer chooses single/double sided.
+// `sided: false` means single-sided only (no choice).
+export type FlagSpec = { sizes: string[]; sided: boolean }
+const FLAG_SPECS: Record<string, FlagSpec> = {
+  'Angled Feather Flags': { sizes: ['9 ft', '10.5 ft', '14 ft', '18 ft'], sided: true },
+  'Convex Feather Flags': { sizes: ['9 ft', '10.5 ft', '14 ft', '18 ft'], sided: true },
+  'Econo Feather Flags': { sizes: ['16 ft'], sided: false },
+  'Pole Flags': { sizes: ['24" x 18"', '36" x 24"', '60" x 36"', '72" x 48"', '96" x 60"'], sided: true },
+  'Teardrop Flags': { sizes: ['7 ft', '9 ft', '11.2 ft', '13.5 ft'], sided: true },
+  'Wholesale Rectangular Feather Flags': { sizes: ['8.5 ft', '11.8 ft', '15 ft'], sided: true },
+}
+
+export function flagSpec(signType: string): FlagSpec | undefined {
+  return FLAG_SPECS[signType]
+}
+
 export const signage = {
   list: (loc: string) =>
     supabase
