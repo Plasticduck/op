@@ -18,7 +18,14 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import Anthropic from 'npm:@anthropic-ai/sdk'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
-const MAX_STEPS = 6 // safety cap on tool-use rounds per question
+// Safety cap on tool-use rounds per question. A real diagnosis ("why were cars
+// low at Site 17 on Friday") fans out across weather, downtime, equipment, and
+// open work orders, so this needs headroom. On the final round tools are
+// dropped so the model must answer with what it has (see run()).
+const MAX_STEPS = 14
+// Generous so a large build_report spec or a multi-part answer is never
+// truncated mid-tool-call (which would corrupt the tool input JSON).
+const MAX_TOKENS = 4000
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -481,14 +488,25 @@ Deno.serve(async (req) => {
   async function run(emit: Emit): Promise<{ answer: string; steps: Step[] }> {
     for (let i = 0; i < MAX_STEPS; i++) {
       emit({ t: 'phase', phase: 'thinking' })
+      // On the last allowed round, withhold the tools so the model can only
+      // reply with prose. That turns "too many steps" into a real answer built
+      // from whatever it has already gathered.
+      const finalRound = i === MAX_STEPS - 1
       const turn = anthropic.messages.stream({
         model: MODEL,
-        max_tokens: 1500,
+        max_tokens: MAX_TOKENS,
         system: [
           { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
-          { type: 'text', text: `Today is ${today}. Answer for this user's data only. ${perfNote}` },
+          {
+            type: 'text',
+            text:
+              `Today is ${today}. Answer for this user's data only. ${perfNote}` +
+              (finalRound
+                ? ' You have gathered enough. Give your best final answer now using the data already returned; do not ask for more.'
+                : ''),
+          },
         ],
-        tools,
+        ...(finalRound ? {} : { tools }),
         messages,
       })
       for await (const ev of turn) {
@@ -671,8 +689,10 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Unreachable in normal flow: the final round withholds tools and returns a
+    // prose answer above. Kept as a defensive net.
     return {
-      answer: 'That took too many steps to work out. Try narrowing the question.',
+      answer: "I gathered what I could but couldn't fully resolve that. Try asking about one site or metric at a time.",
       steps,
     }
   }
