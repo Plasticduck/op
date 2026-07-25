@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ArrowUp, Boxes, Car, Database, Gauge, TriangleAlert, Wrench } from 'lucide-react'
 import { askOperator, type AskStep, type AskTurn } from '@/lib/queries/askOperator'
+import { useLocations } from '@/lib/locations'
 import { washWord, type WashPhase } from '@/features/ask/washWords'
 import { ActivityTrail, type Activity } from '@/features/ask/ActivityTrail'
 import { AnswerBody } from '@/features/ask/AnswerBody'
+import { buildSiteMatcher } from '@/features/ask/siteLinks'
 import { StarMark } from '@/features/ask/StarMark'
 import { useTypewriter } from '@/features/ask/useTypewriter'
 import { cn } from '@/lib/utils'
@@ -40,6 +43,15 @@ export default function AskOperatorPage() {
   const typed = useTypewriter(draft)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Turn site names in answers into links that switch to that site's dashboard.
+  const { locations, setActiveId } = useLocations()
+  const navigate = useNavigate()
+  const siteMatcher = useMemo(() => buildSiteMatcher(locations), [locations])
+  const openSite = (id: string) => {
+    setActiveId(id)
+    navigate('/app/dashboard?view=site')
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -220,7 +232,7 @@ export default function AskOperatorPage() {
         ) : (
           <div className="space-y-7">
             {messages.map((m, i) => (
-              <Turn key={i} msg={m} />
+              <Turn key={i} msg={m} sites={siteMatcher} onSiteClick={openSite} />
             ))}
 
             {busy && (
@@ -228,7 +240,9 @@ export default function AskOperatorPage() {
                 <StarMark active className="mt-0.5 size-6 shrink-0 text-accent" />
                 <div className="min-w-0 flex-1 space-y-3">
                   <ActivityTrail items={activities} />
-                  {typed && <AnswerBody text={typed} caret />}
+                  {typed && (
+                    <AnswerBody text={typed} caret sites={siteMatcher} onSiteClick={openSite} />
+                  )}
                   <p className="flex items-center gap-1.5 text-[13px]">
                     <span className="ai-shimmer font-medium">{washWord(phase, tick)}</span>
                     {detail && <span className="text-ink-subtle">· {detail}</span>}
@@ -277,7 +291,15 @@ export default function AskOperatorPage() {
   )
 }
 
-function Turn({ msg }: { msg: Msg }) {
+function Turn({
+  msg,
+  sites,
+  onSiteClick,
+}: {
+  msg: Msg
+  sites: ReturnType<typeof buildSiteMatcher>
+  onSiteClick: (id: string) => void
+}) {
   if (msg.role === 'user') {
     return (
       <div className="ai-rise flex justify-end">
@@ -301,7 +323,7 @@ function Turn({ msg }: { msg: Msg }) {
             {msg.content}
           </div>
         ) : (
-          <AnswerBody text={msg.content} />
+          <AnswerBody text={msg.content} sites={sites} onSiteClick={onSiteClick} />
         )}
         {msg.steps && msg.steps.length > 0 && <QueryDetails steps={msg.steps} />}
       </div>

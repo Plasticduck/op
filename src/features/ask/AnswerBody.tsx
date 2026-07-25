@@ -1,5 +1,6 @@
-import { Fragment } from 'react'
+import { createContext, Fragment, useContext } from 'react'
 import { numericColumns, parse, stripMarks } from '@/features/ask/answerBlocks'
+import type { SiteMatcher } from '@/features/ask/siteLinks'
 import { cn } from '@/lib/utils'
 
 // Renderer for the model's markdown. Deliberately hand-rolled rather than
@@ -8,9 +9,31 @@ import { cn } from '@/lib/utils'
 // alignment, small two-column results promoted to stat tiles, callouts, and
 // code blocks.
 
-export function AnswerBody({ text, caret = false }: { text: string; caret?: boolean }) {
-  const blocks = parse(text)
+// Site linking rides in via context so inline(), which is a plain function
+// deep in the render, doesn't need it threaded through every call site.
+type SiteLinking = { matcher: SiteMatcher; onClick: (id: string) => void }
+const SiteLinkContext = createContext<SiteLinking | null>(null)
 
+export function AnswerBody({
+  text,
+  caret = false,
+  sites,
+  onSiteClick,
+}: {
+  text: string
+  caret?: boolean
+  sites?: SiteMatcher | null
+  onSiteClick?: (id: string) => void
+}) {
+  const blocks = parse(text)
+  const linking = sites && onSiteClick ? { matcher: sites, onClick: onSiteClick } : null
+
+  return (
+    <SiteLinkContext.Provider value={linking}>{renderBlocks(blocks, caret)}</SiteLinkContext.Provider>
+  )
+}
+
+function renderBlocks(blocks: ReturnType<typeof parse>, caret: boolean) {
   return (
     <div className="text-[15px] leading-relaxed text-ink">
       {blocks.map((b, i) => {
@@ -229,6 +252,36 @@ function inline(text: string): React.ReactNode {
         </em>
       )
     }
-    return <Fragment key={i}>{p}</Fragment>
+    return <PlainText key={i} text={p} />
   })
+}
+
+// Plain prose, with any site names inside it turned into links. Only the text
+// that falls outside bold/code/italic spans reaches here, so a bolded site name
+// stays bold rather than becoming a link. Bold-and-linked would need matching
+// inside the strong branch too; site names in Operator answers are rarely
+// bolded, so this keeps it simple.
+function PlainText({ text }: { text: string }) {
+  const linking = useContext(SiteLinkContext)
+  if (!linking) return <>{text}</>
+  const segments = linking.matcher.split(text)
+  if (segments.every((s) => !s.siteId)) return <>{text}</>
+  return (
+    <>
+      {segments.map((s, i) =>
+        s.siteId ? (
+          <button
+            key={i}
+            type="button"
+            onClick={() => linking.onClick(s.siteId!)}
+            className="rounded font-medium text-accent underline decoration-accent/30 underline-offset-2 transition hover:decoration-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            {s.text}
+          </button>
+        ) : (
+          <Fragment key={i}>{s.text}</Fragment>
+        ),
+      )}
+    </>
+  )
 }
