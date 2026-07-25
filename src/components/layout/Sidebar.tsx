@@ -187,7 +187,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/signage',
         label: 'Signage',
         icon: Signpost,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'employee'],
       },
       {
         to: '/app/market-research',

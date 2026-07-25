@@ -3720,6 +3720,88 @@ export type Database = {
           },
         ]
       }
+      signage_requests: {
+        Row: {
+          account_id: string
+          artwork_name: string | null
+          artwork_path: string | null
+          created_at: string
+          first_name: string | null
+          height: number | null
+          id: string
+          last_name: string | null
+          location_id: string
+          notes: string | null
+          quantity: number
+          requested_by: string | null
+          sign_category: string
+          sign_type: string | null
+          size_unit: string
+          status: string
+          width: number | null
+        }
+        Insert: {
+          account_id: string
+          artwork_name?: string | null
+          artwork_path?: string | null
+          created_at?: string
+          first_name?: string | null
+          height?: number | null
+          id?: string
+          last_name?: string | null
+          location_id: string
+          notes?: string | null
+          quantity?: number
+          requested_by?: string | null
+          sign_category: string
+          sign_type?: string | null
+          size_unit?: string
+          status?: string
+          width?: number | null
+        }
+        Update: {
+          account_id?: string
+          artwork_name?: string | null
+          artwork_path?: string | null
+          created_at?: string
+          first_name?: string | null
+          height?: number | null
+          id?: string
+          last_name?: string | null
+          location_id?: string
+          notes?: string | null
+          quantity?: number
+          requested_by?: string | null
+          sign_category?: string
+          sign_type?: string | null
+          size_unit?: string
+          status?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signage_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signage_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signage_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_audits: {
         Row: {
           account_id: string

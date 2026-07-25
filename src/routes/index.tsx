@@ -205,7 +205,7 @@ export const router = createBrowserRouter([
           { path: 'market-research', element: mgr(<MarketResearchPage />) },
           { path: 'market-research/:id', element: mgr(<MarketResearchDetailPage />) },
           { path: 'violations', element: mgr(<SiteViolationsPage />) },
-          { path: 'signage', element: mgr(<SignagePage />) },
+          { path: 'signage', element: emp(<SignagePage />) },
           { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
