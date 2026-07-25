@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowUp, Boxes, Car, Database, Gauge, TriangleAlert, Wrench } from 'lucide-react'
+import {
+  ArrowUp,
+  Boxes,
+  Car,
+  Database,
+  FileText,
+  Gauge,
+  Loader2,
+  TriangleAlert,
+  Wrench,
+} from 'lucide-react'
 import {
   askOperator,
   type AskAction,
@@ -44,6 +54,8 @@ export default function AskOperatorPage() {
   const [phase, setPhase] = useState<WashPhase>('thinking')
   const [detail, setDetail] = useState('')
   const [tick, setTick] = useState(0)
+  // Filename of a report being assembled right now, shown as a live chip.
+  const [writingFile, setWritingFile] = useState<string | null>(null)
   // Held back until the reveal catches up, so the answer never snaps to full
   // length the moment the stream closes.
   const [pending, setPending] = useState<Msg | null>(null)
@@ -80,6 +92,7 @@ export default function AskOperatorPage() {
     setDraft('')
     setActivities([])
     setDetail('')
+    setWritingFile(null)
     setBusy(false)
   }, [pending, typed, draft])
 
@@ -104,6 +117,7 @@ export default function AskOperatorPage() {
     setActivities([])
     setPhase('thinking')
     setDetail('')
+    setWritingFile(null)
 
     // Events land faster than React state settles, so accumulate in plain
     // locals and mirror them into state for rendering.
@@ -185,6 +199,7 @@ export default function AskOperatorPage() {
               })
             } else if (ev.kind === 'report' && ev.payload?.title) {
               collectedActions.push({ kind: 'report', spec: ev.payload })
+              setWritingFile(ev.payload.title)
             }
             break
           case 'done': {
@@ -223,7 +238,13 @@ export default function AskOperatorPage() {
         <h1 className="text-lg font-semibold tracking-tight text-ink">Operator AI</h1>
       </header>
 
-      <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-6">
+      {/* -mr-4 pr-4 pushes the scrollbar out into the page gutter so it stops
+          crowding the text, while the content stays aligned with the header
+          and composer. */}
+      <div
+        ref={scrollRef}
+        className="scrollbar-slim -mr-4 flex min-h-0 flex-1 flex-col overflow-y-auto pb-6 pr-4 lg:-mr-6 lg:pr-6"
+      >
         {empty ? (
           <div className="flex flex-1 flex-col items-center justify-center px-2 py-8 text-center">
             <StarMark active className="size-11 text-accent" />
@@ -273,6 +294,7 @@ export default function AskOperatorPage() {
                   {typed && (
                     <AnswerBody text={typed} caret sites={siteMatcher} onSiteClick={openSite} />
                   )}
+                  {writingFile && <WritingFileChip name={writingFile} />}
                   <p className="flex items-center gap-1.5 text-[13px]">
                     <span className="ai-shimmer font-medium">{washWord(phase, tick)}</span>
                     {detail && <span className="text-ink-subtle">· {detail}</span>}
@@ -317,6 +339,26 @@ export default function AskOperatorPage() {
           you act on.
         </p>
       </form>
+    </div>
+  )
+}
+
+// Live blob shown while the model assembles a report, before the download card
+// takes over. Filename + extension, a spinner, and a status line.
+function WritingFileChip({ name }: { name: string }) {
+  return (
+    <div className="ai-rise flex w-fit max-w-full items-center gap-3 rounded-2xl border border-accent/25 bg-accent-soft/50 p-2.5 pr-4">
+      <span className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-card text-accent">
+        <FileText className="size-4.5" />
+        <Loader2 className="absolute -bottom-1 -right-1 size-4 animate-spin rounded-full bg-card p-0.5 text-accent" />
+      </span>
+      <div className="min-w-0">
+        <div className="truncate text-[13.5px] font-medium text-ink">
+          {name}
+          <span className="text-ink-subtle">.pdf</span>
+        </div>
+        <div className="text-[12px] text-ink-muted">Writing to file…</div>
+      </div>
     </div>
   )
 }

@@ -271,6 +271,30 @@
   display: none;
 }
 
+/* Slim, themed scrollbar for content areas (e.g. the Operator AI thread). Thin
+   track, a subtle rounded thumb that uses the semantic border token so it reads
+   in both light and dark, and a small transparent inset so the thumb doesn't
+   press against the content. */
+.scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.scrollbar-slim::-webkit-scrollbar {
+  width: 10px;
+}
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.scrollbar-slim:hover::-webkit-scrollbar-thumb {
+  background-color: var(--color-ink-subtle);
+}
+
 /* Scroll area whose thumb stays invisible until the pointer hovers it. The
    gutter is always reserved (transparent track + transparent thumb) so nothing
    shifts when the thumb fades in. Tuned for the dark sidebar rail: a subtle
