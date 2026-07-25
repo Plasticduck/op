@@ -89,6 +89,10 @@ export const signage = {
   update: (id: string, patch: T['signage_requests']['Update']) =>
     supabase.from('signage_requests').update(patch).eq('id', id),
 
+  // Best-effort: email the request (with the artwork PDF) to info@washlyfe.com.
+  emailRequest: (requestId: string) =>
+    supabase.functions.invoke('signage-request-email', { body: { request_id: requestId } }),
+
   // Artwork: PDF only, stored under the account folder in a private bucket.
   uploadArtwork: async (accountId: string, file: File) => {
     const path = `${accountId}/${crypto.randomUUID()}.pdf`

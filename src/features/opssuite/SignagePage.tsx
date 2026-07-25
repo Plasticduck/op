@@ -213,7 +213,7 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
       artworkName = file.name
     }
 
-    const { error: err } = await signage.create({
+    const { data: created, error: err } = await signage.create({
       account_id: profile?.account_id ?? '',
       location_id: locationId,
       requested_by: profile?.id ?? null,
@@ -233,6 +233,9 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
     })
     setBusy(false)
     if (err) return setError(err.message)
+    // Email the request (with the artwork PDF) to info@washlyfe.com. Best-effort:
+    // the request is saved regardless, so a mail hiccup never blocks the user.
+    if (created?.id) void signage.emailRequest(created.id)
     onSaved()
   }
 
