@@ -50,6 +50,7 @@ export default function IssuetrakPage() {
   const [openOnly, setOpenOnly] = useState(true)
   const [selected, setSelected] = useState<number | null>(null)
   const [newOpen, setNewOpen] = useState(false)
+  const [diag, setDiag] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -125,8 +126,26 @@ export default function IssuetrakPage() {
       />
 
       {error && (
-        <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
-          {error}
+        <div className="flex flex-col gap-2 rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
+          <div className="flex items-center justify-between gap-3">
+            <span>{error}</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                try {
+                  setDiag(JSON.stringify(await issuetrak.diag(), null, 2))
+                } catch (e) {
+                  setDiag(e instanceof Error ? e.message : String(e))
+                }
+              }}
+            >
+              Run diagnostics
+            </Button>
+          </div>
+          {diag && (
+            <pre className="overflow-x-auto rounded bg-card p-2 text-xs text-ink">{diag}</pre>
+          )}
         </div>
       )}
 

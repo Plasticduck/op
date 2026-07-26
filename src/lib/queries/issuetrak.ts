@@ -91,6 +91,9 @@ export const issuetrak = {
   // Cheap connectivity + credential check.
   test: () => call('/Authenticate/test'),
 
+  // Temporary: token-shape + live auth-test diagnostic (see edge function).
+  diag: () => call<Record<string, unknown>>('/__diag'),
+
   // Newest-first page of issues. openOnly filters server-side on isOpen.
   searchIssues: async (opts?: { pageNumber?: number; pageSize?: number; openOnly?: boolean }) => {
     const body: Record<string, unknown> = {

@@ -62,10 +62,13 @@ Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) })
 
-  const apiKey = Deno.env.get('ISSUETRAK_API_KEY')
-  if (!apiKey) {
+  const rawKey = Deno.env.get('ISSUETRAK_API_KEY')
+  if (!rawKey) {
     return json({ error: 'no_key', message: 'Issuetrak is not connected yet.' }, 503, origin)
   }
+  // Secrets set from a paste often carry a trailing newline or surrounding
+  // quotes, which Issuetrak rejects as an invalid token (401). Send it clean.
+  const apiKey = rawKey.trim().replace(/^["']|["']$/g, '')
   const base = (Deno.env.get('ISSUETRAK_BASE_URL') ?? DEFAULT_BASE).replace(/\/$/, '')
 
   const url = Deno.env.get('SUPABASE_URL')!
@@ -97,6 +100,41 @@ Deno.serve(async (req) => {
     payload = {}
   }
   const path = payload.path ?? ''
+
+  // Temporary diagnostic: reports token shape (masked) and a live
+  // /Authenticate/test result so we can tell a malformed secret from a bad
+  // token without exposing the value. Remove once the connection is verified.
+  if (path === '/__diag') {
+    let authStatus = 0
+    let authBody = ''
+    try {
+      const r = await fetch(`${base}/Authenticate/test`, {
+        headers: { 'X-Api-Key': apiKey, Accept: 'application/json' },
+      })
+      authStatus = r.status
+      authBody = (await r.text()).slice(0, 200)
+    } catch (e) {
+      authBody = e instanceof Error ? e.message : String(e)
+    }
+    return json(
+      {
+        status: 200,
+        data: {
+          rawLen: rawKey.length,
+          cleanLen: apiKey.length,
+          hadSurroundingJunk: rawKey.length !== apiKey.length,
+          prefix: apiKey.slice(0, 3),
+          suffix: apiKey.slice(-3),
+          baseUrl: base,
+          authTestStatus: authStatus,
+          authTestBody: authBody,
+        },
+      },
+      200,
+      origin,
+    )
+  }
+
   if (!path.startsWith('/') || path.includes('..')) {
     return json({ error: 'bad_request', message: 'path must be an absolute Issuetrak path' }, 400, origin)
   }
