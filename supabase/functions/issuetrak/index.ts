@@ -176,26 +176,45 @@ Deno.serve(async (req) => {
   try {
     // --- diag: token-shape + live auth test + site directory (temporary) ---
     if (action === 'diag') {
-      const test = await itFetch(base, apiKey, '/Authenticate/test')
-      const locs = await itFetch(base, apiKey, '/Locations?PageSize=100').catch(() => null)
-      const orgs = await itFetch(base, apiKey, '/Organizations?PageSize=100').catch(() => null)
+      const [test, locs, orgs, types, prios, issues] = await Promise.all([
+        itFetch(base, apiKey, '/Authenticate/test'),
+        itFetch(base, apiKey, '/Locations?PageSize=100').catch(() => null),
+        itFetch(base, apiKey, '/Organizations?PageSize=100').catch(() => null),
+        itFetch(base, apiKey, '/IssueTypes?PageSize=100').catch(() => null),
+        itFetch(base, apiKey, '/Priorities?PageSize=100').catch(() => null),
+        itFetch(base, apiKey, '/Issues/Search', {
+          method: 'POST',
+          body: { pageNumber: 1, pageSize: 5, filter: { isOpen: { type: 'IsTrue' } } },
+        }).catch(() => null),
+      ])
       const { map, siteKind } = await siteDirectory(base, apiKey).catch(() => ({ map: new Map(), siteKind: 'location' as const }))
       const allowed = isAdmin ? null : await allowedSiteNumbers()
+      // Site names carried on actual tickets (a fallback source when the
+      // Locations/Organizations lists are permission-blocked).
+      const ticketSites = (issues && issues.ok ? values(issues) : [])
+        .flatMap((i) => [i?.location?.name, i?.organization?.name])
+        .filter(Boolean)
       return json(
         {
           ok: true,
           cleanLen: apiKey.length,
-          hadSurroundingJunk: rawKey.length !== apiKey.length,
           prefix: apiKey.slice(0, 3),
           suffix: apiKey.slice(-3),
-          baseUrl: base,
-          authTestStatus: test.status,
           role,
           isAdmin,
-          locationsStatus: locs?.status ?? null,
-          organizationsStatus: orgs?.status ?? null,
+          statuses: {
+            authTest: test.status,
+            locations: locs?.status ?? null,
+            organizations: orgs?.status ?? null,
+            issueTypes: types?.status ?? null,
+            priorities: prios?.status ?? null,
+            issuesSearch: issues?.status ?? null,
+          },
+          openIssuesTotal: issues?.data?.pagingInformation?.itemTotal ?? null,
+          ticketSiteNamesSample: [...new Set(ticketSites)].slice(0, 20),
           locationNamesSample: (locs && locs.ok ? values(locs) : []).slice(0, 40).map((l) => l.name),
           organizationNamesSample: (orgs && orgs.ok ? values(orgs) : []).slice(0, 40).map((o) => o.name),
+          issueTypeNames: (types && types.ok ? values(types) : []).map((t) => t.name),
           siteKind,
           matchedSites: [...map.values()].sort((a, b) => a.number - b.number),
           allowedSiteNumbers: allowed,
