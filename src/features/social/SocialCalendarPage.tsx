@@ -172,7 +172,14 @@ function HolidayModal({
   const generate = async () => {
     setBusy(true); setError(null)
     const { data, error: err } = await supabase.functions.invoke('suggest-social-post', {
-      body: { holiday_id: holiday.id, date: dateStr, platform, promo_angle: promoAngle },
+      body: {
+        holiday_id: holiday.id,
+        holiday_name: holiday.name,
+        holiday_emoji: holiday.emoji,
+        date: dateStr,
+        platform,
+        promo_angle: promoAngle,
+      },
     })
     setBusy(false)
     if (err) return setError(err.message || 'Failed to generate.')
@@ -184,7 +191,14 @@ function HolidayModal({
   const newAngle = async () => {
     setAngleBusy(true); setError(null)
     const { data, error: err } = await supabase.functions.invoke('suggest-social-post', {
-      body: { mode: 'angle', holiday_id: holiday.id, date: dateStr, promo_angle: promoAngle },
+      body: {
+        mode: 'angle',
+        holiday_id: holiday.id,
+        holiday_name: holiday.name,
+        holiday_emoji: holiday.emoji,
+        date: dateStr,
+        promo_angle: promoAngle,
+      },
     })
     setAngleBusy(false)
     if (err) return setError(err.message || 'Failed to generate an angle.')

@@ -125,13 +125,25 @@ Deno.serve(async (req) => {
     return json({ error: 'forbidden' }, 403, origin)
   }
 
-  let body: { holiday_id?: string; date?: string; platform?: string; promo_angle?: string; mode?: string } = {}
+  let body: {
+    holiday_id?: string
+    holiday_name?: string
+    holiday_emoji?: string
+    date?: string
+    platform?: string
+    promo_angle?: string
+    mode?: string
+  } = {}
   try { body = await req.json() } catch { /* empty */ }
   const platform = body.platform || 'Instagram'
   const date = body.date || new Date().toISOString().slice(0, 10)
   const holiday = body.holiday_id ? PROMO_ANGLES[body.holiday_id] : null
   // Prefer the exact promo angle the user is looking at; fall back to the lookup.
   const promoAngle = body.promo_angle?.trim() || holiday?.promoAngle || ''
+  // Occasion name/emoji come from the frontend (its holiday list is the full one;
+  // the inline copy above can be missing newer holidays), falling back to lookup.
+  const occasionName = body.holiday_name?.trim() || holiday?.name || ''
+  const occasionEmoji = body.holiday_emoji?.trim() || holiday?.emoji || ''
 
   // Pull a tiny bit of account context to ground the suggestions.
   const { data: account } = await svc.from('accounts').select('name').eq('id', profile.account_id).single()
@@ -146,9 +158,11 @@ Deno.serve(async (req) => {
     const anglePrompt =
       'Wash brand: ' + (account?.name ?? 'a local car wash') + '\n' +
       'Date: ' + date + '\n' +
-      (holiday ? 'Occasion: ' + holiday.name + ' ' + holiday.emoji + '\n' : 'No specific holiday.\n') +
+      (occasionName ? 'Occasion: ' + occasionName + ' ' + occasionEmoji + '\n' : 'No specific holiday.\n') +
       (promoAngle ? 'Avoid repeating this angle: ' + promoAngle + '\n' : '') +
-      '\nCreate one fresh, specific promo angle.'
+      (occasionName
+        ? '\nThe angle MUST clearly tie to ' + occasionName + ' (its theme, meaning, or a natural car-wash tie-in). Do not produce a generic angle.'
+        : '\nCreate one fresh, specific promo angle.')
     try {
       const msg = await anthropic.messages.create({
         model: MODEL,
@@ -174,7 +188,7 @@ Deno.serve(async (req) => {
     'Number of sites: ' + (locCount ?? 1) + '\n' +
     'Date: ' + date + '\n' +
     'Platform: ' + platform + '\n' +
-    (holiday ? 'Occasion: ' + holiday.name + ' ' + holiday.emoji + '\n' : '') +
+    (occasionName ? 'Occasion: ' + occasionName + ' ' + occasionEmoji + '\n' : '') +
     (promoAngle
       ? 'PROMO ANGLE (shorthand direction to interpret, do not quote): ' + promoAngle + '\n' +
         '\nInterpret this into one concrete promotion, then write all 3 posts about it in fresh customer-facing language. Vary the hook and format between the three.'
