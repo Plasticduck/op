@@ -107,6 +107,19 @@ export default function IssuetrakPage() {
         }
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                try {
+                  setDiag(JSON.stringify(await issuetrak.diag(), null, 2))
+                } catch (e) {
+                  setDiag(e instanceof Error ? e.message : String(e))
+                }
+              }}
+            >
+              Diagnostics
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
@@ -137,8 +150,20 @@ export default function IssuetrakPage() {
               Run diagnostics
             </Button>
           </div>
-          {diag && <pre className="overflow-x-auto rounded bg-card p-2 text-xs text-ink">{diag}</pre>}
         </div>
+      )}
+
+      {!error && boot && !canSubmit && (
+        <div className="rounded-md border border-warn/40 bg-warn-soft px-3 py-2 text-sm text-warn">
+          No matching site was found between Operator and Issuetrak, so submitting is disabled. Click
+          Diagnostics to see the site names Issuetrak reports.
+        </div>
+      )}
+
+      {diag && (
+        <pre className="overflow-x-auto rounded-md border border-border bg-card p-2 text-xs text-ink">
+          {diag}
+        </pre>
       )}
 
       <div className="relative min-w-56 flex-1">

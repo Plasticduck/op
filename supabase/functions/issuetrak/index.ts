@@ -174,13 +174,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // --- diag: token-shape + live auth test (temporary) --------------------
+    // --- diag: token-shape + live auth test + site directory (temporary) ---
     if (action === 'diag') {
       const test = await itFetch(base, apiKey, '/Authenticate/test')
+      const locs = await itFetch(base, apiKey, '/Locations?PageSize=100').catch(() => null)
+      const orgs = await itFetch(base, apiKey, '/Organizations?PageSize=100').catch(() => null)
+      const { map, siteKind } = await siteDirectory(base, apiKey).catch(() => ({ map: new Map(), siteKind: 'location' as const }))
+      const allowed = isAdmin ? null : await allowedSiteNumbers()
       return json(
         {
           ok: true,
-          rawLen: rawKey.length,
           cleanLen: apiKey.length,
           hadSurroundingJunk: rawKey.length !== apiKey.length,
           prefix: apiKey.slice(0, 3),
@@ -189,6 +192,13 @@ Deno.serve(async (req) => {
           authTestStatus: test.status,
           role,
           isAdmin,
+          locationsStatus: locs?.status ?? null,
+          organizationsStatus: orgs?.status ?? null,
+          locationNamesSample: (locs && locs.ok ? values(locs) : []).slice(0, 40).map((l) => l.name),
+          organizationNamesSample: (orgs && orgs.ok ? values(orgs) : []).slice(0, 40).map((o) => o.name),
+          siteKind,
+          matchedSites: [...map.values()].sort((a, b) => a.number - b.number),
+          allowedSiteNumbers: allowed,
         },
         200,
         origin,
