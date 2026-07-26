@@ -169,7 +169,7 @@ function HolidayModal({
   const generate = async () => {
     setBusy(true); setError(null)
     const { data, error: err } = await supabase.functions.invoke('suggest-social-post', {
-      body: { holiday_id: holiday.id, date: dateStr, platform },
+      body: { holiday_id: holiday.id, date: dateStr, platform, promo_angle: holiday.promoAngle },
     })
     setBusy(false)
     if (err) return setError(err.message || 'Failed to generate.')

@@ -68,17 +68,28 @@ const PROMO_ANGLES: Record<string, { name: string; promoAngle: string; emoji: st
 }
 
 const SYSTEM_PROMPT = `You write short, on-brand social media posts for an independent car wash operator.
+
+You are given a specific PROMO ANGLE: a concrete promotion or theme for the day. That angle is the creative brief. EVERY post you write must promote that exact promo angle and its offer. Do not invent a different promotion, a different holiday, or a generic "come get your car clean" message. If the angle names an offer (a discount, a freebie, a membership push, a contest, a tie-in), make that offer the centerpiece of all three posts.
+
+Write exactly 3 posts that all execute the SAME promo angle, but each takes a different creative approach. Vary the hook and format across the three (for example: a question hook, a bold one-line offer, a short story or scenario, a countdown/urgency, a friendly community note). They are three versions of ONE campaign, not three different campaigns.
+
+Make each post specific and concrete, never vague:
+- Open with the hook or the offer, not a generic greeting.
+- State the actual promo clearly: what the deal is, or the exact reason to act today.
+- Close with a specific call to action tied to the promo (visit today, tag a friend, join the membership, show this post, etc.).
+
 Voice: friendly, confident, no cheesy puns, no clickbait, no em dashes.
-Each post is 1 to 3 short lines plus a short CTA on the last line. Keep it under 60 words.
-Use one or two emojis only when it fits naturally. Include 2 to 4 hashtags at the end on its own line.
+Each post is 1 to 3 short lines plus a CTA line. Keep it under 60 words.
+Use one or two emojis only when they fit naturally. Include 2 to 4 relevant hashtags at the end on their own line.
 Tailor tone to the platform:
-- Instagram: a little aspirational, visual hook
+- Instagram: aspirational, visual hook
 - Facebook: warm and community-focused
 - X: punchy and tight
 - TikTok: hooky first line, conversational, casual
+
 Return ONLY a JSON object with this shape, no markdown fences:
-{"suggestions":[{"platform":"<p>","title":"<short title>","body":"<post text including the hashtags>"}]}
-Provide exactly 3 suggestions for the requested platform, each with a distinctly different angle.`
+{"suggestions":[{"platform":"<p>","title":"<2 to 4 word label of this post's approach>","body":"<post text including the hashtags>"}]}
+Exactly 3 suggestions for the requested platform, all built on the given promo angle.`
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
@@ -104,11 +115,13 @@ Deno.serve(async (req) => {
     return json({ error: 'forbidden' }, 403, origin)
   }
 
-  let body: { holiday_id?: string; date?: string; platform?: string } = {}
+  let body: { holiday_id?: string; date?: string; platform?: string; promo_angle?: string } = {}
   try { body = await req.json() } catch { /* empty */ }
   const platform = body.platform || 'Instagram'
   const date = body.date || new Date().toISOString().slice(0, 10)
   const holiday = body.holiday_id ? PROMO_ANGLES[body.holiday_id] : null
+  // Prefer the exact promo angle the user is looking at; fall back to the lookup.
+  const promoAngle = body.promo_angle?.trim() || holiday?.promoAngle || ''
 
   // Pull a tiny bit of account context to ground the suggestions.
   const { data: account } = await svc.from('accounts').select('name').eq('id', profile.account_id).single()
@@ -121,11 +134,11 @@ Deno.serve(async (req) => {
     'Number of sites: ' + (locCount ?? 1) + '\n' +
     'Date: ' + date + '\n' +
     'Platform: ' + platform + '\n' +
-    (holiday
-      ? 'Holiday: ' + holiday.name + ' ' + holiday.emoji + '\n' +
-        'Promo angle to use: ' + holiday.promoAngle + '\n'
-      : 'No specific holiday, write generic on-brand posts for the date.\n') +
-    '\nGenerate 3 distinct suggestions.'
+    (holiday ? 'Occasion: ' + holiday.name + ' ' + holiday.emoji + '\n' : '') +
+    (promoAngle
+      ? 'PROMO ANGLE (the brief every post must promote): ' + promoAngle + '\n' +
+        '\nWrite all 3 posts around this exact promo angle. Make the offer/idea concrete and lead with it. Vary only the hook and format between the three.'
+      : 'No specific promo angle. Write 3 on-brand posts for this date, each with a clear hook and CTA.')
 
   const anthropic = new Anthropic({ apiKey })
   let raw = ''
