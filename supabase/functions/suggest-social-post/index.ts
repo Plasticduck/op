@@ -69,16 +69,21 @@ const PROMO_ANGLES: Record<string, { name: string; promoAngle: string; emoji: st
 
 const SYSTEM_PROMPT = `You write short, on-brand social media posts for an independent car wash operator.
 
-You are given a specific PROMO ANGLE: a concrete promotion or theme for the day. That angle is the creative brief. EVERY post you write must promote that exact promo angle and its offer. Do not invent a different promotion, a different holiday, or a generic "come get your car clean" message. If the angle names an offer (a discount, a freebie, a membership push, a contest, a tie-in), make that offer the centerpiece of all three posts.
+You are given a PROMO ANGLE. Treat it as a brief internal shorthand for a promotional DIRECTION, not as copy to reuse. It may be terse or cryptic (for example "Monthly membership push" or "Salt season, underbody wash featured"). Your first job is to INTERPRET it into one clear, real promotion or message that a customer would instantly understand. Then write posts about that interpreted promotion.
 
-Write exactly 3 posts that all execute the SAME promo angle, but each takes a different creative approach. Vary the hook and format across the three (for example: a question hook, a bold one-line offer, a short story or scenario, a countdown/urgency, a friendly community note). They are three versions of ONE campaign, not three different campaigns.
+Hard rules:
+- Do NOT quote or echo the promo angle's wording. Write completely fresh, natural copy. A customer who never saw the angle should understand the post perfectly.
+- Do NOT just rearrange the angle's words. Expand the idea into a real, sensible offer or message (name the actual deal, the reason to come in, the freebie, the membership benefit, etc.). If the angle is vague, commit to one concrete, reasonable promotion.
+- Stay on THIS promotion. Do not drift to a generic "come get your car clean" post or invent an unrelated holiday.
 
-Make each post specific and concrete, never vague:
-- Open with the hook or the offer, not a generic greeting.
-- State the actual promo clearly: what the deal is, or the exact reason to act today.
-- Close with a specific call to action tied to the promo (visit today, tag a friend, join the membership, show this post, etc.).
+Write exactly 3 posts, all promoting the SAME interpreted promotion, each with a different creative approach. Vary the hook and format across the three (a question hook, a bold one-line offer, a short scenario, urgency/countdown, a warm community note). Three versions of ONE campaign.
 
-Voice: friendly, confident, no cheesy puns, no clickbait, no em dashes.
+Make each post specific and concrete:
+- Open with a real hook or the offer, not a generic greeting.
+- State the actual promotion clearly and the reason to act.
+- Close with a specific call to action.
+
+Voice: friendly, confident, natural, no cheesy puns, no clickbait, no em dashes.
 Each post is 1 to 3 short lines plus a CTA line. Keep it under 60 words.
 Use one or two emojis only when they fit naturally. Include 2 to 4 relevant hashtags at the end on their own line.
 Tailor tone to the platform:
@@ -89,7 +94,12 @@ Tailor tone to the platform:
 
 Return ONLY a JSON object with this shape, no markdown fences:
 {"suggestions":[{"platform":"<p>","title":"<2 to 4 word label of this post's approach>","body":"<post text including the hashtags>"}]}
-Exactly 3 suggestions for the requested platform, all built on the given promo angle.`
+Exactly 3 suggestions for the requested platform.`
+
+const ANGLE_SYSTEM_PROMPT = `You create ONE fresh promo angle for an independent car wash for a given occasion or date.
+A promo angle is a short, specific promotional DIRECTION the wash could run: an offer, a hook, a theme, or a tie-in. It is an internal idea, not customer-facing copy.
+Make it concrete and genuinely usable (name a real offer or hook), tied to the occasion, and different from any "avoid" angle provided. Keep it to one sentence, under 16 words. No hashtags, no emojis.
+Return ONLY JSON, no markdown fences: {"angle":"<the promo angle>"}`
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
@@ -115,7 +125,7 @@ Deno.serve(async (req) => {
     return json({ error: 'forbidden' }, 403, origin)
   }
 
-  let body: { holiday_id?: string; date?: string; platform?: string; promo_angle?: string } = {}
+  let body: { holiday_id?: string; date?: string; platform?: string; promo_angle?: string; mode?: string } = {}
   try { body = await req.json() } catch { /* empty */ }
   const platform = body.platform || 'Instagram'
   const date = body.date || new Date().toISOString().slice(0, 10)
@@ -129,6 +139,36 @@ Deno.serve(async (req) => {
     .from('locations').select('id', { count: 'exact', head: true })
     .eq('account_id', profile.account_id).eq('archived', false)
 
+  const anthropic = new Anthropic({ apiKey })
+
+  // Mode: generate a fresh promo angle (not posts).
+  if (body.mode === 'angle') {
+    const anglePrompt =
+      'Wash brand: ' + (account?.name ?? 'a local car wash') + '\n' +
+      'Date: ' + date + '\n' +
+      (holiday ? 'Occasion: ' + holiday.name + ' ' + holiday.emoji + '\n' : 'No specific holiday.\n') +
+      (promoAngle ? 'Avoid repeating this angle: ' + promoAngle + '\n' : '') +
+      '\nCreate one fresh, specific promo angle.'
+    try {
+      const msg = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 120,
+        system: [{ type: 'text', text: ANGLE_SYSTEM_PROMPT }],
+        messages: [{ role: 'user', content: anglePrompt }],
+      })
+      const block = msg.content.find((b) => b.type === 'text')
+      const rawA = block && 'text' in block ? block.text : '{}'
+      const cleanedA = rawA.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+      // deno-lint-ignore no-explicit-any
+      let parsedA: any = {}
+      try { parsedA = JSON.parse(cleanedA) } catch { /* empty */ }
+      const angle = typeof parsedA?.angle === 'string' ? parsedA.angle.trim() : ''
+      return json({ ok: true, angle }, 200, origin)
+    } catch (e) {
+      return json({ error: 'internal', message: (e as Error).message }, 500, origin)
+    }
+  }
+
   const userPrompt =
     'Wash brand: ' + (account?.name ?? 'a local car wash') + '\n' +
     'Number of sites: ' + (locCount ?? 1) + '\n' +
@@ -136,11 +176,10 @@ Deno.serve(async (req) => {
     'Platform: ' + platform + '\n' +
     (holiday ? 'Occasion: ' + holiday.name + ' ' + holiday.emoji + '\n' : '') +
     (promoAngle
-      ? 'PROMO ANGLE (the brief every post must promote): ' + promoAngle + '\n' +
-        '\nWrite all 3 posts around this exact promo angle. Make the offer/idea concrete and lead with it. Vary only the hook and format between the three.'
+      ? 'PROMO ANGLE (shorthand direction to interpret, do not quote): ' + promoAngle + '\n' +
+        '\nInterpret this into one concrete promotion, then write all 3 posts about it in fresh customer-facing language. Vary the hook and format between the three.'
       : 'No specific promo angle. Write 3 on-brand posts for this date, each with a clear hook and CTA.')
 
-  const anthropic = new Anthropic({ apiKey })
   let raw = ''
   try {
     const msg = await anthropic.messages.create({

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Calendar as CalendarIcon, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Calendar as CalendarIcon, Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { endOfMonth, format, startOfMonth } from 'date-fns'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -163,19 +163,34 @@ function HolidayModal({
   const [platform, setPlatform] = useState('Instagram')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [promoAngle, setPromoAngle] = useState(holiday.promoAngle)
+  const [editingAngle, setEditingAngle] = useState(false)
+  const [angleBusy, setAngleBusy] = useState(false)
 
   const dateStr = format(date, 'yyyy-MM-dd')
 
   const generate = async () => {
     setBusy(true); setError(null)
     const { data, error: err } = await supabase.functions.invoke('suggest-social-post', {
-      body: { holiday_id: holiday.id, date: dateStr, platform, promo_angle: holiday.promoAngle },
+      body: { holiday_id: holiday.id, date: dateStr, platform, promo_angle: promoAngle },
     })
     setBusy(false)
     if (err) return setError(err.message || 'Failed to generate.')
     if (data?.error === 'no_key') return setError('AI is not configured yet (ANTHROPIC_API_KEY is unset).')
     const arr = (data as { suggestions?: Array<{ platform: string; title: string; body: string }> }).suggestions ?? []
     setSuggestions(arr)
+  }
+
+  const newAngle = async () => {
+    setAngleBusy(true); setError(null)
+    const { data, error: err } = await supabase.functions.invoke('suggest-social-post', {
+      body: { mode: 'angle', holiday_id: holiday.id, date: dateStr, promo_angle: promoAngle },
+    })
+    setAngleBusy(false)
+    if (err) return setError(err.message || 'Failed to generate an angle.')
+    if (data?.error === 'no_key') return setError('AI is not configured yet (ANTHROPIC_API_KEY is unset).')
+    const angle = (data as { angle?: string }).angle?.trim()
+    if (angle) { setPromoAngle(angle); setEditingAngle(false) }
   }
 
   const applySuggestion = (s: { platform: string; title: string; body: string }) => {
@@ -207,7 +222,43 @@ function HolidayModal({
       <div className="flex flex-col gap-4">
         <div className="rounded-md border border-border bg-content p-3 text-sm">
           <p className="text-ink-muted">{format(date, 'EEEE, MMMM d, yyyy')}</p>
-          <p className="mt-1 text-ink"><span className="font-medium">Promo angle:</span> {holiday.promoAngle}</p>
+          <div className="mt-1 flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <span className="font-medium text-ink">Promo angle:</span>{' '}
+              {editingAngle ? (
+                <textarea
+                  value={promoAngle}
+                  onChange={(e) => setPromoAngle(e.target.value)}
+                  rows={2}
+                  autoFocus
+                  className="mt-1 w-full rounded-md border border-border bg-card px-2 py-1 text-sm text-ink outline-none focus:border-accent"
+                />
+              ) : (
+                <span className="text-ink">{promoAngle}</span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void newAngle()}
+                disabled={angleBusy}
+                title="Generate a new promo angle"
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-ink-muted hover:text-accent disabled:opacity-50"
+              >
+                {angleBusy ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                New angle
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingAngle((v) => !v)}
+                title={editingAngle ? 'Done editing' : 'Edit promo angle'}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs text-ink-muted hover:text-accent"
+              >
+                <Pencil className="size-3.5" />
+                {editingAngle ? 'Done' : 'Edit'}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
