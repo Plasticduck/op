@@ -14,6 +14,7 @@ import {
   Banknote,
   BrainCircuit,
   GraduationCap,
+  LifeBuoy,
   Sparkles,
   CalendarClock,
   CalendarHeart,
@@ -331,6 +332,18 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Calendar',
         icon: CalendarHeart,
         roles: ['owner', 'manager', 'employee', 'technician'],
+      },
+    ],
+  },
+  {
+    label: 'IT',
+    roles: ['owner', 'manager'],
+    items: [
+      {
+        to: '/app/issuetrak',
+        label: 'Issuetrak',
+        icon: LifeBuoy,
+        roles: ['owner', 'manager'],
       },
     ],
   },
