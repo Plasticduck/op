@@ -100,8 +100,10 @@ Deno.serve(async (req) => {
   if (!path.startsWith('/') || path.includes('..')) {
     return json({ error: 'bad_request', message: 'path must be an absolute Issuetrak path' }, 400, origin)
   }
-  if (!ALLOWED_PREFIXES.some((pre) => path === pre || path.startsWith(pre + '/'))) {
-    return json({ error: 'bad_request', message: `path ${path} is not allowed` }, 400, origin)
+  // Match the allowlist against the pathname only (ignore any query string).
+  const pathname = path.split('?')[0]
+  if (!ALLOWED_PREFIXES.some((pre) => pathname === pre || pathname.startsWith(pre + '/'))) {
+    return json({ error: 'bad_request', message: `path ${pathname} is not allowed` }, 400, origin)
   }
 
   const method = (payload.method ?? (payload.body !== undefined ? 'POST' : 'GET')).toUpperCase()

@@ -2,46 +2,46 @@ import { supabase } from '@/lib/supabase'
 import { fnErrorMessage } from '@/lib/fnError'
 
 // Issuetrak API v2 (Mighty Wash instance) proxied through the `issuetrak` edge
-// function. Field names follow the Issuetrak schema; the IID references
-// (priorityIid, substatusIid, etc.) are resolved to labels via the lookup
-// endpoints. Types are intentionally loose where the schema is broad — we read
-// defensively and only depend on the documented core fields.
+// function. Shapes below follow the real OpenAPI spec (public/issuetrak api.json):
+//   - List/search responses are { values: T[], pagingInformation: {page, itemTotal, pageCount} }.
+//   - The read Issue uses NESTED reference objects ({ name, id, iid }), not flat
+//     *Iid fields. Editing still uses the reference's iid.
+//   - Search takes an AdvancedIssueFilter { sortField, sortDirection, pageNumber,
+//     pageSize, filter: IssueFilter }.
+//   - Create is POST /Issues/Create (CreateIssue: subject, description, issueTypeIid required).
+
+// A resolved reference on an issue (priority, class, subStatus, assignedToUser, ...).
+export type ItRef = { name?: string | null; id?: number | string | null; iid?: number | null }
 
 export type ItIssue = {
   iid: number
   id?: number | null
+  issueNumber?: number | null
   subject?: string | null
   description?: string | null
   solution?: string | null
-  priorityIid?: number | null
-  issueTypeIid?: number | null
-  classIid?: number | null
-  substatusIid?: number | null
-  statusIid?: number | null
-  assignedToUserIid?: number | null
-  submittedByUserIid?: number | null
-  enteredByUserIid?: number | null
-  organizationIid?: number | null
-  locationIid?: number | null
-  enteredDate?: string | null
-  modifiedDate?: string | null
-  targetDate?: string | null
-  closedDate?: string | null
   isOpen?: boolean | null
-  notes?: ItNote[] | null
-  [key: string]: unknown
-}
-
-export type ItNote = {
-  iid?: number
-  note?: string | null
-  body?: string | null
   enteredDate?: string | null
-  enteredByUserIid?: number | null
+  submittedDate?: string | null
+  targetDate?: string | null
+  requiredByDate?: string | null
+  closedDate?: string | null
+  priority?: ItRef | null
+  class?: ItRef | null
+  issueType?: ItRef | null
+  subStatus?: ItRef | null
+  cause?: ItRef | null
+  organization?: ItRef | null
+  location?: ItRef | null
+  severity?: ItRef | null
+  responsibleDepartment?: ItRef | null
+  assignedToUser?: ItRef | null
+  submittedByUser?: ItRef | null
+  enteredByUser?: ItRef | null
   [key: string]: unknown
 }
 
-// A reference-list entry (Priority, Substatus, IssueType, Class, User, ...).
+// A reference-list entry (Priority, Substatus, IssueType, Class, User, Org).
 export type ItLookupItem = { iid: number; name?: string | null; [key: string]: unknown }
 
 export type ItLookups = {
@@ -53,11 +53,12 @@ export type ItLookups = {
   users: ItLookupItem[]
 }
 
-type Paged<T> = { data?: T[]; items?: T[]; results?: T[]; totalCount?: number; total?: number; [k: string]: unknown }
+type PagingData = { page?: number; itemTotal?: number; pageCount?: number }
+type Paged<T> = { values?: T[]; pagingInformation?: PagingData; [k: string]: unknown }
 type ProxyResult<T> = { status: number; data: T }
 
-// A single JSON-RPC-ish call to the edge proxy. Throws on transport or
-// upstream (>=400) failure with a human-readable message.
+// A single call to the edge proxy. Throws on transport or upstream (>=400)
+// failure with a human-readable message.
 async function call<T = unknown>(
   path: string,
   opts?: { method?: string; body?: unknown },
@@ -66,7 +67,9 @@ async function call<T = unknown>(
     body: { path, method: opts?.method, body: opts?.body },
   })
   if (error) {
-    throw new Error(await fnErrorMessage(error, data as { message?: string; error?: string } | null, 'Issuetrak request failed'))
+    throw new Error(
+      await fnErrorMessage(error, data as { message?: string; error?: string } | null, 'Issuetrak request failed'),
+    )
   }
   const res = data as ProxyResult<T>
   if (!res || typeof res.status !== 'number') throw new Error('Unexpected Issuetrak response')
@@ -78,35 +81,35 @@ async function call<T = unknown>(
   return res.data
 }
 
-// Search/list endpoints return a paged envelope whose array field name varies.
 function rows<T>(paged: Paged<T> | T[] | null): T[] {
   if (!paged) return []
   if (Array.isArray(paged)) return paged
-  return paged.data ?? paged.items ?? paged.results ?? []
-}
-
-function total<T>(paged: Paged<T> | T[] | null, fallback: number): number {
-  if (!paged || Array.isArray(paged)) return fallback
-  return paged.totalCount ?? paged.total ?? fallback
+  return paged.values ?? []
 }
 
 export const issuetrak = {
   // Cheap connectivity + credential check.
   test: () => call('/Authenticate/test'),
 
-  // Paged issue search. All filter fields are optional; we sort newest-first
-  // client-side since the sort-field enum is instance-specific.
-  searchIssues: async (filter: Record<string, unknown>) => {
-    const res = await call<Paged<ItIssue>>('/Issues/Search', { method: 'POST', body: filter })
-    return { issues: rows<ItIssue>(res), total: total(res, rows<ItIssue>(res).length) }
+  // Newest-first page of issues. openOnly filters server-side on isOpen.
+  searchIssues: async (opts?: { pageNumber?: number; pageSize?: number; openOnly?: boolean }) => {
+    const body: Record<string, unknown> = {
+      sortField: 'EnteredDate',
+      sortDirection: 'Desc',
+      pageNumber: opts?.pageNumber ?? 1,
+      pageSize: opts?.pageSize ?? 100,
+      filter: opts?.openOnly ? { isOpen: { type: 'IsTrue' } } : {},
+    }
+    const res = await call<Paged<ItIssue>>('/Issues/Search', { method: 'POST', body })
+    return { issues: rows<ItIssue>(res), total: res.pagingInformation?.itemTotal ?? rows<ItIssue>(res).length }
   },
 
   getIssue: (iid: number) => call<ItIssue>(`/Issues/${iid}`),
 
+  // CreateIssue: subject, description, issueTypeIid are required.
   createIssue: (body: Record<string, unknown>) =>
-    call<ItIssue>('/Issues', { method: 'POST', body }),
+    call<ItIssue>('/Issues/Create', { method: 'POST', body }),
 
-  // Partial update via PATCH. `ops` is an array of { op, path, value }.
   patchIssue: (iid: number, ops: Array<{ op: string; path: string; value: unknown }>) =>
     call<ItIssue>(`/Issues/${iid}`, { method: 'PATCH', body: ops }),
 
@@ -125,9 +128,9 @@ export const issuetrak = {
       body: [{ op: 'Replace', path: '/AssignedToUser', value: userIid }],
     }),
 
-  // Reference lists for resolving IIDs to labels and for form dropdowns. Each
-  // is best-effort: a resource the token can't list resolves to an empty array
-  // rather than failing the whole page.
+  // Reference lists for edit dropdowns and the create form. Each is best-effort:
+  // a resource the token can't list resolves to an empty array rather than
+  // failing the whole page.
   lookups: async (): Promise<ItLookups> => {
     const get = async (path: string): Promise<ItLookupItem[]> => {
       try {
@@ -148,19 +151,19 @@ export const issuetrak = {
   },
 }
 
-// Build a { iid -> display name } map from a lookup list, tolerating the several
-// name-ish fields Issuetrak uses across resources.
-export function nameMap(items: ItLookupItem[]): Map<number, string> {
-  const m = new Map<number, string>()
-  for (const it of items) {
-    const name =
-      (it.name as string) ||
-      (it.description as string) ||
-      [it.firstName, it.lastName].filter(Boolean).join(' ') ||
-      (it.userId as string) ||
-      (it.displayName as string) ||
-      String(it.iid)
-    if (typeof it.iid === 'number') m.set(it.iid, name.trim() || String(it.iid))
-  }
-  return m
+// Display name for a reference or lookup item, tolerating the name-ish fields
+// Issuetrak uses (users expose displayName / firstName+lastName / id).
+export function refName(r: ItRef | null | undefined): string {
+  if (!r) return '—'
+  return (r.name ?? '').toString().trim() || String(r.iid ?? r.id ?? '—')
+}
+
+export function lookupName(it: ItLookupItem): string {
+  const name =
+    (it.name as string) ||
+    (it.displayName as string) ||
+    [it.firstName, it.lastName].filter(Boolean).join(' ') ||
+    (it.id as string) ||
+    String(it.iid)
+  return (name ?? '').toString().trim() || String(it.iid)
 }

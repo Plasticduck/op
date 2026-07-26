@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { format } from 'date-fns'
 import { LifeBuoy, Plug, Plus, RefreshCw, Search, Send, Ticket } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -11,10 +11,10 @@ import { Badge } from '@/components/ui/Badge'
 import { useAuth } from '@/lib/auth'
 import {
   issuetrak,
-  nameMap,
+  lookupName,
+  refName,
   type ItIssue,
   type ItLookups,
-  type ItNote,
 } from '@/lib/queries/issuetrak'
 
 const EMPTY_LOOKUPS: ItLookups = {
@@ -33,7 +33,7 @@ function fmtDate(v?: string | null): string {
 }
 
 function issueNo(i: ItIssue): string {
-  return `#${i.id ?? i.iid}`
+  return `#${i.issueNumber ?? i.id ?? i.iid}`
 }
 
 // The connect-state message the proxy returns when ISSUETRAK_API_KEY is unset.
@@ -51,27 +51,15 @@ export default function IssuetrakPage() {
   const [selected, setSelected] = useState<number | null>(null)
   const [newOpen, setNewOpen] = useState(false)
 
-  const priorityName = useMemo(() => nameMap(lookups.priorities), [lookups])
-  const substatusName = useMemo(() => nameMap(lookups.substatuses), [lookups])
-  const typeName = useMemo(() => nameMap(lookups.issueTypes), [lookups])
-  const classNameMap = useMemo(() => nameMap(lookups.classes), [lookups])
-  const orgName = useMemo(() => nameMap(lookups.organizations), [lookups])
-  const userName = useMemo(() => nameMap(lookups.users), [lookups])
-
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const [res, lk] = await Promise.all([
-        issuetrak.searchIssues({ pageNumber: 1, pageSize: 100 }),
+        issuetrak.searchIssues({ pageNumber: 1, pageSize: 100, openOnly }),
         issuetrak.lookups(),
       ])
-      const sorted = [...res.issues].sort((a, b) => {
-        const ta = a.enteredDate ? new Date(a.enteredDate).getTime() : 0
-        const tb = b.enteredDate ? new Date(b.enteredDate).getTime() : 0
-        return tb - ta
-      })
-      setIssues(sorted)
+      setIssues(res.issues)
       setLookups(lk)
       setConnErr(false)
     } catch (e) {
@@ -81,7 +69,7 @@ export default function IssuetrakPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [openOnly])
 
   useEffect(() => {
     void load()
@@ -89,15 +77,13 @@ export default function IssuetrakPage() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
-    return issues.filter((i) => {
-      if (openOnly && i.isOpen === false) return false
-      if (!term) return true
-      return (
-        String(i.id ?? i.iid).includes(term) ||
-        (i.subject ?? '').toLowerCase().includes(term)
-      )
-    })
-  }, [issues, q, openOnly])
+    if (!term) return issues
+    return issues.filter(
+      (i) =>
+        String(i.issueNumber ?? i.id ?? i.iid).includes(term) ||
+        (i.subject ?? '').toLowerCase().includes(term),
+    )
+  }, [issues, q])
 
   if (connErr) {
     return (
@@ -145,7 +131,7 @@ export default function IssuetrakPage() {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-56">
+        <div className="relative min-w-56 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-subtle" />
           <Input
             value={q}
@@ -189,8 +175,8 @@ export default function IssuetrakPage() {
                   <span className="font-mono text-xs text-ink-subtle">{issueNo(i)}</span>
                   {i.isOpen === false ? (
                     <Badge tone="neutral">Closed</Badge>
-                  ) : i.substatusIid != null && substatusName.get(i.substatusIid) ? (
-                    <Badge tone="accent">{substatusName.get(i.substatusIid)}</Badge>
+                  ) : i.subStatus?.name ? (
+                    <Badge tone="accent">{i.subStatus.name}</Badge>
                   ) : (
                     <Badge tone="ok">Open</Badge>
                   )}
@@ -199,9 +185,7 @@ export default function IssuetrakPage() {
                   {i.subject || '(no subject)'}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-subtle">
-                  {i.priorityIid != null && priorityName.get(i.priorityIid) && (
-                    <span>{priorityName.get(i.priorityIid)}</span>
-                  )}
+                  {i.priority?.name && <span>{i.priority.name}</span>}
                   <span>{fmtDate(i.enteredDate)}</span>
                 </div>
               </button>
@@ -219,12 +203,6 @@ export default function IssuetrakPage() {
             <IssueDetail
               key={selected}
               iid={selected}
-              priorityName={priorityName}
-              substatusName={substatusName}
-              typeName={typeName}
-              classNameMap={classNameMap}
-              orgName={orgName}
-              userName={userName}
               substatuses={lookups.substatuses}
               users={lookups.users}
               onChanged={() => void load()}
@@ -238,7 +216,6 @@ export default function IssuetrakPage() {
           open={newOpen}
           onClose={() => setNewOpen(false)}
           lookups={lookups}
-          defaultSubject=""
           onCreated={() => {
             setNewOpen(false)
             void load()
@@ -250,7 +227,7 @@ export default function IssuetrakPage() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <div className="text-xs uppercase tracking-wide text-ink-subtle">{label}</div>
@@ -261,23 +238,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function IssueDetail({
   iid,
-  priorityName,
-  substatusName,
-  typeName,
-  classNameMap,
-  orgName,
-  userName,
   substatuses,
   users,
   onChanged,
 }: {
   iid: number
-  priorityName: Map<number, string>
-  substatusName: Map<number, string>
-  typeName: Map<number, string>
-  classNameMap: Map<number, string>
-  orgName: Map<number, string>
-  userName: Map<number, string>
   substatuses: ItLookups['substatuses']
   users: ItLookups['users']
   onChanged: () => void
@@ -333,20 +298,14 @@ function IssueDetail({
     )
   }
 
-  const notes: ItNote[] = Array.isArray(issue.notes) ? issue.notes : []
-
   return (
     <div className="flex flex-col gap-4 rounded-md border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="font-mono text-xs text-ink-subtle">#{issue.id ?? issue.iid}</div>
+          <div className="font-mono text-xs text-ink-subtle">{issueNo(issue)}</div>
           <h2 className="mt-0.5 text-lg font-semibold text-ink">{issue.subject || '(no subject)'}</h2>
         </div>
-        {issue.isOpen === false ? (
-          <Badge tone="neutral">Closed</Badge>
-        ) : (
-          <Badge tone="ok">Open</Badge>
-        )}
+        {issue.isOpen === false ? <Badge tone="neutral">Closed</Badge> : <Badge tone="ok">Open</Badge>}
       </div>
 
       {err && (
@@ -362,34 +321,32 @@ function IssueDetail({
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Priority">
-          {issue.priorityIid != null ? priorityName.get(issue.priorityIid) ?? issue.priorityIid : '—'}
-        </Field>
-        <Field label="Substatus">
-          {issue.substatusIid != null ? substatusName.get(issue.substatusIid) ?? issue.substatusIid : '—'}
-        </Field>
-        <Field label="Type">
-          {issue.issueTypeIid != null ? typeName.get(issue.issueTypeIid) ?? issue.issueTypeIid : '—'}
-        </Field>
-        <Field label="Class">
-          {issue.classIid != null ? classNameMap.get(issue.classIid) ?? issue.classIid : '—'}
-        </Field>
-        <Field label="Organization">
-          {issue.organizationIid != null ? orgName.get(issue.organizationIid) ?? issue.organizationIid : '—'}
-        </Field>
+        <Field label="Priority">{refName(issue.priority)}</Field>
+        <Field label="Substatus">{refName(issue.subStatus)}</Field>
+        <Field label="Type">{refName(issue.issueType)}</Field>
+        <Field label="Class">{refName(issue.class)}</Field>
+        <Field label="Organization">{refName(issue.organization)}</Field>
         <Field label="Assigned to">
-          {issue.assignedToUserIid != null ? userName.get(issue.assignedToUserIid) ?? issue.assignedToUserIid : 'Unassigned'}
+          {issue.assignedToUser?.iid != null ? refName(issue.assignedToUser) : 'Unassigned'}
         </Field>
+        <Field label="Submitted by">{refName(issue.submittedByUser)}</Field>
+        <Field label="Location">{refName(issue.location)}</Field>
         <Field label="Entered">{fmtDate(issue.enteredDate)}</Field>
         <Field label="Target">{fmtDate(issue.targetDate)}</Field>
       </div>
+
+      {issue.solution && (
+        <Field label="Solution">
+          <span className="whitespace-pre-wrap">{issue.solution}</span>
+        </Field>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
         <label className="flex flex-col gap-1 text-xs text-ink-subtle">
           Substatus
           <Select
-            value={issue.substatusIid ?? ''}
+            value={issue.subStatus?.iid ?? ''}
             disabled={busy}
             onChange={(e) =>
               void run(() =>
@@ -400,7 +357,7 @@ function IssueDetail({
             <option value="">— none —</option>
             {substatuses.map((s) => (
               <option key={s.iid} value={s.iid}>
-                {substatusName.get(s.iid) ?? s.iid}
+                {lookupName(s)}
               </option>
             ))}
           </Select>
@@ -408,7 +365,7 @@ function IssueDetail({
         <label className="flex flex-col gap-1 text-xs text-ink-subtle">
           Assigned to
           <Select
-            value={issue.assignedToUserIid ?? ''}
+            value={issue.assignedToUser?.iid ?? ''}
             disabled={busy}
             onChange={(e) =>
               void run(() => issuetrak.assign(iid, e.target.value === '' ? null : Number(e.target.value)))
@@ -417,36 +374,21 @@ function IssueDetail({
             <option value="">Unassigned</option>
             {users.map((u) => (
               <option key={u.iid} value={u.iid}>
-                {userName.get(u.iid) ?? u.iid}
+                {lookupName(u)}
               </option>
             ))}
           </Select>
         </label>
       </div>
 
-      {/* Notes */}
+      {/* Add note (Issuetrak has no note-read endpoint; notes post to the issue thread) */}
       <div className="border-t border-border pt-3">
-        <div className="text-xs uppercase tracking-wide text-ink-subtle">Notes</div>
-        <div className="mt-2 flex flex-col gap-2">
-          {notes.length === 0 ? (
-            <div className="text-sm text-ink-subtle">No notes yet.</div>
-          ) : (
-            notes.map((n, idx) => (
-              <div key={n.iid ?? idx} className="rounded-md bg-content px-3 py-2 text-sm text-ink">
-                <div className="whitespace-pre-wrap">{n.note ?? n.body ?? ''}</div>
-                <div className="mt-1 text-xs text-ink-subtle">
-                  {n.enteredByUserIid != null ? (userName.get(n.enteredByUserIid) ?? '') + ' · ' : ''}
-                  {fmtDate(n.enteredDate)}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        <div className="mt-3 flex items-start gap-2">
+        <div className="text-xs uppercase tracking-wide text-ink-subtle">Add note</div>
+        <div className="mt-2 flex items-start gap-2">
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Add a note…"
+            placeholder="Add a note to this issue…"
             rows={2}
             className="flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-ink outline-none focus:border-accent"
           />
@@ -473,34 +415,27 @@ function NewIssueModal({
   open,
   onClose,
   lookups,
-  defaultSubject,
   onCreated,
   requesterName,
 }: {
   open: boolean
   onClose: () => void
   lookups: ItLookups
-  defaultSubject: string
   onCreated: () => void
   requesterName: string
 }) {
-  const [subject, setSubject] = useState(defaultSubject)
+  const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
-  const [priorityIid, setPriorityIid] = useState('')
   const [issueTypeIid, setIssueTypeIid] = useState('')
+  const [priorityIid, setPriorityIid] = useState('')
   const [classIid, setClassIid] = useState('')
   const [organizationIid, setOrganizationIid] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const priorityName = useMemo(() => nameMap(lookups.priorities), [lookups])
-  const typeName = useMemo(() => nameMap(lookups.issueTypes), [lookups])
-  const classNameMap = useMemo(() => nameMap(lookups.classes), [lookups])
-  const orgName = useMemo(() => nameMap(lookups.organizations), [lookups])
-
   async function submit() {
-    if (!subject.trim() || !description.trim()) {
-      setErr('Subject and description are required.')
+    if (!subject.trim() || !description.trim() || !issueTypeIid) {
+      setErr('Subject, description, and issue type are required.')
       return
     }
     setBusy(true)
@@ -509,9 +444,9 @@ function NewIssueModal({
       const body: Record<string, unknown> = {
         subject: subject.trim(),
         description: description.trim(),
+        issueTypeIid: Number(issueTypeIid),
       }
       if (priorityIid) body.priorityIid = Number(priorityIid)
-      if (issueTypeIid) body.issueTypeIid = Number(issueTypeIid)
       if (classIid) body.classIid = Number(classIid)
       if (organizationIid) body.organizationIid = Number(organizationIid)
       await issuetrak.createIssue(body)
@@ -526,9 +461,7 @@ function NewIssueModal({
   return (
     <Modal open={open} onClose={onClose} title="New issue" size="md">
       <div className="flex flex-col gap-3">
-        {requesterName && (
-          <div className="text-xs text-ink-subtle">Submitted by {requesterName}</div>
-        )}
+        {requesterName && <div className="text-xs text-ink-subtle">Submitted by {requesterName}</div>}
         {err && (
           <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
             {err}
@@ -550,23 +483,23 @@ function NewIssueModal({
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-sm text-ink-muted">
-            Priority
-            <Select value={priorityIid} onChange={(e) => setPriorityIid(e.target.value)}>
-              <option value="">—</option>
-              {lookups.priorities.map((p) => (
-                <option key={p.iid} value={p.iid}>
-                  {priorityName.get(p.iid) ?? p.iid}
+            Issue type <span className="text-danger">*</span>
+            <Select value={issueTypeIid} onChange={(e) => setIssueTypeIid(e.target.value)}>
+              <option value="">— select —</option>
+              {lookups.issueTypes.map((t) => (
+                <option key={t.iid} value={t.iid}>
+                  {lookupName(t)}
                 </option>
               ))}
             </Select>
           </label>
           <label className="flex flex-col gap-1 text-sm text-ink-muted">
-            Type
-            <Select value={issueTypeIid} onChange={(e) => setIssueTypeIid(e.target.value)}>
+            Priority
+            <Select value={priorityIid} onChange={(e) => setPriorityIid(e.target.value)}>
               <option value="">—</option>
-              {lookups.issueTypes.map((t) => (
-                <option key={t.iid} value={t.iid}>
-                  {typeName.get(t.iid) ?? t.iid}
+              {lookups.priorities.map((p) => (
+                <option key={p.iid} value={p.iid}>
+                  {lookupName(p)}
                 </option>
               ))}
             </Select>
@@ -577,7 +510,7 @@ function NewIssueModal({
               <option value="">—</option>
               {lookups.classes.map((c) => (
                 <option key={c.iid} value={c.iid}>
-                  {classNameMap.get(c.iid) ?? c.iid}
+                  {lookupName(c)}
                 </option>
               ))}
             </Select>
@@ -588,7 +521,7 @@ function NewIssueModal({
               <option value="">—</option>
               {lookups.organizations.map((o) => (
                 <option key={o.iid} value={o.iid}>
-                  {orgName.get(o.iid) ?? o.iid}
+                  {lookupName(o)}
                 </option>
               ))}
             </Select>
