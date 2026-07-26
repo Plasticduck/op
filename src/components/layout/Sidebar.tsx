@@ -337,13 +337,13 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'IT',
-    roles: ['owner', 'manager'],
+    roles: ['owner', 'manager', 'technician'],
     items: [
       {
         to: '/app/issuetrak',
         label: 'Issuetrak',
         icon: LifeBuoy,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'manager', 'technician'],
       },
     ],
   },

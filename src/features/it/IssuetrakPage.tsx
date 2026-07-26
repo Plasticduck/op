@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { format } from 'date-fns'
-import { LifeBuoy, Plug, Plus, RefreshCw, Search, Send, Ticket } from 'lucide-react'
+import { LifeBuoy, Plug, Plus, RefreshCw, Search, Ticket } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Button } from '@/components/ui/Button'
@@ -11,20 +11,11 @@ import { Badge } from '@/components/ui/Badge'
 import { useAuth } from '@/lib/auth'
 import {
   issuetrak,
-  lookupName,
   refName,
+  ticketSite,
+  type ItBootstrap,
   type ItIssue,
-  type ItLookups,
 } from '@/lib/queries/issuetrak'
-
-const EMPTY_LOOKUPS: ItLookups = {
-  priorities: [],
-  substatuses: [],
-  issueTypes: [],
-  classes: [],
-  organizations: [],
-  users: [],
-}
 
 function fmtDate(v?: string | null): string {
   if (!v) return '—'
@@ -44,10 +35,9 @@ export default function IssuetrakPage() {
   const [connErr, setConnErr] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [boot, setBoot] = useState<ItBootstrap | null>(null)
   const [issues, setIssues] = useState<ItIssue[]>([])
-  const [lookups, setLookups] = useState<ItLookups>(EMPTY_LOOKUPS)
   const [q, setQ] = useState('')
-  const [openOnly, setOpenOnly] = useState(true)
   const [selected, setSelected] = useState<number | null>(null)
   const [newOpen, setNewOpen] = useState(false)
   const [diag, setDiag] = useState<string | null>(null)
@@ -56,12 +46,9 @@ export default function IssuetrakPage() {
     setLoading(true)
     setError(null)
     try {
-      const [res, lk] = await Promise.all([
-        issuetrak.searchIssues({ pageNumber: 1, pageSize: 100, openOnly }),
-        issuetrak.lookups(),
-      ])
-      setIssues(res.issues)
-      setLookups(lk)
+      const [b, l] = await Promise.all([issuetrak.bootstrap(), issuetrak.list()])
+      setBoot(b)
+      setIssues(l.issues)
       setConnErr(false)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -70,7 +57,7 @@ export default function IssuetrakPage() {
     } finally {
       setLoading(false)
     }
-  }, [openOnly])
+  }, [])
 
   useEffect(() => {
     void load()
@@ -82,7 +69,8 @@ export default function IssuetrakPage() {
     return issues.filter(
       (i) =>
         String(i.issueNumber ?? i.id ?? i.iid).includes(term) ||
-        (i.subject ?? '').toLowerCase().includes(term),
+        (i.subject ?? '').toLowerCase().includes(term) ||
+        ticketSite(i).toLowerCase().includes(term),
     )
   }, [issues, q])
 
@@ -91,12 +79,12 @@ export default function IssuetrakPage() {
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Issuetrak"
-          subtitle="IT help desk. Submit and track support tickets through Issuetrak."
+          subtitle="IT help desk. Submit tickets and track their status."
         />
         <EmptyState
           icon={Plug}
           title="Issuetrak not connected yet"
-          description="Add the Issuetrak API token to connect. Once connected, tickets load here: submit, assign, and track issues through to resolved."
+          description="Add the Issuetrak API token to connect. Once connected, your open tickets load here."
         />
         <div className="mx-auto flex max-w-md items-center gap-2 text-xs text-ink-subtle">
           <LifeBuoy className="size-4" />
@@ -106,20 +94,26 @@ export default function IssuetrakPage() {
     )
   }
 
+  const canSubmit = (boot?.sites.length ?? 0) > 0
+
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Issuetrak"
-        subtitle="IT help desk. Submit and track support tickets through Issuetrak."
+        subtitle={
+          boot?.isAdmin
+            ? 'IT help desk. All open tickets across sites.'
+            : 'IT help desk. Open tickets for your site.'
+        }
         actions={
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
               <RefreshCw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button size="sm" onClick={() => setNewOpen(true)}>
+            <Button size="sm" onClick={() => setNewOpen(true)} disabled={!canSubmit}>
               <Plus className="size-4" />
-              New issue
+              New ticket
             </Button>
           </div>
         }
@@ -143,31 +137,18 @@ export default function IssuetrakPage() {
               Run diagnostics
             </Button>
           </div>
-          {diag && (
-            <pre className="overflow-x-auto rounded bg-card p-2 text-xs text-ink">{diag}</pre>
-          )}
+          {diag && <pre className="overflow-x-auto rounded bg-card p-2 text-xs text-ink">{diag}</pre>}
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-56 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-subtle" />
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by number or subject"
-            className="pl-9"
-          />
-        </div>
-        <label className="flex items-center gap-2 text-sm text-ink-muted">
-          <input
-            type="checkbox"
-            checked={openOnly}
-            onChange={(e) => setOpenOnly(e.target.checked)}
-            className="size-4 accent-accent"
-          />
-          Open only
-        </label>
+      <div className="relative min-w-56 flex-1">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-subtle" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by number, subject, or site"
+          className="pl-9"
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(320px,400px)_1fr]">
@@ -175,10 +156,10 @@ export default function IssuetrakPage() {
         <div className="flex flex-col gap-2">
           {loading && issues.length === 0 ? (
             <div className="rounded-md border border-border bg-card px-4 py-8 text-center text-sm text-ink-muted">
-              Loading issues…
+              Loading tickets…
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState icon={Ticket} title="No issues" description="Nothing matches the current filter." />
+            <EmptyState icon={Ticket} title="No open tickets" description="Nothing matches the current view." />
           ) : (
             filtered.map((i) => (
               <button
@@ -192,9 +173,7 @@ export default function IssuetrakPage() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-xs text-ink-subtle">{issueNo(i)}</span>
-                  {i.isOpen === false ? (
-                    <Badge tone="neutral">Closed</Badge>
-                  ) : i.subStatus?.name ? (
+                  {i.subStatus?.name ? (
                     <Badge tone="accent">{i.subStatus.name}</Badge>
                   ) : (
                     <Badge tone="ok">Open</Badge>
@@ -204,6 +183,7 @@ export default function IssuetrakPage() {
                   {i.subject || '(no subject)'}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-subtle">
+                  {boot?.isAdmin && <span>{ticketSite(i)}</span>}
                   {i.priority?.name && <span>{i.priority.name}</span>}
                   <span>{fmtDate(i.enteredDate)}</span>
                 </div>
@@ -216,25 +196,19 @@ export default function IssuetrakPage() {
         <div>
           {selected == null ? (
             <div className="flex h-full min-h-48 items-center justify-center rounded-md border border-dashed border-border bg-card text-sm text-ink-subtle">
-              Select an issue to view details.
+              Select a ticket to view details.
             </div>
           ) : (
-            <IssueDetail
-              key={selected}
-              iid={selected}
-              substatuses={lookups.substatuses}
-              users={lookups.users}
-              onChanged={() => void load()}
-            />
+            <IssueDetail key={selected} iid={selected} showSite={boot?.isAdmin ?? false} />
           )}
         </div>
       </div>
 
-      {newOpen && (
-        <NewIssueModal
+      {newOpen && boot && (
+        <NewTicketModal
           open={newOpen}
           onClose={() => setNewOpen(false)}
-          lookups={lookups}
+          boot={boot}
           onCreated={() => {
             setNewOpen(false)
             void load()
@@ -255,64 +229,42 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function IssueDetail({
-  iid,
-  substatuses,
-  users,
-  onChanged,
-}: {
-  iid: number
-  substatuses: ItLookups['substatuses']
-  users: ItLookups['users']
-  onChanged: () => void
-}) {
+function IssueDetail({ iid, showSite }: { iid: number; showSite: boolean }) {
   const [issue, setIssue] = useState<ItIssue | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
-  const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const reload = useCallback(async () => {
-    setLoading(true)
-    setErr(null)
-    try {
-      setIssue(await issuetrak.getIssue(iid))
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [iid])
 
   useEffect(() => {
-    void reload()
-  }, [reload])
-
-  async function run(fn: () => Promise<unknown>) {
-    setBusy(true)
+    let cancelled = false
+    setLoading(true)
     setErr(null)
-    try {
-      await fn()
-      await reload()
-      onChanged()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
+    issuetrak
+      .get(iid)
+      .then((r) => {
+        if (!cancelled) setIssue(r.issue)
+      })
+      .catch((e) => {
+        if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
-  }
+  }, [iid])
 
   if (loading) {
     return (
       <div className="rounded-md border border-border bg-card px-4 py-8 text-center text-sm text-ink-muted">
-        Loading issue…
+        Loading ticket…
       </div>
     )
   }
   if (!issue) {
     return (
       <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
-        {err ?? 'Could not load issue.'}
+        {err ?? 'Could not load ticket.'}
       </div>
     )
   }
@@ -324,14 +276,12 @@ function IssueDetail({
           <div className="font-mono text-xs text-ink-subtle">{issueNo(issue)}</div>
           <h2 className="mt-0.5 text-lg font-semibold text-ink">{issue.subject || '(no subject)'}</h2>
         </div>
-        {issue.isOpen === false ? <Badge tone="neutral">Closed</Badge> : <Badge tone="ok">Open</Badge>}
+        {issue.subStatus?.name ? (
+          <Badge tone="accent">{issue.subStatus.name}</Badge>
+        ) : (
+          <Badge tone="ok">Open</Badge>
+        )}
       </div>
-
-      {err && (
-        <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
-          {err}
-        </div>
-      )}
 
       {issue.description && (
         <div className="whitespace-pre-wrap rounded-md bg-content px-3 py-2 text-sm text-ink">
@@ -340,16 +290,11 @@ function IssueDetail({
       )}
 
       <div className="grid grid-cols-2 gap-3">
+        <Field label="Status">{issue.subStatus?.name ?? (issue.isOpen === false ? 'Closed' : 'Open')}</Field>
         <Field label="Priority">{refName(issue.priority)}</Field>
-        <Field label="Substatus">{refName(issue.subStatus)}</Field>
         <Field label="Type">{refName(issue.issueType)}</Field>
-        <Field label="Class">{refName(issue.class)}</Field>
-        <Field label="Organization">{refName(issue.organization)}</Field>
-        <Field label="Assigned to">
-          {issue.assignedToUser?.iid != null ? refName(issue.assignedToUser) : 'Unassigned'}
-        </Field>
+        {showSite && <Field label="Site">{ticketSite(issue)}</Field>}
         <Field label="Submitted by">{refName(issue.submittedByUser)}</Field>
-        <Field label="Location">{refName(issue.location)}</Field>
         <Field label="Entered">{fmtDate(issue.enteredDate)}</Field>
         <Field label="Target">{fmtDate(issue.targetDate)}</Field>
       </div>
@@ -360,115 +305,49 @@ function IssueDetail({
         </Field>
       )}
 
-      {/* Actions */}
-      <div className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
-        <label className="flex flex-col gap-1 text-xs text-ink-subtle">
-          Substatus
-          <Select
-            value={issue.subStatus?.iid ?? ''}
-            disabled={busy}
-            onChange={(e) =>
-              void run(() =>
-                issuetrak.setSubstatus(iid, e.target.value === '' ? null : Number(e.target.value)),
-              )
-            }
-          >
-            <option value="">— none —</option>
-            {substatuses.map((s) => (
-              <option key={s.iid} value={s.iid}>
-                {lookupName(s)}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-ink-subtle">
-          Assigned to
-          <Select
-            value={issue.assignedToUser?.iid ?? ''}
-            disabled={busy}
-            onChange={(e) =>
-              void run(() => issuetrak.assign(iid, e.target.value === '' ? null : Number(e.target.value)))
-            }
-          >
-            <option value="">Unassigned</option>
-            {users.map((u) => (
-              <option key={u.iid} value={u.iid}>
-                {lookupName(u)}
-              </option>
-            ))}
-          </Select>
-        </label>
-      </div>
-
-      {/* Add note (Issuetrak has no note-read endpoint; notes post to the issue thread) */}
-      <div className="border-t border-border pt-3">
-        <div className="text-xs uppercase tracking-wide text-ink-subtle">Add note</div>
-        <div className="mt-2 flex items-start gap-2">
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Add a note to this issue…"
-            rows={2}
-            className="flex-1 rounded-md border border-border bg-card px-3 py-2 text-sm text-ink outline-none focus:border-accent"
-          />
-          <Button
-            size="sm"
-            disabled={busy || !note.trim()}
-            onClick={() =>
-              void run(async () => {
-                await issuetrak.addNote(iid, note.trim())
-                setNote('')
-              })
-            }
-          >
-            <Send className="size-4" />
-            Add
-          </Button>
-        </div>
-      </div>
+      <p className="border-t border-border pt-3 text-xs text-ink-subtle">
+        IT works this ticket in Issuetrak. Status here updates when you refresh.
+      </p>
     </div>
   )
 }
 
-function NewIssueModal({
+function NewTicketModal({
   open,
   onClose,
-  lookups,
+  boot,
   onCreated,
   requesterName,
 }: {
   open: boolean
   onClose: () => void
-  lookups: ItLookups
+  boot: ItBootstrap
   onCreated: () => void
   requesterName: string
 }) {
+  const [siteNumber, setSiteNumber] = useState(boot.sites.length === 1 ? String(boot.sites[0].number) : '')
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
   const [issueTypeIid, setIssueTypeIid] = useState('')
   const [priorityIid, setPriorityIid] = useState('')
-  const [classIid, setClassIid] = useState('')
-  const [organizationIid, setOrganizationIid] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   async function submit() {
-    if (!subject.trim() || !description.trim() || !issueTypeIid) {
-      setErr('Subject, description, and issue type are required.')
+    if (!siteNumber || !subject.trim() || !description.trim() || !issueTypeIid) {
+      setErr('Site, subject, description, and issue type are required.')
       return
     }
     setBusy(true)
     setErr(null)
     try {
-      const body: Record<string, unknown> = {
+      await issuetrak.create({
+        siteNumber: Number(siteNumber),
         subject: subject.trim(),
         description: description.trim(),
         issueTypeIid: Number(issueTypeIid),
-      }
-      if (priorityIid) body.priorityIid = Number(priorityIid)
-      if (classIid) body.classIid = Number(classIid)
-      if (organizationIid) body.organizationIid = Number(organizationIid)
-      await issuetrak.createIssue(body)
+        priorityIid: priorityIid ? Number(priorityIid) : undefined,
+      })
       onCreated()
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -478,7 +357,7 @@ function NewIssueModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New issue" size="md">
+    <Modal open={open} onClose={onClose} title="New ticket" size="md">
       <div className="flex flex-col gap-3">
         {requesterName && <div className="text-xs text-ink-subtle">Submitted by {requesterName}</div>}
         {err && (
@@ -486,6 +365,17 @@ function NewIssueModal({
             {err}
           </div>
         )}
+        <label className="flex flex-col gap-1 text-sm text-ink-muted">
+          Site
+          <Select value={siteNumber} onChange={(e) => setSiteNumber(e.target.value)}>
+            <option value="">— select —</option>
+            {boot.sites.map((s) => (
+              <option key={s.number} value={s.number}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        </label>
         <label className="flex flex-col gap-1 text-sm text-ink-muted">
           Subject
           <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Short summary" />
@@ -505,9 +395,9 @@ function NewIssueModal({
             Issue type <span className="text-danger">*</span>
             <Select value={issueTypeIid} onChange={(e) => setIssueTypeIid(e.target.value)}>
               <option value="">— select —</option>
-              {lookups.issueTypes.map((t) => (
+              {boot.issueTypes.map((t) => (
                 <option key={t.iid} value={t.iid}>
-                  {lookupName(t)}
+                  {t.name ?? t.iid}
                 </option>
               ))}
             </Select>
@@ -516,31 +406,9 @@ function NewIssueModal({
             Priority
             <Select value={priorityIid} onChange={(e) => setPriorityIid(e.target.value)}>
               <option value="">—</option>
-              {lookups.priorities.map((p) => (
+              {boot.priorities.map((p) => (
                 <option key={p.iid} value={p.iid}>
-                  {lookupName(p)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm text-ink-muted">
-            Class
-            <Select value={classIid} onChange={(e) => setClassIid(e.target.value)}>
-              <option value="">—</option>
-              {lookups.classes.map((c) => (
-                <option key={c.iid} value={c.iid}>
-                  {lookupName(c)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm text-ink-muted">
-            Organization
-            <Select value={organizationIid} onChange={(e) => setOrganizationIid(e.target.value)}>
-              <option value="">—</option>
-              {lookups.organizations.map((o) => (
-                <option key={o.iid} value={o.iid}>
-                  {lookupName(o)}
+                  {p.name ?? p.iid}
                 </option>
               ))}
             </Select>
@@ -551,7 +419,7 @@ function NewIssueModal({
             Cancel
           </Button>
           <Button onClick={() => void submit()} disabled={busy}>
-            {busy ? 'Creating…' : 'Create issue'}
+            {busy ? 'Submitting…' : 'Submit ticket'}
           </Button>
         </div>
       </div>

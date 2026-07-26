@@ -176,7 +176,7 @@ export const router = createBrowserRouter([
           { path: 'dashboard', element: s(<DashboardPage />) },
 
           { path: 'ask', element: s(<AskOperatorPage />) },
-          { path: 'issuetrak', element: mgr(<IssuetrakPage />) },
+          { path: 'issuetrak', element: tech(<IssuetrakPage />) },
           { path: 'insights', element: tech(<InsightsPage />) },
           { path: 'reports', element: tech(<ReportingPage />) },
           { path: 'reports/:reportKey', element: tech(<PreBuiltReportPage />) },
