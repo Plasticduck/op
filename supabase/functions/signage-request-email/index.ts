@@ -102,6 +102,7 @@ Deno.serve(async (req) => {
   const requester = `${req0.first_name ?? ''} ${req0.last_name ?? ''}`.trim() || '—'
 
   const rows: [string, string][] = [
+    ['Order title', req0.title ?? '—'],
     ['Site', siteName || '—'],
     ['Requested by', requester],
     ['Sign category', req0.sign_category ?? '—'],

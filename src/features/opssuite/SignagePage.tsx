@@ -3,7 +3,6 @@ import { FileText, Images, Plus, Signpost } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Field } from '@/components/forms/Field'
 import { Input } from '@/components/ui/Input'
@@ -23,8 +22,6 @@ import {
 } from '@/lib/queries/signage'
 
 type Row = SignageRequest & { requested_by: { name: string } | null }
-
-const STATUS_TONE = { pending: 'warn', approved: 'accent', ordered: 'neutral', received: 'ok' } as const
 
 async function openArtwork(path: string) {
   const { url } = await signage.artworkUrl(path)
@@ -69,11 +66,10 @@ function Inner({ locationId }: { locationId: string }) {
           <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
-                <th className="px-3 py-2.5 font-medium">Sign</th>
+                <th className="px-3 py-2.5 font-medium">Order</th>
                 <th className="px-3 py-2.5 font-medium">Size</th>
                 <th className="px-3 py-2.5 font-medium numeric">Qty</th>
                 <th className="px-3 py-2.5 font-medium">Ordered by</th>
-                <th className="px-3 py-2.5 font-medium">Status</th>
                 <th className="px-3 py-2.5 font-medium">When</th>
                 <th className="px-3 py-2.5 font-medium text-center">Artwork</th>
               </tr>
@@ -82,8 +78,10 @@ function Inner({ locationId }: { locationId: string }) {
               {rows.map((r) => (
                 <tr key={r.id} className="border-t border-border hover:bg-content">
                   <td className="px-3 py-2.5">
-                    <div className="font-medium text-ink">{r.sign_category}</div>
-                    {r.sign_type && <div className="text-xs text-ink-muted">{r.sign_type}</div>}
+                    <div className="font-medium text-ink">{r.title || r.sign_category}</div>
+                    <div className="text-xs text-ink-muted">
+                      {r.sign_category}{r.sign_type ? ` · ${r.sign_type}` : ''}
+                    </div>
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">
                     {r.size_option
@@ -97,9 +95,6 @@ function Inner({ locationId }: { locationId: string }) {
                     {r.first_name || r.last_name
                       ? `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim()
                       : r.requested_by?.name ?? '—'}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Badge tone={STATUS_TONE[r.status as keyof typeof STATUS_TONE]}>{r.status}</Badge>
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">{timeAgo(r.created_at)}</td>
                   <td className="px-3 py-2.5 text-center">
@@ -192,6 +187,7 @@ function OrderModal({
   const { profile } = useAuth()
   const { activeLocation } = useLocations()
   const [pf, ...pl] = (profile?.name ?? '').trim().split(' ')
+  const [orderTitle, setOrderTitle] = useState('')
   const [firstName, setFirstName] = useState(pf ?? '')
   const [lastName, setLastName] = useState(pl.join(' '))
   const firstType = signTypeOptions(SIGN_CATEGORIES[0])[0] ?? ''
@@ -260,6 +256,7 @@ function OrderModal({
 
   const save = async () => {
     setError(null)
+    if (!orderTitle.trim()) return setError('Give the order a title')
     if (!firstName.trim() || !lastName.trim()) return setError('Enter your first and last name')
     if (!signType) return setError('Choose a sign type')
     setBusy(true)
@@ -280,6 +277,7 @@ function OrderModal({
       account_id: profile?.account_id ?? '',
       location_id: locationId,
       requested_by: profile?.id ?? null,
+      title: orderTitle.trim(),
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       sign_category: category,
@@ -303,6 +301,9 @@ function OrderModal({
   return (
     <Modal open onClose={onClose} title="New Signage Order" size="md">
       <div className="flex flex-col gap-4">
+        <Field label="Order title" required>
+          {(id) => <Input id={id} value={orderTitle} onChange={(e) => setOrderTitle(e.target.value)} placeholder="e.g. Front entrance A-frame" />}
+        </Field>
         <Field label="Site">
           {(id) => <Input id={id} value={activeLocation?.name ?? ''} readOnly className="bg-content text-ink-muted" />}
         </Field>

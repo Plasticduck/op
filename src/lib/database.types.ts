@@ -3740,6 +3740,7 @@ export type Database = {
           size_option: string | null
           size_unit: string
           status: string
+          title: string | null
           width: number | null
         }
         Insert: {
@@ -3761,6 +3762,7 @@ export type Database = {
           size_option?: string | null
           size_unit?: string
           status?: string
+          title?: string | null
           width?: number | null
         }
         Update: {
@@ -3782,6 +3784,7 @@ export type Database = {
           size_option?: string | null
           size_unit?: string
           status?: string
+          title?: string | null
           width?: number | null
         }
         Relationships: [
