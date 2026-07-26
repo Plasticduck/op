@@ -3772,7 +3772,7 @@ export type Database = {
           height: number | null
           id: string
           last_name: string | null
-          location_id: string
+          location_id: string | null
           notes: string | null
           quantity: number
           requested_by: string | null
@@ -3794,7 +3794,7 @@ export type Database = {
           height?: number | null
           id?: string
           last_name?: string | null
-          location_id: string
+          location_id?: string | null
           notes?: string | null
           quantity?: number
           requested_by?: string | null
@@ -3816,7 +3816,7 @@ export type Database = {
           height?: number | null
           id?: string
           last_name?: string | null
-          location_id?: string
+          location_id?: string | null
           notes?: string | null
           quantity?: number
           requested_by?: string | null

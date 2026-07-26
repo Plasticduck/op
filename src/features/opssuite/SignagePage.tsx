@@ -79,7 +79,12 @@ function Inner({ locationId }: { locationId: string }) {
               {rows.map((r) => (
                 <tr key={r.id} className="border-t border-border hover:bg-content">
                   <td className="px-3 py-2.5">
-                    <div className="font-medium text-ink">{r.title || r.sign_category}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-ink">{r.title || r.sign_category}</span>
+                      {r.location_id === null && (
+                        <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">All sites</span>
+                      )}
+                    </div>
                     <div className="text-xs text-ink-muted">
                       {r.sign_category}{r.sign_type ? ` · ${r.sign_type}` : ''}
                     </div>
@@ -230,8 +235,10 @@ function OrderModal({
   onSaved: () => void
 }) {
   const { profile } = useAuth()
-  const { activeLocation } = useLocations()
+  const { activeLocation, locations } = useLocations()
   const [pf, ...pl] = (profile?.name ?? '').trim().split(' ')
+  // 'all' targets every site (location_id null); otherwise a specific site id.
+  const [siteId, setSiteId] = useState<string>(activeLocation?.id ?? locationId)
   const [orderTitle, setOrderTitle] = useState('')
   const [firstName, setFirstName] = useState(pf ?? '')
   const [lastName, setLastName] = useState(pl.join(' '))
@@ -320,7 +327,7 @@ function OrderModal({
 
     const { data: created, error: err } = await signage.create({
       account_id: profile?.account_id ?? '',
-      location_id: locationId,
+      location_id: siteId === 'all' ? null : siteId,
       requested_by: profile?.id ?? null,
       title: orderTitle.trim(),
       first_name: firstName.trim(),
@@ -349,8 +356,13 @@ function OrderModal({
         <Field label="Order title" required>
           {(id) => <Input id={id} value={orderTitle} onChange={(e) => setOrderTitle(e.target.value)} placeholder="e.g. Front entrance A-frame" />}
         </Field>
-        <Field label="Site">
-          {(id) => <Input id={id} value={activeLocation?.name ?? ''} readOnly className="bg-content text-ink-muted" />}
+        <Field label="Site" required>
+          {(id) => (
+            <Select id={id} value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+              <option value="all">ALL SITES</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+          )}
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="First name" required>{(id) => <Input id={id} value={firstName} onChange={(e) => setFirstName(e.target.value)} />}</Field>

@@ -87,11 +87,12 @@ export function flagSpec(signType: string): FlagSpec | undefined {
 }
 
 export const signage = {
+  // A site's orders, plus any ALL SITES orders (location_id null).
   list: (loc: string) =>
     supabase
       .from('signage_requests')
       .select('*, requested_by(name)')
-      .eq('location_id', loc)
+      .or(`location_id.eq.${loc},location_id.is.null`)
       .order('created_at', { ascending: false }),
   create: (row: T['signage_requests']['Insert']) =>
     supabase.from('signage_requests').insert(row).select().single(),

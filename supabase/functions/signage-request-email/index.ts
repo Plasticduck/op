@@ -93,7 +93,8 @@ Deno.serve(async (req) => {
     return json({ error: 'not_found' }, 404, origin)
   }
 
-  const siteName = (req0.locations?.name ?? '').trim()
+  // No location_id means the order is for ALL SITES.
+  const siteName = req0.location_id ? (req0.locations?.name ?? '').trim() : 'ALL SITES'
   const size = req0.size_option
     ? `${req0.size_option}${req0.sided ? ` (${req0.sided} sided)` : ''}`
     : req0.width && req0.height
