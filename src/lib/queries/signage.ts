@@ -4,6 +4,15 @@ import type { Database } from '@/lib/database.types'
 type T = Database['public']['Tables']
 export type SignageRequest = T['signage_requests']['Row']
 
+// One entry in the shared artwork library (any past order's artwork).
+export type ArtworkItem = {
+  artwork_path: string
+  artwork_name: string | null
+  sign_category: string | null
+  sign_type: string | null
+  created_at: string
+}
+
 // Top-level categories on the order form.
 export const SIGN_CATEGORIES = ['General Site Signage', 'Banner', 'Flags', 'Magnets'] as const
 
@@ -88,6 +97,15 @@ export const signage = {
     supabase.from('signage_requests').insert(row).select().single(),
   update: (id: string, patch: T['signage_requests']['Update']) =>
     supabase.from('signage_requests').update(patch).eq('id', id),
+
+  // Every past artwork the caller can see, newest first (deduped by path in the
+  // UI). Backs the artwork library and the "reuse existing artwork" picker.
+  artworkLibrary: () =>
+    supabase
+      .from('signage_requests')
+      .select('artwork_path, artwork_name, sign_category, sign_type, created_at')
+      .not('artwork_path', 'is', null)
+      .order('created_at', { ascending: false }),
 
   // Best-effort: email the request (with the artwork PDF) to info@washlyfe.com.
   emailRequest: (requestId: string) =>

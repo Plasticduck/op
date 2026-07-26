@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     return json({ error: 'not_found' }, 404, origin)
   }
 
-  const siteName = req0.locations?.name ?? '—'
+  const siteName = (req0.locations?.name ?? '').trim()
   const size = req0.size_option
     ? `${req0.size_option}${req0.sided ? ` (${req0.sided} sided)` : ''}`
     : req0.width && req0.height
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
   const requester = `${req0.first_name ?? ''} ${req0.last_name ?? ''}`.trim() || '—'
 
   const rows: [string, string][] = [
-    ['Site', siteName],
+    ['Site', siteName || '—'],
     ['Requested by', requester],
     ['Sign category', req0.sign_category ?? '—'],
     ['Sign type', req0.sign_type ?? '—'],
@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
 
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">
-      <h2 style="margin:0 0 16px;font-size:20px;">New Operator Signage Request</h2>
+      <h2 style="margin:0 0 16px;font-size:20px;">New Operator Signage Order${siteName ? ' — ' + esc(siteName) : ''}</h2>
       <table style="border-collapse:collapse;width:100%;font-size:14px;">
         ${rows
           .map(
@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
     const { error } = await resend.emails.send({
       from: fromAddr,
       to: [toAddr],
-      subject: 'New Operator Signage Request',
+      subject: `Operator Signage Order${siteName ? ' ' + siteName : ''}`,
       html,
       attachments: attachments.length ? attachments : undefined,
     })

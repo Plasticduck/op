@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { FileText, Plus, Signpost } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FileText, Images, Plus, Signpost } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -9,7 +9,7 @@ import { Field } from '@/components/forms/Field'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { timeAgo } from '@/lib/format'
+import { timeAgo, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import {
@@ -18,46 +18,41 @@ import {
   signage,
   signTypeLabel,
   signTypeOptions,
+  type ArtworkItem,
   type SignageRequest,
 } from '@/lib/queries/signage'
 
 type Row = SignageRequest & { requested_by: { name: string } | null }
 
-const STATUS_FLOW = ['pending', 'approved', 'ordered', 'received'] as const
 const STATUS_TONE = { pending: 'warn', approved: 'accent', ordered: 'neutral', received: 'ok' } as const
 
+async function openArtwork(path: string) {
+  const { url } = await signage.artworkUrl(path)
+  if (url) window.open(url, '_blank', 'noopener')
+}
+
 function Inner({ locationId }: { locationId: string }) {
-  const { profile } = useAuth()
-  const isManagerPlus = profile?.role !== 'employee'
   const [rows, setRows] = useState<Row[]>([])
+  const [library, setLibrary] = useState<ArtworkItem[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await signage.list(locationId)
-    setRows((data as unknown as Row[]) ?? [])
+    const [orders, art] = await Promise.all([signage.list(locationId), signage.artworkLibrary()])
+    setRows((orders.data as unknown as Row[]) ?? [])
+    setLibrary((art.data as unknown as ArtworkItem[]) ?? [])
     setLoading(false)
   }, [locationId])
 
   useEffect(() => { void load() }, [load])
-
-  const advance = async (r: Row) => {
-    const next = STATUS_FLOW[STATUS_FLOW.indexOf(r.status as (typeof STATUS_FLOW)[number]) + 1]
-    if (next) { await signage.update(r.id, { status: next }); void load() }
-  }
-
-  const openArtwork = async (path: string) => {
-    const { url } = await signage.artworkUrl(path)
-    if (url) window.open(url, '_blank', 'noopener')
-  }
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Signage"
         subtitle="Order signage and printed products for your site."
-        actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> New request</Button>}
+        actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> New Order</Button>}
       />
 
       {loading ? (
@@ -65,23 +60,22 @@ function Inner({ locationId }: { locationId: string }) {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={Signpost}
-          title="No signage requests"
-          description="Submit a signage order and track it through to received."
-          action={<Button onClick={() => setCreating(true)}>New request</Button>}
+          title="No signage orders"
+          description="Submit a signage order and it goes straight to the print team."
+          action={<Button onClick={() => setCreating(true)}>New Order</Button>}
         />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-3 py-2.5 font-medium">Sign</th>
                 <th className="px-3 py-2.5 font-medium">Size</th>
                 <th className="px-3 py-2.5 font-medium numeric">Qty</th>
-                <th className="px-3 py-2.5 font-medium">Artwork</th>
-                <th className="px-3 py-2.5 font-medium">Requested by</th>
+                <th className="px-3 py-2.5 font-medium">Ordered by</th>
                 <th className="px-3 py-2.5 font-medium">Status</th>
                 <th className="px-3 py-2.5 font-medium">When</th>
-                <th className="px-3 py-2.5" />
+                <th className="px-3 py-2.5 font-medium text-center">Artwork</th>
               </tr>
             </thead>
             <tbody>
@@ -99,19 +93,6 @@ function Inner({ locationId }: { locationId: string }) {
                         : '—'}
                   </td>
                   <td className="px-3 py-2.5 numeric tabular text-ink-muted">{r.quantity}</td>
-                  <td className="px-3 py-2.5">
-                    {r.artwork_path ? (
-                      <button
-                        type="button"
-                        onClick={() => void openArtwork(r.artwork_path as string)}
-                        className="inline-flex items-center gap-1 text-accent hover:underline"
-                      >
-                        <FileText className="size-3.5" /> PDF
-                      </button>
-                    ) : (
-                      <span className="text-xs text-ink-subtle">none</span>
-                    )}
-                  </td>
                   <td className="px-3 py-2.5 text-ink-muted">
                     {r.first_name || r.last_name
                       ? `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim()
@@ -121,11 +102,18 @@ function Inner({ locationId }: { locationId: string }) {
                     <Badge tone={STATUS_TONE[r.status as keyof typeof STATUS_TONE]}>{r.status}</Badge>
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">{timeAgo(r.created_at)}</td>
-                  <td className="px-3 py-2.5 text-right">
-                    {isManagerPlus && r.status !== 'received' && (
-                      <Button variant="secondary" size="sm" onClick={() => advance(r)}>
-                        {r.status === 'pending' ? 'Approve' : r.status === 'approved' ? 'Mark ordered' : 'Mark received'}
-                      </Button>
+                  <td className="px-3 py-2.5 text-center">
+                    {r.artwork_path ? (
+                      <button
+                        type="button"
+                        onClick={() => void openArtwork(r.artwork_path as string)}
+                        title={`View artwork${r.artwork_name ? `: ${r.artwork_name}` : ''}`}
+                        className="mx-auto grid size-8 place-items-center rounded-md border border-border text-accent hover:bg-accent-soft"
+                      >
+                        <FileText className="size-4" />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-ink-subtle">none</span>
                     )}
                   </td>
                 </tr>
@@ -135,9 +123,12 @@ function Inner({ locationId }: { locationId: string }) {
         </div>
       )}
 
+      {!loading && <ArtworkLibrary items={library} />}
+
       {creating && (
-        <RequestModal
+        <OrderModal
           locationId={locationId}
+          library={library}
           onClose={() => setCreating(false)}
           onSaved={() => { setCreating(false); void load() }}
         />
@@ -146,7 +137,58 @@ function Inner({ locationId }: { locationId: string }) {
   )
 }
 
-function RequestModal({ locationId, onClose, onSaved }: { locationId: string; onClose: () => void; onSaved: () => void }) {
+// Every past artwork, reusable on a new order. Deduped by file path.
+function ArtworkLibrary({ items }: { items: ArtworkItem[] }) {
+  const unique = useMemo(() => {
+    const seen = new Set<string>()
+    return items.filter((i) => i.artwork_path && !seen.has(i.artwork_path) && seen.add(i.artwork_path))
+  }, [items])
+
+  return (
+    <section className="rounded-md border border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border p-4">
+        <Images className="size-4 text-ink-muted" />
+        <h2 className="text-sm font-semibold text-ink">Artwork library</h2>
+        <span className="text-xs text-ink-subtle">Reuse any of these on a new order</span>
+      </div>
+      {unique.length === 0 ? (
+        <p className="p-4 text-sm text-ink-muted">Artwork you upload on orders will collect here.</p>
+      ) : (
+        <ul className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+          {unique.map((a) => (
+            <li key={a.artwork_path} className="flex items-center justify-between gap-3 bg-card p-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <FileText className="size-4 shrink-0 text-accent" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-ink">{a.artwork_name ?? 'Artwork.pdf'}</p>
+                  <p className="truncate text-xs text-ink-subtle">
+                    {a.sign_category ?? 'Signage'}{a.sign_type ? ` · ${a.sign_type}` : ''} · {shortDate(a.created_at)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void openArtwork(a.artwork_path)}
+                className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-ink-muted hover:text-accent"
+              >
+                View
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function OrderModal({
+  locationId, library, onClose, onSaved,
+}: {
+  locationId: string
+  library: ArtworkItem[]
+  onClose: () => void
+  onSaved: () => void
+}) {
   const { profile } = useAuth()
   const { activeLocation } = useLocations()
   const [pf, ...pl] = (profile?.name ?? '').trim().split(' ')
@@ -161,12 +203,22 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
   const [sizeOption, setSizeOption] = useState('')
   const [sided, setSided] = useState<'single' | 'double'>('single')
   const [quantity, setQuantity] = useState('1')
+
+  // Artwork: upload a new PDF, or reuse one from the library.
+  const uniqueLibrary = useMemo(() => {
+    const seen = new Set<string>()
+    return library.filter((i) => i.artwork_path && !seen.has(i.artwork_path) && seen.add(i.artwork_path))
+  }, [library])
+  const [artSource, setArtSource] = useState<'upload' | 'library'>('upload')
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [libraryPath, setLibraryPath] = useState('')
+  const [libraryPreview, setLibraryPreview] = useState<string | null>(null)
+
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Live preview of the selected PDF, cleaned up when it changes or unmounts.
+  // Live preview of a freshly selected PDF.
   useEffect(() => {
     if (!file) { setPreviewUrl(null); return }
     const url = URL.createObjectURL(file)
@@ -174,8 +226,16 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
     return () => URL.revokeObjectURL(url)
   }, [file])
 
+  // Signed-URL preview for a chosen library artwork.
+  useEffect(() => {
+    if (artSource !== 'library' || !libraryPath) { setLibraryPreview(null); return }
+    let active = true
+    void signage.artworkUrl(libraryPath).then(({ url }) => { if (active) setLibraryPreview(url) })
+    return () => { active = false }
+  }, [artSource, libraryPath])
+
   const typeOptions = signTypeOptions(category)
-  const spec = flagSpec(signType) // present only for flag types
+  const spec = flagSpec(signType)
 
   const applyType = (t: string) => {
     setSignType(t)
@@ -206,7 +266,10 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
 
     let artworkPath: string | null = null
     let artworkName: string | null = null
-    if (file) {
+    if (artSource === 'library' && libraryPath) {
+      artworkPath = libraryPath
+      artworkName = uniqueLibrary.find((i) => i.artwork_path === libraryPath)?.artwork_name ?? null
+    } else if (file) {
       const { error: upErr, path } = await signage.uploadArtwork(profile?.account_id ?? '', file)
       if (upErr) { setBusy(false); return setError(`Artwork upload failed: ${upErr.message}`) }
       artworkPath = path
@@ -221,7 +284,6 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
       last_name: lastName.trim(),
       sign_category: category,
       sign_type: signType,
-      // Flags use a preset size + sided; other categories use width x height.
       width: spec ? null : width ? Number(width) : null,
       height: spec ? null : height ? Number(height) : null,
       size_unit: unit,
@@ -233,14 +295,13 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
     })
     setBusy(false)
     if (err) return setError(err.message)
-    // Email the request (with the artwork PDF) to info@washlyfe.com. Best-effort:
-    // the request is saved regardless, so a mail hiccup never blocks the user.
+    // Email the order (with the artwork PDF) to info@washlyfe.com. Best-effort.
     if (created?.id) void signage.emailRequest(created.id)
     onSaved()
   }
 
   return (
-    <Modal open onClose={onClose} title="New signage request" size="md">
+    <Modal open onClose={onClose} title="New Signage Order" size="md">
       <div className="flex flex-col gap-4">
         <Field label="Site">
           {(id) => <Input id={id} value={activeLocation?.name ?? ''} readOnly className="bg-content text-ink-muted" />}
@@ -301,26 +362,53 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
           </Field>
         )}
         <Field label="Quantity" required>{(id) => <Input id={id} type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />}</Field>
-        <Field label="Upload artwork (PDF only)">
-          {(id) => (
-            <div>
-              <input
-                id={id}
-                type="file"
-                accept="application/pdf,.pdf"
-                onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-accent-hover"
-              />
-              {file && <p className="mt-1 text-xs text-ink-muted">{file.name}</p>}
+
+        <Field label="Artwork (PDF)">
+          {() => (
+            <div className="flex flex-col gap-2">
+              <div className="inline-flex gap-1 rounded-lg border border-border bg-content p-1">
+                {(['upload', 'library'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setArtSource(s)}
+                    disabled={s === 'library' && uniqueLibrary.length === 0}
+                    className={
+                      'rounded-md px-3 py-1 text-xs font-medium transition disabled:opacity-40 ' +
+                      (artSource === s ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')
+                    }
+                  >
+                    {s === 'upload' ? 'Upload new' : 'From library'}
+                  </button>
+                ))}
+              </div>
+              {artSource === 'upload' ? (
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+                  className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-accent-hover"
+                />
+              ) : (
+                <Select value={libraryPath} onChange={(e) => setLibraryPath(e.target.value)}>
+                  <option value="">Choose existing artwork…</option>
+                  {uniqueLibrary.map((a) => (
+                    <option key={a.artwork_path} value={a.artwork_path}>
+                      {(a.artwork_name ?? 'Artwork.pdf') + ' (' + shortDate(a.created_at) + ')'}
+                    </option>
+                  ))}
+                </Select>
+              )}
             </div>
           )}
         </Field>
-        {previewUrl && (
+
+        {(previewUrl || libraryPreview) && (
           <div>
             <p className="mb-1 text-xs font-medium text-ink-muted">Artwork preview</p>
             <iframe
               title="Artwork preview"
-              src={previewUrl}
+              src={(artSource === 'library' ? libraryPreview : previewUrl) ?? ''}
               className="h-80 w-full rounded-md border border-border bg-content"
             />
           </div>
@@ -328,7 +416,7 @@ function RequestModal({ locationId, onClose, onSaved }: { locationId: string; on
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={() => void save()} disabled={busy}>{busy ? 'Submitting…' : 'Submit request'}</Button>
+          <Button onClick={() => void save()} disabled={busy}>{busy ? 'Submitting…' : 'Submit order'}</Button>
         </div>
       </div>
     </Modal>
