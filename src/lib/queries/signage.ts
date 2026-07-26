@@ -98,14 +98,35 @@ export const signage = {
   update: (id: string, patch: T['signage_requests']['Update']) =>
     supabase.from('signage_requests').update(patch).eq('id', id),
 
-  // Every past artwork the caller can see, newest first (deduped by path in the
-  // UI). Backs the artwork library and the "reuse existing artwork" picker.
-  artworkLibrary: () =>
-    supabase
-      .from('signage_requests')
-      .select('artwork_path, artwork_name, sign_category, sign_type, created_at')
-      .not('artwork_path', 'is', null)
-      .order('created_at', { ascending: false }),
+  // The whole artwork library: standalone uploads (signage_artwork) merged with
+  // artwork attached to past orders, newest first. Deduped by path in the UI.
+  libraryList: async (): Promise<ArtworkItem[]> => {
+    const [std, orders] = await Promise.all([
+      supabase.from('signage_artwork').select('path, name, created_at'),
+      supabase
+        .from('signage_requests')
+        .select('artwork_path, artwork_name, sign_category, sign_type, created_at')
+        .not('artwork_path', 'is', null),
+    ])
+    const a: ArtworkItem[] = ((std.data as { path: string; name: string | null; created_at: string }[] | null) ?? []).map(
+      (s) => ({ artwork_path: s.path, artwork_name: s.name, sign_category: null, sign_type: null, created_at: s.created_at }),
+    )
+    const b: ArtworkItem[] = (orders.data as ArtworkItem[] | null) ?? []
+    return [...a, ...b].sort((x, y) => (y.created_at > x.created_at ? 1 : -1))
+  },
+
+  // Upload a PDF straight to the library, no order needed.
+  addArtwork: async (accountId: string, file: File) => {
+    const path = `${accountId}/${crypto.randomUUID()}.pdf`
+    const { error: upErr } = await supabase.storage
+      .from('signage-artwork')
+      .upload(path, file, { contentType: 'application/pdf', upsert: false })
+    if (upErr) return { error: upErr }
+    const { error } = await supabase
+      .from('signage_artwork')
+      .insert({ account_id: accountId, path, name: file.name })
+    return { error }
+  },
 
   // Best-effort: email the request (with the artwork PDF) to info@washlyfe.com.
   emailRequest: (requestId: string) =>

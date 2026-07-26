@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FileText, Images, Plus, Signpost } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FileText, Images, Plus, Signpost, Upload } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -29,6 +29,7 @@ async function openArtwork(path: string) {
 }
 
 function Inner({ locationId }: { locationId: string }) {
+  const { profile } = useAuth()
   const [rows, setRows] = useState<Row[]>([])
   const [library, setLibrary] = useState<ArtworkItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,9 +37,9 @@ function Inner({ locationId }: { locationId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [orders, art] = await Promise.all([signage.list(locationId), signage.artworkLibrary()])
+    const [orders, art] = await Promise.all([signage.list(locationId), signage.libraryList()])
     setRows((orders.data as unknown as Row[]) ?? [])
-    setLibrary((art.data as unknown as ArtworkItem[]) ?? [])
+    setLibrary(art)
     setLoading(false)
   }, [locationId])
 
@@ -118,7 +119,9 @@ function Inner({ locationId }: { locationId: string }) {
         </div>
       )}
 
-      {!loading && <ArtworkLibrary items={library} />}
+      {!loading && (
+        <ArtworkLibrary items={library} accountId={profile?.account_id ?? ''} onChanged={load} />
+      )}
 
       {creating && (
         <OrderModal
@@ -132,20 +135,62 @@ function Inner({ locationId }: { locationId: string }) {
   )
 }
 
-// Every past artwork, reusable on a new order. Deduped by file path.
-function ArtworkLibrary({ items }: { items: ArtworkItem[] }) {
+// Every artwork, reusable on a new order. Direct uploads (no order) plus artwork
+// from past orders. Deduped by file path.
+function ArtworkLibrary({
+  items, accountId, onChanged,
+}: {
+  items: ArtworkItem[]
+  accountId: string
+  onChanged: () => void
+}) {
   const unique = useMemo(() => {
     const seen = new Set<string>()
     return items.filter((i) => i.artwork_path && !seen.has(i.artwork_path) && seen.add(i.artwork_path))
   }, [items])
 
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const upload = async (f: File | null) => {
+    setError(null)
+    if (!f) return
+    if (f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) {
+      return setError('Artwork must be a PDF file.')
+    }
+    setBusy(true)
+    const { error: err } = await signage.addArtwork(accountId, f)
+    setBusy(false)
+    if (fileRef.current) fileRef.current.value = ''
+    if (err) return setError(err.message)
+    onChanged()
+  }
+
   return (
     <section className="rounded-md border border-border bg-card">
-      <div className="flex items-center gap-2 border-b border-border p-4">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
         <Images className="size-4 text-ink-muted" />
         <h2 className="text-sm font-semibold text-ink">Artwork library</h2>
         <span className="text-xs text-ink-subtle">Reuse any of these on a new order</span>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => void upload(e.target.files?.[0] ?? null)}
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          className="ml-auto"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+        >
+          <Upload className="size-4" /> {busy ? 'Uploading…' : 'Upload artwork'}
+        </Button>
       </div>
+      {error && <p className="border-b border-border bg-danger-soft px-4 py-2 text-sm text-danger">{error}</p>}
       {unique.length === 0 ? (
         <p className="p-4 text-sm text-ink-muted">Artwork you upload on orders will collect here.</p>
       ) : (
