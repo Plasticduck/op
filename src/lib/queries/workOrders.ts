@@ -1,5 +1,11 @@
 import { supabase } from '@/lib/supabase'
+import { fnErrorMessage } from '@/lib/fnError'
 import type { Database } from '@/lib/database.types'
+
+// Mighty Wash uses MaintainX as its work-order system of record; its work
+// orders are created/edited through the maintainx-workorder edge function so
+// they stay two-way synced. Other accounts create work orders locally.
+export const MAINTAINX_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 
 type T = Database['public']['Tables']
 export type WorkOrder = T['work_orders']['Row']
@@ -80,6 +86,28 @@ export const workOrders = {
 
   create: (row: WorkOrderInsert) =>
     supabase.from('work_orders').insert(row).select().single(),
+
+  // Mighty Wash only: create the work order in MaintainX first (so it shows in
+  // the MaintainX portal and gets its number there), then mirror it locally.
+  // Returns the same { data, error } shape as create() for a drop-in swap.
+  createViaMaintainX: async (
+    row: Pick<
+      WorkOrderInsert,
+      'location_id' | 'equipment_id' | 'title' | 'description' | 'priority' | 'work_type'
+      | 'recurrence' | 'estimated_minutes' | 'due_at' | 'start_at' | 'parent_work_order_id'
+    >,
+  ): Promise<{ data: WorkOrder | null; error: { message: string } | null }> => {
+    const { data, error } = await supabase.functions.invoke('maintainx-workorder', {
+      body: { action: 'create', work_order: row },
+    })
+    if (error) {
+      const msg = await fnErrorMessage(error, data as { message?: string; error?: string } | null, 'Could not create the work order in MaintainX')
+      return { data: null, error: { message: msg } }
+    }
+    const res = data as { ok?: boolean; work_order?: WorkOrder; error?: string; message?: string }
+    if (!res?.ok || !res.work_order) return { data: null, error: { message: res?.message || res?.error || 'MaintainX create failed' } }
+    return { data: res.work_order, error: null }
+  },
 
   update: (id: string, patch: WorkOrderUpdate) =>
     supabase.from('work_orders').update(patch).eq('id', id).select().single(),
