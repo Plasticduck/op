@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import type { Database } from '@/lib/database.types'
 import type { RegionDef } from '@/lib/regions'
 import type { PagePermissions, UserPermissions } from '@/lib/permissions'
+import type { WeatherAdjustConfig } from '@/lib/queries/labor'
 
 // `company_settings` is a jsonb column added in migration 0044. Until
 // database.types.ts is regenerated (npm run db:types) it isn't in the typed
@@ -47,6 +48,8 @@ export type CompanySettings = {
   scheduleWeekStart?: number
   // Custom shift presets shown in the schedule builder's shift palette.
   shiftTemplates?: ShiftTemplate[]
+  // Tunable weather effect on the Labor Dashboard forecast (rain + temperature).
+  laborWeather?: WeatherAdjustConfig
 }
 
 export type SitePlan = 'single' | 'multi'

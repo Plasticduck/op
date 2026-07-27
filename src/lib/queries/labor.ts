@@ -122,10 +122,34 @@ export const labor = {
   },
 }
 
+// Tunable weather effect on the forecast. `rain` tiers cut the forecast by a
+// percentage once precipitation reaches the tier's threshold (heaviest matching
+// tier wins). `temp` tiers cut it when the forecast high is at/below the tier's
+// temperature (coldest matching tier wins). Percentages are negative = a cut.
+export type WeatherAdjustConfig = {
+  rain: Array<{ min_in: number; pct: number }>
+  temp: Array<{ max_f: number; pct: number }>
+}
+
+export const DEFAULT_WEATHER_CONFIG: WeatherAdjustConfig = {
+  rain: [
+    { min_in: 0.1, pct: -10 }, // light
+    { min_in: 0.25, pct: -20 }, // moderate
+    { min_in: 0.5, pct: -35 }, // heavy
+  ],
+  temp: [
+    { max_f: 32, pct: -35 }, // freezing (high at/below 32)
+    { max_f: 40, pct: -15 }, // near freezing
+    { max_f: 50, pct: -5 }, // cold
+  ],
+}
+
 export type WeatherForecast = {
   cars: number // weather-adjusted forecast
   baseline: number // same-weekday (dry) baseline before weather adjustment
-  factor: number // wet-day multiplier applied (1 when dry / insufficient history)
+  factor: number // combined multiplier applied (1 = no adjustment)
+  rainPct: number // rain cut applied (0 = none)
+  tempPct: number // temperature cut applied (0 = none)
   wet: boolean // is tomorrow forecast to be wet?
   weather: WeatherDay | null // tomorrow's forecast weather
 }
@@ -135,10 +159,14 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// Forecast tomorrow's cars: a same-weekday (dry-day) baseline, adjusted by a
-// wet-day multiplier learned from this site's own rain-vs-dry history when
-// tomorrow's forecast is wet.
-export function weatherForecast(days: LaborDay[], weather: Map<string, WeatherDay>, tomorrow: Date): WeatherForecast {
+// Forecast tomorrow's cars: a same-weekday (dry-day) baseline, adjusted by the
+// configured rain + temperature effects for tomorrow's forecast.
+export function weatherForecast(
+  days: LaborDay[],
+  weather: Map<string, WeatherDay>,
+  tomorrow: Date,
+  cfg: WeatherAdjustConfig = DEFAULT_WEATHER_CONFIG,
+): WeatherForecast {
   const withCars = days.filter((d) => d.cars > 0)
   const dow = tomorrow.getDay()
   const isWet = (date: string) => {
@@ -146,7 +174,7 @@ export function weatherForecast(days: LaborDay[], weather: Map<string, WeatherDa
     return w?.precip_in != null && w.precip_in >= WET_THRESHOLD_IN
   }
 
-  // Baseline: recent same-weekday days, preferring dry ones (so the wet factor
+  // Baseline: recent same-weekday days, preferring dry ones (so the rain effect
   // isn't double-counted).
   const sameDow = withCars.filter((d) => new Date(d.date + 'T12:00:00').getDay() === dow)
   const dryDow = sameDow.filter((d) => !isWet(d.date))
@@ -157,18 +185,18 @@ export function weatherForecast(days: LaborDay[], weather: Map<string, WeatherDa
       ? withCars[withCars.length - 1].cars
       : 0
 
-  // Wet multiplier from all days with weather, clamped to a sane range.
-  const wetDays = withCars.filter((d) => isWet(d.date))
-  const dryDays = withCars.filter((d) => !isWet(d.date))
-  let factor = 1
-  if (wetDays.length >= 3 && dryDays.length >= 3) {
-    const mw = wetDays.reduce((s, d) => s + d.cars, 0) / wetDays.length
-    const md = dryDays.reduce((s, d) => s + d.cars, 0) / dryDays.length
-    if (md > 0) factor = Math.min(1.3, Math.max(0.4, mw / md))
-  }
-
   const wx = weather.get(ymd(tomorrow)) ?? null
-  const wet = wx?.precip_in != null && wx.precip_in >= WET_THRESHOLD_IN
-  const cars = Math.round(baseline * (wet ? factor : 1))
-  return { cars, baseline, factor, wet, weather: wx }
+  const precip = wx?.precip_in ?? 0
+  const high = wx?.temp_max
+
+  // Rain: heaviest matching tier.
+  let rainPct = 0
+  for (const t of [...cfg.rain].sort((a, b) => a.min_in - b.min_in)) if (precip >= t.min_in) rainPct = t.pct
+  // Temperature: coldest (tightest) matching tier.
+  let tempPct = 0
+  if (high != null) for (const t of [...cfg.temp].sort((a, b) => a.max_f - b.max_f)) { if (high <= t.max_f) { tempPct = t.pct; break } }
+
+  const factor = Math.min(1.2, Math.max(0.3, (1 + rainPct / 100) * (1 + tempPct / 100)))
+  const cars = Math.round(baseline * factor)
+  return { cars, baseline, factor, rainPct, tempPct, wet: precip >= WET_THRESHOLD_IN, weather: wx }
 }

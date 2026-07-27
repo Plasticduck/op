@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
-import { Car, Clock, Users, BarChart3, CheckCircle2, AlertTriangle, XCircle, Pencil, Lightbulb, Trophy, CloudRain, Sun } from 'lucide-react'
+import { Car, Clock, Users, BarChart3, CheckCircle2, AlertTriangle, XCircle, Pencil, Lightbulb, Trophy, CloudRain, Sun, Snowflake } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -8,9 +8,11 @@ import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAuth } from '@/lib/auth'
+import { useCompany } from '@/lib/company'
 import { useLocations } from '@/lib/locations'
+import { updateCompany, type CompanySettings } from '@/lib/queries/companySettings'
 import { siteNumber } from '@/lib/queries/sitePerformance'
-import { labor, benchmarkFor, weatherForecast, type BenchmarkTier, type LaborDay, type WeatherDay } from '@/lib/queries/labor'
+import { labor, benchmarkFor, weatherForecast, DEFAULT_WEATHER_CONFIG, type BenchmarkTier, type LaborDay, type WeatherDay, type WeatherAdjustConfig } from '@/lib/queries/labor'
 
 // Guardrails and the sample schedule breakdown are static (per the mockup). The
 // schedule snapshot is sample data until the Schedule is populated with matching
@@ -55,6 +57,7 @@ function statusFor(variance: number): Status {
 
 export default function LaborDashboardPage() {
   const { profile } = useAuth()
+  const { settings, reload: reloadCompany } = useCompany()
   const { activeLocation } = useLocations()
   const [days, setDays] = useState<LaborDay[]>([])
   const [weather, setWeather] = useState<WeatherDay[]>([])
@@ -62,6 +65,8 @@ export default function LaborDashboardPage() {
   const [isSiteOverride, setIsSiteOverride] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
+  const [weatherEditOpen, setWeatherEditOpen] = useState(false)
+  const wxConfig = settings.laborWeather ?? DEFAULT_WEATHER_CONFIG
 
   const activeId = activeLocation?.id ?? null
   const sn = activeLocation ? siteNumber(activeLocation.name) : null
@@ -90,7 +95,7 @@ export default function LaborDashboardPage() {
   const m = useMemo<Metrics>(() => {
     const tomorrow = new Date(Date.now() + 86400000)
     const weatherMap = new Map(weather.map((w) => [w.date, w]))
-    const fc = weatherForecast(days, weatherMap, tomorrow)
+    const fc = weatherForecast(days, weatherMap, tomorrow, wxConfig)
     const forecast = fc.cars
     const earnedMax = benchmarkFor(tiers, forecast)
     // Scheduled is sample/placeholder until the Schedule is wired: target a hair
@@ -113,7 +118,7 @@ export default function LaborDashboardPage() {
 
     return {
       tomorrow, forecast, earnedMax, scheduled, variance, status, last7, mtd,
-      weather: fc.weather, weatherWet: fc.wet, weatherFactor: fc.factor, baselineForecast: fc.baseline,
+      weather: fc.weather, weatherWet: fc.wet, weatherFactor: fc.factor, baselineForecast: fc.baseline, rainPct: fc.rainPct, tempPct: fc.tempPct,
       totCars, totHours, totSales, totLabor, totEarned,
       belowBenchmark: totEarned - totHours,
       avgHours: mtd.length ? totHours / mtd.length : 0,
@@ -121,7 +126,7 @@ export default function LaborDashboardPage() {
       laborPct: totSales ? (totLabor / totSales) * 100 : mtd.length ? mtd.reduce((s, d) => s + (d.labor_pct ?? 0), 0) / mtd.length : 0,
       revPerHour: totHours ? totSales / totHours : 0,
     }
-  }, [days, weather, tiers])
+  }, [days, weather, tiers, wxConfig])
 
   if (loading) return <p className="text-sm text-ink-muted">Loading labor dashboard…</p>
 
@@ -131,9 +136,16 @@ export default function LaborDashboardPage() {
         title="Labor Dashboard"
         subtitle="Daily labor planning. Plan smart, operate efficiently, earn the hours."
         actions={
-          <div className="text-right text-sm">
-            <div className="font-semibold text-ink">{activeLocation?.name ?? 'Select a site'}</div>
-            <div className="text-ink-muted">Tomorrow: {format(m.tomorrow, 'EEEE, MMMM d, yyyy')}</div>
+          <div className="flex items-center gap-3">
+            {canEdit && (
+              <Button variant="secondary" size="sm" onClick={() => setWeatherEditOpen(true)}>
+                <CloudRain className="size-4" /> Weather effects
+              </Button>
+            )}
+            <div className="text-right text-sm">
+              <div className="font-semibold text-ink">{activeLocation?.name ?? 'Select a site'}</div>
+              <div className="text-ink-muted">Tomorrow: {format(m.tomorrow, 'EEEE, MMMM d, yyyy')}</div>
+            </div>
           </div>
         }
       />
@@ -160,6 +172,16 @@ export default function LaborDashboardPage() {
             Earned labor hours are based on the forecast (same weekday history) and this site's benchmark table. Actuals come from Site Performance. Scheduled hours and the position snapshot are sample data until the Schedule is populated. Adjust throughout the day based on actual traffic.
           </p>
         </>
+      )}
+
+      {weatherEditOpen && profile && (
+        <WeatherEditor
+          accountId={profile.account_id}
+          initial={wxConfig}
+          settings={settings}
+          onClose={() => setWeatherEditOpen(false)}
+          onSaved={async () => { setWeatherEditOpen(false); await reloadCompany() }}
+        />
       )}
 
       {editOpen && profile && (
@@ -192,7 +214,7 @@ function Panel({ title, children, className }: { title: string; children: React.
 
 type Metrics = {
   tomorrow: Date; forecast: number; earnedMax: number; scheduled: number; variance: number; status: Status
-  weather: WeatherDay | null; weatherWet: boolean; weatherFactor: number; baselineForecast: number
+  weather: WeatherDay | null; weatherWet: boolean; weatherFactor: number; baselineForecast: number; rainPct: number; tempPct: number
   last7: LaborDay[]; mtd: LaborDay[]; totCars: number; totHours: number; totSales: number; totLabor: number; totEarned: number
   belowBenchmark: number; avgHours: number; carsPerHour: number; laborPct: number; revPerHour: number
 }
@@ -224,16 +246,19 @@ function PlanPanel({ m }: { m: Metrics }) {
     <Panel title="Tomorrow's Plan">
       <PlanRow icon={Car} label="Forecast Cars" value={nf(m.forecast)} />
       {m.weather && (
-        <div className="-mt-1 flex items-center gap-2 rounded-md border border-border bg-content px-3 py-1.5 text-xs text-ink-muted">
-          {m.weatherWet ? <CloudRain className="size-3.5 text-accent" /> : <Sun className="size-3.5 text-warn" />}
+        <div className="-mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border bg-content px-3 py-1.5 text-xs text-ink-muted">
+          {m.tempPct !== 0 ? <Snowflake className="size-3.5 text-accent" /> : m.weatherWet ? <CloudRain className="size-3.5 text-accent" /> : <Sun className="size-3.5 text-warn" />}
           <span>
             {m.weather.conditions ?? 'Forecast'}
             {m.weather.temp_max != null ? `, ${Math.round(m.weather.temp_max)}°` : ''}
             {m.weather.precip_in != null && m.weather.precip_in > 0 ? `, ${m.weather.precip_in.toFixed(2)} in rain` : ''}
           </span>
-          {m.weatherWet && m.weatherFactor !== 1 && (
+          {m.weatherFactor !== 1 && (
             <span className="ml-auto font-semibold text-accent">
-              {m.weatherFactor < 1 ? '▼' : '▲'} {Math.abs(Math.round((1 - m.weatherFactor) * 100))}% vs {nf(m.baselineForecast)} dry
+              {Math.round((m.weatherFactor - 1) * 100)}%
+              {(m.rainPct !== 0 || m.tempPct !== 0) && (
+                <span className="font-normal"> ({[m.rainPct !== 0 ? `rain ${m.rainPct}%` : '', m.tempPct !== 0 ? `cold ${m.tempPct}%` : ''].filter(Boolean).join(', ')}) vs {nf(m.baselineForecast)}</span>
+              )}
             </span>
           )}
         </div>
@@ -505,6 +530,95 @@ function BenchmarkEditor({ accountId, locationId, locationName, initial, isSiteO
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
             <Button onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save benchmark'}</Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ---- Weather effects editor ----------------------------------------------
+
+function WeatherEditor({ accountId, initial, settings, onClose, onSaved }: {
+  accountId: string
+  initial: WeatherAdjustConfig
+  settings: CompanySettings
+  onClose: () => void
+  onSaved: () => void | Promise<void>
+}) {
+  const [rain, setRain] = useState(initial.rain.length ? initial.rain : DEFAULT_WEATHER_CONFIG.rain)
+  const [temp, setTemp] = useState(initial.temp.length ? initial.temp : DEFAULT_WEATHER_CONFIG.temp)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const save = async () => {
+    setBusy(true)
+    setErr(null)
+    const cfg: WeatherAdjustConfig = {
+      rain: rain.map((r) => ({ min_in: Number(r.min_in) || 0, pct: Number(r.pct) || 0 })).sort((a, b) => a.min_in - b.min_in),
+      temp: temp.map((t) => ({ max_f: Number(t.max_f) || 0, pct: Number(t.pct) || 0 })).sort((a, b) => a.max_f - b.max_f),
+    }
+    const { error } = await updateCompany(accountId, { settings: { ...settings, laborWeather: cfg } })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    await onSaved()
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Weather effects on the forecast" size="lg">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-ink-muted">
+          Cut the forecast by a percentage based on tomorrow's rain and high temperature. Negative values reduce the forecast. Rain uses the heaviest matching tier; temperature uses the coldest matching tier; the two combine.
+        </p>
+        {err && <div className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">{err}</div>}
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-sm font-semibold text-ink">Rain (precipitation)</span>
+            <Button variant="secondary" size="sm" onClick={() => setRain((p) => [...p, { min_in: 0, pct: 0 }])}>Add tier</Button>
+          </div>
+          <div className="overflow-hidden rounded-md border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted"><tr><th className="px-2 py-2">At or above (inches)</th><th className="px-2 py-2">Adjust %</th><th className="px-2 py-2" /></tr></thead>
+              <tbody>
+                {rain.map((r, i) => (
+                  <tr key={i} className="border-t border-border">
+                    <td className="px-2 py-1.5"><Input type="number" step="0.01" value={r.min_in} onChange={(e) => setRain((p) => p.map((x, j) => (j === i ? { ...x, min_in: Number(e.target.value) } : x)))} className="h-8 w-24" /></td>
+                    <td className="px-2 py-1.5"><Input type="number" value={r.pct} onChange={(e) => setRain((p) => p.map((x, j) => (j === i ? { ...x, pct: Number(e.target.value) } : x)))} className="h-8 w-24" /></td>
+                    <td className="px-2 py-1.5 text-right"><Button variant="ghost" size="sm" className="text-danger" onClick={() => setRain((p) => p.filter((_, j) => j !== i))}>Remove</Button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-sm font-semibold text-ink">Temperature (forecast high)</span>
+            <Button variant="secondary" size="sm" onClick={() => setTemp((p) => [...p, { max_f: 32, pct: 0 }])}>Add tier</Button>
+          </div>
+          <div className="overflow-hidden rounded-md border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted"><tr><th className="px-2 py-2">At or below (°F)</th><th className="px-2 py-2">Adjust %</th><th className="px-2 py-2" /></tr></thead>
+              <tbody>
+                {temp.map((t, i) => (
+                  <tr key={i} className="border-t border-border">
+                    <td className="px-2 py-1.5"><Input type="number" value={t.max_f} onChange={(e) => setTemp((p) => p.map((x, j) => (j === i ? { ...x, max_f: Number(e.target.value) } : x)))} className="h-8 w-24" /></td>
+                    <td className="px-2 py-1.5"><Input type="number" value={t.pct} onChange={(e) => setTemp((p) => p.map((x, j) => (j === i ? { ...x, pct: Number(e.target.value) } : x)))} className="h-8 w-24" /></td>
+                    <td className="px-2 py-1.5 text-right"><Button variant="ghost" size="sm" className="text-danger" onClick={() => setTemp((p) => p.filter((_, j) => j !== i))}>Remove</Button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" size="sm" onClick={() => { setRain(DEFAULT_WEATHER_CONFIG.rain); setTemp(DEFAULT_WEATHER_CONFIG.temp) }}>Reset to defaults</Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+            <Button onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save weather effects'}</Button>
           </div>
         </div>
       </div>
