@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Field } from '@/components/forms/Field'
 import { Modal } from '@/components/ui/Modal'
+import { WorkOrderProcedures } from './WorkOrderProcedures'
 import { useAuth } from '@/lib/auth'
 import { currency } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -306,6 +307,9 @@ export function WorkOrderDetail({
             )}
           </section>
         )}
+
+        {/* Procedures / checklists */}
+        <WorkOrderProcedures workOrderId={d.id} canEdit />
 
         {/* Sub-work orders */}
         {d.sub_work_orders.length > 0 && (

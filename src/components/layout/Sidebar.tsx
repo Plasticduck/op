@@ -16,6 +16,7 @@ import {
   GraduationCap,
   LifeBuoy,
   Users,
+  ClipboardList,
   Sparkles,
   CalendarClock,
   CalendarHeart,
@@ -225,6 +226,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/teams',
         label: 'Teams',
         icon: Users,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/procedures',
+        label: 'Procedures',
+        icon: ClipboardList,
         roles: ['owner', 'manager', 'technician'],
       },
       {

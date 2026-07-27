@@ -3466,6 +3466,82 @@ export type Database = {
           },
         ]
       }
+      procedure_fields: {
+        Row: {
+          id: string
+          label: string
+          options: Json
+          order_index: number
+          required: boolean
+          template_id: string
+          type: string
+        }
+        Insert: {
+          id?: string
+          label: string
+          options?: Json
+          order_index?: number
+          required?: boolean
+          template_id: string
+          type?: string
+        }
+        Update: {
+          id?: string
+          label?: string
+          options?: Json
+          order_index?: number
+          required?: boolean
+          template_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procedure_fields_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "procedure_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      procedure_templates: {
+        Row: {
+          account_id: string
+          archived: boolean
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          archived?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          archived?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procedure_templates_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           auth: string
@@ -5246,6 +5322,102 @@ export type Database = {
           },
           {
             foreignKeyName: "work_order_parts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_procedure_items: {
+        Row: {
+          id: string
+          label: string
+          options: Json
+          order_index: number
+          required: boolean
+          responded_at: string | null
+          responded_by: string | null
+          type: string
+          value: string | null
+          wo_procedure_id: string
+        }
+        Insert: {
+          id?: string
+          label: string
+          options?: Json
+          order_index?: number
+          required?: boolean
+          responded_at?: string | null
+          responded_by?: string | null
+          type?: string
+          value?: string | null
+          wo_procedure_id: string
+        }
+        Update: {
+          id?: string
+          label?: string
+          options?: Json
+          order_index?: number
+          required?: boolean
+          responded_at?: string | null
+          responded_by?: string | null
+          type?: string
+          value?: string | null
+          wo_procedure_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_procedure_items_responded_by_fkey"
+            columns: ["responded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_procedure_items_wo_procedure_id_fkey"
+            columns: ["wo_procedure_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_procedures"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_procedures: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          name: string
+          template_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          template_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          template_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_procedures_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "procedure_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_procedures_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
