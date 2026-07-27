@@ -54,6 +54,12 @@ function sectionsForRole(to: string, role: Role) {
   return SECTION_CATALOG.filter((s) => s.page === to && s.roles.includes(role))
 }
 
+// Kevan Jowers must never be removable. Mirrors the database protect trigger so
+// the UI never offers the action in the first place.
+function isProtectedUser(name: string): boolean {
+  return (name ?? '').trim().toLowerCase() === 'kevan jowers'
+}
+
 export function TeamPage() {
   const { profile } = useAuth()
   const [users, setUsers] = useState<AccountUser[]>([])
@@ -65,6 +71,7 @@ export function TeamPage() {
   const [editUser, setEditUser] = useState<AccountUser | null>(null)
   const [convertTarget, setConvertTarget] = useState<Employee | null>(null)
   const [removeTarget, setRemoveTarget] = useState<AccountUser | null>(null)
+  const [removeError, setRemoveError] = useState<string | null>(null)
   const [permTarget, setPermTarget] = useState<AccountUser | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -107,9 +114,19 @@ export function TeamPage() {
 
   const doRemove = async () => {
     if (!removeTarget) return
+    // Never delete a protected user, even if something surfaced the action.
+    if (isProtectedUser(removeTarget.name)) {
+      setRemoveError('This user is protected and cannot be removed.')
+      return
+    }
     setBusy(true)
-    await removeUser(removeTarget.id)
+    setRemoveError(null)
+    const { error } = await removeUser(removeTarget.id)
     setBusy(false)
+    if (error) {
+      setRemoveError(error.message)
+      return
+    }
     setRemoveTarget(null)
     void load()
   }
@@ -175,28 +192,33 @@ export function TeamPage() {
                       : 'Never'}
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    {u.id !== profile?.id && u.role !== 'owner' && (
+                    {u.id === profile?.id ? (
+                      <span className="text-xs text-ink-subtle">You</span>
+                    ) : (
                       <div className="flex justify-end gap-1">
-                        {profile?.role === 'owner' && (
+                        {profile?.role === 'owner' && u.role !== 'owner' && (
                           <Button variant="ghost" size="sm" onClick={() => setPermTarget(u)}>
                             Permissions
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => setEditUser(u)}>
-                          Edit
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-danger hover:text-danger"
-                          onClick={() => setRemoveTarget(u)}
-                        >
-                          Remove
-                        </Button>
+                        {u.role !== 'owner' && (
+                          <Button variant="ghost" size="sm" onClick={() => setEditUser(u)}>
+                            Edit
+                          </Button>
+                        )}
+                        {/* Admins (owners) can remove anyone, including other admins,
+                            except themselves and the protected user. */}
+                        {profile?.role === 'owner' && !isProtectedUser(u.name) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-danger hover:text-danger"
+                            onClick={() => { setRemoveError(null); setRemoveTarget(u) }}
+                          >
+                            Remove
+                          </Button>
+                        )}
                       </div>
-                    )}
-                    {u.id === profile?.id && (
-                      <span className="text-xs text-ink-subtle">You</span>
                     )}
                   </td>
                 </tr>
@@ -376,12 +398,15 @@ export function TeamPage() {
       <ConfirmDialog
         open={!!removeTarget}
         title={`Remove ${removeTarget?.name}?`}
-        description="Their access is revoked immediately. Their historical records are preserved."
+        description={
+          removeError ??
+          `${removeTarget?.role === 'owner' ? 'This person is an admin. ' : ''}Are you sure? Their access is revoked immediately. Their historical records are preserved.`
+        }
         confirmLabel="Remove"
         destructive
         loading={busy}
         onConfirm={doRemove}
-        onCancel={() => setRemoveTarget(null)}
+        onCancel={() => { setRemoveTarget(null); setRemoveError(null) }}
       />
     </div>
   )
