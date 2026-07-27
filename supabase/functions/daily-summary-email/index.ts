@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
     yoyCars: number | null; yoyRevenue: number | null; yoyRecharge: number | null; plansTotal: number | null
     plansMighty: number | null; plansSuper: number | null; plansWonder: number | null
     conversion: number | null; churnVol: number | null; churnCc: number | null
-    convBySite: Map<string, number>; churnVolBySite: Map<string, number>
+    convBySite: Map<string, number>; churnVolBySite: Map<string, number>; churnCcBySite: Map<string, number>
   } | null = null
   const dashPw = Deno.env.get('MW_DASHBOARD_PASSWORD')
   if (dashPw) {
@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
         yoyCars: gqTotal(carsLy), yoyRevenue: gqTotal(revLy), yoyRecharge: gqTotal(rechLy),
         plansTotal: gqTotal(plansT), plansMighty: gqTotal(plansM), plansSuper: gqTotal(plansS), plansWonder: gqTotal(plansW),
         conversion: gqAvg(conv), churnVol: gqAvg(cvol), churnCc: gqAvg(ccc),
-        convBySite: gqMap(conv), churnVolBySite: gqMap(cvol),
+        convBySite: gqMap(conv), churnVolBySite: gqMap(cvol), churnCcBySite: gqMap(ccc),
       }
     } catch { dash = null }
   }
@@ -182,6 +182,12 @@ Deno.serve(async (req) => {
   // "Mighty Wash #17" names to match the rest), listed in site-number order.
   const siteName = (n: number) => 'MightyWash ' + String(n).padStart(3, '0')
   const pct = (v: number | undefined) => (v != null ? v.toFixed(1) + '%' : 'n/a')
+  // Combined churn = voluntary + credit-card for a site.
+  const combinedChurn = (cn: string) => {
+    const v = dash?.churnVolBySite.get(cn)
+    const c = dash?.churnCcBySite.get(cn)
+    return v == null && c == null ? 'n/a' : ((v ?? 0) + (c ?? 0)).toFixed(1) + '%'
+  }
   const siteRows = [...sites].sort((a, b) => a.n - b.n).map((s) => {
     const cn = siteName(s.n)
     return `
@@ -192,7 +198,7 @@ Deno.serve(async (req) => {
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.recharge)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${s.cph != null ? s.cph.toFixed(1) : 'n/a'}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${pct(dash?.convBySite.get(cn))}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${pct(dash?.churnVolBySite.get(cn))}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${combinedChurn(cn)}</td>
     </tr>`
   }).join('')
 
@@ -204,7 +210,7 @@ Deno.serve(async (req) => {
       <tr>
         ${kpi('Plans sold', nf(dash.plansTotal), `Mighty ${nf(dash.plansMighty ?? 0)} · Super ${nf(dash.plansSuper ?? 0)} · Wonder ${nf(dash.plansWonder ?? 0)}`)}
         ${kpi('Conversion', dash.conversion != null ? dash.conversion.toFixed(1) + '%' : 'n/a', 'avg across sites, reporting day')}
-        ${kpi('Churn', `${dash.churnVol != null ? dash.churnVol.toFixed(1) : 'n/a'}% / ${dash.churnCc != null ? dash.churnCc.toFixed(1) : 'n/a'}%`, 'voluntary / credit-card, trailing month')}
+        ${kpi('Churn', dash.churnVol != null || dash.churnCc != null ? ((dash.churnVol ?? 0) + (dash.churnCc ?? 0)).toFixed(1) + '%' : 'n/a', `voluntary ${dash.churnVol != null ? dash.churnVol.toFixed(1) : 'n/a'}% + credit-card ${dash.churnCc != null ? dash.churnCc.toFixed(1) : 'n/a'}%, trailing month`)}
       </tr>
     </table>
   ` : (mem ? `
@@ -256,7 +262,7 @@ Deno.serve(async (req) => {
     </table>
 
     <div style="font-size:11px;color:#94a3b8;padding:12px 8px 24px;">
-      "vs last year" compares the same calendar date last year. Per-site Conv % is the reporting day's conversion; Churn % is voluntary churn (a trailing-month figure). Membership data is pulled live from the dashboard. Reply with tweaks and we'll adjust. Sent from WashLyfe Operator.
+      "vs last year" compares the same calendar date last year. Per-site Conv % is the reporting day's conversion; Churn % is combined voluntary + credit-card churn (a trailing-month figure). Membership data is pulled live from the dashboard. Reply with tweaks and we'll adjust. Sent from WashLyfe Operator.
     </div>
   </div>`
 
