@@ -58,6 +58,7 @@ import {
 import { Logo } from '@/components/ui/Logo'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
+import { isBillingHidden } from '@/lib/accountFlags'
 import { pageAllowed } from '@/lib/permissions'
 import type { Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
@@ -431,7 +432,8 @@ export function SidebarNav({
       userPerms: settings.userPermissions,
       optInRoles: i.optIn,
     }) &&
-    (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled))
+    (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)) &&
+    !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id))
 
   // Only the groups + items this role (and account) can see.
   const baseGroups = NAV_GROUPS

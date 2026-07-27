@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
+import { isBillingHidden } from '@/lib/accountFlags'
 import { cn } from '@/lib/utils'
 
 const tabs = [
@@ -11,7 +12,11 @@ const tabs = [
 
 export function SettingsLayout() {
   const { profile } = useAuth()
-  const visibleTabs = tabs.filter((t) => !t.ownerOnly || profile?.role === 'owner')
+  const visibleTabs = tabs.filter(
+    (t) =>
+      (!t.ownerOnly || profile?.role === 'owner') &&
+      !(t.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)),
+  )
   return (
     <div className="flex flex-col gap-6">
       <div>

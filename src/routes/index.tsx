@@ -5,6 +5,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
 import { RequireAuth, RequireRole, RequireGmBonus, RedirectIfAuthed } from '@/routes/guards'
 import { RouteStub } from '@/routes/RouteStub'
+import { BillingGate } from '@/features/settings/billing/BillingGate'
 
 // Lazily load a route chunk, but if the fetch fails because the chunk no longer
 // exists at that URL (a new deploy rotated the hashed filenames, or the dev
@@ -258,7 +259,7 @@ export const router = createBrowserRouter([
               { path: 'locations', element: s(<LocationsPage />) },
               {
                 path: 'billing',
-                element: <RequireRole allow={['owner']}>{s(<BillingPage />)}</RequireRole>,
+                element: <RequireRole allow={['owner']}><BillingGate>{s(<BillingPage />)}</BillingGate></RequireRole>,
               },
             ],
           },
