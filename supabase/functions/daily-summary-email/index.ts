@@ -28,7 +28,7 @@ function esc(s: unknown) { return String(s ?? '').replace(/&/g, '&amp;').replace
 
 // A signed percentage-change chip, coloured green up / red down.
 function delta(cur: number, base: number | null | undefined): string {
-  if (base == null || base === 0) return '<span style="color:#94a3b8">—</span>'
+  if (base == null || base === 0) return '<span style="color:#94a3b8">n/a</span>'
   const pct = ((cur - base) / base) * 100
   const up = pct >= 0
   const c = up ? '#16a34a' : '#dc2626'
@@ -90,18 +90,21 @@ Deno.serve(async (req) => {
       </div>
     </td>`
 
-  const siteRows = sites.map((s) => `
+  // Uniform display name from the site number (normalizes the FlexWash
+  // "Mighty Wash #17" names to match the rest), listed in site-number order.
+  const siteName = (n: number) => 'MightyWash ' + String(n).padStart(3, '0')
+  const siteRows = [...sites].sort((a, b) => a.n - b.n).map((s) => `
     <tr>
-      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">${esc(s.site)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">${esc(siteName(s.n))}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${nf(s.cars)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${delta(s.cars, s.cars_lw)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.sales)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.recharge)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${s.cph != null ? s.cph.toFixed(1) : '—'}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${s.cph != null ? s.cph.toFixed(1) : 'n/a'}</td>
     </tr>`).join('')
 
   const memBlock = mem ? `
-    <h3 style="font-size:14px;color:#0f172a;margin:22px 0 8px;">Membership — ${new Date(mem.period + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (latest monthly)</h3>
+    <h3 style="font-size:14px;color:#0f172a;margin:22px 0 8px;">Membership for ${new Date(mem.period + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (latest monthly)</h3>
     <table role="presentation" width="100%" style="border-collapse:collapse;">
       <tr>
         ${kpi('Total members', nf(memTotal(mem)), memPrev ? `${delta(memTotal(mem), memTotal(memPrev))} vs last month` : '')}
@@ -115,7 +118,7 @@ Deno.serve(async (req) => {
   const html = `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:680px;margin:0 auto;color:#0f172a;">
     <div style="padding:20px 8px 4px;">
-      <div style="font-size:20px;font-weight:700;">Mighty Wash — Daily Summary</div>
+      <div style="font-size:20px;font-weight:700;">Mighty Wash Daily Summary</div>
       <div style="font-size:13px;color:#64748b;">${dateLabel} · ${day.sites} sites reporting</div>
     </div>
 
@@ -158,7 +161,7 @@ Deno.serve(async (req) => {
   try {
     const { error: sendErr } = await resend.emails.send({
       from, to: [to],
-      subject: `Mighty Wash Daily Summary — ${dateLabel}`,
+      subject: `Mighty Wash Daily Summary for ${dateLabel}`,
       html,
     })
     if (sendErr) return json({ ok: false, error: (sendErr as { message?: string }).message ?? 'send_failed' }, 502)
