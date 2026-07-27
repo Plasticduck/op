@@ -73,7 +73,7 @@ export const issuetrak = {
   get: (iid: number) => invoke<{ ok: true; issue: ItIssue }>({ action: 'get', iid }),
 
   create: (payload: {
-    siteNumber: number
+    siteNumber?: number
     subject: string
     description: string
     issueTypeIid: number

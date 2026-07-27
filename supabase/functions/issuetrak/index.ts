@@ -309,23 +309,28 @@ Deno.serve(async (req) => {
       const subject = String(body.subject ?? '').trim()
       const description = String(body.description ?? '').trim()
       const issueTypeIid = Number(body.issueTypeIid)
-      const siteNumber = Number(body.siteNumber)
-      if (!subject || !description || !issueTypeIid || !siteNumber) {
-        return json({ error: 'bad_request', message: 'subject, description, issueTypeIid, siteNumber required' }, 400, origin)
+      if (!subject || !description || !issueTypeIid) {
+        return json({ error: 'bad_request', message: 'subject, description, and issue type are required' }, 400, origin)
       }
-      if (!isAdmin) {
-        const allowed = new Set(await allowedSiteNumbers())
-        if (!allowed.has(siteNumber)) return json({ error: 'forbidden', message: 'That site is outside your scope.' }, 403, origin)
-      }
-      const { map } = await siteDirectory(base, apiKey)
-      const site = map.get(siteNumber)
-      if (!site) return json({ error: 'bad_request', message: 'Unknown site.' }, 400, origin)
+      // Site is OPTIONAL: it lets us tag the ticket to a Location/Organization,
+      // but Issuetrak does not require one to create an issue, and the token may
+      // not be able to read the site directory. A ticket still posts without it.
+      const siteNumber = body.siteNumber ? Number(body.siteNumber) : null
 
       // deno-lint-ignore no-explicit-any
       const payload: Record<string, any> = { subject, description, issueTypeIid }
       if (body.priorityIid) payload.priorityIid = Number(body.priorityIid)
-      if (site.locationIid != null) payload.locationIid = site.locationIid
-      if (site.organizationIid != null) payload.organizationIid = site.organizationIid
+
+      if (siteNumber) {
+        if (!isAdmin) {
+          const allowed = new Set(await allowedSiteNumbers())
+          if (!allowed.has(siteNumber)) return json({ error: 'forbidden', message: 'That site is outside your scope.' }, 403, origin)
+        }
+        const { map } = await siteDirectory(base, apiKey)
+        const site = map.get(siteNumber)
+        if (site?.locationIid != null) payload.locationIid = site.locationIid
+        if (site?.organizationIid != null) payload.organizationIid = site.organizationIid
+      }
 
       const r = await itFetch(base, apiKey, '/Issues/Create', { method: 'POST', body: payload })
       if (!r.ok) return json({ ok: false, status: r.status, data: r.data }, 200, origin)

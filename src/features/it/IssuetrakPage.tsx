@@ -94,7 +94,8 @@ export default function IssuetrakPage() {
     )
   }
 
-  const canSubmit = (boot?.sites.length ?? 0) > 0
+  // A ticket needs an issue type (Issuetrak requires it). A site is optional.
+  const canSubmit = !!boot && (boot.issueTypes?.length ?? 0) > 0
 
   return (
     <div className="flex flex-col gap-4">
@@ -155,8 +156,14 @@ export default function IssuetrakPage() {
 
       {!error && boot && !canSubmit && (
         <div className="rounded-md border border-warn/40 bg-warn-soft px-3 py-2 text-sm text-warn">
-          No matching site was found between Operator and Issuetrak, so submitting is disabled. Click
-          Diagnostics to see the site names Issuetrak reports.
+          Ticket submission is disabled because no Issuetrak issue types could be loaded. The API token
+          needs read access to Issue Types in Issuetrak. Click Diagnostics for details.
+        </div>
+      )}
+      {!error && boot && canSubmit && boot.sites.length === 0 && (
+        <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-ink-muted">
+          Heads up: tickets will post to Issuetrak but won't be tagged to a site (the token can't read the
+          site list). Grant it access to Locations/Organizations to enable per-site tagging.
         </div>
       )}
 
@@ -359,15 +366,15 @@ function NewTicketModal({
   const [err, setErr] = useState<string | null>(null)
 
   async function submit() {
-    if (!siteNumber || !subject.trim() || !description.trim() || !issueTypeIid) {
-      setErr('Site, subject, description, and issue type are required.')
+    if (!subject.trim() || !description.trim() || !issueTypeIid) {
+      setErr('Subject, description, and issue type are required.')
       return
     }
     setBusy(true)
     setErr(null)
     try {
       await issuetrak.create({
-        siteNumber: Number(siteNumber),
+        siteNumber: siteNumber ? Number(siteNumber) : undefined,
         subject: subject.trim(),
         description: description.trim(),
         issueTypeIid: Number(issueTypeIid),
@@ -390,17 +397,19 @@ function NewTicketModal({
             {err}
           </div>
         )}
-        <label className="flex flex-col gap-1 text-sm text-ink-muted">
-          Site
-          <Select value={siteNumber} onChange={(e) => setSiteNumber(e.target.value)}>
-            <option value="">— select —</option>
-            {boot.sites.map((s) => (
-              <option key={s.number} value={s.number}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
-        </label>
+        {boot.sites.length > 0 && (
+          <label className="flex flex-col gap-1 text-sm text-ink-muted">
+            Site (optional)
+            <Select value={siteNumber} onChange={(e) => setSiteNumber(e.target.value)}>
+              <option value="">— none —</option>
+              {boot.sites.map((s) => (
+                <option key={s.number} value={s.number}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-sm text-ink-muted">
           Subject
           <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Short summary" />
