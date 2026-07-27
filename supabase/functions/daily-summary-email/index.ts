@@ -71,6 +71,32 @@ function gqMap(res: any): Map<string, number> {
   }
   return m
 }
+function mapAvg(m: Map<string, number>): number | null {
+  if (m.size === 0) return null
+  let s = 0
+  for (const v of m.values()) s += v
+  return s / m.size
+}
+
+// The FlexWash sites (17, 18) aren't in the SiteWatch dashboard, so their churn
+// and new-membership numbers come from FlexWash instead. Calls go through the
+// `flexwash` edge function (it holds the token); best-effort, returns null on
+// any failure. carWashId 352 = MW17, 350 = MW18.
+const FLEX_SITES = [{ n: 17, cw: '352' }, { n: 18, cw: '350' }]
+// deno-lint-ignore no-explicit-any
+async function flexCall(supabaseUrl: string, serviceKey: string, path: string, body: unknown): Promise<any | null> {
+  try {
+    const r = await fetch(`${supabaseUrl}/functions/v1/flexwash`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, body }),
+      signal: AbortSignal.timeout(25000),
+    })
+    if (!r.ok) return null
+    const j = await r.json()
+    return j?.status && j.status < 300 ? j.data : null
+  } catch { return null }
+}
 
 function jwtRole(auth: string): string | null {
   const t = auth.replace(/^Bearer\s+/i, '').split('.')
@@ -158,12 +184,49 @@ Deno.serve(async (req) => {
         gq(cookie, 'plans_total', rday), gq(cookie, 'plans_mighty', rday), gq(cookie, 'plans_super', rday), gq(cookie, 'plans_wonder', rday),
         gq(cookie, 'conversion_pct', rday), gq(cookie, 'churn_voluntary', rday), gq(cookie, 'churn_cc', rday),
       ])
+      const convBySite = gqMap(conv)
+      const churnVolBySite = gqMap(cvol)
+      const churnCcBySite = gqMap(ccc)
+      const carsLyBySite = gqMap(carsLy)
+      let plansTotal = gqTotal(plansT) ?? 0
+      let plansMighty = gqTotal(plansM) ?? 0
+      let plansSuper = gqTotal(plansS) ?? 0
+      let plansWonder = gqTotal(plansW) ?? 0
+
+      // Fold in the FlexWash sites (17, 18): churn (trailing 30 days, per site,
+      // returned as fractions -> percentages) and new memberships (by tier).
+      try {
+        const since30 = new Date(new Date(rday + 'T12:00:00').getTime() - 30 * 86400000).toISOString().slice(0, 10)
+        for (const fs of FLEX_SITES) {
+          const key = 'MightyWash ' + String(fs.n).padStart(3, '0')
+          const ch = await flexCall(url, serviceKey, '/external/memberships/get-churn-percentages', {
+            carWashIds: [fs.cw], dateRange: { start: since30, end: rday },
+          })
+          if (ch) {
+            churnVolBySite.set(key, Number(ch.voluntaryChurnPercent || 0) * 100)
+            churnCcBySite.set(key, Number(ch.involuntaryChurnPercent || 0) * 100)
+          }
+        }
+        const nm = await flexCall(url, serviceKey, '/external/memberships/get-new-membership-stats', {
+          carWashIds: FLEX_SITES.map((s) => s.cw), dateRange: { start: rday, end: rday },
+        })
+        if (nm) {
+          plansTotal += Number(nm.count || 0)
+          for (const p of (nm.byPackageTemplate ?? []) as Array<{ packageTemplateName?: string; count?: number }>) {
+            const name = String(p.packageTemplateName || '')
+            const c = Number(p.count || 0)
+            if (/mighty/i.test(name)) plansMighty += c
+            else if (/super/i.test(name)) plansSuper += c
+            else if (/wonder/i.test(name)) plansWonder += c
+          }
+        }
+      } catch { /* FlexWash is best-effort */ }
+
       dash = {
         yoyCars: gqTotal(carsLy), yoyRevenue: gqTotal(revLy), yoyRecharge: gqTotal(rechLy),
-        plansTotal: gqTotal(plansT), plansMighty: gqTotal(plansM), plansSuper: gqTotal(plansS), plansWonder: gqTotal(plansW),
-        conversion: gqAvg(conv), churnVol: gqAvg(cvol), churnCc: gqAvg(ccc),
-        convBySite: gqMap(conv), churnVolBySite: gqMap(cvol), churnCcBySite: gqMap(ccc),
-        carsLyBySite: gqMap(carsLy),
+        plansTotal, plansMighty, plansSuper, plansWonder,
+        conversion: mapAvg(convBySite), churnVol: mapAvg(churnVolBySite), churnCc: mapAvg(churnCcBySite),
+        convBySite, churnVolBySite, churnCcBySite, carsLyBySite,
       }
     } catch { dash = null }
   }
