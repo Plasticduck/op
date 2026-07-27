@@ -5785,6 +5785,138 @@ export type Database = {
           },
         ]
       }
+      work_request_portals: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          id: string
+          location_id: string | null
+          name: string
+          token: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          location_id?: string | null
+          name?: string
+          token?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          location_id?: string | null
+          name?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_request_portals_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_request_portals_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_requests: {
+        Row: {
+          account_id: string
+          created_at: string
+          description: string | null
+          equipment_id: string | null
+          id: string
+          location_id: string
+          priority: string
+          requester_email: string | null
+          requester_name: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          title: string
+          work_order_id: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          description?: string | null
+          equipment_id?: string | null
+          id?: string
+          location_id: string
+          priority?: string
+          requester_email?: string | null
+          requester_name?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          title: string
+          work_order_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          description?: string | null
+          equipment_id?: string | null
+          id?: string
+          location_id?: string
+          priority?: string
+          requester_email?: string | null
+          requester_name?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          title?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_requests_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       checklist_item_state: {

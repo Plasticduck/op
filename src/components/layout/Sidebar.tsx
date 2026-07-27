@@ -17,6 +17,7 @@ import {
   LifeBuoy,
   Users,
   ClipboardList,
+  Inbox,
   Sparkles,
   CalendarClock,
   CalendarHeart,
@@ -238,6 +239,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/preventive-maintenance',
         label: 'Preventive Maintenance',
         icon: CalendarClock,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/work-requests',
+        label: 'Work Requests',
+        icon: Inbox,
         roles: ['owner', 'manager', 'technician'],
       },
       {

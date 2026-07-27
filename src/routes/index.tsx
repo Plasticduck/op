@@ -120,6 +120,8 @@ const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
 const TeamsPage = lz(() => import('@/features/ops/teams/TeamsPage'))
 const ProceduresPage = lz(() => import('@/features/ops/procedures/ProceduresPage'))
 const PmPage = lz(() => import('@/features/ops/pm/PmPage'))
+const WorkRequestsPage = lz(() => import('@/features/ops/requests/WorkRequestsPage'))
+const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
 const TipPage = lz(() => import('@/features/tips/TipPage'))
@@ -151,6 +153,7 @@ export const router = createBrowserRouter([
   { path: '/privacy', element: s(<PrivacyPage />) },
 
   // Public per-site tip pages (reached by QR code — no login)
+  { path: '/request/:token', element: s(<RequestPortalPage />) },
   { path: '/tip/:locationId', element: s(<TipPage />) },
   { path: '/tip/:locationId/thanks', element: s(<TipThanksPage />) },
 
@@ -193,6 +196,7 @@ export const router = createBrowserRouter([
           { path: 'teams', element: tech(<TeamsPage />) },
           { path: 'procedures', element: tech(<ProceduresPage />) },
           { path: 'preventive-maintenance', element: tech(<PmPage />) },
+          { path: 'work-requests', element: tech(<WorkRequestsPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },
           { path: 'assets', element: tech(<AssetsPage />) },
           { path: 'assets/:id', element: tech(<AssetsPage />) },
