@@ -147,6 +147,7 @@ Deno.serve(async (req) => {
     plansMighty: number | null; plansSuper: number | null; plansWonder: number | null
     conversion: number | null; churnVol: number | null; churnCc: number | null
     convBySite: Map<string, number>; churnVolBySite: Map<string, number>; churnCcBySite: Map<string, number>
+    carsLyBySite: Map<string, number>
   } | null = null
   const dashPw = Deno.env.get('MW_DASHBOARD_PASSWORD')
   if (dashPw) {
@@ -162,6 +163,7 @@ Deno.serve(async (req) => {
         plansTotal: gqTotal(plansT), plansMighty: gqTotal(plansM), plansSuper: gqTotal(plansS), plansWonder: gqTotal(plansW),
         conversion: gqAvg(conv), churnVol: gqAvg(cvol), churnCc: gqAvg(ccc),
         convBySite: gqMap(conv), churnVolBySite: gqMap(cvol), churnCcBySite: gqMap(ccc),
+        carsLyBySite: gqMap(carsLy),
       }
     } catch { dash = null }
   }
@@ -194,9 +196,9 @@ Deno.serve(async (req) => {
     <tr>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">${esc(cn)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${nf(s.cars)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${delta(s.cars, dash?.carsLyBySite.get(cn))}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.sales)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.recharge)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${s.cph != null ? s.cph.toFixed(1) : 'n/a'}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${pct(dash?.convBySite.get(cn))}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${combinedChurn(cn)}</td>
     </tr>`
@@ -251,9 +253,9 @@ Deno.serve(async (req) => {
         <tr style="background:#f8fafc;color:#64748b;font-size:11px;text-transform:uppercase;">
           <th style="padding:6px 8px;text-align:left;">Site</th>
           <th style="padding:6px 8px;text-align:right;">Cars</th>
+          <th style="padding:6px 8px;text-align:right;">vs LY</th>
           <th style="padding:6px 8px;text-align:right;">Sales</th>
           <th style="padding:6px 8px;text-align:right;">Recharge</th>
-          <th style="padding:6px 8px;text-align:right;">Cars/hr</th>
           <th style="padding:6px 8px;text-align:right;">Conv %</th>
           <th style="padding:6px 8px;text-align:right;">Churn %</th>
         </tr>
