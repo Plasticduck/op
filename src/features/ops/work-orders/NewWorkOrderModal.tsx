@@ -11,7 +11,6 @@ import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import {
   workOrders,
-  MAINTAINX_ACCOUNT_ID,
   workOrderCategories,
   vendors as vendorsQ,
   PRIORITY_OPTIONS,
@@ -121,19 +120,16 @@ export function NewWorkOrderModal({
       equipment_id: equipmentId || null,
       parent_work_order_id: parentWorkOrderId ?? null,
     }
-    // Mighty Wash pushes new work orders to MaintainX first (portal visibility +
-    // authoritative numbering); other accounts create locally.
-    const { data, error: err } =
-      profile.account_id === MAINTAINX_ACCOUNT_ID
-        ? await workOrders.createViaMaintainX(woFields)
-        : await workOrders.create({
-            account_id: profile.account_id,
-            ...woFields,
-            created_by: profile.id,
-            created_by_name: myName,
-            requested_by: profile.id,
-            requested_by_name: myName,
-          })
+    // Work orders are created locally. (The MaintainX two-way path stays in the
+    // codebase via workOrders.createViaMaintainX but is not wired up right now.)
+    const { data, error: err } = await workOrders.create({
+      account_id: profile.account_id,
+      ...woFields,
+      created_by: profile.id,
+      created_by_name: myName,
+      requested_by: profile.id,
+      requested_by_name: myName,
+    })
     if (err || !data) {
       setBusy(false)
       return setError(err?.message ?? 'Could not create the work order')
