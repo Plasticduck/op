@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowUp,
-  Boxes,
   Car,
   Database,
   FileText,
   Gauge,
   Loader2,
+  TrendingDown,
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
@@ -41,7 +41,7 @@ const SUGGESTIONS = [
   { icon: Car, q: 'Which site washed the most cars last month?' },
   { icon: Wrench, q: 'How many work orders are open, by site?' },
   { icon: Gauge, q: 'Which equipment is overdue for service?' },
-  { icon: Boxes, q: 'What are my lowest-stock inventory items?' },
+  { icon: TrendingDown, q: 'Which site had the lowest churn percentage last month?' },
 ]
 
 export default function AskOperatorPage() {
