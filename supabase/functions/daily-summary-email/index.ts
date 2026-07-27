@@ -15,6 +15,54 @@ import { Resend } from 'npm:resend@4'
 
 const DEFAULT_TO = 'kjowers@mighty-wash.com'
 
+// --- Mighty Wash dashboard (guided query) --------------------------------
+// Daily membership sales, conversion, churn, and year-over-year come from the
+// live dashboard (same source as Site Performance), not the SQL archive.
+const DASH_BASE = (Deno.env.get('MW_DASHBOARD_URL') ?? 'https://dashboard.tail1e050b.ts.net').replace(/\/$/, '')
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+
+async function dashLogin(password: string): Promise<string> {
+  const res = await fetch(`${DASH_BASE}/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': BROWSER_UA },
+    body: `password=${encodeURIComponent(password)}`,
+    redirect: 'manual',
+  })
+  const m = (res.headers.get('set-cookie') ?? '').match(/session=[^;]+/)
+  if (!m) throw new Error(`dashboard login failed (${res.status})`)
+  return m[0]
+}
+
+// One guided-query metric for every site over a single day. Returns the raw
+// { columns, rows } (rows end with a ["TOTAL", n] row for count metrics), or
+// null on any failure so the email still sends.
+// deno-lint-ignore no-explicit-any
+async function gq(cookie: string, metric: string, day: string): Promise<any | null> {
+  try {
+    const r = await fetch(`${DASH_BASE}/api/guided_query`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'User-Agent': BROWSER_UA, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metric, sites: [], start: day, end: day }),
+      signal: AbortSignal.timeout(25000),
+    })
+    if (!r.ok) return null
+    return await r.json()
+  } catch { return null }
+}
+// deno-lint-ignore no-explicit-any
+function gqTotal(res: any): number | null {
+  const rows = res?.rows as [string, number][] | undefined
+  if (!rows) return null
+  const t = rows.find((r) => String(r[0]).toUpperCase() === 'TOTAL')
+  return t ? Number(t[1]) : rows.reduce((s, r) => s + Number(r[1] || 0), 0)
+}
+// deno-lint-ignore no-explicit-any
+function gqAvg(res: any): number | null {
+  const rows = (res?.rows as [string, number][] | undefined)?.filter((r) => String(r[0]).toUpperCase() !== 'TOTAL')
+  if (!rows || rows.length === 0) return null
+  return rows.reduce((s, r) => s + Number(r[1] || 0), 0) / rows.length
+}
+
 function jwtRole(auth: string): string | null {
   const t = auth.replace(/^Bearer\s+/i, '').split('.')
   if (t.length !== 3) return null
@@ -79,6 +127,35 @@ Deno.serve(async (req) => {
   const rdate = new Date(d.reporting_date + 'T12:00:00')
   const dateLabel = rdate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' })
 
+  // Live dashboard enrichment: daily membership sales, conversion, churn, and
+  // same-day-last-year for YoY. Best-effort — the email still sends if the
+  // dashboard is unreachable (it falls back to the monthly membership block).
+  const rday = d.reporting_date as string
+  const lyDate = new Date(d.reporting_date + 'T12:00:00'); lyDate.setFullYear(lyDate.getFullYear() - 1)
+  const lyStr = lyDate.toISOString().slice(0, 10)
+  let dash: {
+    yoyCars: number | null; yoyRevenue: number | null; plansTotal: number | null
+    plansMighty: number | null; plansSuper: number | null; plansWonder: number | null
+    conversion: number | null; churnVol: number | null; churnCc: number | null
+  } | null = null
+  const dashPw = Deno.env.get('MW_DASHBOARD_PASSWORD')
+  if (dashPw) {
+    try {
+      const cookie = await dashLogin(dashPw)
+      const [carsLy, revLy, plansT, plansM, plansS, plansW, conv, cvol, ccc] = await Promise.all([
+        gq(cookie, 'cars', lyStr), gq(cookie, 'revenue', lyStr),
+        gq(cookie, 'plans_total', rday), gq(cookie, 'plans_mighty', rday), gq(cookie, 'plans_super', rday), gq(cookie, 'plans_wonder', rday),
+        gq(cookie, 'conversion_pct', rday), gq(cookie, 'churn_voluntary', rday), gq(cookie, 'churn_cc', rday),
+      ])
+      dash = {
+        yoyCars: gqTotal(carsLy), yoyRevenue: gqTotal(revLy),
+        plansTotal: gqTotal(plansT), plansMighty: gqTotal(plansM), plansSuper: gqTotal(plansS), plansWonder: gqTotal(plansW),
+        conversion: gqAvg(conv), churnVol: gqAvg(cvol), churnCc: gqAvg(ccc),
+      }
+    } catch { dash = null }
+  }
+  const yoyLine = (cur: number, prev: number | null | undefined) => (prev != null ? `<br>${delta(cur, prev)} vs last year` : '')
+
   const memTotal = (m: { mighty: number; super: number; wonder: number }) => m.mighty + m.super + m.wonder
 
   const kpi = (label: string, value: string, sub: string) => `
@@ -103,7 +180,18 @@ Deno.serve(async (req) => {
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${s.cph != null ? s.cph.toFixed(1) : 'n/a'}</td>
     </tr>`).join('')
 
-  const memBlock = mem ? `
+  // Preferred: daily membership metrics from the live dashboard. Falls back to
+  // the monthly GM-bonus figures only if the dashboard was unreachable.
+  const memBlock = (dash && dash.plansTotal != null) ? `
+    <h3 style="font-size:14px;color:#0f172a;margin:22px 0 8px;">Membership (${dateLabel})</h3>
+    <table role="presentation" width="100%" style="border-collapse:collapse;">
+      <tr>
+        ${kpi('Plans sold', nf(dash.plansTotal), `Mighty ${nf(dash.plansMighty ?? 0)} · Super ${nf(dash.plansSuper ?? 0)} · Wonder ${nf(dash.plansWonder ?? 0)}`)}
+        ${kpi('Conversion', dash.conversion != null ? dash.conversion.toFixed(1) + '%' : 'n/a', 'avg across sites, reporting day')}
+        ${kpi('Churn', `${dash.churnVol != null ? dash.churnVol.toFixed(1) : 'n/a'}% / ${dash.churnCc != null ? dash.churnCc.toFixed(1) : 'n/a'}%`, 'voluntary / credit-card, trailing month')}
+      </tr>
+    </table>
+  ` : (mem ? `
     <h3 style="font-size:14px;color:#0f172a;margin:22px 0 8px;">Membership for ${new Date(mem.period + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (latest monthly)</h3>
     <table role="presentation" width="100%" style="border-collapse:collapse;">
       <tr>
@@ -113,7 +201,7 @@ Deno.serve(async (req) => {
       </tr>
     </table>
     <div style="font-size:12px;color:#475569;margin-top:6px;">Mighty ${nf(mem.mighty)} · Super ${nf(mem.super)} · Wonder ${nf(mem.wonder)}. Churn/conversion are averages across sites and update monthly.</div>
-  ` : ''
+  ` : '')
 
   const html = `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:680px;margin:0 auto;color:#0f172a;">
@@ -124,8 +212,8 @@ Deno.serve(async (req) => {
 
     <table role="presentation" width="100%" style="border-collapse:collapse;">
       <tr>
-        ${kpi('Total cars', nf(day.cars), `${delta(day.cars, lw?.cars)} vs same day last week`)}
-        ${kpi('Sales', money(day.sales), `${delta(day.sales, lw?.sales)} vs same day last week`)}
+        ${kpi('Total cars', nf(day.cars), `${delta(day.cars, lw?.cars)} vs same day last week${yoyLine(day.cars, dash?.yoyCars)}`)}
+        ${kpi('Sales', money(day.sales), `${delta(day.sales, lw?.sales)} vs same day last week${yoyLine(day.sales, dash?.yoyRevenue)}`)}
         ${kpi('Recharge', money(day.recharge), `${delta(day.recharge, lw?.recharge)} vs same day last week`)}
       </tr>
     </table>
@@ -151,7 +239,7 @@ Deno.serve(async (req) => {
     </table>
 
     <div style="font-size:11px;color:#94a3b8;padding:12px 8px 24px;">
-      Comparisons use the same weekday one week prior. Year-over-year will be included once a full year of performance history has accrued (data currently starts April 2026). Reply with tweaks and we'll adjust. Sent from WashLyfe Operator.
+      "vs same day last week" compares the same weekday one week prior. "vs last year" compares the same calendar date last year. Membership sales, conversion, and churn are pulled live from the dashboard for the reporting day (churn is a trailing-month figure). Reply with tweaks and we'll adjust. Sent from WashLyfe Operator.
     </div>
   </div>`
 
