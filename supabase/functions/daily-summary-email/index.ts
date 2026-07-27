@@ -79,22 +79,44 @@ function mapAvg(m: Map<string, number>): number | null {
 }
 
 // The FlexWash sites (17, 18) aren't in the SiteWatch dashboard, so their churn
-// and new-membership numbers come from FlexWash instead. Calls go through the
-// `flexwash` edge function (it holds the token); best-effort, returns null on
-// any failure. carWashId 352 = MW17, 350 = MW18.
+// and new-membership numbers come from FlexWash instead. We call FlexWash
+// DIRECTLY (a function-to-function call through the flexwash proxy silently
+// fails — sync-flexwash hit the same). Token is cached in service_tokens (24h).
+// carWashId 352 = MW17, 350 = MW18.
+const FLEX_BASE = 'https://api.flexwash.com'
 const FLEX_SITES = [{ n: 17, cw: '352' }, { n: 18, cw: '350' }]
 // deno-lint-ignore no-explicit-any
-async function flexCall(supabaseUrl: string, serviceKey: string, path: string, body: unknown): Promise<any | null> {
+async function flexToken(svc: any): Promise<string | null> {
+  const { data: cached } = await svc.from('service_tokens').select('token, expires_at').eq('provider', 'flexwash').maybeSingle()
+  if (cached && new Date(cached.expires_at).getTime() > Date.now() + 60_000) return cached.token as string
+  const id = Deno.env.get('FLEXWASH_CLIENT_ID')
+  const secret = Deno.env.get('FLEXWASH_CLIENT_SECRET')
+  if (!id || !secret) return null
   try {
-    const r = await fetch(`${supabaseUrl}/functions/v1/flexwash`, {
+    const res = await fetch(`${FLEX_BASE}/external/access-token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: id, clientSecret: secret }),
+    })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok || !j.accessToken) return null
+    await svc.from('service_tokens').upsert(
+      { provider: 'flexwash', token: j.accessToken, expires_at: new Date(Date.now() + 23 * 3600_000).toISOString(), updated_at: new Date().toISOString() },
+      { onConflict: 'provider' },
+    )
+    return j.accessToken as string
+  } catch { return null }
+}
+// deno-lint-ignore no-explicit-any
+async function flexCall(token: string, path: string, body: unknown): Promise<any | null> {
+  try {
+    const r = await fetch(`${FLEX_BASE}${path}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, body }),
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(25000),
     })
     if (!r.ok) return null
-    const j = await r.json()
-    return j?.status && j.status < 300 ? j.data : null
+    return await r.json()
   } catch { return null }
 }
 
@@ -196,28 +218,31 @@ Deno.serve(async (req) => {
       // Fold in the FlexWash sites (17, 18): churn (trailing 30 days, per site,
       // returned as fractions -> percentages) and new memberships (by tier).
       try {
-        const since30 = new Date(new Date(rday + 'T12:00:00').getTime() - 30 * 86400000).toISOString().slice(0, 10)
-        for (const fs of FLEX_SITES) {
-          const key = 'MightyWash ' + String(fs.n).padStart(3, '0')
-          const ch = await flexCall(url, serviceKey, '/external/memberships/get-churn-percentages', {
-            carWashIds: [fs.cw], dateRange: { start: since30, end: rday },
-          })
-          if (ch) {
-            churnVolBySite.set(key, Number(ch.voluntaryChurnPercent || 0) * 100)
-            churnCcBySite.set(key, Number(ch.involuntaryChurnPercent || 0) * 100)
+        const flexTok = await flexToken(svc)
+        if (flexTok) {
+          const since30 = new Date(new Date(rday + 'T12:00:00').getTime() - 30 * 86400000).toISOString().slice(0, 10)
+          for (const fs of FLEX_SITES) {
+            const key = 'MightyWash ' + String(fs.n).padStart(3, '0')
+            const ch = await flexCall(flexTok, '/external/memberships/get-churn-percentages', {
+              carWashIds: [fs.cw], dateRange: { start: since30, end: rday },
+            })
+            if (ch) {
+              churnVolBySite.set(key, Number(ch.voluntaryChurnPercent || 0) * 100)
+              churnCcBySite.set(key, Number(ch.involuntaryChurnPercent || 0) * 100)
+            }
           }
-        }
-        const nm = await flexCall(url, serviceKey, '/external/memberships/get-new-membership-stats', {
-          carWashIds: FLEX_SITES.map((s) => s.cw), dateRange: { start: rday, end: rday },
-        })
-        if (nm) {
-          plansTotal += Number(nm.count || 0)
-          for (const p of (nm.byPackageTemplate ?? []) as Array<{ packageTemplateName?: string; count?: number }>) {
-            const name = String(p.packageTemplateName || '')
-            const c = Number(p.count || 0)
-            if (/mighty/i.test(name)) plansMighty += c
-            else if (/super/i.test(name)) plansSuper += c
-            else if (/wonder/i.test(name)) plansWonder += c
+          const nm = await flexCall(flexTok, '/external/memberships/get-new-membership-stats', {
+            carWashIds: FLEX_SITES.map((s) => s.cw), dateRange: { start: rday, end: rday },
+          })
+          if (nm) {
+            plansTotal += Number(nm.count || 0)
+            for (const p of (nm.byPackageTemplate ?? []) as Array<{ packageTemplateName?: string; count?: number }>) {
+              const name = String(p.packageTemplateName || '')
+              const c = Number(p.count || 0)
+              if (/mighty/i.test(name)) plansMighty += c
+              else if (/super/i.test(name)) plansSuper += c
+              else if (/wonder/i.test(name)) plansWonder += c
+            }
           }
         }
       } catch { /* FlexWash is best-effort */ }
