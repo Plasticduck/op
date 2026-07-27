@@ -3,9 +3,9 @@ import { SITE_URL } from '@/lib/siteUrl'
 import { fnErrorMessage } from '@/lib/fnError'
 import type { Role } from '@/lib/rbac'
 
-// Roles that can be handed out via an invite link. Owner is set only at account
-// creation, never invited.
-export type InvitableRole = Exclude<Role, 'owner'>
+// Roles that can be handed out via an invite link. An owner (Admin) can invite
+// another owner; the invite UI only offers that option to owners.
+export type InvitableRole = Role
 
 export type AccountUser = {
   id: string

@@ -42,8 +42,9 @@ export function InviteModal({
   const [hourly, setHourly] = useState('')
   const [uniform, setUniform] = useState('')
   const [pin, setPin] = useState('')
-  // Technicians work across every site, so site assignment doesn't apply to them.
-  const allSites = isUser && role === 'technician'
+  // Technicians and admins (owners) work across every site, so site assignment
+  // doesn't apply to them.
+  const allSites = isUser && (role === 'technician' || role === 'owner')
   // An employee (roster) record is created for non-users and for user-employees;
   // managers/technicians are login-only, so their HR fields don't apply.
   const hasRosterRecord = !isUser || role === 'employee'
@@ -216,6 +217,8 @@ export function InviteModal({
                   <option value="employee">Employee</option>
                   <option value="technician">Technician</option>
                   <option value="manager">Manager</option>
+                  {/* Only an admin (owner) can invite another admin. */}
+                  {profile?.role === 'owner' && <option value="owner">Admin</option>}
                 </Select>
               )}
             </Field>
@@ -223,7 +226,7 @@ export function InviteModal({
         )}
 
         {allSites ? (
-          <Field label="Locations" hint="Technicians have access to all sites.">
+          <Field label="Locations" hint={role === 'owner' ? 'Admins have access to all sites.' : 'Technicians have access to all sites.'}>
             {() => (
               <p className="rounded-md border border-border bg-content px-3 py-2 text-sm text-ink-muted">
                 All sites
