@@ -2674,6 +2674,45 @@ export type Database = {
           },
         ]
       }
+      maintainx_wo_outbox: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: number
+          last_error: string | null
+          maintainx_id: number
+          op: string
+          payload: Json
+          processed_at: string | null
+          status: string
+          work_order_id: string | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: never
+          last_error?: string | null
+          maintainx_id: number
+          op: string
+          payload?: Json
+          processed_at?: string | null
+          status?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: never
+          last_error?: string | null
+          maintainx_id?: number
+          op?: string
+          payload?: Json
+          processed_at?: string | null
+          status?: string
+          work_order_id?: string | null
+        }
+        Relationships: []
+      }
       market_research: {
         Row: {
           account_id: string

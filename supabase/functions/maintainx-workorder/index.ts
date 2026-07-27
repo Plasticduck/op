@@ -194,6 +194,63 @@ Deno.serve(async (req) => {
       return json({ ok: r.ok, status: r.status, data: r.data }, r.ok ? 200 : 502, origin)
     }
 
+    // Drain the change-capture outbox (status/edit/delete). Cron only.
+    if (action === 'process_outbox') {
+      if (caller) return json({ error: 'forbidden' }, 403, origin)
+      const STATUS_MAP: Record<string, string> = {
+        open: 'OPEN', on_hold: 'ON_HOLD', in_progress: 'IN_PROGRESS', done: 'DONE', skipped: 'CANCELED',
+      }
+      const { data: pending } = await svc
+        .from('maintainx_wo_outbox')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(50)
+      let done = 0
+      let failed = 0
+      for (const row of pending ?? []) {
+        // deno-lint-ignore no-explicit-any
+        const r = row as any
+        let res: { ok: boolean; status: number; data: unknown }
+        try {
+          if (r.op === 'delete') {
+            res = await mx(base, token, `/workorders/${r.maintainx_id}`, 'DELETE')
+          } else if (r.op === 'status') {
+            const s = STATUS_MAP[r.payload?.status]
+            res = s
+              ? await mx(base, token, `/workorders/${r.maintainx_id}/status`, 'PATCH', { status: s })
+              : { ok: false, status: 400, data: 'bad status' }
+          } else {
+            const p = r.payload ?? {}
+            // deno-lint-ignore no-explicit-any
+            const body2: Record<string, any> = {}
+            if (p.title != null) body2.title = p.title
+            body2.description = p.description ?? null
+            if (p.priority != null) body2.priority = PRIORITY[p.priority] ?? 'NONE'
+            if (p.work_type != null) body2.type = WTYPE[p.work_type] ?? 'REACTIVE'
+            if ('due_at' in p) body2.dueDate = p.due_at
+            if ('start_at' in p) body2.startDate = p.start_at
+            res = await mx(base, token, `/workorders/${r.maintainx_id}`, 'PATCH', body2)
+          }
+        } catch (e) {
+          res = { ok: false, status: 0, data: e instanceof Error ? e.message : String(e) }
+        }
+        if (res.ok) {
+          await svc.from('maintainx_wo_outbox').update({ status: 'done', processed_at: new Date().toISOString() }).eq('id', r.id)
+          done++
+        } else {
+          const attempts = (r.attempts ?? 0) + 1
+          await svc.from('maintainx_wo_outbox').update({
+            attempts,
+            last_error: `${res.status}: ${typeof res.data === 'string' ? res.data : JSON.stringify(res.data)}`.slice(0, 500),
+            status: attempts >= 5 ? 'error' : 'pending',
+          }).eq('id', r.id)
+          failed++
+        }
+      }
+      return json({ ok: true, processed: (pending ?? []).length, done, failed }, 200, origin)
+    }
+
     return json({ error: 'bad_request', message: `unknown action ${action}` }, 400, origin)
   } catch (e) {
     return json({ error: 'error', message: e instanceof Error ? e.message : String(e) }, 502, origin)
