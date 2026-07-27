@@ -93,7 +93,7 @@ export default function WorkRequestsPage() {
 
       {flash && <div className="mt-3 rounded-md border border-accent/40 bg-accent-soft px-3 py-2 text-sm text-accent">{flash}</div>}
 
-      <div className="mt-3 inline-flex overflow-hidden rounded-md border border-border">
+      <div className="mt-3 flex w-max max-w-full overflow-x-auto rounded-md border border-border">
         {(['pending', 'all', 'portals'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={cn('border-l border-border px-4 py-1.5 text-sm font-medium capitalize first:border-l-0', tab === t ? 'bg-accent-soft text-accent' : 'bg-card text-ink-muted hover:text-ink')}>
             {t === 'portals' ? 'Request Links' : t}

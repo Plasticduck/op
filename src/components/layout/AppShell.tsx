@@ -32,6 +32,8 @@ const FULL_BLEED_PATTERNS = [
   /^\/app\/parts($|\/)/,
   /^\/app\/categories($|\/)/,
   /^\/app\/vendors($|\/)/,
+  /^\/app\/teams($|\/)/,
+  /^\/app\/procedures($|\/)/,
 ]
 
 // Enforce per-role page permissions on direct navigation. Maps the current path
