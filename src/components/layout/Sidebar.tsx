@@ -214,6 +214,18 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: 'IT',
+    roles: ['owner', 'manager', 'technician'],
+    items: [
+      {
+        to: '/app/issuetrak',
+        label: 'Issuetrak',
+        icon: LifeBuoy,
+        roles: ['owner', 'manager', 'technician'],
+      },
+    ],
+  },
+  {
     label: 'Maintenance',
     roles: ['owner', 'manager', 'employee', 'technician'],
     items: [
@@ -359,18 +371,6 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Calendar',
         icon: CalendarHeart,
         roles: ['owner', 'manager', 'employee', 'technician'],
-      },
-    ],
-  },
-  {
-    label: 'IT',
-    roles: ['owner', 'manager', 'technician'],
-    items: [
-      {
-        to: '/app/issuetrak',
-        label: 'Issuetrak',
-        icon: LifeBuoy,
-        roles: ['owner', 'manager', 'technician'],
       },
     ],
   },
