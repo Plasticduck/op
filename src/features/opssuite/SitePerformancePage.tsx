@@ -395,7 +395,7 @@ function BySite({ feed, idx }: ViewProps) {
 
   return (
     <div className="flex flex-col gap-5">
-      <Panel title="Today" sub="Every site, ranked by cars per man-hour so far today">
+      <Panel title="Today" sub="Every site so far today, in numerical order within each region">
         <TableShell
           head={<>
             {['Site', 'Cars', 'Hours', 'Cars/Man-Hr', 'Sales', 'Labor %'].map((h) => (
@@ -404,7 +404,7 @@ function BySite({ feed, idx }: ViewProps) {
           </>}
         >
           {todayGroups.map((g) => {
-            const rows = [...g.items].sort((a, b) => (b.cars_per_hour ?? -1) - (a.cars_per_hour ?? -1))
+            const rows = [...g.items].sort((a, b) => (siteNumber(a.site) ?? 9999) - (siteNumber(b.site) ?? 9999))
             const cars = sum(rows, (r) => r.cars)
             const hours = sum(rows, (r) => r.hours)
             const sales = sum(rows, (r) => r.sales)
@@ -477,7 +477,7 @@ function BySite({ feed, idx }: ViewProps) {
           </>}
         >
           {rangeGroups.map((g) => {
-            const rows = [...g.items].sort((a, b) => (b.cph ?? -1) - (a.cph ?? -1))
+            const rows = [...g.items].sort((a, b) => (siteNumber(a.site) ?? 9999) - (siteNumber(b.site) ?? 9999))
             const cars = sum(rows, (r) => r.cars)
             const hours = sum(rows, (r) => r.hours)
             const sales = sum(rows, (r) => r.sales)
