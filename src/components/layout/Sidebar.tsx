@@ -235,6 +235,12 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager', 'technician'],
       },
       {
+        to: '/app/preventive-maintenance',
+        label: 'Preventive Maintenance',
+        icon: CalendarClock,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
         to: '/app/reports',
         label: 'Maintenance Reports',
         icon: ChartNoAxesCombined,

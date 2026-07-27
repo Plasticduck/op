@@ -119,6 +119,7 @@ const AskOperatorPage = lz(() => import('@/features/ask/AskOperatorPage'))
 const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
 const TeamsPage = lz(() => import('@/features/ops/teams/TeamsPage'))
 const ProceduresPage = lz(() => import('@/features/ops/procedures/ProceduresPage'))
+const PmPage = lz(() => import('@/features/ops/pm/PmPage'))
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
 const TipPage = lz(() => import('@/features/tips/TipPage'))
@@ -191,6 +192,7 @@ export const router = createBrowserRouter([
           { path: 'categories', element: tech(<CategoriesPage />) },
           { path: 'teams', element: tech(<TeamsPage />) },
           { path: 'procedures', element: tech(<ProceduresPage />) },
+          { path: 'preventive-maintenance', element: tech(<PmPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },
           { path: 'assets', element: tech(<AssetsPage />) },
           { path: 'assets/:id', element: tech(<AssetsPage />) },

@@ -3466,6 +3466,102 @@ export type Database = {
           },
         ]
       }
+      pm_plans: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          description: string | null
+          equipment_id: string | null
+          frequency_count: number
+          frequency_unit: string
+          id: string
+          last_generated_at: string | null
+          lead_time_days: number
+          location_id: string
+          next_due_date: string
+          priority: string
+          procedure_template_id: string | null
+          team_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          equipment_id?: string | null
+          frequency_count?: number
+          frequency_unit?: string
+          id?: string
+          last_generated_at?: string | null
+          lead_time_days?: number
+          location_id: string
+          next_due_date: string
+          priority?: string
+          procedure_template_id?: string | null
+          team_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          equipment_id?: string | null
+          frequency_count?: number
+          frequency_unit?: string
+          id?: string
+          last_generated_at?: string | null
+          lead_time_days?: number
+          location_id?: string
+          next_due_date?: string
+          priority?: string
+          procedure_template_id?: string | null
+          team_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pm_plans_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pm_plans_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pm_plans_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pm_plans_procedure_template_id_fkey"
+            columns: ["procedure_template_id"]
+            isOneToOne: false
+            referencedRelation: "procedure_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pm_plans_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       procedure_fields: {
         Row: {
           id: string
@@ -5555,6 +5651,7 @@ export type Database = {
           maintainx_updated_at: string | null
           number: number
           parent_work_order_id: string | null
+          pm_plan_id: string | null
           priority: string
           recurrence: string
           recurrence_interval: number | null
@@ -5585,6 +5682,7 @@ export type Database = {
           maintainx_updated_at?: string | null
           number?: number
           parent_work_order_id?: string | null
+          pm_plan_id?: string | null
           priority?: string
           recurrence?: string
           recurrence_interval?: number | null
@@ -5615,6 +5713,7 @@ export type Database = {
           maintainx_updated_at?: string | null
           number?: number
           parent_work_order_id?: string | null
+          pm_plan_id?: string | null
           priority?: string
           recurrence?: string
           recurrence_interval?: number | null
@@ -5668,6 +5767,13 @@ export type Database = {
             columns: ["parent_work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_pm_plan_fk"
+            columns: ["pm_plan_id"]
+            isOneToOne: false
+            referencedRelation: "pm_plans"
             referencedColumns: ["id"]
           },
           {
@@ -5789,6 +5895,8 @@ export type Database = {
         Returns: string[]
       }
       gen_invoice_inbox_token: { Args: never; Returns: string }
+      generate_due_pm_work_orders: { Args: never; Returns: number }
+      generate_pm_plan: { Args: { p_plan_id: string }; Returns: string }
       get_invitation_email: { Args: { p_token: string }; Returns: string }
       get_invitation_info: { Args: { p_token: string }; Returns: Json }
       gm_bonus_set_site_managers: {
@@ -5827,6 +5935,10 @@ export type Database = {
         Returns: undefined
       }
       operator_ask_sql: { Args: { query: string }; Returns: Json }
+      pm_generate_for_plan: {
+        Args: { p_advance?: boolean; p_plan_id: string }
+        Returns: string
+      }
       resolve_kiosk_pin: {
         Args: { p_location_id: string; p_pin: string }
         Returns: Json
