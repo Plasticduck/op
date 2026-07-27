@@ -132,6 +132,9 @@ export default function InvoicesPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="rounded-md border border-warn/40 bg-warn-soft px-4 py-2.5 text-center text-sm font-semibold text-warn">
+        This Page is Under Construction
+      </div>
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">{active.label}</h1>
         <p className="mt-1 text-sm text-ink-muted">{active.subtitle}</p>
