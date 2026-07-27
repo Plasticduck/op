@@ -1911,6 +1911,7 @@ export type Database = {
           id: string
           last_serviced_at: string | null
           location_id: string
+          maintainx_id: number | null
           manufacturer: string | null
           model: string | null
           name: string
@@ -1933,6 +1934,7 @@ export type Database = {
           id?: string
           last_serviced_at?: string | null
           location_id: string
+          maintainx_id?: number | null
           manufacturer?: string | null
           model?: string | null
           name: string
@@ -1955,6 +1957,7 @@ export type Database = {
           id?: string
           last_serviced_at?: string | null
           location_id?: string
+          maintainx_id?: number | null
           manufacturer?: string | null
           model?: string | null
           name?: string
@@ -2601,6 +2604,7 @@ export type Database = {
           id: string
           latitude: number | null
           longitude: number | null
+          maintainx_id: number | null
           name: string
           overtime_threshold_hours: number
           pay_period_type: string
@@ -2625,6 +2629,7 @@ export type Database = {
           id?: string
           latitude?: number | null
           longitude?: number | null
+          maintainx_id?: number | null
           name: string
           overtime_threshold_hours?: number
           pay_period_type?: string
@@ -2649,6 +2654,7 @@ export type Database = {
           id?: string
           latitude?: number | null
           longitude?: number | null
+          maintainx_id?: number | null
           name?: string
           overtime_threshold_hours?: number
           pay_period_type?: string
@@ -5231,6 +5237,7 @@ export type Database = {
           id: string
           location_id: string
           maintainx_id: number | null
+          maintainx_updated_at: string | null
           number: number
           parent_work_order_id: string | null
           priority: string
@@ -5260,6 +5267,7 @@ export type Database = {
           id?: string
           location_id: string
           maintainx_id?: number | null
+          maintainx_updated_at?: string | null
           number?: number
           parent_work_order_id?: string | null
           priority?: string
@@ -5289,6 +5297,7 @@ export type Database = {
           id?: string
           location_id?: string
           maintainx_id?: number | null
+          maintainx_updated_at?: string | null
           number?: number
           parent_work_order_id?: string | null
           priority?: string
@@ -5525,6 +5534,7 @@ export type Database = {
         Returns: string
       }
       start_break: { Args: { p_break_id: string }; Returns: undefined }
+      sync_maintainx_work_orders: { Args: { p_rows: Json }; Returns: number }
       users_for_site: {
         Args: { loc: string }
         Returns: {

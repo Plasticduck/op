@@ -51,6 +51,7 @@ type Detail = {
   service_interval_days: number | null
   created_at: string
   updated_at: string
+  maintainx_id: number | null
   location: { id: string; name: string } | null
   parent: { id: string; name: string; asset_number: number } | null
   sub_assets: Array<{ id: string; name: string; asset_number: number; status: AssetStatus; criticality: AssetCriticality }>
