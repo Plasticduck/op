@@ -5230,6 +5230,7 @@ export type Database = {
           estimated_minutes: number | null
           id: string
           location_id: string
+          maintainx_id: number | null
           number: number
           parent_work_order_id: string | null
           priority: string
@@ -5258,6 +5259,7 @@ export type Database = {
           estimated_minutes?: number | null
           id?: string
           location_id: string
+          maintainx_id?: number | null
           number?: number
           parent_work_order_id?: string | null
           priority?: string
@@ -5286,6 +5288,7 @@ export type Database = {
           estimated_minutes?: number | null
           id?: string
           location_id?: string
+          maintainx_id?: number | null
           number?: number
           parent_work_order_id?: string | null
           priority?: string
