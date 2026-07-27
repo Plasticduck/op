@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { teams as teamsQ, type Team } from '@/lib/queries/teams'
 import {
   workOrders,
   workOrderCategories,
@@ -45,6 +46,7 @@ export function NewWorkOrderModal({
   const [dir, setDir] = useState<DirUser[]>([])
   const [cats, setCats] = useState<WorkOrderCategory[]>([])
   const [allVendors, setAllVendors] = useState<Vendor[]>([])
+  const [teamOpts, setTeamOpts] = useState<Team[]>([])
 
   // If the modal opened with a prefill from a Part or Asset's "Use in New
   // Work Order" CTA, seed the title + description so the user has context.
@@ -75,17 +77,20 @@ export function NewWorkOrderModal({
   const [assignees, setAssignees] = useState<DirUser[]>([])
   const [categoryIds, setCategoryIds] = useState<string[]>([])
   const [vendorIds, setVendorIds] = useState<string[]>([])
+  const [teamIds, setTeamIds] = useState<string[]>([])
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     void (async () => {
-      const [{ data: u }, { data: c }, { data: v }] = await Promise.all([
+      const [{ data: u }, { data: c }, { data: v }, { data: t }] = await Promise.all([
         supabase.from('users').select('id, name, email').order('name'),
         workOrderCategories.list(),
         vendorsQ.list(),
+        teamsQ.list(),
       ])
+      setTeamOpts((t as Team[] | null) ?? [])
       setDir((u as DirUser[] | null) ?? [])
       setCats((c as WorkOrderCategory[] | null) ?? [])
       setAllVendors((v as Vendor[] | null) ?? [])
@@ -143,6 +148,9 @@ export function NewWorkOrderModal({
         ? workOrders.setAssignees(woId, assignees.map((a) => ({ user_id: a.id, user_name: (a.name ?? '').trim() || a.email })))
         : Promise.resolve(),
       categoryIds.length > 0 ? workOrders.setCategories(woId, categoryIds) : Promise.resolve(),
+      teamIds.length > 0
+        ? workOrders.setTeams(woId, teamIds.map((id) => ({ team_id: id, team_name: teamOpts.find((t) => t.id === id)?.name ?? 'Team' })))
+        : Promise.resolve(),
       vendorIds.length > 0 ? workOrders.setVendors(woId, vendorIds) : Promise.resolve(),
       prefillPartId
         ? workOrders.addPart({ work_order_id: woId, part_id: prefillPartId, part_name: prefillPartName ?? 'Part', quantity: 1 })
@@ -236,6 +244,17 @@ export function NewWorkOrderModal({
           selectedIds={assignees.map((a) => a.id)}
           onChange={(ids) => setAssignees(dir.filter((u) => ids.includes(u.id)))}
         />
+
+        {/* Teams */}
+        {teamOpts.length > 0 && (
+          <MultiPicker
+            label="Teams"
+            placeholder="Assign to a team"
+            options={teamOpts.map((t) => ({ id: t.id, label: t.name }))}
+            selectedIds={teamIds}
+            onChange={setTeamIds}
+          />
+        )}
 
         {/* Estimated Time + dates */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

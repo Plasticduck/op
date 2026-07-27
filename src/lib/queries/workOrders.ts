@@ -33,6 +33,7 @@ export type WorkOrderRow = WorkOrder & {
   location: { id: string; name: string } | null
   equipment: { id: string; name: string } | null
   assignees: Array<{ user_id: string; user_name: string }>
+  teams: Array<{ team_id: string; team_name: string }>
   categories: Array<{ category: { id: string; name: string; color: string; icon: string | null } | null }>
   vendors: Array<{ vendor: { id: string; name: string } | null }>
   photo_count: { count: number }[]
@@ -51,6 +52,7 @@ export const workOrders = {
         location:locations(id, name),
         equipment:equipment(id, name),
         assignees:work_order_assignees(user_id, user_name),
+        teams:work_order_teams(team_id, team_name),
         categories:work_order_category_links(category:work_order_categories(id, name, color, icon)),
         vendors:work_order_vendor_links(vendor:vendors(id, name)),
         photo_count:work_order_files(count),
@@ -72,6 +74,7 @@ export const workOrders = {
         location:locations(id, name),
         equipment:equipment(id, name),
         assignees:work_order_assignees(user_id, user_name),
+        teams:work_order_teams(team_id, team_name),
         categories:work_order_category_links(category:work_order_categories(id, name, color, icon)),
         vendors:work_order_vendor_links(vendor:vendors(id, name)),
         parts:work_order_parts(*),
@@ -141,6 +144,14 @@ export const workOrders = {
       await supabase
         .from('work_order_vendor_links')
         .insert(vendorIds.map((id) => ({ work_order_id: workOrderId, vendor_id: id })))
+    }
+  },
+  setTeams: async (workOrderId: string, teamRows: Array<{ team_id: string; team_name: string }>) => {
+    await supabase.from('work_order_teams').delete().eq('work_order_id', workOrderId)
+    if (teamRows.length > 0) {
+      await supabase
+        .from('work_order_teams')
+        .insert(teamRows.map((t) => ({ work_order_id: workOrderId, ...t })))
     }
   },
 

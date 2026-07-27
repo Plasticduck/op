@@ -64,6 +64,7 @@ type Detail = {
   location: { id: string; name: string } | null
   equipment: { id: string; name: string } | null
   assignees: Array<{ user_id: string; user_name: string }>
+  teams: Array<{ team_id: string; team_name: string }>
   categories: Array<{ category: { id: string; name: string; color: string; icon: string | null } | null }>
   vendors: Array<{ vendor: { id: string; name: string } | null }>
   parts: WorkOrderPart[]
@@ -267,6 +268,20 @@ export function WorkOrderDetail({
             </div>
           )}
         </section>
+
+        {/* Teams */}
+        {d.teams.length > 0 && (
+          <section className="mb-4">
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">Teams</div>
+            <div className="flex flex-wrap gap-1.5">
+              {d.teams.map((t) => (
+                <span key={t.team_id} className="inline-flex items-center gap-1.5 rounded-full bg-content px-2 py-1 text-xs text-ink">
+                  {t.team_name}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Categories + Vendors */}
         {(d.categories.length > 0 || d.vendors.length > 0) && (

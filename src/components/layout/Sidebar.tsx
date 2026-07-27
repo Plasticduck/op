@@ -15,6 +15,7 @@ import {
   BrainCircuit,
   GraduationCap,
   LifeBuoy,
+  Users,
   Sparkles,
   CalendarClock,
   CalendarHeart,
@@ -218,6 +219,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/work-orders',
         label: 'Work Orders',
         icon: Wrench,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/teams',
+        label: 'Teams',
+        icon: Users,
         roles: ['owner', 'manager', 'technician'],
       },
       {
