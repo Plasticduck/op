@@ -335,7 +335,16 @@ export function groupByRegion<T>(
     list.push(item)
     buckets.set(region, list)
   }
+  // Within each region, list sites in numerical order (unnumbered sites last).
+  const bySiteNumber = (a: T, b: T) => {
+    const na = siteNumber(nameOf(a))
+    const nb = siteNumber(nameOf(b))
+    if (na == null && nb == null) return 0
+    if (na == null) return 1
+    if (nb == null) return -1
+    return na - nb
+  }
   return index.order
     .filter((r) => buckets.has(r))
-    .map((region) => ({ region, items: buckets.get(region)! }))
+    .map((region) => ({ region, items: buckets.get(region)!.slice().sort(bySiteNumber) }))
 }
