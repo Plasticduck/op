@@ -118,6 +118,7 @@ const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPag
 const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
 const AskOperatorPage = lz(() => import('@/features/ask/AskOperatorPage'))
 const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
+const LaborDashboardPage = lz(() => import('@/features/ops/labor/LaborDashboardPage'))
 const TeamsPage = lz(() => import('@/features/ops/teams/TeamsPage'))
 const ProceduresPage = lz(() => import('@/features/ops/procedures/ProceduresPage'))
 const PmPage = lz(() => import('@/features/ops/pm/PmPage'))
@@ -214,6 +215,7 @@ export const router = createBrowserRouter([
           { path: 'site-reviews', element: mgr(<SiteReviewsPage />) },
           { path: 'site-audits', element: mgr(<SiteAuditsPage />) },
           { path: 'invoices', element: tech(<InvoicesPage />) },
+          { path: 'labor', element: mgr(<LaborDashboardPage />) },
           { path: 'inventory', element: tech(<InventoryPage />) },
           { path: 'market-research', element: mgr(<MarketResearchPage />) },
           { path: 'market-research/:id', element: mgr(<MarketResearchDetailPage />) },

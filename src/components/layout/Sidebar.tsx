@@ -121,6 +121,12 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
+        to: '/app/labor',
+        label: 'Labor Dashboard',
+        icon: Gauge,
+        roles: ['owner', 'manager'],
+      },
+      {
         to: '/app/checklists',
         label: 'Checklists',
         icon: ListChecks,

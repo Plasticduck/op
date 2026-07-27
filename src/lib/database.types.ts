@@ -2588,6 +2588,51 @@ export type Database = {
           },
         ]
       }
+      labor_benchmark_tiers: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          location_id: string | null
+          max_cars: number | null
+          max_hours: number
+          min_cars: number
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          location_id?: string | null
+          max_cars?: number | null
+          max_hours: number
+          min_cars: number
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          location_id?: string | null
+          max_cars?: number | null
+          max_hours?: number
+          min_cars?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labor_benchmark_tiers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_benchmark_tiers_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           account_id: string
@@ -5989,6 +6034,7 @@ export type Database = {
       }
     }
     Functions: {
+      _auth_user_id_by_email: { Args: { p_email: string }; Returns: string }
       accept_invitation: {
         Args: { p_token: string; p_user_name?: string }
         Returns: string
@@ -5997,6 +6043,10 @@ export type Database = {
       acknowledge_counseling: {
         Args: { p_record_id: string }
         Returns: undefined
+      }
+      admin_accept_invitation: {
+        Args: { p_token: string; p_user_id: string; p_user_name?: string }
+        Returns: string
       }
       auth_account_id: { Args: never; Returns: string }
       auth_can_see_employee: { Args: { emp: string }; Returns: boolean }
@@ -6062,6 +6112,7 @@ export type Database = {
         }
         Returns: Json
       }
+      mw_daily_summary: { Args: never; Returns: Json }
       notify_location_managers: {
         Args: { p_kind: string; p_location_id: string; p_payload: Json }
         Returns: undefined
