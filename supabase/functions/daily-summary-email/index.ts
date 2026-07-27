@@ -62,6 +62,15 @@ function gqAvg(res: any): number | null {
   if (!rows || rows.length === 0) return null
   return rows.reduce((s, r) => s + Number(r[1] || 0), 0) / rows.length
 }
+// Per-site values keyed by the dashboard's site name (already "MightyWash 0NN").
+// deno-lint-ignore no-explicit-any
+function gqMap(res: any): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const r of (res?.rows as [string, number][] | undefined) ?? []) {
+    if (String(r[0]).toUpperCase() !== 'TOTAL') m.set(String(r[0]), Number(r[1]))
+  }
+  return m
+}
 
 function jwtRole(auth: string): string | null {
   const t = auth.replace(/^Bearer\s+/i, '').split('.')
@@ -121,7 +130,7 @@ Deno.serve(async (req) => {
   const { data: d, error } = await svc.rpc('mw_daily_summary') as { data: any; error: unknown }
   if (error || !d) return json({ error: 'data_failed', detail: String(error) }, 500)
 
-  const day = d.day, prev = d.prev_day, lw = d.last_week
+  const day = d.day, prev = d.prev_day
   const mem = d.membership, memPrev = d.membership_prev
   const sites: Array<{ site: string; n: number; cars: number; sales: number; recharge: number; cph: number | null; cars_lw: number | null }> = d.sites ?? []
   const rdate = new Date(d.reporting_date + 'T12:00:00')
@@ -134,27 +143,29 @@ Deno.serve(async (req) => {
   const lyDate = new Date(d.reporting_date + 'T12:00:00'); lyDate.setFullYear(lyDate.getFullYear() - 1)
   const lyStr = lyDate.toISOString().slice(0, 10)
   let dash: {
-    yoyCars: number | null; yoyRevenue: number | null; plansTotal: number | null
+    yoyCars: number | null; yoyRevenue: number | null; yoyRecharge: number | null; plansTotal: number | null
     plansMighty: number | null; plansSuper: number | null; plansWonder: number | null
     conversion: number | null; churnVol: number | null; churnCc: number | null
+    convBySite: Map<string, number>; churnVolBySite: Map<string, number>
   } | null = null
   const dashPw = Deno.env.get('MW_DASHBOARD_PASSWORD')
   if (dashPw) {
     try {
       const cookie = await dashLogin(dashPw)
-      const [carsLy, revLy, plansT, plansM, plansS, plansW, conv, cvol, ccc] = await Promise.all([
-        gq(cookie, 'cars', lyStr), gq(cookie, 'revenue', lyStr),
+      const [carsLy, revLy, rechLy, plansT, plansM, plansS, plansW, conv, cvol, ccc] = await Promise.all([
+        gq(cookie, 'cars', lyStr), gq(cookie, 'revenue', lyStr), gq(cookie, 'recharge', lyStr),
         gq(cookie, 'plans_total', rday), gq(cookie, 'plans_mighty', rday), gq(cookie, 'plans_super', rday), gq(cookie, 'plans_wonder', rday),
         gq(cookie, 'conversion_pct', rday), gq(cookie, 'churn_voluntary', rday), gq(cookie, 'churn_cc', rday),
       ])
       dash = {
-        yoyCars: gqTotal(carsLy), yoyRevenue: gqTotal(revLy),
+        yoyCars: gqTotal(carsLy), yoyRevenue: gqTotal(revLy), yoyRecharge: gqTotal(rechLy),
         plansTotal: gqTotal(plansT), plansMighty: gqTotal(plansM), plansSuper: gqTotal(plansS), plansWonder: gqTotal(plansW),
         conversion: gqAvg(conv), churnVol: gqAvg(cvol), churnCc: gqAvg(ccc),
+        convBySite: gqMap(conv), churnVolBySite: gqMap(cvol),
       }
     } catch { dash = null }
   }
-  const yoyLine = (cur: number, prev: number | null | undefined) => (prev != null ? `<br>${delta(cur, prev)} vs last year` : '')
+  const yoySub = (cur: number, prev: number | null | undefined) => (prev != null ? `${delta(cur, prev)} vs last year` : '')
 
   const memTotal = (m: { mighty: number; super: number; wonder: number }) => m.mighty + m.super + m.wonder
 
@@ -170,15 +181,20 @@ Deno.serve(async (req) => {
   // Uniform display name from the site number (normalizes the FlexWash
   // "Mighty Wash #17" names to match the rest), listed in site-number order.
   const siteName = (n: number) => 'MightyWash ' + String(n).padStart(3, '0')
-  const siteRows = [...sites].sort((a, b) => a.n - b.n).map((s) => `
+  const pct = (v: number | undefined) => (v != null ? v.toFixed(1) + '%' : 'n/a')
+  const siteRows = [...sites].sort((a, b) => a.n - b.n).map((s) => {
+    const cn = siteName(s.n)
+    return `
     <tr>
-      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">${esc(siteName(s.n))}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">${esc(cn)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${nf(s.cars)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${delta(s.cars, s.cars_lw)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.sales)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.recharge)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${s.cph != null ? s.cph.toFixed(1) : 'n/a'}</td>
-    </tr>`).join('')
+      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${pct(dash?.convBySite.get(cn))}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${pct(dash?.churnVolBySite.get(cn))}</td>
+    </tr>`
+  }).join('')
 
   // Preferred: daily membership metrics from the live dashboard. Falls back to
   // the monthly GM-bonus figures only if the dashboard was unreachable.
@@ -212,9 +228,9 @@ Deno.serve(async (req) => {
 
     <table role="presentation" width="100%" style="border-collapse:collapse;">
       <tr>
-        ${kpi('Total cars', nf(day.cars), `${delta(day.cars, lw?.cars)} vs same day last week${yoyLine(day.cars, dash?.yoyCars)}`)}
-        ${kpi('Sales', money(day.sales), `${delta(day.sales, lw?.sales)} vs same day last week${yoyLine(day.sales, dash?.yoyRevenue)}`)}
-        ${kpi('Recharge', money(day.recharge), `${delta(day.recharge, lw?.recharge)} vs same day last week`)}
+        ${kpi('Total cars', nf(day.cars), yoySub(day.cars, dash?.yoyCars))}
+        ${kpi('Sales', money(day.sales), yoySub(day.sales, dash?.yoyRevenue))}
+        ${kpi('Recharge', money(day.recharge), yoySub(day.recharge, dash?.yoyRecharge))}
       </tr>
     </table>
     <div style="font-size:12px;color:#475569;padding:2px 8px;">
@@ -229,17 +245,18 @@ Deno.serve(async (req) => {
         <tr style="background:#f8fafc;color:#64748b;font-size:11px;text-transform:uppercase;">
           <th style="padding:6px 8px;text-align:left;">Site</th>
           <th style="padding:6px 8px;text-align:right;">Cars</th>
-          <th style="padding:6px 8px;text-align:right;">vs LW</th>
           <th style="padding:6px 8px;text-align:right;">Sales</th>
           <th style="padding:6px 8px;text-align:right;">Recharge</th>
           <th style="padding:6px 8px;text-align:right;">Cars/hr</th>
+          <th style="padding:6px 8px;text-align:right;">Conv %</th>
+          <th style="padding:6px 8px;text-align:right;">Churn %</th>
         </tr>
       </thead>
       <tbody>${siteRows}</tbody>
     </table>
 
     <div style="font-size:11px;color:#94a3b8;padding:12px 8px 24px;">
-      "vs same day last week" compares the same weekday one week prior. "vs last year" compares the same calendar date last year. Membership sales, conversion, and churn are pulled live from the dashboard for the reporting day (churn is a trailing-month figure). Reply with tweaks and we'll adjust. Sent from WashLyfe Operator.
+      "vs last year" compares the same calendar date last year. Per-site Conv % is the reporting day's conversion; Churn % is voluntary churn (a trailing-month figure). Membership data is pulled live from the dashboard. Reply with tweaks and we'll adjust. Sent from WashLyfe Operator.
     </div>
   </div>`
 
