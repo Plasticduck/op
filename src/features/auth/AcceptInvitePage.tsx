@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { fnErrorMessage } from '@/lib/fnError'
 import { useAuth } from '@/lib/auth'
 import { AuthLayout } from '@/features/auth/AuthLayout'
 import { Field } from '@/components/forms/Field'
@@ -53,31 +54,33 @@ export default function AcceptInvitePage() {
     setFormError(null)
     if (!email) return
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password: values.password,
-      options: { data: { name: name ?? undefined } },
+    // Server-side acceptance: creates the login (or sets the password on an
+    // existing one) AND the profile atomically, so a re-invited email that
+    // already has a login no longer strands the user without an account.
+    const { data, error } = await supabase.functions.invoke('accept-invite', {
+      body: { token: token ?? '', password: values.password },
     })
     if (error) {
-      setFormError(error.message)
+      setFormError(await fnErrorMessage(error, data as { message?: string; error?: string } | null, 'Could not finish joining'))
       return
     }
-    if (!data.session) {
-      setFormError('Confirm your email, then sign in to finish joining.')
+    const res = data as { ok?: boolean; alreadyMember?: boolean; error?: string; message?: string }
+    if (!res?.ok) {
+      setFormError(res?.message || res?.error || 'Could not finish joining')
       return
     }
-
-    // accept_invitation reads the name from the invitation; passing it too keeps
-    // older invites (created before names were stored) working.
-    const { error: rpcError } = await supabase.rpc('accept_invitation', {
-      p_token: token ?? '',
-      p_user_name: name ?? undefined,
-    })
-    if (rpcError) {
-      setFormError(rpcError.message)
+    if (res.alreadyMember) {
+      // They already have an account in this team; sign in with their own password.
+      navigate('/login', { replace: true })
       return
     }
 
+    // Sign in with the password they just set to establish the session.
+    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password: values.password })
+    if (signInErr) {
+      setFormError(signInErr.message)
+      return
+    }
     await refreshProfile()
     navigate('/app/dashboard', { replace: true })
   }
