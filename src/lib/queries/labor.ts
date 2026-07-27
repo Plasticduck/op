@@ -15,6 +15,15 @@ export type LaborDay = {
   cars_per_hour: number | null
 }
 
+export type WeatherDay = {
+  date: string
+  precip_in: number | null
+  conditions: string | null
+  temp_max: number | null
+  temp_min: number | null
+  weather_code: number | null
+}
+
 // Fallback used when an account has no configured tiers (matches the sample).
 export const DEFAULT_TIERS: BenchmarkTier[] = [
   { min_cars: 0, max_cars: 250, max_hours: 42 },
@@ -76,6 +85,22 @@ export const labor = {
   clearSiteOverride: (accountId: string, locationId: string) =>
     supabase.from('labor_benchmark_tiers').delete().eq('account_id', accountId).eq('location_id', locationId),
 
+  // Recent + forecast weather for one site (by Operator location id), oldest first.
+  weather: async (locationId: string, sinceISO: string): Promise<WeatherDay[]> => {
+    const { data } = await supabase
+      .from('weather_days')
+      .select('date, precip_in, conditions, temp_max, temp_min, weather_code')
+      .eq('location_id', locationId)
+      .gte('date', sinceISO)
+      .order('date', { ascending: true })
+    return ((data as WeatherDay[] | null) ?? []).map((w) => ({
+      ...w,
+      precip_in: w.precip_in == null ? null : Number(w.precip_in),
+      temp_max: w.temp_max == null ? null : Number(w.temp_max),
+      temp_min: w.temp_min == null ? null : Number(w.temp_min),
+    }))
+  },
+
   // Recent daily actuals for one site (by site number), oldest first.
   days: async (siteNumber: number, sinceISO: string): Promise<LaborDay[]> => {
     const { data } = await supabase
@@ -97,11 +122,53 @@ export const labor = {
   },
 }
 
-// Forecast tomorrow's cars from history: average the same weekday over the most
-// recent occurrences (up to 4), falling back to the latest day with cars.
-export function forecastCars(days: LaborDay[], targetWeekday: number): number {
+export type WeatherForecast = {
+  cars: number // weather-adjusted forecast
+  baseline: number // same-weekday (dry) baseline before weather adjustment
+  factor: number // wet-day multiplier applied (1 when dry / insufficient history)
+  wet: boolean // is tomorrow forecast to be wet?
+  weather: WeatherDay | null // tomorrow's forecast weather
+}
+
+const WET_THRESHOLD_IN = 0.1
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Forecast tomorrow's cars: a same-weekday (dry-day) baseline, adjusted by a
+// wet-day multiplier learned from this site's own rain-vs-dry history when
+// tomorrow's forecast is wet.
+export function weatherForecast(days: LaborDay[], weather: Map<string, WeatherDay>, tomorrow: Date): WeatherForecast {
   const withCars = days.filter((d) => d.cars > 0)
-  const sameDow = withCars.filter((d) => new Date(d.date + 'T12:00:00').getDay() === targetWeekday).slice(-4)
-  if (sameDow.length) return Math.round(sameDow.reduce((s, d) => s + d.cars, 0) / sameDow.length)
-  return withCars.length ? withCars[withCars.length - 1].cars : 0
+  const dow = tomorrow.getDay()
+  const isWet = (date: string) => {
+    const w = weather.get(date)
+    return w?.precip_in != null && w.precip_in >= WET_THRESHOLD_IN
+  }
+
+  // Baseline: recent same-weekday days, preferring dry ones (so the wet factor
+  // isn't double-counted).
+  const sameDow = withCars.filter((d) => new Date(d.date + 'T12:00:00').getDay() === dow)
+  const dryDow = sameDow.filter((d) => !isWet(d.date))
+  const baseSet = (dryDow.length ? dryDow : sameDow).slice(-6)
+  const baseline = baseSet.length
+    ? Math.round(baseSet.reduce((s, d) => s + d.cars, 0) / baseSet.length)
+    : withCars.length
+      ? withCars[withCars.length - 1].cars
+      : 0
+
+  // Wet multiplier from all days with weather, clamped to a sane range.
+  const wetDays = withCars.filter((d) => isWet(d.date))
+  const dryDays = withCars.filter((d) => !isWet(d.date))
+  let factor = 1
+  if (wetDays.length >= 3 && dryDays.length >= 3) {
+    const mw = wetDays.reduce((s, d) => s + d.cars, 0) / wetDays.length
+    const md = dryDays.reduce((s, d) => s + d.cars, 0) / dryDays.length
+    if (md > 0) factor = Math.min(1.3, Math.max(0.4, mw / md))
+  }
+
+  const wx = weather.get(ymd(tomorrow)) ?? null
+  const wet = wx?.precip_in != null && wx.precip_in >= WET_THRESHOLD_IN
+  const cars = Math.round(baseline * (wet ? factor : 1))
+  return { cars, baseline, factor, wet, weather: wx }
 }

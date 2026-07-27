@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
-import { Car, Clock, Users, BarChart3, CheckCircle2, AlertTriangle, XCircle, Pencil, Lightbulb, Trophy } from 'lucide-react'
+import { Car, Clock, Users, BarChart3, CheckCircle2, AlertTriangle, XCircle, Pencil, Lightbulb, Trophy, CloudRain, Sun } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { siteNumber } from '@/lib/queries/sitePerformance'
-import { labor, benchmarkFor, forecastCars, type BenchmarkTier, type LaborDay } from '@/lib/queries/labor'
+import { labor, benchmarkFor, weatherForecast, type BenchmarkTier, type LaborDay, type WeatherDay } from '@/lib/queries/labor'
 
 // Guardrails and the sample schedule breakdown are static (per the mockup). The
 // schedule snapshot is sample data until the Schedule is populated with matching
@@ -57,11 +57,13 @@ export default function LaborDashboardPage() {
   const { profile } = useAuth()
   const { activeLocation } = useLocations()
   const [days, setDays] = useState<LaborDay[]>([])
+  const [weather, setWeather] = useState<WeatherDay[]>([])
   const [tiers, setTiers] = useState<BenchmarkTier[]>([])
   const [isSiteOverride, setIsSiteOverride] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
 
+  const activeId = activeLocation?.id ?? null
   const sn = activeLocation ? siteNumber(activeLocation.name) : null
   const canEdit = profile?.role === 'owner' || profile?.role === 'manager'
 
@@ -69,15 +71,17 @@ export default function LaborDashboardPage() {
     if (!profile) return
     setLoading(true)
     const since = format(new Date(Date.now() - 60 * 86400000), 'yyyy-MM-dd')
-    const [d, t] = await Promise.all([
+    const [d, w, t] = await Promise.all([
       sn != null ? labor.days(sn, since) : Promise.resolve([] as LaborDay[]),
-      labor.tiersForSite(profile.account_id, activeLocation?.id ?? null),
+      activeId ? labor.weather(activeId, since) : Promise.resolve([] as WeatherDay[]),
+      labor.tiersForSite(profile.account_id, activeId),
     ])
     setDays(d)
+    setWeather(w)
     setTiers(t.tiers)
     setIsSiteOverride(t.isSiteOverride)
     setLoading(false)
-  }, [profile, sn, activeLocation?.id])
+  }, [profile, sn, activeId])
 
   useEffect(() => {
     void load()
@@ -85,7 +89,9 @@ export default function LaborDashboardPage() {
 
   const m = useMemo<Metrics>(() => {
     const tomorrow = new Date(Date.now() + 86400000)
-    const forecast = forecastCars(days, tomorrow.getDay())
+    const weatherMap = new Map(weather.map((w) => [w.date, w]))
+    const fc = weatherForecast(days, weatherMap, tomorrow)
+    const forecast = fc.cars
     const earnedMax = benchmarkFor(tiers, forecast)
     // Scheduled is sample/placeholder until the Schedule is wired: target a hair
     // under the benchmark so the plan reads as "at or below."
@@ -107,6 +113,7 @@ export default function LaborDashboardPage() {
 
     return {
       tomorrow, forecast, earnedMax, scheduled, variance, status, last7, mtd,
+      weather: fc.weather, weatherWet: fc.wet, weatherFactor: fc.factor, baselineForecast: fc.baseline,
       totCars, totHours, totSales, totLabor, totEarned,
       belowBenchmark: totEarned - totHours,
       avgHours: mtd.length ? totHours / mtd.length : 0,
@@ -114,7 +121,7 @@ export default function LaborDashboardPage() {
       laborPct: totSales ? (totLabor / totSales) * 100 : mtd.length ? mtd.reduce((s, d) => s + (d.labor_pct ?? 0), 0) / mtd.length : 0,
       revPerHour: totHours ? totSales / totHours : 0,
     }
-  }, [days, tiers])
+  }, [days, weather, tiers])
 
   if (loading) return <p className="text-sm text-ink-muted">Loading labor dashboard…</p>
 
@@ -185,6 +192,7 @@ function Panel({ title, children, className }: { title: string; children: React.
 
 type Metrics = {
   tomorrow: Date; forecast: number; earnedMax: number; scheduled: number; variance: number; status: Status
+  weather: WeatherDay | null; weatherWet: boolean; weatherFactor: number; baselineForecast: number
   last7: LaborDay[]; mtd: LaborDay[]; totCars: number; totHours: number; totSales: number; totLabor: number; totEarned: number
   belowBenchmark: number; avgHours: number; carsPerHour: number; laborPct: number; revPerHour: number
 }
@@ -215,6 +223,21 @@ function PlanPanel({ m }: { m: Metrics }) {
   return (
     <Panel title="Tomorrow's Plan">
       <PlanRow icon={Car} label="Forecast Cars" value={nf(m.forecast)} />
+      {m.weather && (
+        <div className="-mt-1 flex items-center gap-2 rounded-md border border-border bg-content px-3 py-1.5 text-xs text-ink-muted">
+          {m.weatherWet ? <CloudRain className="size-3.5 text-accent" /> : <Sun className="size-3.5 text-warn" />}
+          <span>
+            {m.weather.conditions ?? 'Forecast'}
+            {m.weather.temp_max != null ? `, ${Math.round(m.weather.temp_max)}°` : ''}
+            {m.weather.precip_in != null && m.weather.precip_in > 0 ? `, ${m.weather.precip_in.toFixed(2)} in rain` : ''}
+          </span>
+          {m.weatherWet && m.weatherFactor !== 1 && (
+            <span className="ml-auto font-semibold text-accent">
+              {m.weatherFactor < 1 ? '▼' : '▲'} {Math.abs(Math.round((1 - m.weatherFactor) * 100))}% vs {nf(m.baselineForecast)} dry
+            </span>
+          )}
+        </div>
+      )}
       <PlanRow icon={Clock} label="Earned Labor Hours" sub="Benchmark maximum" value={<span>up to {nf(m.earnedMax)}</span>} valueClass="text-ok" />
       <PlanRow icon={Users} label="Currently Scheduled" value={nf(m.scheduled)} />
       <PlanRow icon={BarChart3} label="Schedule Variance" sub="vs benchmark maximum" value={<span>{nf(Math.abs(m.variance))} {under ? 'under' : 'over'} {under ? '↓' : '↑'}</span>} valueClass={under ? 'text-ok' : 'text-danger'} />
