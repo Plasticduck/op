@@ -61,7 +61,7 @@ export function ReportingDetailsTab({ range }: { range: DateRange }) {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="rounded-md border border-border p-3">
             <div className="mb-2 text-sm font-semibold text-ink">Completed with Inspection Check</div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <StatTile value={pass} label="Pass" tone="ok" />
               <StatTile value={flag} label="Flag" tone="warn" />
               <StatTile value={fail} label="Fail" tone="danger" />

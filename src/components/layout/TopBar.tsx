@@ -79,12 +79,12 @@ export function TopBar() {
             <button
               type="button"
               onClick={() => setLocOpen((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-ink-muted hover:text-ink"
+              className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-ink-muted hover:text-ink"
             >
-              <span className="font-medium text-ink">
+              <span className="max-w-[40vw] truncate font-medium text-ink">
                 {activeLocation?.name ?? 'Select location'}
               </span>
-              <ChevronDown className="size-3.5" />
+              <ChevronDown className="size-3.5 shrink-0" />
             </button>
             {locOpen && (
               <div className="absolute right-0 mt-1 max-h-[70vh] w-52 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg">

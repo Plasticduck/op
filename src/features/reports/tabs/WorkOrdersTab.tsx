@@ -105,7 +105,7 @@ export function WorkOrdersTab({ range }: { range: DateRange }) {
 
         {/* Status */}
         <Card title="Status">
-          <div className="mb-3 grid grid-cols-5 gap-1.5">
+          <div className="mb-3 grid grid-cols-3 gap-1.5 sm:grid-cols-5">
             <BigNum value={status.open} label="Open" tone="accent" size="sm" />
             <BigNum value={status.on_hold} label="On Hold" tone="warn" size="sm" />
             <BigNum value={status.in_progress} label="In Progress" tone="accent" size="sm" />

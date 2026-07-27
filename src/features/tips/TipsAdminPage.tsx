@@ -243,7 +243,7 @@ function Inner({ locationId }: { locationId: string }) {
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Stat label="Tip pool" value={`$${(poolCents / 100).toFixed(2)}`} />
           <Stat label="Tips received" value={String(tipCount)} />
           <Stat label="Hours on the clock" value={totalHours.toFixed(1)} />

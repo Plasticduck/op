@@ -23,14 +23,14 @@ export function SettingsLayout() {
         </p>
       </div>
 
-      <nav className="flex gap-1 border-b border-border">
+      <nav className="flex gap-1 overflow-x-auto border-b border-border">
         {visibleTabs.map((t) => (
           <NavLink
             key={t.to}
             to={t.to}
             className={({ isActive }) =>
               cn(
-                '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition',
+                '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition',
                 isActive
                   ? 'border-accent text-ink'
                   : 'border-transparent text-ink-muted hover:text-ink',

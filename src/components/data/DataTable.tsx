@@ -59,7 +59,7 @@ export function DataTable<TData>({
   return (
     <div className={cn('flex flex-col gap-3', className)}>
       <div className="flex items-center justify-between gap-2">
-        <div className="relative w-64">
+        <div className="relative w-full max-w-xs">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-subtle" />
           <Input
             value={globalFilter}
@@ -68,13 +68,13 @@ export function DataTable<TData>({
             className="pl-8"
           />
         </div>
-        <div className="text-xs text-ink-muted">
+        <div className="shrink-0 text-xs text-ink-muted">
           {table.getFilteredRowModel().rows.length} result
           {table.getFilteredRowModel().rows.length === 1 ? '' : 's'}
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-x-auto rounded-md border border-border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-content text-left">
             {table.getHeaderGroups().map((hg) => (

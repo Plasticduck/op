@@ -73,7 +73,7 @@ export default function TipPage() {
             </p>
           </div>
 
-          <div className="mt-6 grid grid-cols-4 gap-2">
+          <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {PRESETS.map((c) => (
               <button
                 key={c}
