@@ -209,6 +209,18 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: 'Finance',
+    roles: ['owner', 'manager', 'technician'],
+    items: [
+      {
+        to: '/app/invoices',
+        label: 'Invoice Approval',
+        icon: Wallet,
+        roles: ['owner', 'manager', 'technician'],
+      },
+    ],
+  },
+  {
     label: 'IT',
     roles: ['owner', 'manager', 'technician'],
     items: [
@@ -288,18 +300,6 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/categories',
         label: 'Maintenance Categories',
         icon: TagsIcon,
-        roles: ['owner', 'manager', 'technician'],
-      },
-    ],
-  },
-  {
-    label: 'Finance',
-    roles: ['owner', 'manager', 'technician'],
-    items: [
-      {
-        to: '/app/invoices',
-        label: 'Invoice Approval',
-        icon: Wallet,
         roles: ['owner', 'manager', 'technician'],
       },
     ],
