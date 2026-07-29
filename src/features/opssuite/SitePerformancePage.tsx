@@ -1269,7 +1269,15 @@ function CustomQuery() {
   useEffect(() => {
     void fetchGuidedQueryOptions()
       .then((o) => {
-        setOptions(o)
+        // The FlexWash sites (17/18) aren't in the SiteWatch options; add them
+        // and list every site in numerical order. Their metric values are merged
+        // in server-side when the query runs.
+        const names = new Set(o.sites.map((s) => s.name))
+        const extra = ['MightyWash 017', 'MightyWash 018']
+          .filter((n) => !names.has(n))
+          .map((name) => ({ name, interior_capable: false }))
+        const sites = [...o.sites, ...extra].sort((a, b) => (siteNumber(a.name) ?? 9999) - (siteNumber(b.name) ?? 9999))
+        setOptions({ ...o, sites })
         setMetric((m) => m || o.metrics[0]?.key || '')
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
