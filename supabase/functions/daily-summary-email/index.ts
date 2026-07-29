@@ -356,12 +356,16 @@ Deno.serve(async (req) => {
     </div>
   </div>`
 
-  const to = body.to || Deno.env.get('SUMMARY_EMAIL_TO') || DEFAULT_TO
+  // body.to overrides for one-off tests; otherwise the scheduled send goes to
+  // the comma-separated SUMMARY_EMAIL_TO list (falling back to the default).
+  const to = body.to
+    ? [body.to]
+    : (Deno.env.get('SUMMARY_EMAIL_TO') || DEFAULT_TO).split(',').map((s) => s.trim()).filter(Boolean)
   const from = Deno.env.get('RESEND_FROM') ?? 'WashLyfe Operator <notifications@washlyfe.com>'
   const resend = new Resend(resendKey)
   try {
     const { error: sendErr } = await resend.emails.send({
-      from, to: [to],
+      from, to,
       subject: `Mighty Wash Daily Summary for ${dateLabel}`,
       html,
     })
