@@ -111,11 +111,12 @@ async function flexMetric(token: string, cw: string, metric: string, start: stri
     }
     case 'revenue': {
       const d = await flexPost(token, '/external/wash-and-revenue-stats/get-temporal-revenue-stats', { ...dr, interval: 'day' })
-      return d ? round2(sumArr(d.revenueStats, (r) => num(r.detailRevenue) + num(r.expressRevenue) + num(r.fullServiceRevenue) + num(r.fleetRevenue) + num(r.membershipRevenue) + num(r.giftCardRevenue) + num(r.washBookRevenue) + num(r.otherRevenue))) : null
+      // FlexWash revenue is in cents.
+      return d ? round2(sumArr(d.revenueStats, (r) => num(r.detailRevenue) + num(r.expressRevenue) + num(r.fullServiceRevenue) + num(r.fleetRevenue) + num(r.membershipRevenue) + num(r.giftCardRevenue) + num(r.washBookRevenue) + num(r.otherRevenue)) / 100) : null
     }
     case 'recharge': {
       const d = await flexPost(token, '/external/wash-and-revenue-stats/get-temporal-revenue-stats', { ...dr, interval: 'day' })
-      return d ? round2(sumArr(d.revenueStats, (r) => num(r.membershipRevenue))) : null
+      return d ? round2(sumArr(d.revenueStats, (r) => num(r.membershipRevenue)) / 100) : null
     }
     case 'plans_total':
     case 'plans_mighty':
@@ -154,7 +155,8 @@ async function flexDaily(token: string, cw: string, start: string, end: string):
   }
   for (const r of rev?.revenueStats ?? []) {
     const d = day(r.iso8601)
-    const sales = round2(num(r.detailRevenue) + num(r.expressRevenue) + num(r.fullServiceRevenue) + num(r.fleetRevenue) + num(r.membershipRevenue) + num(r.giftCardRevenue) + num(r.washBookRevenue) + num(r.otherRevenue))
+    // FlexWash revenue is in cents.
+    const sales = round2((num(r.detailRevenue) + num(r.expressRevenue) + num(r.fullServiceRevenue) + num(r.fleetRevenue) + num(r.membershipRevenue) + num(r.giftCardRevenue) + num(r.washBookRevenue) + num(r.otherRevenue)) / 100)
     m.set(d, { cars: m.get(d)?.cars ?? 0, sales })
   }
   return m
@@ -192,7 +194,10 @@ async function augmentReport(report: any, svc: any) {
       const fx = flexMap.get(row.date)
       if (!fx) continue
       row.cars = fx.cars
-      if (fx.sales > 0) row.sales = fx.sales
+      // FlexWash is authoritative for a converted site: never let a stale
+      // SiteWatch sales figure survive on a FlexWash-owned date, even when
+      // FlexWash reports 0 (e.g. an in-progress current day).
+      row.sales = fx.sales
       row.cars_per_hour = row.hours > 0 ? round2(fx.cars / row.hours) : null
       row.labor_pct = row.sales > 0 ? round2((row.labor_cost / row.sales) * 100) : null
     }

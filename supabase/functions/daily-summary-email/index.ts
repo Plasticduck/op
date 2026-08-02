@@ -78,6 +78,24 @@ function mapAvg(m: Map<string, number>): number | null {
   return s / m.size
 }
 
+// Company churn = average of voluntary and credit-card churn across sites,
+// skipping any site whose combined churn is 0. A 0% reading is almost always a
+// missing/failed data point, not a real value, and would otherwise deflate the
+// average. Both halves are averaged over the same set of valid sites.
+function churnAverages(vol: Map<string, number>, cc: Map<string, number>): { vol: number | null; cc: number | null } {
+  const keys = new Set<string>([...vol.keys(), ...cc.keys()])
+  let sv = 0, sc = 0, n = 0
+  for (const k of keys) {
+    const v = vol.get(k) ?? 0
+    const c = cc.get(k) ?? 0
+    if (v + c <= 0) continue
+    sv += v
+    sc += c
+    n++
+  }
+  return n === 0 ? { vol: null, cc: null } : { vol: sv / n, cc: sc / n }
+}
+
 // The FlexWash sites (17, 18) aren't in the SiteWatch dashboard, so their churn
 // and new-membership numbers come from FlexWash instead. We call FlexWash
 // DIRECTLY (a function-to-function call through the flexwash proxy silently
@@ -247,10 +265,11 @@ Deno.serve(async (req) => {
         }
       } catch { /* FlexWash is best-effort */ }
 
+      const chAvg = churnAverages(churnVolBySite, churnCcBySite)
       dash = {
         yoyCars: gqTotal(carsLy), yoyRevenue: gqTotal(revLy), yoyRecharge: gqTotal(rechLy),
         plansTotal, plansMighty, plansSuper, plansWonder,
-        conversion: mapAvg(convBySite), churnVol: mapAvg(churnVolBySite), churnCc: mapAvg(churnCcBySite),
+        conversion: mapAvg(convBySite), churnVol: chAvg.vol, churnCc: chAvg.cc,
         convBySite, churnVolBySite, churnCcBySite, carsLyBySite,
       }
     } catch { dash = null }
@@ -276,7 +295,10 @@ Deno.serve(async (req) => {
   const combinedChurn = (cn: string) => {
     const v = dash?.churnVolBySite.get(cn)
     const c = dash?.churnCcBySite.get(cn)
-    return v == null && c == null ? 'n/a' : ((v ?? 0) + (c ?? 0)).toFixed(1) + '%'
+    if (v == null && c == null) return 'n/a'
+    const total = (v ?? 0) + (c ?? 0)
+    // A 0% reading is treated as missing, not a real value.
+    return total > 0 ? total.toFixed(1) + '%' : 'n/a'
   }
   const siteRows = [...sites].sort((a, b) => a.n - b.n).map((s) => {
     const cn = siteName(s.n)
@@ -292,6 +314,15 @@ Deno.serve(async (req) => {
     </tr>`
   }).join('')
 
+  // Churn coverage: the headline churn is an average across only the sites that
+  // reported a churn figure. When most sites are missing (dashboard outage), that
+  // average is unrepresentative, so flag it near the churn card.
+  const churnCovered = sites.filter((s) => combinedChurn(siteName(s.n)) !== 'n/a').length
+  const churnSparse = sites.length > 0 && churnCovered * 2 < sites.length
+  const churnNote = churnSparse
+    ? `<div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin:6px 8px 0;">Churn data is currently unavailable for most sites (${churnCovered} of ${sites.length} reporting). The average above reflects only the sites with data and may not represent the company.</div>`
+    : ''
+
   // Preferred: daily membership metrics from the live dashboard. Falls back to
   // the monthly GM-bonus figures only if the dashboard was unreachable.
   const memBlock = (dash && dash.plansTotal != null) ? `
@@ -303,6 +334,7 @@ Deno.serve(async (req) => {
         ${kpi('Churn', dash.churnVol != null || dash.churnCc != null ? ((dash.churnVol ?? 0) + (dash.churnCc ?? 0)).toFixed(1) + '%' : 'n/a', `voluntary ${dash.churnVol != null ? dash.churnVol.toFixed(1) : 'n/a'}% + credit-card ${dash.churnCc != null ? dash.churnCc.toFixed(1) : 'n/a'}%, trailing month`)}
       </tr>
     </table>
+    ${churnNote}
   ` : (mem ? `
     <h3 style="font-size:14px;color:#0f172a;margin:22px 0 8px;">Membership for ${new Date(mem.period + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (latest monthly)</h3>
     <table role="presentation" width="100%" style="border-collapse:collapse;">
