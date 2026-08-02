@@ -84,7 +84,7 @@ function mapAvg(m: Map<string, number>): number | null {
 // fails — sync-flexwash hit the same). Token is cached in service_tokens (24h).
 // carWashId 352 = MW17, 350 = MW18.
 const FLEX_BASE = 'https://api.flexwash.com'
-const FLEX_SITES = [{ n: 17, cw: '352' }, { n: 18, cw: '350' }]
+const FLEX_SITES = [{ n: 17, cw: '352' }, { n: 18, cw: '350' }, { n: 29, cw: '423' }]
 // deno-lint-ignore no-explicit-any
 async function flexToken(svc: any): Promise<string | null> {
   const { data: cached } = await svc.from('service_tokens').select('token, expires_at').eq('provider', 'flexwash').maybeSingle()

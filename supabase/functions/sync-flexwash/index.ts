@@ -79,7 +79,7 @@ async function getToken(svc: any, clientId: string, clientSecret: string): Promi
   return j.accessToken as string
 }
 
-type FlexSite = { site_number: number; car_wash_id: string; name: string | null; account_id: string }
+type FlexSite = { site_number: number; car_wash_id: string; name: string | null; account_id: string; start_date: string | null }
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
 
   const { data: sites } = await svc
     .from('flexwash_sites')
-    .select('site_number, car_wash_id, name, account_id')
+    .select('site_number, car_wash_id, name, account_id, start_date')
     .eq('active', true)
   const list = (sites ?? []) as FlexSite[]
 
@@ -162,6 +162,8 @@ Deno.serve(async (req) => {
       const dates = new Set<string>([...washByDate.keys(), ...revByDate.keys()])
       const rows: Record<string, unknown>[] = []
       for (const d of dates) {
+        // Don't write before this site's FlexWash cutover (protects SiteWatch history).
+        if (s.start_date && d < s.start_date) continue
         const w = washByDate.get(d)
         const r = revByDate.get(d)
         const cars = w
