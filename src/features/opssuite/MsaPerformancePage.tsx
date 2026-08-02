@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { RefreshCw, TriangleAlert } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
 import { fetchMsaReport, siteNumber, type MsaReport, type MsaRow } from '@/lib/queries/sitePerformance'
 
@@ -100,6 +101,7 @@ export default function MsaPerformancePage() {
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>('today')
+  const [site, setSite] = useState<string>('all')
 
   useEffect(() => {
     let active = true
@@ -128,11 +130,28 @@ export default function MsaPerformancePage() {
   const washKey = period === 'today' ? 'today_eligible_washes' : 'mtd_eligible_washes'
   const salesKey = period === 'today' ? 'today_sales' : 'mtd_sales'
 
+  // Every site that appears in the report (Dalhart dropped), in numerical order,
+  // for the "by site" dropdown.
+  const siteOptions = useMemo(() => {
+    const seen = new Set<string>()
+    for (const r of report?.rows ?? []) {
+      if (regionForSite(r.site) !== null) seen.add(r.site)
+    }
+    return [...seen].sort((a, b) => (siteNumber(a) ?? 1e9) - (siteNumber(b) ?? 1e9))
+  }, [report])
+
+  // Reset a stale site selection if the report no longer carries it.
+  useEffect(() => {
+    if (site !== 'all' && !siteOptions.includes(site)) setSite('all')
+  }, [site, siteOptions])
+
   // Group the roster into the dashboard's regions (Dalhart dropped), each sorted
-  // by conversion % for the selected period.
+  // by conversion % for the selected period. When a single site is chosen, only
+  // that site's region and rows are kept.
   const groups = useMemo(() => {
     const buckets = new Map<string, MsaRow[]>()
     for (const r of report?.rows ?? []) {
+      if (site !== 'all' && r.site !== site) continue
       const region = regionForSite(r.site)
       if (region === null) continue
       const list = buckets.get(region) ?? []
@@ -146,7 +165,7 @@ export default function MsaPerformancePage() {
         .slice()
         .sort((a, b) => ((b[convKey] as number | null) ?? -1) - ((a[convKey] as number | null) ?? -1)),
     }))
-  }, [report, convKey])
+  }, [report, convKey, site])
 
   return (
     <div className="flex flex-col gap-5">
@@ -162,9 +181,23 @@ export default function MsaPerformancePage() {
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-ink-subtle">Live, updates every 60s</p>
+        <div className="flex items-center gap-2">
+          <label htmlFor="msa-site" className="text-xs font-medium text-ink-muted">Site</label>
+          <Select
+            id="msa-site"
+            value={site}
+            onChange={(e) => setSite(e.target.value)}
+            className="h-9 w-48"
+          >
+            <option value="all">All sites</option>
+            {siteOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </Select>
+        </div>
         <Seg value={period} onChange={setPeriod} />
       </div>
+      <p className="-mt-2 text-xs text-ink-subtle">Live, updates every 60s</p>
 
       {error && !report && (
         <div className="flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
