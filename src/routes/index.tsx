@@ -112,6 +112,7 @@ const SiteViolationsPage = lz(() => import('@/features/opssuite/SiteViolationsPa
 const SignagePage = lz(() => import('@/features/opssuite/SignagePage'))
 const SalesReportsPage = lz(() => import('@/features/opssuite/SalesReportsPage'))
 const SitePerformancePage = lz(() => import('@/features/opssuite/SitePerformancePage'))
+const MsaPerformancePage = lz(() => import('@/features/opssuite/MsaPerformancePage'))
 const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
@@ -223,6 +224,7 @@ export const router = createBrowserRouter([
           { path: 'signage', element: emp(<SignagePage />) },
           { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
+          { path: 'msa-performance', element: mgr(<MsaPerformancePage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },

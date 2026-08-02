@@ -16,6 +16,7 @@ import {
   GraduationCap,
   LifeBuoy,
   Users,
+  UserCheck,
   ClipboardList,
   Inbox,
   Sparkles,
@@ -118,6 +119,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/site-performance',
         label: 'Site Performance',
         icon: Activity,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/msa-performance',
+        label: 'MSA Performance',
+        icon: UserCheck,
         roles: ['owner', 'manager'],
       },
       {

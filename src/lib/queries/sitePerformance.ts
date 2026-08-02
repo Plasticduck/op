@@ -215,6 +215,12 @@ export async function runCustomSql(sql: string): Promise<CustomQueryResult> {
   return (await dashApi('/api/custom_query', 'POST', { sql })) as CustomQueryResult
 }
 
+// Just the By-MSA feed (salesperson conversion), without the ~10 other reports
+// the full feed pulls. Used by the standalone MSA Performance page.
+export async function fetchMsaReport(): Promise<MsaReport> {
+  return (await dashApi('/api/msa_report', 'GET')) as MsaReport
+}
+
 // Earliest and latest archived dates, so the UI can show what history exists.
 export async function fetchSitePerformanceHistoryBounds(): Promise<{ min: string | null; max: string | null }> {
   const [{ data: lo }, { data: hi }] = await Promise.all([
