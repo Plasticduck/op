@@ -139,6 +139,66 @@ async function flexMetric(token: string, cw: string, metric: string, start: stri
   }
 }
 
+// Daily FlexWash cars + gross sales for a car wash, keyed by YYYY-MM-DD.
+async function flexDaily(token: string, cw: string, start: string, end: string): Promise<Map<string, { cars: number; sales: number }>> {
+  const [wash, rev] = await Promise.all([
+    flexPost(token, '/external/wash-and-revenue-stats/get-temporal-wash-stats', { carWashIds: [cw], interval: 'day', dateRange: { start, end } }),
+    flexPost(token, '/external/wash-and-revenue-stats/get-temporal-revenue-stats', { carWashIds: [cw], interval: 'day', dateRange: { start, end } }),
+  ])
+  const m = new Map<string, { cars: number; sales: number }>()
+  const day = (iso: string) => String(iso).slice(0, 10)
+  for (const w of wash?.washStats ?? []) {
+    const d = day(w.iso8601)
+    const cars = num(w.singleWashCount) + num(w.memberWashCount) + num(w.expressWashCount) + num(w.fleetWashCount) + num(w.detailWashCount) + num(w.fullServiceWashCount)
+    m.set(d, { cars, sales: m.get(d)?.sales ?? 0 })
+  }
+  for (const r of rev?.revenueStats ?? []) {
+    const d = day(r.iso8601)
+    const sales = round2(num(r.detailRevenue) + num(r.expressRevenue) + num(r.fullServiceRevenue) + num(r.fleetRevenue) + num(r.membershipRevenue) + num(r.giftCardRevenue) + num(r.washBookRevenue) + num(r.otherRevenue))
+    m.set(d, { cars: m.get(d)?.cars ?? 0, sales })
+  }
+  return m
+}
+
+// Overlay FlexWash cars + sales onto the live By-Site report for the FlexWash
+// sites (SiteWatch's feed shows 0 cars for them). Respects each site's cutover
+// (start_date) so pre-conversion SiteWatch days are left intact. Keeps the
+// SiteWatch hours/labor (FlexWash has none) and recomputes the ratios.
+// deno-lint-ignore no-explicit-any
+async function augmentReport(report: any, svc: any) {
+  if (!report?.sites) return
+  const { data: sites } = await svc
+    .from('flexwash_sites')
+    .select('site_number, car_wash_id, name, start_date')
+    .eq('account_id', MW_ACCOUNT)
+    .eq('active', true)
+  if (!sites?.length) return
+  const token = await flexToken(svc)
+  if (!token) return
+  const allDates: string[] = []
+  for (const arr of Object.values(report.sites)) for (const d of arr as { date: string }[]) allDates.push(d.date)
+  if (!allDates.length) return
+  const start = allDates.reduce((a, b) => (a < b ? a : b))
+  const end = (report.end_date as string) ?? allDates.reduce((a, b) => (a > b ? a : b))
+
+  await Promise.all((sites as { site_number: number; car_wash_id: string; name: string | null; start_date: string | null }[]).map(async (fs) => {
+    const name = fs.name ?? `MightyWash ${String(fs.site_number).padStart(3, '0')}`
+    const days = report.sites[name] as { date: string; cars: number; hours: number; sales: number; labor_cost: number; cars_per_hour: number | null; labor_pct: number | null }[] | undefined
+    if (!days) return
+    const from = fs.start_date && fs.start_date > start ? fs.start_date : start
+    const flexMap = await flexDaily(token, fs.car_wash_id, from, end)
+    for (const row of days) {
+      if (fs.start_date && row.date < fs.start_date) continue
+      const fx = flexMap.get(row.date)
+      if (!fx) continue
+      row.cars = fx.cars
+      if (fx.sales > 0) row.sales = fx.sales
+      row.cars_per_hour = row.hours > 0 ? round2(fx.cars / row.hours) : null
+      row.labor_pct = row.sales > 0 ? round2((row.labor_cost / row.sales) * 100) : null
+    }
+  }))
+}
+
 // deno-lint-ignore no-explicit-any
 function augmentGuidedOptions(data: any) {
   if (!Array.isArray(data?.sites)) return
@@ -302,6 +362,11 @@ Deno.serve(async (req) => {
 
   const payload: Record<string, unknown> = { fetched_at: new Date().toISOString() }
   for (const [key, value] of entries) payload[key] = value
+
+  // Merge FlexWash cars/sales into the By-Site report for the FlexWash sites.
+  if (callerAccount === MW_ACCOUNT) {
+    try { await augmentReport(payload.report, svc) } catch { /* best-effort */ }
+  }
 
   return json(payload, 200, origin)
 })
