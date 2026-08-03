@@ -331,7 +331,7 @@ Deno.serve(async (req) => {
       <tr>
         ${kpi('Plans sold', nf(dash.plansTotal), `Mighty ${nf(dash.plansMighty ?? 0)} · Super ${nf(dash.plansSuper ?? 0)} · Wonder ${nf(dash.plansWonder ?? 0)}`)}
         ${kpi('Conversion', dash.conversion != null ? dash.conversion.toFixed(1) + '%' : 'n/a', 'avg across sites, reporting day')}
-        ${kpi('Churn', dash.churnVol != null || dash.churnCc != null ? ((dash.churnVol ?? 0) + (dash.churnCc ?? 0)).toFixed(1) + '%' : 'n/a', `voluntary ${dash.churnVol != null ? dash.churnVol.toFixed(1) : 'n/a'}% + credit-card ${dash.churnCc != null ? dash.churnCc.toFixed(1) : 'n/a'}%, trailing month`)}
+        ${kpi('Monthly Churn', dash.churnVol != null || dash.churnCc != null ? ((dash.churnVol ?? 0) + (dash.churnCc ?? 0)).toFixed(1) + '%' : 'n/a', `voluntary ${dash.churnVol != null ? dash.churnVol.toFixed(1) : 'n/a'}% + credit-card ${dash.churnCc != null ? dash.churnCc.toFixed(1) : 'n/a'}%, trailing month`)}
       </tr>
     </table>
     ${churnNote}
@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
     <table role="presentation" width="100%" style="border-collapse:collapse;">
       <tr>
         ${kpi('Total members', nf(memTotal(mem)), memPrev ? `${delta(memTotal(mem), memTotal(memPrev))} vs last month` : '')}
-        ${kpi('Churn', mem.churn.toFixed(2) + '%', memPrev ? `${deltaPts(mem.churn, memPrev.churn, false)} vs last month` : '')}
+        ${kpi('Monthly Churn', mem.churn.toFixed(2) + '%', memPrev ? `${deltaPts(mem.churn, memPrev.churn, false)} vs last month` : '')}
         ${kpi('Conversion', mem.conversion.toFixed(2) + '%', memPrev ? `${deltaPts(mem.conversion, memPrev.conversion, true)} vs last month` : '')}
       </tr>
     </table>
