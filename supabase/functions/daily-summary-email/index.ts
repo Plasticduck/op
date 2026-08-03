@@ -2,7 +2,7 @@
 // Sends the Mighty Wash morning digest (car counts, sales, recharge, membership,
 // churn/conversion) with comparisons to the same weekday last week + the monthly
 // membership trend. Scheduled by pg_cron at 12:40 & 13:40 UTC; the function only
-// actually sends when it is 7:40am Central (guards on the America/Chicago hour),
+// actually sends when it is 7:50am Central (guards on the America/Chicago hour),
 // so it fires exactly once whether Central is on CDT or CST.
 //
 // Body (optional): { force?: true, to?: "override@…" }  — force bypasses the
