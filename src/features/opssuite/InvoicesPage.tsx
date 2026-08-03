@@ -25,7 +25,6 @@ const INVOICE_INBOX_DOMAIN = 'invoices.washlyfe.com'
 
 type InvoiceStatus =
   | 'unassigned'
-  | 'queue'
   | 'assigned'
   | 'approved'
   | 'exported'
@@ -45,7 +44,7 @@ type InvoiceRow = {
 }
 
 const KNOWN_STATUSES = new Set<InvoiceStatus>([
-  'unassigned', 'queue', 'assigned', 'approved', 'exported', 'needs_attention', 'cancelled',
+  'unassigned', 'assigned', 'approved', 'exported', 'needs_attention', 'cancelled',
 ])
 
 // Map an ops_invoices row to the table shape. Emailed-in invoices arrive
@@ -67,7 +66,7 @@ function toRow(r: OpsInvoice, locName: Map<string, string>): InvoiceRow {
 }
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
-  unassigned: 'Unassigned', queue: 'Queue', assigned: 'Assigned', approved: 'Approved',
+  unassigned: 'Unassigned', assigned: 'Assigned', approved: 'Approved',
   exported: 'Exported', needs_attention: 'Needs Attention', cancelled: 'Cancelled',
 }
 
@@ -84,14 +83,8 @@ const TABS: TabDef[] = [
   {
     key: 'unassigned',
     label: 'Unassigned',
-    subtitle: `Invoices emailed to this wash's invoice inbox. Open one, set site(s) and approver(s), and add it to the queue.`,
+    subtitle: `Invoices emailed to this wash's invoice inbox. Open one, set the site, GL code, and approver, and send it straight to them for approval.`,
     empty: 'No emailed-in invoices waiting. Forward vendor invoices to the address above.',
-  },
-  {
-    key: 'queue',
-    label: 'Queue',
-    subtitle: 'Invoices with site(s) and approver(s) set, ready to send for approval.',
-    empty: 'Nothing in the queue yet.',
   },
   {
     key: 'assigned',
@@ -452,7 +445,7 @@ function InvoiceModal({
   const [reason, setReason] = useState('')
 
   const status = (KNOWN_STATUSES.has(invoice.status as InvoiceStatus) ? invoice.status : 'unassigned') as InvoiceStatus
-  const editable = canManage && (status === 'unassigned' || status === 'queue' || status === 'needs_attention')
+  const editable = canManage && (status === 'unassigned' || status === 'needs_attention')
   const approvers = users.filter((u) => u.role === 'owner' || u.role === 'manager')
   const canApprove = status === 'assigned' && (isOwner || invoice.assigned_to === currentUserId)
   // Site + GL code are required, and the approver can correct them while
@@ -553,7 +546,7 @@ function InvoiceModal({
                 <Ban className="size-4" /> Cancel invoice
               </Button>
             )}
-            {editable && (status === 'queue' || status === 'needs_attention') && (
+            {editable && status === 'needs_attention' && (
               <Button variant="ghost" size="sm" disabled={busy} onClick={() => void act(id, { ...fieldPatch(), status: 'unassigned', assigned_to: null, assigned_to_name: null })}>
                 <CornerUpLeft className="size-4" /> Back to unassigned
               </Button>
@@ -571,13 +564,8 @@ function InvoiceModal({
             {canManage && (status === 'unassigned' || status === 'needs_attention') && (
               <Button
                 disabled={busy || missingRequired || !approverId}
-                onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'queue' })}
+                onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'assigned', assigned_at: nowIso() }, { notify: true })}
               >
-                Add to queue
-              </Button>
-            )}
-            {canManage && status === 'queue' && (
-              <Button disabled={busy || missingRequired || !approverId} onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'assigned', assigned_at: nowIso() }, { notify: true })}>
                 <Send className="size-4" /> Send for approval
               </Button>
             )}
