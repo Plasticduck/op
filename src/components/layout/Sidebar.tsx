@@ -140,12 +140,6 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager', 'employee'],
       },
       {
-        to: '/app/supplies',
-        label: 'Supplies',
-        icon: PackageOpen,
-        roles: ['owner', 'manager', 'employee', 'technician'],
-      },
-      {
         to: '/app/tips',
         label: 'Tips',
         icon: Banknote,
@@ -196,12 +190,6 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
-        to: '/app/signage',
-        label: 'Signage',
-        icon: Signpost,
-        roles: ['owner', 'manager', 'employee'],
-      },
-      {
         to: '/app/market-research',
         label: 'Market Research',
         icon: Telescope,
@@ -217,6 +205,30 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/documents',
         label: 'Documents',
         icon: Folders,
+        roles: ['owner', 'manager', 'employee', 'technician'],
+      },
+    ],
+  },
+  {
+    label: 'Site Essentials',
+    roles: ['owner', 'manager', 'employee', 'technician'],
+    items: [
+      {
+        to: '/app/signage',
+        label: 'Signage',
+        icon: Signpost,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/uniforms',
+        label: 'Uniforms',
+        icon: Shirt,
+        roles: ['owner', 'manager', 'employee'],
+      },
+      {
+        to: '/app/supplies',
+        label: 'Supplies',
+        icon: PackageOpen,
         roles: ['owner', 'manager', 'employee', 'technician'],
       },
     ],
@@ -367,12 +379,6 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Injuries',
         icon: Bandage,
         roles: ['owner', 'manager'],
-      },
-      {
-        to: '/app/uniforms',
-        label: 'Uniforms',
-        icon: Shirt,
-        roles: ['owner', 'manager', 'employee'],
       },
       {
         to: '/app/time-off',
