@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Check, Copy, Mail } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { billing, type Account } from '@/lib/queries/billing'
+import type { CompanySettings } from '@/lib/queries/companySettings'
 import { cn } from '@/lib/utils'
 
 // Each wash (account) gets its own unique inbound address,
@@ -99,9 +100,16 @@ export default function InvoicesPage() {
   useEffect(() => {
     billing.account().then(({ data }) => setAccount((data as Account | null) ?? null))
   }, [])
-  const inboxEmail = account?.invoice_inbox_token
-    ? `${account.invoice_inbox_token}@${INVOICE_INBOX_DOMAIN}`
-    : null
+  // A wash can override the generated inbox with a real mailbox it already
+  // receives at (company_settings.invoiceInboxEmail); otherwise fall back to the
+  // per-account <token>@invoices.washlyfe.com address.
+  const inboxOverride = (account as { company_settings?: CompanySettings | null } | null)
+    ?.company_settings?.invoiceInboxEmail?.trim()
+  const inboxEmail = inboxOverride
+    ? inboxOverride
+    : account?.invoice_inbox_token
+      ? `${account.invoice_inbox_token}@${INVOICE_INBOX_DOMAIN}`
+      : null
 
   const active = TABS.find((t) => t.key === activeKey) ?? TABS[0]
 

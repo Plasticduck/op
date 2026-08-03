@@ -50,6 +50,10 @@ export type CompanySettings = {
   shiftTemplates?: ShiftTemplate[]
   // Tunable weather effect on the Labor Dashboard forecast (rain + temperature).
   laborWeather?: WeatherAdjustConfig
+  // Override for the address vendors email invoices to (Invoice Approval). When
+  // set, it replaces the generated <token>@invoices.washlyfe.com inbox, e.g. a
+  // real mailbox the wash already receives at.
+  invoiceInboxEmail?: string
 }
 
 export type SitePlan = 'single' | 'multi'
