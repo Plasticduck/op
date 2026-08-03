@@ -12,7 +12,7 @@ import { useCompany } from '@/lib/company'
 import { useLocations } from '@/lib/locations'
 import { updateCompany, type CompanySettings } from '@/lib/queries/companySettings'
 import { siteNumber } from '@/lib/queries/sitePerformance'
-import { labor, benchmarkFor, weekForecast, DEFAULT_WEATHER_CONFIG, type BenchmarkTier, type LaborDay, type WeatherDay, type WeatherAdjustConfig, type ScheduleShift } from '@/lib/queries/labor'
+import { labor, benchmarkFor, weekForecast, historicalContext, DEFAULT_WEATHER_CONFIG, type BenchmarkTier, type LaborDay, type WeatherDay, type WeatherAdjustConfig, type ScheduleShift } from '@/lib/queries/labor'
 
 // Guardrails and the sample schedule breakdown are static (per the mockup). The
 // schedule snapshot is sample data until the Schedule is populated with matching
@@ -62,11 +62,13 @@ export default function LaborDashboardPage() {
     if (!profile) return
     setLoading(true)
     const since = format(new Date(Date.now() - 60 * 86400000), 'yyyy-MM-dd')
+    // A full year of daily history so the seasonal/weekday context has samples.
+    const historySince = format(new Date(Date.now() - 400 * 86400000), 'yyyy-MM-dd')
     // The planning week: tomorrow through six days out, matching the forecast.
     const planFrom = format(new Date(Date.now() + 86400000), 'yyyy-MM-dd')
     const planTo = format(new Date(Date.now() + WEEK_DAYS * 86400000), 'yyyy-MM-dd')
     const [d, w, s, t] = await Promise.all([
-      sn != null ? labor.days(sn, since) : Promise.resolve([] as LaborDay[]),
+      sn != null ? labor.days(sn, historySince) : Promise.resolve([] as LaborDay[]),
       activeId ? labor.weather(activeId, since) : Promise.resolve([] as WeatherDay[]),
       activeId ? labor.scheduleShifts(activeId, planFrom, planTo) : Promise.resolve([] as ScheduleShift[]),
       labor.tiersForSite(profile.account_id, activeId),
@@ -175,6 +177,7 @@ export default function LaborDashboardPage() {
             <BenchmarkPanel tiers={tiers} forecast={day.forecast} canEdit={canEdit} isSiteOverride={isSiteOverride} onEdit={() => setEditOpen(true)} />
             <StatusPanel />
           </div>
+          <HistoricalPanel days={days} date={day.date} forecast={day.forecast} />
           <WeeklyPlanPanel week={m.week} selected={idx} onSelect={setSelectedDay} />
           <div className="grid gap-4 lg:grid-cols-3">
             <RollingPanel last7={m.last7} tiers={tiers} />
@@ -468,6 +471,66 @@ function StatusPanel() {
         </ul>
         <p className="mt-2 text-xs font-semibold text-ink-muted">If any guardrail is not met, do not reduce labor below what is needed to maintain the standard.</p>
       </div>
+    </Panel>
+  )
+}
+
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// Seasonal + weekday history: what this site typically washes on the selected
+// weekday in the current season, plus that season's weekly rhythm. Answers
+// "this site typically washes X cars on Tuesdays in the summer."
+function HistoricalPanel({ days, date, forecast }: { days: LaborDay[]; date: string; forecast: number }) {
+  const hist = useMemo(() => historicalContext(days, new Date(date + 'T12:00:00')), [days, date])
+  const weekdayName = format(new Date(date + 'T12:00:00'), 'EEEE')
+  const enough = hist.count >= 2
+  const headline = enough ? hist.typical : hist.weekdayAllTimeAvg
+  const maxAvg = Math.max(...hist.byWeekday.map((w) => w.avg ?? 0), 1)
+  const diffPct = headline && headline > 0 ? Math.round(((forecast - headline) / headline) * 100) : null
+
+  return (
+    <Panel title="Historical Context">
+      {headline == null ? (
+        <p className="py-8 text-center text-sm text-ink-muted">Not enough history yet to establish a typical {weekdayName}. This builds as the site accumulates daily data.</p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col justify-center gap-1">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Typical {weekdayName}s{enough ? ` in ${hist.season}` : ''}</div>
+            <div className="text-3xl font-bold tabular-nums text-ink">{nf(headline)} <span className="text-base font-medium text-ink-muted">cars</span></div>
+            <div className="text-xs text-ink-muted">
+              {enough
+                ? `Average of ${hist.count} ${weekdayName}${hist.count === 1 ? '' : 's'} · range ${nf(hist.min!)}–${nf(hist.max!)} · median ${nf(hist.median!)}`
+                : `Overall ${weekdayName} average. Not enough ${hist.season} history yet for a seasonal figure.`}
+            </div>
+            {diffPct != null && (
+              <div className={`mt-1 inline-flex w-fit items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${diffPct >= 0 ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`}>
+                {weekdayName}'s forecast of {nf(forecast)} is {Math.abs(diffPct)}% {diffPct >= 0 ? 'above' : 'below'} typical
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">{hist.season} weekly rhythm (avg cars/day)</div>
+            <div className="flex flex-col gap-1">
+              {hist.byWeekday.map((w) => {
+                const on = w.dow === hist.weekday
+                const pct = w.avg ? (w.avg / maxAvg) * 100 : 0
+                return (
+                  <div key={w.dow} className="flex items-center gap-2">
+                    <span className={`w-8 text-xs ${on ? 'font-bold text-ink' : 'text-ink-muted'}`}>{DOW_LABELS[w.dow]}</span>
+                    <div className="h-4 flex-1 overflow-hidden rounded bg-content">
+                      <div className={`h-full rounded ${on ? 'bg-accent' : 'bg-border'}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className={`w-12 text-right text-xs tabular-nums ${on ? 'font-bold text-ink' : 'text-ink-muted'}`}>{w.avg != null ? nf(w.avg) : '—'}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-ink-subtle">
+        Based on this site's Site Performance history{hist.earliest ? ` since ${format(new Date(hist.earliest + 'T12:00:00'), 'MMM d, yyyy')}` : ''}. Seasons: Winter (Dec–Feb), Spring (Mar–May), Summer (Jun–Aug), Fall (Sep–Nov).
+      </p>
     </Panel>
   )
 }

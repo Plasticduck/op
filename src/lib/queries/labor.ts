@@ -240,6 +240,63 @@ export function weatherForecast(
   return { cars, baseline, factor, rainPct, tempPct, wet: precip >= WET_THRESHOLD_IN, weather: wx }
 }
 
+// Meteorological season for a month index (0 = January).
+export function seasonOf(month0: number): string {
+  if (month0 === 11 || month0 <= 1) return 'Winter'
+  if (month0 <= 4) return 'Spring'
+  if (month0 <= 7) return 'Summer'
+  return 'Fall'
+}
+
+export type WeekdayStat = { dow: number; avg: number | null; count: number }
+
+// What history says about a given weekday, both in the target date's season and
+// overall, plus the season's per-weekday rhythm. Drives the "this site typically
+// washes X cars on Tuesdays in the summer" context on the labor dashboard.
+export type HistoricalContext = {
+  weekday: number // 0 = Sunday
+  season: string
+  typical: number | null // avg cars for this weekday in this season
+  median: number | null
+  min: number | null
+  max: number | null
+  count: number // sample size (matching days)
+  weekdayAllTimeAvg: number | null // this weekday across every season on record
+  byWeekday: WeekdayStat[] // season average per weekday (0..6)
+  earliest: string | null // first date with data
+}
+
+const dowOfDay = (d: LaborDay) => new Date(d.date + 'T12:00:00').getDay()
+const seasonOfDay = (d: LaborDay) => seasonOf(new Date(d.date + 'T12:00:00').getMonth())
+const mean = (arr: number[]): number | null => (arr.length ? Math.round(arr.reduce((s, x) => s + x, 0) / arr.length) : null)
+
+export function historicalContext(days: LaborDay[], target: Date): HistoricalContext {
+  const withCars = days.filter((d) => d.cars > 0)
+  const weekday = target.getDay()
+  const season = seasonOf(target.getMonth())
+
+  const inSeason = withCars.filter((d) => seasonOfDay(d) === season)
+  const carsMatch = inSeason.filter((d) => dowOfDay(d) === weekday).map((d) => d.cars).sort((a, b) => a - b)
+  const byWeekday: WeekdayStat[] = Array.from({ length: 7 }, (_, dow) => {
+    const arr = inSeason.filter((d) => dowOfDay(d) === dow).map((d) => d.cars)
+    return { dow, avg: mean(arr), count: arr.length }
+  })
+  const allWeekday = withCars.filter((d) => dowOfDay(d) === weekday).map((d) => d.cars)
+
+  return {
+    weekday,
+    season,
+    typical: mean(carsMatch),
+    median: carsMatch.length ? carsMatch[Math.floor(carsMatch.length / 2)] : null,
+    min: carsMatch.length ? carsMatch[0] : null,
+    max: carsMatch.length ? carsMatch[carsMatch.length - 1] : null,
+    count: carsMatch.length,
+    weekdayAllTimeAvg: mean(allWeekday),
+    byWeekday,
+    earliest: withCars.length ? withCars[0].date : null,
+  }
+}
+
 // One planned day: its weather-adjusted forecast plus the date it applies to.
 export type DayForecast = WeatherForecast & { date: string }
 
