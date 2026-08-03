@@ -455,6 +455,10 @@ function InvoiceModal({
   const editable = canManage && (status === 'unassigned' || status === 'queue' || status === 'needs_attention')
   const approvers = users.filter((u) => u.role === 'owner' || u.role === 'manager')
   const canApprove = status === 'assigned' && (isOwner || invoice.assigned_to === currentUserId)
+  // Site + GL code are required, and the approver can correct them while
+  // reviewing (not just the manager during assignment).
+  const siteGlEditable = editable || canApprove
+  const missingRequired = !siteId || !gl.trim()
   const id = invoice.id
 
   const fieldPatch = (): OpsInvoiceUpdate => ({
@@ -488,11 +492,11 @@ function InvoiceModal({
           <Field label="Invoice date">
             <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} disabled={!editable} />
           </Field>
-          <Field label="GL code">
-            <Input value={gl} onChange={(e) => setGl(e.target.value)} disabled={!editable} placeholder="Optional" />
+          <Field label="GL code" required>
+            <Input value={gl} onChange={(e) => setGl(e.target.value)} disabled={!siteGlEditable} placeholder="Required" invalid={siteGlEditable && !gl.trim()} />
           </Field>
-          <Field label="Site">
-            <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} disabled={!editable}>
+          <Field label="Site" required>
+            <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} disabled={!siteGlEditable} invalid={siteGlEditable && !siteId}>
               <option value="">Select a site...</option>
               {[...locName.entries()].map(([lid, name]) => (
                 <option key={lid} value={lid}>{name}</option>
@@ -538,6 +542,10 @@ function InvoiceModal({
           </Field>
         )}
 
+        {siteGlEditable && missingRequired && (
+          <p className="text-xs text-danger">Site and GL code are required before this invoice can move forward.</p>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
           <div className="flex flex-wrap gap-2">
             {canManage && status !== 'exported' && status !== 'cancelled' && (
@@ -555,30 +563,30 @@ function InvoiceModal({
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" disabled={busy} onClick={onClose}>Close</Button>
 
-            {editable && (
-              <Button variant="secondary" disabled={busy} onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId || null, assigned_to_name: approverId ? approverName(approverId) : null }, { keepOpen: true })}>
+            {(editable || canApprove) && (
+              <Button variant="secondary" disabled={busy} onClick={() => void act(id, editable ? { ...fieldPatch(), assigned_to: approverId || null, assigned_to_name: approverId ? approverName(approverId) : null } : { location_id: siteId || null, gl_code: gl.trim() || null }, { keepOpen: true })}>
                 Save
               </Button>
             )}
             {canManage && (status === 'unassigned' || status === 'needs_attention') && (
               <Button
-                disabled={busy || !siteId || !approverId}
+                disabled={busy || missingRequired || !approverId}
                 onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'queue' })}
               >
                 Add to queue
               </Button>
             )}
             {canManage && status === 'queue' && (
-              <Button disabled={busy} onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'assigned', assigned_at: nowIso() }, { notify: true })}>
+              <Button disabled={busy || missingRequired || !approverId} onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'assigned', assigned_at: nowIso() }, { notify: true })}>
                 <Send className="size-4" /> Send for approval
               </Button>
             )}
             {canApprove && (
               <>
-                <Button variant="secondary" className="text-danger" disabled={busy || !reason.trim()} onClick={() => void act(id, { status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
+                <Button variant="secondary" className="text-danger" disabled={busy || !reason.trim()} onClick={() => void act(id, { location_id: siteId || null, gl_code: gl.trim() || null, status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
                   <XCircle className="size-4" /> Send back
                 </Button>
-                <Button disabled={busy} onClick={() => void act(id, { status: 'approved', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null })}>
+                <Button disabled={busy || missingRequired} onClick={() => void act(id, { location_id: siteId || null, gl_code: gl.trim() || null, status: 'approved', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null })}>
                   <CheckCircle2 className="size-4" /> Approve
                 </Button>
               </>
@@ -595,10 +603,12 @@ function InvoiceModal({
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="text-xs font-medium text-ink-muted">{label}</span>
+      <span className="text-xs font-medium text-ink-muted">
+        {label}{required && <span className="text-danger"> *</span>}
+      </span>
       {children}
     </label>
   )
