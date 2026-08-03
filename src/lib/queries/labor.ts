@@ -200,3 +200,23 @@ export function weatherForecast(
   const cars = Math.round(baseline * factor)
   return { cars, baseline, factor, rainPct, tempPct, wet: precip >= WET_THRESHOLD_IN, weather: wx }
 }
+
+// One planned day: its weather-adjusted forecast plus the date it applies to.
+export type DayForecast = WeatherForecast & { date: string }
+
+// Forecast a run of consecutive days (e.g. the coming week). `start` is the
+// first day to plan (typically tomorrow); `count` days are returned in order.
+export function weekForecast(
+  days: LaborDay[],
+  weather: Map<string, WeatherDay>,
+  start: Date,
+  count: number,
+  cfg: WeatherAdjustConfig = DEFAULT_WEATHER_CONFIG,
+): DayForecast[] {
+  const out: DayForecast[] = []
+  for (let i = 0; i < count; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
+    out.push({ ...weatherForecast(days, weather, d, cfg), date: ymd(d) })
+  }
+  return out
+}

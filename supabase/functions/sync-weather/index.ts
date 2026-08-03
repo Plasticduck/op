@@ -67,7 +67,7 @@ async function fetchDays(lat: number, lon: number, past: number) {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum` +
-    `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto&past_days=${past}&forecast_days=3`
+    `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto&past_days=${past}&forecast_days=8`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`open-meteo ${res.status}`)
   const j = (await res.json()) as {

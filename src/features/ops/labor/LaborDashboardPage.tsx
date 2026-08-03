@@ -12,7 +12,7 @@ import { useCompany } from '@/lib/company'
 import { useLocations } from '@/lib/locations'
 import { updateCompany, type CompanySettings } from '@/lib/queries/companySettings'
 import { siteNumber } from '@/lib/queries/sitePerformance'
-import { labor, benchmarkFor, weatherForecast, DEFAULT_WEATHER_CONFIG, type BenchmarkTier, type LaborDay, type WeatherDay, type WeatherAdjustConfig } from '@/lib/queries/labor'
+import { labor, benchmarkFor, weekForecast, DEFAULT_WEATHER_CONFIG, type BenchmarkTier, type LaborDay, type WeatherDay, type WeatherAdjustConfig } from '@/lib/queries/labor'
 
 // Guardrails and the sample schedule breakdown are static (per the mockup). The
 // schedule snapshot is sample data until the Schedule is populated with matching
@@ -55,6 +55,8 @@ function statusFor(variance: number): Status {
   return 'action'
 }
 
+const WEEK_DAYS = 7
+
 export default function LaborDashboardPage() {
   const { profile } = useAuth()
   const { settings, reload: reloadCompany } = useCompany()
@@ -66,6 +68,7 @@ export default function LaborDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
   const [weatherEditOpen, setWeatherEditOpen] = useState(false)
+  const [selectedDay, setSelectedDay] = useState(0)
   const wxConfig = settings.laborWeather ?? DEFAULT_WEATHER_CONFIG
 
   const activeId = activeLocation?.id ?? null
@@ -93,16 +96,19 @@ export default function LaborDashboardPage() {
   }, [load])
 
   const m = useMemo<Metrics>(() => {
-    const tomorrow = new Date(Date.now() + 86400000)
     const weatherMap = new Map(weather.map((w) => [w.date, w]))
-    const fc = weatherForecast(days, weatherMap, tomorrow, wxConfig)
-    const forecast = fc.cars
-    const earnedMax = benchmarkFor(tiers, forecast)
+    const start = new Date(Date.now() + 86400000) // tomorrow, the first day to plan
     // Scheduled is sample/placeholder until the Schedule is wired: target a hair
-    // under the benchmark so the plan reads as "at or below."
-    const scheduled = Math.max(0, earnedMax - 3)
-    const variance = scheduled - earnedMax
-    const status = statusFor(variance)
+    // under each day's benchmark so the plan reads as "at or below."
+    const week: DayPlan[] = weekForecast(days, weatherMap, start, WEEK_DAYS, wxConfig).map((fc) => {
+      const earnedMax = benchmarkFor(tiers, fc.cars)
+      const scheduled = Math.max(0, earnedMax - 3)
+      const variance = scheduled - earnedMax
+      return {
+        date: fc.date, forecast: fc.cars, earnedMax, scheduled, variance, status: statusFor(variance),
+        weather: fc.weather, wet: fc.wet, factor: fc.factor, baseline: fc.baseline, rainPct: fc.rainPct, tempPct: fc.tempPct,
+      }
+    })
 
     const withCars = days.filter((d) => d.cars > 0)
     const last7 = withCars.slice(-7)
@@ -117,8 +123,7 @@ export default function LaborDashboardPage() {
     const totEarned = mtd.reduce((s, d) => s + benchmarkFor(tiers, d.cars), 0)
 
     return {
-      tomorrow, forecast, earnedMax, scheduled, variance, status, last7, mtd,
-      weather: fc.weather, weatherWet: fc.wet, weatherFactor: fc.factor, baselineForecast: fc.baseline, rainPct: fc.rainPct, tempPct: fc.tempPct,
+      week, last7, mtd,
       totCars, totHours, totSales, totLabor, totEarned,
       belowBenchmark: totEarned - totHours,
       avgHours: mtd.length ? totHours / mtd.length : 0,
@@ -130,11 +135,16 @@ export default function LaborDashboardPage() {
 
   if (loading) return <p className="text-sm text-ink-muted">Loading labor dashboard…</p>
 
+  const idx = Math.min(selectedDay, WEEK_DAYS - 1)
+  const day = m.week[idx] ?? m.week[0]
+  const weekStart = m.week[0]?.date
+  const weekEnd = m.week[m.week.length - 1]?.date
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Labor Dashboard"
-        subtitle="Daily labor planning. Plan smart, operate efficiently, earn the hours."
+        subtitle="Weekly labor planning. Plan smart, operate efficiently, earn the hours."
         actions={
           <div className="flex items-center gap-3">
             {canEdit && (
@@ -144,7 +154,11 @@ export default function LaborDashboardPage() {
             )}
             <div className="text-right text-sm">
               <div className="font-semibold text-ink">{activeLocation?.name ?? 'Select a site'}</div>
-              <div className="text-ink-muted">Tomorrow: {format(m.tomorrow, 'EEEE, MMMM d, yyyy')}</div>
+              <div className="text-ink-muted">
+                {weekStart && weekEnd
+                  ? `Week of ${format(new Date(weekStart + 'T12:00:00'), 'MMM d')} – ${format(new Date(weekEnd + 'T12:00:00'), 'MMM d')}`
+                  : ''}
+              </div>
             </div>
           </div>
         }
@@ -158,18 +172,20 @@ export default function LaborDashboardPage() {
         />
       ) : (
         <>
+          <DayPicker week={m.week} selected={idx} onSelect={setSelectedDay} />
           <div className="grid gap-4 lg:grid-cols-3">
-            <PlanPanel m={m} />
-            <BenchmarkPanel tiers={tiers} forecast={m.forecast} canEdit={canEdit} isSiteOverride={isSiteOverride} onEdit={() => setEditOpen(true)} />
+            <PlanPanel day={day} />
+            <BenchmarkPanel tiers={tiers} forecast={day.forecast} canEdit={canEdit} isSiteOverride={isSiteOverride} onEdit={() => setEditOpen(true)} />
             <StatusPanel />
           </div>
+          <WeeklyPlanPanel week={m.week} selected={idx} onSelect={setSelectedDay} />
           <div className="grid gap-4 lg:grid-cols-3">
             <RollingPanel last7={m.last7} tiers={tiers} />
             <MtdPanel m={m} />
-            <SchedulePanel scheduled={m.scheduled} />
+            <SchedulePanel day={day} />
           </div>
           <p className="text-xs text-ink-subtle">
-            Earned labor hours are based on the forecast (same weekday history) and this site's benchmark table. Actuals come from Site Performance. Scheduled hours and the position snapshot are sample data until the Schedule is populated. Adjust throughout the day based on actual traffic.
+            Earned labor hours are based on each day's forecast (same weekday history, adjusted for weather) and this site's benchmark table. Actuals come from Site Performance. Scheduled hours and the position snapshot are sample data until the Schedule is populated. Adjust throughout the day based on actual traffic.
           </p>
         </>
       )}
@@ -212,9 +228,14 @@ function Panel({ title, children, className }: { title: string; children: React.
   )
 }
 
+// One planned day in the coming week.
+type DayPlan = {
+  date: string; forecast: number; earnedMax: number; scheduled: number; variance: number; status: Status
+  weather: WeatherDay | null; wet: boolean; factor: number; baseline: number; rainPct: number; tempPct: number
+}
+
 type Metrics = {
-  tomorrow: Date; forecast: number; earnedMax: number; scheduled: number; variance: number; status: Status
-  weather: WeatherDay | null; weatherWet: boolean; weatherFactor: number; baselineForecast: number; rainPct: number; tempPct: number
+  week: DayPlan[]
   last7: LaborDay[]; mtd: LaborDay[]; totCars: number; totHours: number; totSales: number; totLabor: number; totEarned: number
   belowBenchmark: number; avgHours: number; carsPerHour: number; laborPct: number; revPerHour: number
 }
@@ -238,34 +259,36 @@ const STATUS_META: Record<Status, { tone: 'ok' | 'warn' | 'danger'; label: strin
   action: { tone: 'danger', label: 'Action Required', icon: XCircle, desc: 'Well above the benchmark maximum. Regional review required.' },
 }
 
-function PlanPanel({ m }: { m: Metrics }) {
-  const s = STATUS_META[m.status]
-  const under = m.scheduled <= m.earnedMax
+function PlanPanel({ day }: { day: DayPlan }) {
+  const s = STATUS_META[day.status]
+  const under = day.scheduled <= day.earnedMax
   const toneBg = s.tone === 'ok' ? 'bg-ok-soft text-ok' : s.tone === 'warn' ? 'bg-warn-soft text-warn' : 'bg-danger-soft text-danger'
+  const dt = new Date(day.date + 'T12:00:00')
   return (
-    <Panel title="Tomorrow's Plan">
-      <PlanRow icon={Car} label="Forecast Cars" value={nf(m.forecast)} />
-      {m.weather && (
+    <Panel title={`${format(dt, 'EEEE')}'s Plan`}>
+      <div className="-mt-1 text-center text-xs font-medium text-ink-muted">{format(dt, 'MMMM d, yyyy')}</div>
+      <PlanRow icon={Car} label="Forecast Cars" value={nf(day.forecast)} />
+      {day.weather && (
         <div className="-mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border bg-content px-3 py-1.5 text-xs text-ink-muted">
-          {m.tempPct !== 0 ? <Snowflake className="size-3.5 text-accent" /> : m.weatherWet ? <CloudRain className="size-3.5 text-accent" /> : <Sun className="size-3.5 text-warn" />}
+          {day.tempPct !== 0 ? <Snowflake className="size-3.5 text-accent" /> : day.wet ? <CloudRain className="size-3.5 text-accent" /> : <Sun className="size-3.5 text-warn" />}
           <span>
-            {m.weather.conditions ?? 'Forecast'}
-            {m.weather.temp_max != null ? `, ${Math.round(m.weather.temp_max)}°` : ''}
-            {m.weather.precip_in != null && m.weather.precip_in > 0 ? `, ${m.weather.precip_in.toFixed(2)} in rain` : ''}
+            {day.weather.conditions ?? 'Forecast'}
+            {day.weather.temp_max != null ? `, ${Math.round(day.weather.temp_max)}°` : ''}
+            {day.weather.precip_in != null && day.weather.precip_in > 0 ? `, ${day.weather.precip_in.toFixed(2)} in rain` : ''}
           </span>
-          {m.weatherFactor !== 1 && (
+          {day.factor !== 1 && (
             <span className="ml-auto font-semibold text-accent">
-              {Math.round((m.weatherFactor - 1) * 100)}%
-              {(m.rainPct !== 0 || m.tempPct !== 0) && (
-                <span className="font-normal"> ({[m.rainPct !== 0 ? `rain ${m.rainPct}%` : '', m.tempPct !== 0 ? `cold ${m.tempPct}%` : ''].filter(Boolean).join(', ')}) vs {nf(m.baselineForecast)}</span>
+              {Math.round((day.factor - 1) * 100)}%
+              {(day.rainPct !== 0 || day.tempPct !== 0) && (
+                <span className="font-normal"> ({[day.rainPct !== 0 ? `rain ${day.rainPct}%` : '', day.tempPct !== 0 ? `cold ${day.tempPct}%` : ''].filter(Boolean).join(', ')}) vs {nf(day.baseline)}</span>
               )}
             </span>
           )}
         </div>
       )}
-      <PlanRow icon={Clock} label="Earned Labor Hours" sub="Benchmark maximum" value={<span>up to {nf(m.earnedMax)}</span>} valueClass="text-ok" />
-      <PlanRow icon={Users} label="Currently Scheduled" value={nf(m.scheduled)} />
-      <PlanRow icon={BarChart3} label="Schedule Variance" sub="vs benchmark maximum" value={<span>{nf(Math.abs(m.variance))} {under ? 'under' : 'over'} {under ? '↓' : '↑'}</span>} valueClass={under ? 'text-ok' : 'text-danger'} />
+      <PlanRow icon={Clock} label="Earned Labor Hours" sub="Benchmark maximum" value={<span>up to {nf(day.earnedMax)}</span>} valueClass="text-ok" />
+      <PlanRow icon={Users} label="Currently Scheduled" value={nf(day.scheduled)} />
+      <PlanRow icon={BarChart3} label="Schedule Variance" sub="vs benchmark maximum" value={<span>{nf(Math.abs(day.variance))} {under ? 'under' : 'over'} {under ? '↓' : '↑'}</span>} valueClass={under ? 'text-ok' : 'text-danger'} />
       <div className={`mt-1 flex items-start gap-3 rounded-lg px-4 py-3 ${toneBg}`}>
         <s.icon className="mt-0.5 size-5 shrink-0" />
         <div>
@@ -273,6 +296,97 @@ function PlanPanel({ m }: { m: Metrics }) {
           <p className="mt-1 text-xs opacity-90">{s.desc}</p>
         </div>
       </div>
+    </Panel>
+  )
+}
+
+// Compact day selector for the coming week: each button shows the weekday, date,
+// and that day's weather-adjusted forecast. Drives the detailed panels above.
+function DayPicker({ week, selected, onSelect }: { week: DayPlan[]; selected: number; onSelect: (i: number) => void }) {
+  return (
+    <div className="overflow-x-auto">
+      <div className="flex min-w-max gap-2">
+        {week.map((d, i) => {
+          const on = i === selected
+          const dt = new Date(d.date + 'T12:00:00')
+          return (
+            <button
+              key={d.date}
+              type="button"
+              onClick={() => onSelect(i)}
+              className={`flex min-w-[88px] flex-1 flex-col items-center rounded-lg border px-3 py-2 transition ${on ? 'border-accent bg-accent text-white' : 'border-border bg-card hover:border-accent/50'}`}
+            >
+              <span className={`text-xs font-semibold uppercase ${on ? 'text-white' : 'text-ink-muted'}`}>{format(dt, 'EEE')}</span>
+              <span className={`text-[11px] ${on ? 'text-white/80' : 'text-ink-subtle'}`}>{format(dt, 'M/d')}</span>
+              <span className={`mt-1 text-lg font-bold tabular-nums ${on ? 'text-white' : 'text-ink'}`}>{nf(d.forecast)}</span>
+              <span className={`text-[10px] ${on ? 'text-white/80' : 'text-ink-subtle'}`}>cars</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function StatusBadge({ status }: { status: Status }) {
+  const s = STATUS_META[status]
+  const c = s.tone === 'ok' ? 'bg-ok-soft text-ok' : s.tone === 'warn' ? 'bg-warn-soft text-warn' : 'bg-danger-soft text-danger'
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${c}`}><s.icon className="size-3" /> {s.label}</span>
+}
+
+// Week-at-a-glance table: every upcoming day with its forecast, earned-hours
+// ceiling, planned hours, and status. Rows are clickable to load that day above.
+function WeeklyPlanPanel({ week, selected, onSelect }: { week: DayPlan[]; selected: number; onSelect: (i: number) => void }) {
+  const totForecast = week.reduce((s, d) => s + d.forecast, 0)
+  const totEarned = week.reduce((s, d) => s + d.earnedMax, 0)
+  const totScheduled = week.reduce((s, d) => s + d.scheduled, 0)
+  return (
+    <Panel title="Weekly Plan (Next 7 Days)">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
+            <tr>
+              <th className="px-3 py-2">Day</th>
+              <th className="px-3 py-2">Weather</th>
+              <th className="px-3 py-2 text-right">Forecast cars</th>
+              <th className="px-3 py-2 text-right">Earned hours (max)</th>
+              <th className="px-3 py-2 text-right">Scheduled</th>
+              <th className="px-3 py-2 text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {week.map((d, i) => {
+              const dt = new Date(d.date + 'T12:00:00')
+              const on = i === selected
+              return (
+                <tr key={d.date} onClick={() => onSelect(i)} className={`cursor-pointer border-t border-border ${on ? 'bg-accent-soft' : 'hover:bg-content'}`}>
+                  <td className="px-3 py-2 font-medium text-ink">{format(dt, 'EEE, MMM d')}</td>
+                  <td className="px-3 py-2 text-ink-muted">
+                    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                      {d.tempPct !== 0 ? <Snowflake className="size-3.5 text-accent" /> : d.wet ? <CloudRain className="size-3.5 text-accent" /> : <Sun className="size-3.5 text-warn" />}
+                      {d.weather?.temp_max != null ? `${Math.round(d.weather.temp_max)}°` : '—'}
+                      {d.weather?.precip_in != null && d.weather.precip_in > 0 ? `, ${d.weather.precip_in.toFixed(2)}"` : ''}
+                      {d.factor !== 1 && <span className="font-semibold text-accent">({Math.round((d.factor - 1) * 100)}%)</span>}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">{nf(d.forecast)}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-ok">up to {nf(d.earnedMax)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{nf(d.scheduled)}</td>
+                  <td className="px-3 py-2 text-center"><StatusBadge status={d.status} /></td>
+                </tr>
+              )
+            })}
+            <tr className="border-t border-border bg-content font-semibold">
+              <td className="px-3 py-2 text-ink" colSpan={2}>Week total</td>
+              <td className="px-3 py-2 text-right tabular-nums text-ink">{nf(totForecast)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-ok">{nf(totEarned)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-ink">{nf(totScheduled)}</td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-ink-subtle">Click a day to load its detailed plan and schedule above. Each forecast uses same-weekday history adjusted for that day's rain and temperature.</p>
     </Panel>
   )
 }
@@ -433,12 +547,13 @@ function MtdPanel({ m }: { m: Metrics }) {
   )
 }
 
-function SchedulePanel({ scheduled }: { scheduled: number }) {
+function SchedulePanel({ day }: { day: DayPlan }) {
+  const scheduled = day.scheduled
   const rows = sampleSchedule(scheduled)
   const totalCount = rows.reduce((s, r) => s + r.count, 0)
   const totalHours = round1(rows.reduce((s, r) => s + r.hours, 0))
   return (
-    <Panel title="Tomorrow's Schedule Snapshot">
+    <Panel title={`${format(new Date(day.date + 'T12:00:00'), 'EEEE')}'s Schedule Snapshot`}>
       <Badge tone="warn">Sample data</Badge>
       <div className="overflow-hidden rounded-md border border-border">
         <table className="w-full text-sm">
