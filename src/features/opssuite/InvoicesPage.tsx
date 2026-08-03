@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Check, Copy, Mail, FileText } from 'lucide-react'
+import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, FileUp, Ban, Download, CornerUpLeft } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
+import { useAuth } from '@/lib/auth'
+import { useLocations } from '@/lib/locations'
 import { billing, type Account } from '@/lib/queries/billing'
+import { listUsers, type AccountUser } from '@/lib/queries/account'
 import type { CompanySettings } from '@/lib/queries/companySettings'
-import { opsInvoices, type OpsInvoice } from '@/lib/queries/opsInvoices'
+import { opsInvoices, type OpsInvoice, type OpsInvoiceUpdate } from '@/lib/queries/opsInvoices'
 import { supabase } from '@/lib/supabase'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
 
 // Each wash (account) gets its own unique inbound address,
@@ -44,12 +51,12 @@ const KNOWN_STATUSES = new Set<InvoiceStatus>([
 // Map an ops_invoices row to the table shape. Emailed-in invoices arrive
 // 'unassigned' with no site/approver yet; any unrecognized legacy status is
 // treated as unassigned so nothing is hidden.
-function toRow(r: OpsInvoice): InvoiceRow {
+function toRow(r: OpsInvoice, locName: Map<string, string>): InvoiceRow {
   const status = (KNOWN_STATUSES.has(r.status as InvoiceStatus) ? r.status : 'unassigned') as InvoiceStatus
   return {
     id: r.id,
     vendor: r.vendor_name,
-    sites: [],
+    sites: r.location_id ? [locName.get(r.location_id) ?? 'Unknown site'] : [],
     approvers: r.assigned_to_name ? [r.assigned_to_name] : [],
     amount: Number(r.amount) || 0,
     detail: r.email_subject || r.file_name || null,
@@ -58,6 +65,13 @@ function toRow(r: OpsInvoice): InvoiceRow {
     filePath: r.file_path,
   }
 }
+
+const STATUS_LABEL: Record<InvoiceStatus, string> = {
+  unassigned: 'Unassigned', queue: 'Queue', assigned: 'Assigned', approved: 'Approved',
+  exported: 'Exported', needs_attention: 'Needs Attention', cancelled: 'Cancelled',
+}
+
+const nowIso = () => new Date().toISOString()
 
 type TabDef = {
   key: InvoiceStatus
@@ -117,14 +131,21 @@ export default function InvoicesPage() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
 
+  const { profile } = useAuth()
+  const { locations } = useLocations()
+
   // Emailed-in invoices, filed by the invoice-inbound pipeline. Live-updates as
-  // new mail arrives.
-  const [rows, setRows] = useState<InvoiceRow[]>([])
+  // new mail arrives or an invoice moves through the workflow.
+  const [invoices, setInvoices] = useState<OpsInvoice[]>([])
+  const [users, setUsers] = useState<AccountUser[]>([])
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
   useEffect(() => {
     let active = true
     const load = async () => {
       const { data } = await opsInvoices.list()
-      if (active) setRows(((data as OpsInvoice[] | null) ?? []).map(toRow))
+      if (active) setInvoices((data as OpsInvoice[] | null) ?? [])
     }
     void load()
     const ch = supabase
@@ -137,9 +158,32 @@ export default function InvoicesPage() {
     }
   }, [])
 
+  useEffect(() => {
+    void listUsers().then(({ data }) => setUsers((data as AccountUser[] | null) ?? []))
+  }, [])
+
+  const locName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations])
+  const rows = useMemo(() => invoices.map((inv) => toRow(inv, locName)), [invoices, locName])
+
+  const canManage = profile?.role === 'owner' || profile?.role === 'manager'
+  const openInvoice = invoices.find((i) => i.id === openId) ?? null
+
   const openFile = async (path: string) => {
     const url = await opsInvoices.fileUrl(path)
     if (url) window.open(url, '_blank', 'noopener')
+  }
+
+  // Apply a workflow transition (or field edit). Realtime reloads the list.
+  const act = async (
+    id: string,
+    patch: OpsInvoiceUpdate,
+    opts?: { notify?: boolean; keepOpen?: boolean },
+  ) => {
+    setBusy(true)
+    await opsInvoices.update(id, patch)
+    if (opts?.notify) await opsInvoices.notifyAssignment(id)
+    setBusy(false)
+    if (!opts?.keepOpen) setOpenId(null)
   }
 
   // This wash's unique inbound invoice address.
@@ -286,13 +330,23 @@ export default function InvoicesPage() {
             className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </FilterField>
-        <button
-          type="button"
-          onClick={clearFilters}
-          className="h-10 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink"
-        >
-          Clear
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="h-10 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadCsv(active.label, filtered)}
+            disabled={filtered.length === 0}
+            className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
+          >
+            <Download className="size-4" /> CSV
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -319,7 +373,7 @@ export default function InvoicesPage() {
               </tr>
             ) : (
               filtered.map((r, i) => (
-                <tr key={r.id} className="border-t border-border hover:bg-content">
+                <tr key={r.id} onClick={() => setOpenId(r.id)} className="cursor-pointer border-t border-border hover:bg-content">
                   <td className="px-4 py-3 text-ink-muted">{i + 1}</td>
                   <td className="px-4 py-3 font-medium text-ink">{r.vendor ?? '—'}</td>
                   <td className="px-4 py-3 text-ink-muted">
@@ -337,7 +391,7 @@ export default function InvoicesPage() {
                     {r.filePath ? (
                       <button
                         type="button"
-                        onClick={() => void openFile(r.filePath!)}
+                        onClick={(e) => { e.stopPropagation(); void openFile(r.filePath!) }}
                         className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-ink transition hover:bg-content"
                       >
                         <FileText className="size-3.5" /> View
@@ -352,8 +406,228 @@ export default function InvoicesPage() {
           </tbody>
         </table>
       </div>
+
+      {openInvoice && (
+        <InvoiceModal
+          invoice={openInvoice}
+          users={users}
+          locName={locName}
+          currentUserId={profile?.id ?? null}
+          currentUserName={profile?.name ?? ''}
+          isOwner={profile?.role === 'owner'}
+          canManage={canManage}
+          busy={busy}
+          onClose={() => setOpenId(null)}
+          onFile={openFile}
+          act={act}
+        />
+      )}
     </div>
   )
+}
+
+// ---- Workflow modal --------------------------------------------------------
+
+function InvoiceModal({
+  invoice, users, locName, currentUserId, currentUserName, isOwner, canManage, busy, onClose, onFile, act,
+}: {
+  invoice: OpsInvoice
+  users: AccountUser[]
+  locName: Map<string, string>
+  currentUserId: string | null
+  currentUserName: string
+  isOwner: boolean
+  canManage: boolean
+  busy: boolean
+  onClose: () => void
+  onFile: (path: string) => void
+  act: (id: string, patch: OpsInvoiceUpdate, opts?: { notify?: boolean; keepOpen?: boolean }) => Promise<void>
+}) {
+  const [vendor, setVendor] = useState(invoice.vendor_name ?? '')
+  const [amount, setAmount] = useState(String(invoice.amount ?? ''))
+  const [invoiceDate, setInvoiceDate] = useState(invoice.invoice_date ?? '')
+  const [gl, setGl] = useState(invoice.gl_code ?? '')
+  const [siteId, setSiteId] = useState(invoice.location_id ?? '')
+  const [approverId, setApproverId] = useState(invoice.assigned_to ?? '')
+  const [reason, setReason] = useState('')
+
+  const status = (KNOWN_STATUSES.has(invoice.status as InvoiceStatus) ? invoice.status : 'unassigned') as InvoiceStatus
+  const editable = canManage && (status === 'unassigned' || status === 'queue' || status === 'needs_attention')
+  const approvers = users.filter((u) => u.role === 'owner' || u.role === 'manager')
+  const canApprove = status === 'assigned' && (isOwner || invoice.assigned_to === currentUserId)
+  const id = invoice.id
+
+  const fieldPatch = (): OpsInvoiceUpdate => ({
+    vendor_name: vendor.trim() || null,
+    amount: Number(amount) || 0,
+    invoice_date: invoiceDate || null,
+    gl_code: gl.trim() || null,
+    location_id: siteId || null,
+  })
+  const approverName = (uid: string) => users.find((u) => u.id === uid)?.name ?? null
+
+  return (
+    <Modal open onClose={onClose} title="Invoice" size="lg">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <StatusPill status={status} />
+          {invoice.file_path && (
+            <Button variant="secondary" size="sm" onClick={() => onFile(invoice.file_path!)}>
+              <FileText className="size-4" /> View file{invoice.file_name ? ` (${invoice.file_name})` : ''}
+            </Button>
+          )}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Vendor">
+            <Input value={vendor} onChange={(e) => setVendor(e.target.value)} disabled={!editable} />
+          </Field>
+          <Field label="Amount">
+            <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!editable} />
+          </Field>
+          <Field label="Invoice date">
+            <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} disabled={!editable} />
+          </Field>
+          <Field label="GL code">
+            <Input value={gl} onChange={(e) => setGl(e.target.value)} disabled={!editable} placeholder="Optional" />
+          </Field>
+          <Field label="Site">
+            <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} disabled={!editable}>
+              <option value="">Select a site...</option>
+              {[...locName.entries()].map(([lid, name]) => (
+                <option key={lid} value={lid}>{name}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Approver">
+            <Select value={approverId} onChange={(e) => setApproverId(e.target.value)} disabled={!editable}>
+              <option value="">Select an approver...</option>
+              {approvers.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        {invoice.email_from && (
+          <p className="text-xs text-ink-subtle">
+            Emailed in from {invoice.email_from}{invoice.email_subject ? ` — "${invoice.email_subject}"` : ''}.
+          </p>
+        )}
+
+        {status === 'needs_attention' && invoice.decision_reason && (
+          <div className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
+            Sent back by {invoice.decided_by_name ?? 'an approver'}: {invoice.decision_reason}
+          </div>
+        )}
+        {status === 'assigned' && (
+          <p className="text-sm text-ink-muted">
+            Waiting on <span className="font-medium text-ink">{invoice.assigned_to_name ?? 'the approver'}</span>.
+          </p>
+        )}
+        {status === 'approved' && (
+          <p className="text-sm text-ok">Approved by {invoice.decided_by_name ?? 'an approver'}. Ready to export.</p>
+        )}
+        {status === 'exported' && (
+          <p className="text-sm text-ink-muted">Exported by {invoice.exported_by_name ?? 'a teammate'}{invoice.exported_at ? ` on ${shortDate(invoice.exported_at)}` : ''}.</p>
+        )}
+
+        {canApprove && (
+          <Field label="Rejection reason (if sending back)">
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why it needs a fix..." />
+          </Field>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+          <div className="flex flex-wrap gap-2">
+            {canManage && status !== 'exported' && status !== 'cancelled' && (
+              <Button variant="ghost" size="sm" className="text-danger" disabled={busy} onClick={() => void act(id, { status: 'cancelled' })}>
+                <Ban className="size-4" /> Cancel invoice
+              </Button>
+            )}
+            {editable && (status === 'queue' || status === 'needs_attention') && (
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => void act(id, { ...fieldPatch(), status: 'unassigned', assigned_to: null, assigned_to_name: null })}>
+                <CornerUpLeft className="size-4" /> Back to unassigned
+              </Button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" disabled={busy} onClick={onClose}>Close</Button>
+
+            {editable && (
+              <Button variant="secondary" disabled={busy} onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId || null, assigned_to_name: approverId ? approverName(approverId) : null }, { keepOpen: true })}>
+                Save
+              </Button>
+            )}
+            {canManage && (status === 'unassigned' || status === 'needs_attention') && (
+              <Button
+                disabled={busy || !siteId || !approverId}
+                onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'queue' })}
+              >
+                Add to queue
+              </Button>
+            )}
+            {canManage && status === 'queue' && (
+              <Button disabled={busy} onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'assigned', assigned_at: nowIso() }, { notify: true })}>
+                <Send className="size-4" /> Send for approval
+              </Button>
+            )}
+            {canApprove && (
+              <>
+                <Button variant="secondary" className="text-danger" disabled={busy || !reason.trim()} onClick={() => void act(id, { status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
+                  <XCircle className="size-4" /> Send back
+                </Button>
+                <Button disabled={busy} onClick={() => void act(id, { status: 'approved', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null })}>
+                  <CheckCircle2 className="size-4" /> Approve
+                </Button>
+              </>
+            )}
+            {canManage && status === 'approved' && (
+              <Button disabled={busy} onClick={() => void act(id, { status: 'exported', exported_by: currentUserId, exported_by_name: currentUserName, exported_at: nowIso() })}>
+                <FileUp className="size-4" /> Export to accounting
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-sm">
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function StatusPill({ status }: { status: InvoiceStatus }) {
+  const tone =
+    status === 'approved' || status === 'exported' ? 'bg-ok-soft text-ok'
+      : status === 'needs_attention' || status === 'cancelled' ? 'bg-danger-soft text-danger'
+        : status === 'assigned' ? 'bg-accent-soft text-accent'
+          : 'bg-ink/10 text-ink-muted'
+  return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', tone)}>{STATUS_LABEL[status]}</span>
+}
+
+// Download the current tab's rows as a CSV for accounting.
+function downloadCsv(tabLabel: string, rows: InvoiceRow[]) {
+  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+  const header = ['Vendor', 'Site(s)', 'Approver(s)', 'Amount', 'Detail', 'Submitted', 'Status']
+  const lines = rows.map((r) => [
+    r.vendor ?? '', r.sites.join('; '), r.approvers.join('; '), r.amount,
+    r.detail ?? '', r.submitted_at ? shortDate(r.submitted_at) : '', STATUS_LABEL[r.status],
+  ].map(esc).join(','))
+  const csv = [header.map(esc).join(','), ...lines].join('\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `invoices-${tabLabel.toLowerCase().replace(/\s+/g, '-')}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function CopyButton({ value }: { value: string }) {

@@ -3136,6 +3136,9 @@ export type Database = {
           email_from: string | null
           email_message_id: string | null
           email_subject: string | null
+          exported_at: string | null
+          exported_by: string | null
+          exported_by_name: string | null
           file_name: string | null
           file_path: string | null
           file_type: string | null
@@ -3163,6 +3166,9 @@ export type Database = {
           email_from?: string | null
           email_message_id?: string | null
           email_subject?: string | null
+          exported_at?: string | null
+          exported_by?: string | null
+          exported_by_name?: string | null
           file_name?: string | null
           file_path?: string | null
           file_type?: string | null
@@ -3190,6 +3196,9 @@ export type Database = {
           email_from?: string | null
           email_message_id?: string | null
           email_subject?: string | null
+          exported_at?: string | null
+          exported_by?: string | null
+          exported_by_name?: string | null
           file_name?: string | null
           file_path?: string | null
           file_type?: string | null
@@ -3222,6 +3231,13 @@ export type Database = {
           {
             foreignKeyName: "ops_invoices_decided_by_fkey"
             columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ops_invoices_exported_by_fkey"
+            columns: ["exported_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
