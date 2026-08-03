@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
           <th style="padding:6px 8px;text-align:right;">Sales</th>
           <th style="padding:6px 8px;text-align:right;">Recharge</th>
           <th style="padding:6px 8px;text-align:right;">Conv %</th>
-          <th style="padding:6px 8px;text-align:right;">Churn %</th>
+          <th style="padding:6px 8px;text-align:right;">Monthly Churn %</th>
         </tr>
       </thead>
       <tbody>${siteRows}</tbody>
