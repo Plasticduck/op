@@ -29,14 +29,13 @@ const REFRESH_MS = 60_000
 const PLAN_ORDER = ['Mighty Plan', 'Super Plan', 'Wonder Plan', 'MVP Plan']
 
 type ViewKey =
-  | 'site' | 'history' | 'msa' | 'recharge_revenue' | 'recharge_audit' | 'rinsed'
+  | 'site' | 'history' | 'recharge_revenue' | 'recharge_audit' | 'rinsed'
   | 'under15' | 'churn' | 'records' | 'sitebreak' | 'custom_query'
 
 const VIEWS: { key: ViewKey; label: string }[] = [
   { key: 'site', label: 'By Site' },
   { key: 'history', label: 'History' },
   { key: 'custom_query', label: 'Custom Query' },
-  { key: 'msa', label: 'By MSA' },
   { key: 'recharge_revenue', label: 'Recharge $' },
   { key: 'recharge_audit', label: 'Recharge Audit' },
   { key: 'rinsed', label: 'Conversions' },
@@ -50,7 +49,6 @@ const FRESHNESS: Record<ViewKey, string> = {
   site: 'Live, updates every 60s',
   history: 'Archived daily; covers every day since the archive began',
   custom_query: 'Runs fresh against the SiteWatch DB each time you click Run',
-  msa: 'Live, updates every 60s',
   recharge_revenue: 'Updated nightly, not continuously live',
   recharge_audit: 'Live, updates every 60s',
   rinsed: 'As of the last automated Rinsed/FlexWash pull',
@@ -264,7 +262,6 @@ export default function SitePerformancePage() {
           {feed && (
             <>
               {view === 'site' && <BySite feed={feed} idx={regionIndex} />}
-              {view === 'msa' && <ByMsa feed={feed} idx={regionIndex} />}
               {view === 'recharge_revenue' && <RechargeRevenue feed={feed} idx={regionIndex} />}
               {view === 'recharge_audit' && <RechargeAudit feed={feed} idx={regionIndex} />}
               {view === 'rinsed' && <Conversions feed={feed} idx={regionIndex} />}
@@ -576,72 +573,6 @@ function Heatmap({
   )
 }
 
-// ---------- By MSA ----------
-
-function ByMsa({ feed, idx }: ViewProps) {
-  const msa = feed.msa
-  const flags = feed.high_conversion_flags?.flags ?? []
-  const [period, setPeriod] = useState<'today' | 'mtd'>('today')
-  if (!msa || !msa.rows.length) return <Empty />
-
-  const convKey = period === 'today' ? 'today_conversion_pct' : 'mtd_conversion_pct'
-  const washKey = period === 'today' ? 'today_eligible_washes' : 'mtd_eligible_washes'
-  const salesKey = period === 'today' ? 'today_sales' : 'mtd_sales'
-  const groups = groupByRegion(msa.rows, (r) => r.site, idx)
-
-  return (
-    <div className="flex flex-col gap-4">
-      {flags.length > 0 && (
-        <div className="rounded-lg border border-warn/40 bg-warn-soft px-4 py-3">
-          <p className="text-sm font-semibold text-warn">
-            {flags.length} conversion{flags.length > 1 ? 's' : ''} today look too high to be real. Check punch records.
-          </p>
-          {flags.map((f) => (
-            <p key={f.msa + f.site} className="mt-1 text-xs text-ink-muted">
-              <span className="font-semibold text-ink">{f.msa}</span> · {siteLabel(f.site)} · {f.sales} sales / {f.denominator} eligible = {f.conversion_display}. {f.likely_cause}
-            </p>
-          ))}
-        </div>
-      )}
-      <Panel
-        title="MSA Conversions"
-        sub="Every salesperson on the current roster, ranked by conversion %"
-        actions={<Seg value={period} onChange={setPeriod} tone="neutral"
-          options={[{ key: 'today', label: 'Today' }, { key: 'mtd', label: 'MTD' }]} />}
-      >
-        <TableShell
-          head={<>
-            {['MSA', 'Site', 'Conversion', 'Eligible Washes', 'Sales'].map((h) => <th key={h} className={th}>{h}</th>)}
-          </>}
-        >
-          {groups.map((g) => {
-            const rows = [...g.items].sort((a, b) => ((b[convKey] as number | null) ?? -1) - ((a[convKey] as number | null) ?? -1))
-            return (
-              <FragmentRegion key={g.region}>
-                <RegionHead region={g.region} count={new Set(rows.map((r) => r.site)).size} />
-                {rows.map((r) => (
-                  <tr key={r.msa + r.site}>
-                    <td className={td}>{r.msa}</td>
-                    <td className={td}>{siteLabel(r.site)}</td>
-                    <td className={td} style={{ color: heatFor(r[convKey] as number | null, 'conv') }}>
-                      {r[convKey] !== null ? r[convKey] + '%' : DASH}
-                    </td>
-                    <td className={td}>{r[washKey]}</td>
-                    <td className={td}>{r[salesKey]}</td>
-                  </tr>
-                ))}
-              </FragmentRegion>
-            )
-          })}
-        </TableShell>
-      </Panel>
-      <Footnote>
-        Conversion % and eligible washes use the same formula as the Google Sheets MSA dashboard, filtered to the current Sales Roster. Today = live so far today; MTD = month to date.
-      </Footnote>
-    </div>
-  )
-}
-
 // ---------- Recharge Revenue ----------
 
 function RechargeRevenue({ feed, idx }: ViewProps) {
@@ -892,22 +823,14 @@ function Churn({ feed, idx }: ViewProps) {
 
 // ---------- Company Records (no region grouping — company-wide) ----------
 
-function CompanyRecords({ feed }: { feed: SitePerformanceFeed }) {
-  const rec = feed.company_records
-  if (!rec || !Object.keys(rec.records).length) return <Empty />
-  const r = rec.records
-  const rowsFor = (period: 'day' | 'month') => [
-    period === 'month' && ['Revenue', r.revenue?.[period], money(r.revenue?.[period]?.value ?? 0, 2)],
-    ['Cars', r.cars?.[period], (r.cars?.[period]?.value ?? 0).toLocaleString()],
-    ['Best Site Conversion %', r.best_site_conversion_pct?.[period], (r.best_site_conversion_pct?.[period]?.value ?? 0) + '%'],
-    ['Plans Sold', r.plans_sold?.[period], (r.plans_sold?.[period]?.value ?? 0).toLocaleString()],
-    ['MSA Conversion %', r.msa_conversion_pct?.[period], (r.msa_conversion_pct?.[period]?.value ?? 0) + '%'],
-  ].filter(Boolean) as [string, { value: number; date?: string; month?: string; site?: string; msa?: string; still_counting?: boolean } | undefined, string][]
+type RecordEntryVal = { value: number; date?: string; month?: string; site?: string; msa?: string; still_counting?: boolean }
+type RecordRow = [string, RecordEntryVal | undefined, string]
 
-  const Card = ({ title, period }: { title: string; period: 'day' | 'month' }) => (
+function RecordsCard({ title, period, rows }: { title: string; period: 'day' | 'month'; rows: RecordRow[] }) {
+  return (
     <Panel title={title} sub={period === 'day' ? 'All-time best single day, company-wide' : 'All-time best calendar month, company-wide'}>
       <TableShell head={<>{['Metric', 'Value', period === 'day' ? 'Date' : 'Month', 'Detail'].map((h) => <th key={h} className={th}>{h}</th>)}</>}>
-        {rowsFor(period).map(([label, entry, valueStr]) => (
+        {rows.map(([label, entry, valueStr]) => (
           <tr key={label}>
             <td className={td}>{label}</td>
             <td className={td}>{entry ? valueStr : DASH}</td>
@@ -921,10 +844,24 @@ function CompanyRecords({ feed }: { feed: SitePerformanceFeed }) {
       </TableShell>
     </Panel>
   )
+}
+
+function CompanyRecords({ feed }: { feed: SitePerformanceFeed }) {
+  const rec = feed.company_records
+  if (!rec || !Object.keys(rec.records).length) return <Empty />
+  const r = rec.records
+  const rowsFor = (period: 'day' | 'month') => [
+    period === 'month' && ['Revenue', r.revenue?.[period], money(r.revenue?.[period]?.value ?? 0, 2)],
+    ['Cars', r.cars?.[period], (r.cars?.[period]?.value ?? 0).toLocaleString()],
+    ['Best Site Conversion %', r.best_site_conversion_pct?.[period], (r.best_site_conversion_pct?.[period]?.value ?? 0) + '%'],
+    ['Plans Sold', r.plans_sold?.[period], (r.plans_sold?.[period]?.value ?? 0).toLocaleString()],
+    ['MSA Conversion %', r.msa_conversion_pct?.[period], (r.msa_conversion_pct?.[period]?.value ?? 0) + '%'],
+  ].filter(Boolean) as RecordRow[]
+
   return (
     <div className="flex flex-col gap-5">
-      <Card title="Day Records" period="day" />
-      <Card title="Month Records" period="month" />
+      <RecordsCard title="Day Records" period="day" rows={rowsFor('day')} />
+      <RecordsCard title="Month Records" period="month" rows={rowsFor('month')} />
       <Footnote>Backfilled to 2023-01-01. Conversion records require a minimum volume (100 cars/day or 2,000/month) so a slow day can't post a meaningless high percentage.</Footnote>
     </div>
   )
