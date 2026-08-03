@@ -448,9 +448,11 @@ function InvoiceModal({
   const editable = canManage && (status === 'unassigned' || status === 'needs_attention')
   const approvers = users.filter((u) => u.role === 'owner' || u.role === 'manager')
   const canApprove = status === 'assigned' && (isOwner || invoice.assigned_to === currentUserId)
-  // Site + GL code are required, and the approver can correct them while
-  // reviewing (not just the manager during assignment).
+  // Site + GL code are editable by the manager during assignment and by the
+  // approver while reviewing, but only REQUIRED at the approver stage (the
+  // approver fills them in before approving). In Unassigned they're optional.
   const siteGlEditable = editable || canApprove
+  const requireSiteGl = canApprove
   const missingRequired = !siteId || !gl.trim()
   const id = invoice.id
 
@@ -485,11 +487,11 @@ function InvoiceModal({
           <Field label="Invoice date">
             <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} disabled={!editable} />
           </Field>
-          <Field label="GL code" required>
-            <Input value={gl} onChange={(e) => setGl(e.target.value)} disabled={!siteGlEditable} placeholder="Required" invalid={siteGlEditable && !gl.trim()} />
+          <Field label="GL code" required={requireSiteGl}>
+            <Input value={gl} onChange={(e) => setGl(e.target.value)} disabled={!siteGlEditable} placeholder={requireSiteGl ? 'Required' : 'Optional'} invalid={requireSiteGl && !gl.trim()} />
           </Field>
-          <Field label="Site" required>
-            <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} disabled={!siteGlEditable} invalid={siteGlEditable && !siteId}>
+          <Field label="Site" required={requireSiteGl}>
+            <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} disabled={!siteGlEditable} invalid={requireSiteGl && !siteId}>
               <option value="">Select a site...</option>
               {[...locName.entries()].map(([lid, name]) => (
                 <option key={lid} value={lid}>{name}</option>
@@ -535,8 +537,8 @@ function InvoiceModal({
           </Field>
         )}
 
-        {siteGlEditable && missingRequired && (
-          <p className="text-xs text-danger">Site and GL code are required before this invoice can move forward.</p>
+        {requireSiteGl && missingRequired && (
+          <p className="text-xs text-danger">Set the site and GL code before approving.</p>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
@@ -563,7 +565,7 @@ function InvoiceModal({
             )}
             {canManage && (status === 'unassigned' || status === 'needs_attention') && (
               <Button
-                disabled={busy || missingRequired || !approverId}
+                disabled={busy || !approverId}
                 onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'assigned', assigned_at: nowIso() }, { notify: true })}
               >
                 <Send className="size-4" /> Send for approval
