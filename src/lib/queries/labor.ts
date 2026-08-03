@@ -46,7 +46,46 @@ export function benchmarkFor(tiers: BenchmarkTier[], cars: number): number {
 
 type TierRow = { location_id: string | null; min_cars: number; max_cars: number | null; max_hours: number }
 
+// One scheduled shift from the Schedule page, with its computed length in hours.
+export type ScheduleShift = { date: string; start_time: string; end_time: string; role_label: string | null; hours: number }
+
+// Length of a shift in hours from "HH:MM[:SS]" times; wraps past midnight.
+function shiftHours(start: string, end: string): number {
+  const toMin = (s: string) => {
+    const [h, m] = String(s).split(':')
+    return (Number(h) || 0) * 60 + (Number(m) || 0)
+  }
+  let d = toMin(end) - toMin(start)
+  if (d < 0) d += 24 * 60
+  return d / 60
+}
+
 export const labor = {
+  // Every shift on the Schedule page for a site across a date range, oldest
+  // first, with hours computed. The range can straddle two weekly schedules, so
+  // this gathers each schedule whose week could overlap, then its shifts.
+  scheduleShifts: async (locationId: string, fromDate: string, toDate: string): Promise<ScheduleShift[]> => {
+    const floor = new Date(fromDate + 'T12:00:00')
+    floor.setDate(floor.getDate() - 7)
+    const { data: scheds } = await supabase
+      .from('schedules')
+      .select('id')
+      .eq('location_id', locationId)
+      .gte('week_start_date', ymd(floor))
+      .lte('week_start_date', toDate)
+    const ids = ((scheds as { id: string }[] | null) ?? []).map((s) => s.id)
+    if (!ids.length) return []
+    const { data } = await supabase
+      .from('shifts')
+      .select('date, start_time, end_time, role_label')
+      .in('schedule_id', ids)
+      .gte('date', fromDate)
+      .lte('date', toDate)
+      .order('date', { ascending: true })
+    type Row = { date: string; start_time: string; end_time: string; role_label: string | null }
+    return ((data as Row[] | null) ?? []).map((r) => ({ ...r, hours: shiftHours(r.start_time, r.end_time) }))
+  },
+
   // Tiers for a site: the site's own override if it has one, else the account
   // default (location_id null), else the built-in default.
   tiersForSite: async (

@@ -12,7 +12,7 @@ import { useCompany } from '@/lib/company'
 import { useLocations } from '@/lib/locations'
 import { updateCompany, type CompanySettings } from '@/lib/queries/companySettings'
 import { siteNumber } from '@/lib/queries/sitePerformance'
-import { labor, benchmarkFor, weekForecast, DEFAULT_WEATHER_CONFIG, type BenchmarkTier, type LaborDay, type WeatherDay, type WeatherAdjustConfig } from '@/lib/queries/labor'
+import { labor, benchmarkFor, weekForecast, DEFAULT_WEATHER_CONFIG, type BenchmarkTier, type LaborDay, type WeatherDay, type WeatherAdjustConfig, type ScheduleShift } from '@/lib/queries/labor'
 
 // Guardrails and the sample schedule breakdown are static (per the mockup). The
 // schedule snapshot is sample data until the Schedule is populated with matching
@@ -24,29 +24,11 @@ const GUARDRAILS = [
   'Tunnel throughput strong',
   'Membership and retail execution strong',
 ]
-const POS_TEMPLATE = [
-  { area: 'Management', count: 2, w: 18 },
-  { area: 'Front Line (Cashier / POS)', count: 2, w: 16 },
-  { area: 'Prep / Lot', count: 3, w: 21 },
-  { area: 'Tunnel (Wash / Detail)', count: 10, w: 44 },
-  { area: 'Drying / Final', count: 4, w: 22 },
-  { area: 'Sales / Greeter', count: 2, w: 12 },
-]
-const POS_TOTAL_W = POS_TEMPLATE.reduce((s, p) => s + p.w, 0)
-
 function round1(n: number): number {
   return Math.round(n * 10) / 10
 }
 const nf = (n: number) => Math.round(n).toLocaleString('en-US')
 const money = (n: number) => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-// Distribute a scheduled-hours total across the sample positions.
-function sampleSchedule(total: number) {
-  const rows = POS_TEMPLATE.map((p) => ({ area: p.area, count: p.count, hours: round1((total * p.w) / POS_TOTAL_W) }))
-  const diff = round1(total - rows.reduce((s, r) => s + r.hours, 0))
-  if (diff) rows[3].hours = round1(rows[3].hours + diff) // Tunnel absorbs rounding residual
-  return rows
-}
 
 type Status = 'benchmark' | 'review' | 'action'
 function statusFor(variance: number): Status {
@@ -63,6 +45,7 @@ export default function LaborDashboardPage() {
   const { activeLocation } = useLocations()
   const [days, setDays] = useState<LaborDay[]>([])
   const [weather, setWeather] = useState<WeatherDay[]>([])
+  const [shifts, setShifts] = useState<ScheduleShift[]>([])
   const [tiers, setTiers] = useState<BenchmarkTier[]>([])
   const [isSiteOverride, setIsSiteOverride] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -79,13 +62,18 @@ export default function LaborDashboardPage() {
     if (!profile) return
     setLoading(true)
     const since = format(new Date(Date.now() - 60 * 86400000), 'yyyy-MM-dd')
-    const [d, w, t] = await Promise.all([
+    // The planning week: tomorrow through six days out, matching the forecast.
+    const planFrom = format(new Date(Date.now() + 86400000), 'yyyy-MM-dd')
+    const planTo = format(new Date(Date.now() + WEEK_DAYS * 86400000), 'yyyy-MM-dd')
+    const [d, w, s, t] = await Promise.all([
       sn != null ? labor.days(sn, since) : Promise.resolve([] as LaborDay[]),
       activeId ? labor.weather(activeId, since) : Promise.resolve([] as WeatherDay[]),
+      activeId ? labor.scheduleShifts(activeId, planFrom, planTo) : Promise.resolve([] as ScheduleShift[]),
       labor.tiersForSite(profile.account_id, activeId),
     ])
     setDays(d)
     setWeather(w)
+    setShifts(s)
     setTiers(t.tiers)
     setIsSiteOverride(t.isSiteOverride)
     setLoading(false)
@@ -98,14 +86,23 @@ export default function LaborDashboardPage() {
   const m = useMemo<Metrics>(() => {
     const weatherMap = new Map(weather.map((w) => [w.date, w]))
     const start = new Date(Date.now() + 86400000) // tomorrow, the first day to plan
-    // Scheduled is sample/placeholder until the Schedule is wired: target a hair
-    // under each day's benchmark so the plan reads as "at or below."
+
+    // Real scheduled shifts per day, pulled from the Schedule page.
+    const shiftsByDate = new Map<string, ScheduleShift[]>()
+    for (const s of shifts) {
+      const list = shiftsByDate.get(s.date) ?? []
+      list.push(s)
+      shiftsByDate.set(s.date, list)
+    }
+
     const week: DayPlan[] = weekForecast(days, weatherMap, start, WEEK_DAYS, wxConfig).map((fc) => {
       const earnedMax = benchmarkFor(tiers, fc.cars)
-      const scheduled = Math.max(0, earnedMax - 3)
+      const dayShifts = shiftsByDate.get(fc.date) ?? []
+      const hasShifts = dayShifts.length > 0
+      const scheduled = dayShifts.reduce((sum, s) => sum + s.hours, 0)
       const variance = scheduled - earnedMax
       return {
-        date: fc.date, forecast: fc.cars, earnedMax, scheduled, variance, status: statusFor(variance),
+        date: fc.date, forecast: fc.cars, earnedMax, scheduled, hasShifts, shifts: dayShifts, variance, status: statusFor(variance),
         weather: fc.weather, wet: fc.wet, factor: fc.factor, baseline: fc.baseline, rainPct: fc.rainPct, tempPct: fc.tempPct,
       }
     })
@@ -131,7 +128,7 @@ export default function LaborDashboardPage() {
       laborPct: totSales ? (totLabor / totSales) * 100 : mtd.length ? mtd.reduce((s, d) => s + (d.labor_pct ?? 0), 0) / mtd.length : 0,
       revPerHour: totHours ? totSales / totHours : 0,
     }
-  }, [days, weather, tiers, wxConfig])
+  }, [days, weather, shifts, tiers, wxConfig])
 
   if (loading) return <p className="text-sm text-ink-muted">Loading labor dashboard…</p>
 
@@ -185,7 +182,7 @@ export default function LaborDashboardPage() {
             <SchedulePanel day={day} />
           </div>
           <p className="text-xs text-ink-subtle">
-            Earned labor hours are based on each day's forecast (same weekday history, adjusted for weather) and this site's benchmark table. Actuals come from Site Performance. Scheduled hours and the position snapshot are sample data until the Schedule is populated. Adjust throughout the day based on actual traffic.
+            Earned labor hours are based on each day's forecast (same weekday history, adjusted for weather) and this site's benchmark table. Actuals come from Site Performance. Scheduled hours and the position snapshot are pulled live from this site's Schedule. Adjust throughout the day based on actual traffic.
           </p>
         </>
       )}
@@ -230,7 +227,8 @@ function Panel({ title, children, className }: { title: string; children: React.
 
 // One planned day in the coming week.
 type DayPlan = {
-  date: string; forecast: number; earnedMax: number; scheduled: number; variance: number; status: Status
+  date: string; forecast: number; earnedMax: number; scheduled: number; hasShifts: boolean; shifts: ScheduleShift[]
+  variance: number; status: Status
   weather: WeatherDay | null; wet: boolean; factor: number; baseline: number; rainPct: number; tempPct: number
 }
 
@@ -287,15 +285,27 @@ function PlanPanel({ day }: { day: DayPlan }) {
         </div>
       )}
       <PlanRow icon={Clock} label="Earned Labor Hours" sub="Benchmark maximum" value={<span>up to {nf(day.earnedMax)}</span>} valueClass="text-ok" />
-      <PlanRow icon={Users} label="Currently Scheduled" value={nf(day.scheduled)} />
-      <PlanRow icon={BarChart3} label="Schedule Variance" sub="vs benchmark maximum" value={<span>{nf(Math.abs(day.variance))} {under ? 'under' : 'over'} {under ? '↓' : '↑'}</span>} valueClass={under ? 'text-ok' : 'text-danger'} />
-      <div className={`mt-1 flex items-start gap-3 rounded-lg px-4 py-3 ${toneBg}`}>
-        <s.icon className="mt-0.5 size-5 shrink-0" />
-        <div>
-          <div className="text-sm font-bold uppercase tracking-wide">Status: {s.label}</div>
-          <p className="mt-1 text-xs opacity-90">{s.desc}</p>
+      <PlanRow icon={Users} label="Currently Scheduled" sub="From the Schedule" value={day.hasShifts ? round1(day.scheduled).toString() : 'Not scheduled'} valueClass={day.hasShifts ? undefined : 'text-ink-muted'} />
+      {day.hasShifts ? (
+        <>
+          <PlanRow icon={BarChart3} label="Schedule Variance" sub="vs benchmark maximum" value={<span>{round1(Math.abs(day.variance)).toString()} {under ? 'under' : 'over'} {under ? '↓' : '↑'}</span>} valueClass={under ? 'text-ok' : 'text-danger'} />
+          <div className={`mt-1 flex items-start gap-3 rounded-lg px-4 py-3 ${toneBg}`}>
+            <s.icon className="mt-0.5 size-5 shrink-0" />
+            <div>
+              <div className="text-sm font-bold uppercase tracking-wide">Status: {s.label}</div>
+              <p className="mt-1 text-xs opacity-90">{s.desc}</p>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="mt-1 flex items-start gap-3 rounded-lg bg-content px-4 py-3 text-ink-muted">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+          <div>
+            <div className="text-sm font-bold uppercase tracking-wide">No schedule yet</div>
+            <p className="mt-1 text-xs opacity-90">Build this day on the Schedule page to see scheduled hours and variance against the benchmark.</p>
+          </div>
         </div>
-      </div>
+      )}
     </Panel>
   )
 }
@@ -371,8 +381,8 @@ function WeeklyPlanPanel({ week, selected, onSelect }: { week: DayPlan[]; select
                   </td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">{nf(d.forecast)}</td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums text-ok">up to {nf(d.earnedMax)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{nf(d.scheduled)}</td>
-                  <td className="px-3 py-2 text-center"><StatusBadge status={d.status} /></td>
+                  <td className="px-3 py-2 text-right tabular-nums">{d.hasShifts ? round1(d.scheduled) : <span className="text-ink-subtle">—</span>}</td>
+                  <td className="px-3 py-2 text-center">{d.hasShifts ? <StatusBadge status={d.status} /> : <span className="text-xs text-ink-subtle">Not scheduled</span>}</td>
                 </tr>
               )
             })}
@@ -380,7 +390,7 @@ function WeeklyPlanPanel({ week, selected, onSelect }: { week: DayPlan[]; select
               <td className="px-3 py-2 text-ink" colSpan={2}>Week total</td>
               <td className="px-3 py-2 text-right tabular-nums text-ink">{nf(totForecast)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-ok">{nf(totEarned)}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-ink">{nf(totScheduled)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-ink">{round1(totScheduled)}</td>
               <td />
             </tr>
           </tbody>
@@ -548,30 +558,50 @@ function MtdPanel({ m }: { m: Metrics }) {
 }
 
 function SchedulePanel({ day }: { day: DayPlan }) {
-  const scheduled = day.scheduled
-  const rows = sampleSchedule(scheduled)
-  const totalCount = rows.reduce((s, r) => s + r.count, 0)
-  const totalHours = round1(rows.reduce((s, r) => s + r.hours, 0))
+  const dt = new Date(day.date + 'T12:00:00')
+  // Group the day's real shifts by role/position label.
+  const byRole = new Map<string, { count: number; hours: number }>()
+  for (const s of day.shifts) {
+    const key = s.role_label?.trim() || 'Unassigned'
+    const cur = byRole.get(key) ?? { count: 0, hours: 0 }
+    cur.count += 1
+    cur.hours += s.hours
+    byRole.set(key, cur)
+  }
+  const rows = [...byRole.entries()]
+    .map(([area, v]) => ({ area, count: v.count, hours: round1(v.hours) }))
+    .sort((a, b) => b.hours - a.hours)
+  const totalCount = day.shifts.length
+  const totalHours = round1(day.shifts.reduce((s, x) => s + x.hours, 0))
   return (
-    <Panel title={`${format(new Date(day.date + 'T12:00:00'), 'EEEE')}'s Schedule Snapshot`}>
-      <Badge tone="warn">Sample data</Badge>
-      <div className="overflow-hidden rounded-md border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
-            <tr><th className="px-3 py-2">Position / area</th><th className="px-3 py-2 text-right">Employees</th><th className="px-3 py-2 text-right">Hours</th></tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.area} className="border-t border-border"><td className="px-3 py-1.5 text-ink">{r.area}</td><td className="px-3 py-1.5 text-right tabular-nums">{r.count}</td><td className="px-3 py-1.5 text-right tabular-nums">{r.hours.toFixed(1)}</td></tr>
-            ))}
-            <tr className="border-t border-border bg-content font-semibold"><td className="px-3 py-1.5 text-ink">Totals</td><td className="px-3 py-1.5 text-right tabular-nums">{totalCount}</td><td className="px-3 py-1.5 text-right tabular-nums">{totalHours.toFixed(1)}</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div className="flex items-center justify-between rounded-md bg-accent-soft px-3 py-2 text-sm font-bold text-accent">
-        <span>Total labor hours scheduled</span><span className="tabular-nums">{nf(scheduled)}.0</span>
-      </div>
-      <p className="text-xs text-ink-subtle">Adjust throughout the day based on actual traffic. Remove excess labor early to protect your daily results.</p>
+    <Panel title={`${format(dt, 'EEEE')}'s Schedule Snapshot`}>
+      {rows.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border px-4 py-8 text-center">
+          <Users className="size-5 text-ink-subtle" />
+          <p className="text-sm font-medium text-ink">No shifts scheduled</p>
+          <p className="text-xs text-ink-muted">Build {format(dt, 'EEEE')}'s schedule on the Schedule page and it will show here.</p>
+        </div>
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-md border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
+                <tr><th className="px-3 py-2">Position / area</th><th className="px-3 py-2 text-right">Employees</th><th className="px-3 py-2 text-right">Hours</th></tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.area} className="border-t border-border"><td className="px-3 py-1.5 text-ink">{r.area}</td><td className="px-3 py-1.5 text-right tabular-nums">{r.count}</td><td className="px-3 py-1.5 text-right tabular-nums">{r.hours.toFixed(1)}</td></tr>
+                ))}
+                <tr className="border-t border-border bg-content font-semibold"><td className="px-3 py-1.5 text-ink">Totals</td><td className="px-3 py-1.5 text-right tabular-nums">{totalCount}</td><td className="px-3 py-1.5 text-right tabular-nums">{totalHours.toFixed(1)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center justify-between rounded-md bg-accent-soft px-3 py-2 text-sm font-bold text-accent">
+            <span>Total labor hours scheduled</span><span className="tabular-nums">{totalHours.toFixed(1)}</span>
+          </div>
+        </>
+      )}
+      <p className="text-xs text-ink-subtle">Pulled from this site's Schedule for the selected day. Adjust throughout the day based on actual traffic. Remove excess labor early to protect your daily results.</p>
     </Panel>
   )
 }
