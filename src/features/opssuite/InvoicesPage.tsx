@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Check, Copy, Mail } from 'lucide-react'
+import { Check, Copy, Mail, FileText } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { billing, type Account } from '@/lib/queries/billing'
 import type { CompanySettings } from '@/lib/queries/companySettings'
+import { opsInvoices, type OpsInvoice } from '@/lib/queries/opsInvoices'
+import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 
 // Each wash (account) gets its own unique inbound address,
@@ -32,6 +34,29 @@ type InvoiceRow = {
   detail: string | null
   submitted_at: string | null
   status: InvoiceStatus
+  filePath: string | null
+}
+
+const KNOWN_STATUSES = new Set<InvoiceStatus>([
+  'unassigned', 'queue', 'assigned', 'approved', 'exported', 'needs_attention', 'cancelled',
+])
+
+// Map an ops_invoices row to the table shape. Emailed-in invoices arrive
+// 'unassigned' with no site/approver yet; any unrecognized legacy status is
+// treated as unassigned so nothing is hidden.
+function toRow(r: OpsInvoice): InvoiceRow {
+  const status = (KNOWN_STATUSES.has(r.status as InvoiceStatus) ? r.status : 'unassigned') as InvoiceStatus
+  return {
+    id: r.id,
+    vendor: r.vendor_name,
+    sites: [],
+    approvers: r.assigned_to_name ? [r.assigned_to_name] : [],
+    amount: Number(r.amount) || 0,
+    detail: r.email_subject || r.file_name || null,
+    submitted_at: r.submitted_at,
+    status,
+    filePath: r.file_path,
+  }
 }
 
 type TabDef = {
@@ -92,8 +117,30 @@ export default function InvoicesPage() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
 
-  // No rows until the email pipeline is wired up.
-  const [rows] = useState<InvoiceRow[]>([])
+  // Emailed-in invoices, filed by the invoice-inbound pipeline. Live-updates as
+  // new mail arrives.
+  const [rows, setRows] = useState<InvoiceRow[]>([])
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      const { data } = await opsInvoices.list()
+      if (active) setRows(((data as OpsInvoice[] | null) ?? []).map(toRow))
+    }
+    void load()
+    const ch = supabase
+      .channel('ops-invoices')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ops_invoices' }, () => void load())
+      .subscribe()
+    return () => {
+      active = false
+      void supabase.removeChannel(ch)
+    }
+  }, [])
+
+  const openFile = async (path: string) => {
+    const url = await opsInvoices.fileUrl(path)
+    if (url) window.open(url, '_blank', 'noopener')
+  }
 
   // This wash's unique inbound invoice address.
   const [account, setAccount] = useState<Account | null>(null)
@@ -140,8 +187,8 @@ export default function InvoicesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-md border border-warn/40 bg-warn-soft px-4 py-2.5 text-center text-sm font-semibold text-warn">
-        This Page is Under Construction
+      <div className="rounded-md border border-warn/40 bg-warn-soft px-4 py-2.5 text-center text-sm font-medium text-warn">
+        Emailed-in invoices now arrive automatically on the Unassigned tab. The approval workflow (assigning sites and approvers, routing for approval) is still being built.
       </div>
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">{active.label}</h1>
@@ -286,7 +333,19 @@ export default function InvoicesPage() {
                   <td className="px-4 py-3 text-ink-muted">
                     {r.submitted_at ? shortDate(r.submitted_at) : '—'}
                   </td>
-                  <td className="px-4 py-3 text-right text-ink-muted">—</td>
+                  <td className="px-4 py-3 text-right">
+                    {r.filePath ? (
+                      <button
+                        type="button"
+                        onClick={() => void openFile(r.filePath!)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-ink transition hover:bg-content"
+                      >
+                        <FileText className="size-3.5" /> View
+                      </button>
+                    ) : (
+                      <span className="text-ink-muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))
             )}

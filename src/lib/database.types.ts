@@ -2004,6 +2004,7 @@ export type Database = {
           id: string
           name: string | null
           site_number: number
+          start_date: string | null
         }
         Insert: {
           account_id: string
@@ -2013,6 +2014,7 @@ export type Database = {
           id?: string
           name?: string | null
           site_number: number
+          start_date?: string | null
         }
         Update: {
           account_id?: string
@@ -2022,6 +2024,7 @@ export type Database = {
           id?: string
           name?: string | null
           site_number?: number
+          start_date?: string | null
         }
         Relationships: [
           {
@@ -3130,7 +3133,11 @@ export type Database = {
           decided_by: string | null
           decided_by_name: string | null
           decision_reason: string | null
+          email_from: string | null
+          email_message_id: string | null
+          email_subject: string | null
           file_name: string | null
+          file_path: string | null
           file_type: string | null
           gl_code: string | null
           id: string
@@ -3153,7 +3160,11 @@ export type Database = {
           decided_by?: string | null
           decided_by_name?: string | null
           decision_reason?: string | null
+          email_from?: string | null
+          email_message_id?: string | null
+          email_subject?: string | null
           file_name?: string | null
+          file_path?: string | null
           file_type?: string | null
           gl_code?: string | null
           id?: string
@@ -3176,7 +3187,11 @@ export type Database = {
           decided_by?: string | null
           decided_by_name?: string | null
           decision_reason?: string | null
+          email_from?: string | null
+          email_message_id?: string | null
+          email_subject?: string | null
           file_name?: string | null
+          file_path?: string | null
           file_type?: string | null
           gl_code?: string | null
           id?: string

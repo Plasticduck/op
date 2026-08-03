@@ -371,6 +371,11 @@ allow_dynamic_registration = false
 [functions.stripe-webhook]
 verify_jwt = false
 
+# Inbound-email provider posts parsed invoices here — no Supabase JWT. It
+# validates a shared secret (INVOICE_INBOUND_SECRET) instead.
+[functions.invoice-inbound]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
