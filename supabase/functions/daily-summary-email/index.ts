@@ -20,6 +20,7 @@ const DEFAULT_TO = 'kjowers@mighty-wash.com'
 // live dashboard (same source as Site Performance), not the SQL archive.
 const DASH_BASE = (Deno.env.get('MW_DASHBOARD_URL') ?? 'https://dashboard.tail1e050b.ts.net').replace(/\/$/, '')
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 
 async function dashLogin(password: string): Promise<string> {
   const res = await fetch(`${DASH_BASE}/login`, {
@@ -43,6 +44,18 @@ async function gq(cookie: string, metric: string, day: string): Promise<any | nu
       method: 'POST',
       headers: { Cookie: cookie, 'User-Agent': BROWSER_UA, 'Content-Type': 'application/json' },
       body: JSON.stringify({ metric, sites: [], start: day, end: day }),
+      signal: AbortSignal.timeout(25000),
+    })
+    if (!r.ok) return null
+    return await r.json()
+  } catch { return null }
+}
+// Monthly TTAF report (per-site recharge + retail dollars), keyed "YYYY-MM".
+// deno-lint-ignore no-explicit-any
+async function fetchTtaf(cookie: string): Promise<any | null> {
+  try {
+    const r = await fetch(`${DASH_BASE}/api/ttaf_report`, {
+      headers: { Cookie: cookie, 'User-Agent': BROWSER_UA },
       signal: AbortSignal.timeout(25000),
     })
     if (!r.ok) return null
@@ -215,10 +228,44 @@ Deno.serve(async (req) => {
     convBySite: Map<string, number>; churnVolBySite: Map<string, number>; churnCcBySite: Map<string, number>
     carsLyBySite: Map<string, number>
   } | null = null
+  // Yesterday's retail (non-membership, non-recharge sales): the day-over-day
+  // increase in the TTAF month-to-date retail. Null until a baseline snapshot
+  // exists (first run) or if the dashboard is unreachable.
+  let retailDay: number | null = null
   const dashPw = Deno.env.get('MW_DASHBOARD_PASSWORD')
   if (dashPw) {
     try {
       const cookie = await dashLogin(dashPw)
+
+      // Retail: sum this month's retail_dollars across sites (month-to-date),
+      // diff against the previous day's snapshot, then store today's snapshot.
+      try {
+        const ttaf = await fetchTtaf(cookie)
+        const monthKey = rday.slice(0, 7)
+        const bucket = ttaf?.months?.[monthKey]
+        if (bucket) {
+          // deno-lint-ignore no-explicit-any
+          const retailMtdNow = Object.values(bucket as Record<string, any>).reduce((s, x) => s + (Number(x.retail_dollars) || 0), 0)
+          const { data: prev } = await svc
+            .from('ttaf_retail_snapshots')
+            .select('month_key, retail_mtd')
+            .eq('account_id', MW_ACCOUNT)
+            .lt('snapshot_date', rday)
+            .order('snapshot_date', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (prev) {
+            // Same month -> subtract prior cumulative; new month -> the whole
+            // (small) new-month total is the day's retail.
+            retailDay = Math.max(0, retailMtdNow - (prev.month_key === monthKey ? Number(prev.retail_mtd) : 0))
+          }
+          await svc.from('ttaf_retail_snapshots').upsert(
+            { account_id: MW_ACCOUNT, snapshot_date: rday, month_key: monthKey, retail_mtd: retailMtdNow, updated_at: new Date().toISOString() },
+            { onConflict: 'account_id,snapshot_date' },
+          )
+        }
+      } catch { /* retail is best-effort */ }
+
       const [carsLy, revLy, rechLy, plansT, plansM, plansS, plansW, conv, cvol, ccc] = await Promise.all([
         gq(cookie, 'cars', lyStr), gq(cookie, 'revenue', lyStr), gq(cookie, 'recharge', lyStr),
         gq(cookie, 'plans_total', rday), gq(cookie, 'plans_mighty', rday), gq(cookie, 'plans_super', rday), gq(cookie, 'plans_wonder', rday),
@@ -359,6 +406,7 @@ Deno.serve(async (req) => {
         ${kpi('Total cars', nf(day.cars), yoySub(day.cars, dash?.yoyCars))}
         ${kpi('Sales', money(day.sales), yoySub(day.sales, dash?.yoyRevenue))}
         ${kpi('Recharge', money(day.recharge), yoySub(day.recharge, dash?.yoyRecharge))}
+        ${kpi('Retail', retailDay != null ? money(retailDay) : 'n/a', 'sales, excludes memberships + recharge')}
       </tr>
     </table>
     <div style="font-size:12px;color:#475569;padding:2px 8px;">
