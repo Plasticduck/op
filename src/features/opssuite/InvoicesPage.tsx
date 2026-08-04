@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, FileUp, Ban, Download, CornerUpLeft } from 'lucide-react'
+import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Ban, Download, CornerUpLeft, TriangleAlert } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
@@ -133,6 +133,7 @@ export default function InvoicesPage() {
   const [users, setUsers] = useState<AccountUser[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [warnOpen, setWarnOpen] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -222,10 +223,34 @@ export default function InvoicesPage() {
     setTo('')
   }
 
+  // Full invoice rows behind the currently-shown (filtered) tab rows.
+  const filteredInvoices = filtered
+    .map((r) => invoices.find((i) => i.id === r.id))
+    .filter((i): i is OpsInvoice => Boolean(i))
+
+  // Approved tab: download the QuickBooks CSV for the shown approved invoices,
+  // then mark them exported so they move to the Exported tab.
+  const exportApproved = async () => {
+    if (filteredInvoices.length === 0) return
+    downloadCsv(qbFilename(), quickbooksCsv(filteredInvoices))
+    setBusy(true)
+    await opsInvoices.updateMany(filteredInvoices.map((i) => i.id), {
+      status: 'exported', exported_at: nowIso(), exported_by: profile?.id ?? null, exported_by_name: profile?.name ?? null,
+    })
+    setBusy(false)
+  }
+
+  // Exported tab: re-download the same CSV, after the double-entry warning.
+  const downloadExported = () => {
+    setWarnOpen(false)
+    if (filteredInvoices.length === 0) return
+    downloadCsv(qbFilename(), quickbooksCsv(filteredInvoices))
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-md border border-warn/40 bg-warn-soft px-4 py-2.5 text-center text-sm font-medium text-warn">
-        Emailed-in invoices now arrive automatically on the Unassigned tab. The approval workflow (assigning sites and approvers, routing for approval) is still being built.
+      <div className="rounded-md border border-border bg-content px-4 py-2.5 text-center text-sm text-ink-muted">
+        Emailed invoices land on Unassigned. Set the site, GL code, and approver to send for approval, then export approved invoices to QuickBooks from the Approved tab.
       </div>
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">{active.label}</h1>
@@ -331,14 +356,26 @@ export default function InvoicesPage() {
           >
             Clear
           </button>
-          <button
-            type="button"
-            onClick={() => downloadCsv(active.label, filtered)}
-            disabled={filtered.length === 0}
-            className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
-          >
-            <Download className="size-4" /> CSV
-          </button>
+          {activeKey === 'approved' && canManage && (
+            <button
+              type="button"
+              onClick={() => void exportApproved()}
+              disabled={filtered.length === 0 || busy}
+              className="inline-flex h-10 items-center gap-1.5 rounded-md bg-accent px-4 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-50"
+            >
+              <Download className="size-4" /> Export to CSV
+            </button>
+          )}
+          {activeKey === 'exported' && (
+            <button
+              type="button"
+              onClick={() => setWarnOpen(true)}
+              disabled={filtered.length === 0}
+              className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
+            >
+              <Download className="size-4" /> Download CSV
+            </button>
+          )}
         </div>
       </div>
 
@@ -414,6 +451,23 @@ export default function InvoicesPage() {
           onFile={openFile}
           act={act}
         />
+      )}
+
+      {warnOpen && (
+        <Modal open onClose={() => setWarnOpen(false)} title="Already exported">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3 rounded-md border border-warn/40 bg-warn-soft px-3 py-2.5 text-sm text-warn">
+              <TriangleAlert className="mt-0.5 size-5 shrink-0" />
+              <p>
+                These {filteredInvoices.length} invoice{filteredInvoices.length === 1 ? ' has' : 's have'} already been exported to accounting. Re-importing this file may create <span className="font-semibold">duplicate bill entries</span> in QuickBooks. Only download another copy if you are sure.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setWarnOpen(false)}>Cancel</Button>
+              <Button onClick={downloadExported}><Download className="size-4" /> Download anyway</Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   )
@@ -581,10 +635,8 @@ function InvoiceModal({
                 </Button>
               </>
             )}
-            {canManage && status === 'approved' && (
-              <Button disabled={busy} onClick={() => void act(id, { status: 'exported', exported_by: currentUserId, exported_by_name: currentUserName, exported_at: nowIso() })}>
-                <FileUp className="size-4" /> Export to accounting
-              </Button>
+            {status === 'approved' && (
+              <span className="text-xs text-ink-muted">Export approved invoices to CSV from the Approved tab.</span>
             )}
           </div>
         </div>
@@ -613,19 +665,68 @@ function StatusPill({ status }: { status: InvoiceStatus }) {
   return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', tone)}>{STATUS_LABEL[status]}</span>
 }
 
-// Download the current tab's rows as a CSV for accounting.
-function downloadCsv(tabLabel: string, rows: InvoiceRow[]) {
-  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
-  const header = ['Vendor', 'Site(s)', 'Approver(s)', 'Amount', 'Detail', 'Submitted', 'Status']
-  const lines = rows.map((r) => [
-    r.vendor ?? '', r.sites.join('; '), r.approvers.join('; '), r.amount,
-    r.detail ?? '', r.submitted_at ? shortDate(r.submitted_at) : '', STATUS_LABEL[r.status],
-  ].map(esc).join(','))
-  const csv = [header.map(esc).join(','), ...lines].join('\n')
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+// QuickBooks Desktop bill-import columns, in exact order (note the deliberate
+// double spaces in "Expense  Memo" and "Product/Service  Class").
+const QB_HEADERS = [
+  'Bill No', 'Vendor', 'Date', 'Due Date', 'Terms', 'Email', 'Phone', 'Address Line 1',
+  'Address Line 2', 'City', 'Country', 'State', 'Postal Code', 'AP Account', 'Memo',
+  'Expense Account', 'Expense Amount', 'Expense  Memo', 'Expense Customer', 'Expense Sales Rep',
+  'Expense Billable', 'Expense Class', 'Product/Service', 'Product/Service Quantity',
+  'Product/Service Rate', 'Product/Service Amount', 'Unit of Measure', 'Serial No', 'Lot No',
+  'Inventory Site', 'Inventory BIN', 'Product/Service Description', 'Product/Service Customer',
+  'Product/Service Billable', 'Product/Service Sales Rep', 'Product/Service  Class', 'Currency', 'Exchange Rate',
+]
+
+const csvEsc = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+
+// 'YYYY-MM-DD' -> 'M/D/YYYY' (no leading zeros), matching the template.
+function mdY(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  return y && m && d ? `${m}/${d}/${y}` : ''
+}
+
+// Best-effort bill number from the email subject ("Invoice #INV-4821" -> INV-4821),
+// falling back to the attachment filename.
+function billNoOf(inv: OpsInvoice): string {
+  const subj = inv.email_subject ?? ''
+  const m = subj.match(/#\s*([A-Za-z0-9][\w-]*)/) ?? subj.match(/\b(INV[-\s]?[A-Za-z0-9-]+)\b/i)
+  if (m) return m[1].replace(/\s+/g, '')
+  if (inv.file_name) return inv.file_name.replace(/\.[^.]+$/, '')
+  return ''
+}
+
+// Build the QuickBooks CSV for a set of invoices. Fields we hold map to their QB
+// columns (Vendor, Date, GL -> Expense Account, amount -> Expense Amount); the
+// rest stay blank, exactly like the template.
+function quickbooksCsv(invs: OpsInvoice[]): string {
+  const rows = invs.map((inv) => {
+    const cell: Record<string, string> = {
+      'Bill No': billNoOf(inv),
+      Vendor: inv.vendor_name ?? '',
+      Date: mdY(inv.invoice_date) || mdY(inv.submitted_at),
+      'Expense Account': inv.gl_code ?? '',
+      'Expense Amount': String(Number(inv.amount) || 0),
+      Currency: 'USD',
+    }
+    return QB_HEADERS.map((h) => csvEsc(cell[h] ?? '')).join(',')
+  })
+  return [QB_HEADERS.map(csvEsc).join(','), ...rows].join('\r\n') + '\r\n'
+}
+
+// Filename shaped like the template: INV-QUICKBOOKSDESKTOP-<batch>-<MMYYYY>.csv
+function qbFilename(): string {
+  const now = new Date()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const batch = String(now.getTime()).slice(-6)
+  return `INV-QUICKBOOKSDESKTOP-${batch}-${mm}${now.getFullYear()}.csv`
+}
+
+function downloadCsv(filename: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
   const a = document.createElement('a')
   a.href = url
-  a.download = `invoices-${tabLabel.toLowerCase().replace(/\s+/g, '-')}.csv`
+  a.download = filename
   a.click()
   URL.revokeObjectURL(url)
 }

@@ -13,6 +13,10 @@ export const opsInvoices = {
   update: (id: string, patch: OpsInvoiceUpdate) =>
     supabase.from('ops_invoices').update(patch).eq('id', id).select().single(),
 
+  // Bulk transition (used to mark a batch of approved invoices exported).
+  updateMany: (ids: string[], patch: OpsInvoiceUpdate) =>
+    supabase.from('ops_invoices').update(patch).in('id', ids).select('id'),
+
   // Email the assigned approver that an invoice is waiting on them.
   notifyAssignment: (invoiceId: string) =>
     supabase.functions.invoke('notify-invoice-assignment', { body: { invoice_id: invoiceId } }),
