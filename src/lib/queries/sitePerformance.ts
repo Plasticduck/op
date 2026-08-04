@@ -221,6 +221,32 @@ export async function fetchMsaReport(): Promise<MsaReport> {
   return (await dashApi('/api/msa_report', 'GET')) as MsaReport
 }
 
+// ---------- TTAF (Total To Account For) ----------
+//
+// Monthly per-site figure replicating the dashboard's "TTAF by Site" sheet:
+// TTAF = recharge revenue + retail dollars (all the money to account for).
+// The report carries every backfilled month, keyed "YYYY-MM" then site number.
+export type TtafSite = {
+  site_number: number
+  cars_washed: number
+  actual_recharge_count: number
+  actual_recharge_revenue: number
+  retail_dollars: number
+  ttaf: number
+  dollars_per_recharge: number
+  pct_rev_from_recharge: number
+  conversion_pct: number | null
+  total_members: number
+}
+export type TtafReport = {
+  first_month: string | null
+  last_live_refresh: string | null
+  months: Record<string, Record<string, TtafSite>>
+}
+export async function fetchTtafReport(): Promise<TtafReport> {
+  return (await dashApi('/api/ttaf_report', 'GET')) as TtafReport
+}
+
 // Earliest and latest archived dates, so the UI can show what history exists.
 export async function fetchSitePerformanceHistoryBounds(): Promise<{ min: string | null; max: string | null }> {
   const [{ data: lo }, { data: hi }] = await Promise.all([

@@ -11,6 +11,7 @@ import {
   fetchSitePerformance,
   fetchSitePerformanceHistory,
   fetchSitePerformanceHistoryBounds,
+  fetchTtafReport,
   groupByRegion,
   runCustomSql,
   runGuidedQuery,
@@ -22,6 +23,7 @@ import {
   type SiteDay,
   type SitePerfDayRow,
   type SitePerformanceFeed,
+  type TtafReport,
 } from '@/lib/queries/sitePerformance'
 
 // The dashboard refreshes its live tabs every 60s; mirror that here.
@@ -29,7 +31,7 @@ const REFRESH_MS = 60_000
 const PLAN_ORDER = ['Mighty Plan', 'Super Plan', 'Wonder Plan', 'MVP Plan']
 
 type ViewKey =
-  | 'site' | 'history' | 'recharge_revenue' | 'recharge_audit' | 'rinsed'
+  | 'site' | 'history' | 'recharge_revenue' | 'recharge_audit' | 'ttaf' | 'rinsed'
   | 'under15' | 'churn' | 'records' | 'sitebreak' | 'custom_query'
 
 const VIEWS: { key: ViewKey; label: string }[] = [
@@ -38,6 +40,7 @@ const VIEWS: { key: ViewKey; label: string }[] = [
   { key: 'custom_query', label: 'Custom Query' },
   { key: 'recharge_revenue', label: 'Recharge $' },
   { key: 'recharge_audit', label: 'Recharge Audit' },
+  { key: 'ttaf', label: 'TTAF' },
   { key: 'rinsed', label: 'Conversions' },
   { key: 'under15', label: 'Under 15%' },
   { key: 'churn', label: 'Churn' },
@@ -51,6 +54,7 @@ const FRESHNESS: Record<ViewKey, string> = {
   custom_query: 'Runs fresh against the SiteWatch DB each time you click Run',
   recharge_revenue: 'Updated nightly, not continuously live',
   recharge_audit: 'Live, updates every 60s',
+  ttaf: 'Monthly, from SiteWatch; backfilled to Aug 2024, refreshed nightly',
   rinsed: 'As of the last automated Rinsed/FlexWash pull',
   under15: 'As of the last automated Rinsed/FlexWash pull',
   churn: 'Last month, refreshed nightly',
@@ -264,6 +268,7 @@ export default function SitePerformancePage() {
               {view === 'site' && <BySite feed={feed} idx={regionIndex} />}
               {view === 'recharge_revenue' && <RechargeRevenue feed={feed} idx={regionIndex} />}
               {view === 'recharge_audit' && <RechargeAudit feed={feed} idx={regionIndex} />}
+              {view === 'ttaf' && <Ttaf idx={regionIndex} />}
               {view === 'rinsed' && <Conversions feed={feed} idx={regionIndex} />}
               {view === 'under15' && <Under15 feed={feed} idx={regionIndex} />}
               {view === 'churn' && <Churn feed={feed} idx={regionIndex} />}
@@ -1184,6 +1189,131 @@ function History({ idx }: { idx: RegionIndex }) {
         {bounds.min ? ` Available from ${bounds.min} to ${bounds.max}.` : ' Building up as of today.'}
         {' '}Dates before the archive began are not available. Totals sum each day in the range;
         Cars/Man-Hr and Labor % are computed on the range totals.
+      </Footnote>
+    </div>
+  )
+}
+
+// ---------- TTAF (Total To Account For) ----------
+
+function Ttaf({ idx }: { idx: RegionIndex }) {
+  const [report, setReport] = useState<TtafReport | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [month, setMonth] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    setError(null)
+    fetchTtafReport()
+      .then((r) => {
+        if (!alive) return
+        setReport(r)
+        const ms = Object.keys(r.months ?? {}).sort()
+        setMonth(ms[ms.length - 1] ?? '')
+      })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const months = useMemo(() => Object.keys(report?.months ?? {}).sort().reverse(), [report])
+  const monthLabel = (k: string) => (k ? new Date(k + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '')
+
+  const items = useMemo(
+    () => Object.values(report?.months?.[month] ?? {}).map((s) => ({ ...s, site: 'MightyWash ' + String(s.site_number).padStart(3, '0') })),
+    [report, month],
+  )
+
+  const groups = groupByRegion(items, (r) => r.site, idx)
+  const tot = items.reduce(
+    (a, s) => ({
+      cars: a.cars + (Number(s.cars_washed) || 0),
+      count: a.count + (Number(s.actual_recharge_count) || 0),
+      recharge: a.recharge + (Number(s.actual_recharge_revenue) || 0),
+      retail: a.retail + (Number(s.retail_dollars) || 0),
+      ttaf: a.ttaf + (Number(s.ttaf) || 0),
+    }),
+    { cars: 0, count: 0, recharge: 0, retail: 0, ttaf: 0 },
+  )
+  const dpr = (rev: number, cnt: number) => (cnt > 0 ? money(round(rev / cnt, 2), 2) : DASH)
+  const pctRev = (rev: number, ttaf: number) => (ttaf > 0 ? round((rev / ttaf) * 100, 1) + '%' : DASH)
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Panel
+        title="TTAF · Total To Account For"
+        sub={`Recharge revenue + retail dollars per site${month ? ' for ' + monthLabel(month) : ''}`}
+        actions={
+          months.length > 0 ? (
+            <Select value={month} onChange={(e) => setMonth(e.target.value)} className="h-9 w-44">
+              {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+            </Select>
+          ) : null
+        }
+      >
+        {loading ? (
+          <p className="px-5 pb-5 text-sm text-ink-muted">Loading…</p>
+        ) : error ? (
+          <p className="px-5 pb-5 text-sm text-danger">{error}</p>
+        ) : items.length === 0 ? (
+          <p className="px-5 pb-5 text-sm text-ink-muted">No TTAF data for this month.</p>
+        ) : (
+          <TableShell
+            head={<>
+              {['Site', 'Cars Washed', 'Recharge $', 'Retail $', 'TTAF', '$/Recharge', '% Rev From Recharge'].map((h) => (
+                <th key={h} className={th}>{h}</th>
+              ))}
+            </>}
+          >
+            {groups.map((g) => {
+              const rs = [...g.items].sort((a, b) => (b.ttaf ?? 0) - (a.ttaf ?? 0))
+              const cars = sum(rs, (r) => r.cars_washed)
+              const count = sum(rs, (r) => r.actual_recharge_count)
+              const recharge = sum(rs, (r) => r.actual_recharge_revenue)
+              const retail = sum(rs, (r) => r.retail_dollars)
+              const ttaf = sum(rs, (r) => r.ttaf)
+              return (
+                <FragmentRegion key={g.region}>
+                  <RegionHead region={g.region} count={rs.length} />
+                  {rs.map((r) => (
+                    <tr key={r.site}>
+                      <td className={td} title={r.site}>{siteLabel(r.site)}</td>
+                      <td className={td}>{round(r.cars_washed, 0)}</td>
+                      <td className={td}>{money(r.actual_recharge_revenue)}</td>
+                      <td className={td}>{money(r.retail_dollars)}</td>
+                      <td className={cn(td, 'font-semibold')}>{money(r.ttaf)}</td>
+                      <td className={td}>{r.dollars_per_recharge != null ? money(r.dollars_per_recharge, 2) : DASH}</td>
+                      <td className={td}>{r.pct_rev_from_recharge != null ? round(r.pct_rev_from_recharge, 1) + '%' : DASH}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold text-ink">
+                    <td className={td}>Subtotal</td>
+                    <td className={td}>{round(cars, 0)}</td>
+                    <td className={td}>{money(recharge)}</td>
+                    <td className={td}>{money(retail)}</td>
+                    <td className={td}>{money(ttaf)}</td>
+                    <td className={td}>{dpr(recharge, count)}</td>
+                    <td className={td}>{pctRev(recharge, ttaf)}</td>
+                  </tr>
+                </FragmentRegion>
+              )
+            })}
+            <tr className="border-t-2 border-border font-bold text-ink">
+              <td className={td}>Company Total</td>
+              <td className={td}>{round(tot.cars, 0)}</td>
+              <td className={td}>{money(tot.recharge)}</td>
+              <td className={td}>{money(tot.retail)}</td>
+              <td className={td}>{money(tot.ttaf)}</td>
+              <td className={td}>{dpr(tot.recharge, tot.count)}</td>
+              <td className={td}>{pctRev(tot.recharge, tot.ttaf)}</td>
+            </tr>
+          </TableShell>
+        )}
+      </Panel>
+      <Footnote>
+        TTAF (Total To Account For) = recharge revenue + retail dollars for the month, per site, mirroring the SiteWatch "TTAF by Site" sheet. $/Recharge and % Rev From Recharge on subtotal and total rows are computed from the summed figures.
       </Footnote>
     </div>
   )
