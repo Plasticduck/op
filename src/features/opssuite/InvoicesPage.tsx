@@ -7,6 +7,7 @@ import { billing, type Account } from '@/lib/queries/billing'
 import { listUsers, type AccountUser } from '@/lib/queries/account'
 import type { CompanySettings } from '@/lib/queries/companySettings'
 import { opsInvoices, type OpsInvoice, type OpsInvoiceUpdate } from '@/lib/queries/opsInvoices'
+import { invoiceVendors } from '@/lib/queries/invoiceVendors'
 import { supabase } from '@/lib/supabase'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -154,6 +155,11 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     void listUsers().then(({ data }) => setUsers((data as AccountUser[] | null) ?? []))
+  }, [])
+
+  const [vendorNames, setVendorNames] = useState<string[]>([])
+  useEffect(() => {
+    void invoiceVendors.list().then(({ data }) => setVendorNames(((data as { name: string }[] | null) ?? []).map((v) => v.name)))
   }, [])
 
   const locName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations])
@@ -441,6 +447,7 @@ export default function InvoicesPage() {
         <InvoiceModal
           invoice={openInvoice}
           users={users}
+          vendors={vendorNames}
           locName={locName}
           currentUserId={profile?.id ?? null}
           currentUserName={profile?.name ?? ''}
@@ -476,10 +483,11 @@ export default function InvoicesPage() {
 // ---- Workflow modal --------------------------------------------------------
 
 function InvoiceModal({
-  invoice, users, locName, currentUserId, currentUserName, isOwner, canManage, busy, onClose, onFile, act,
+  invoice, users, vendors, locName, currentUserId, currentUserName, isOwner, canManage, busy, onClose, onFile, act,
 }: {
   invoice: OpsInvoice
   users: AccountUser[]
+  vendors: string[]
   locName: Map<string, string>
   currentUserId: string | null
   currentUserName: string
@@ -531,9 +539,12 @@ function InvoiceModal({
           )}
         </div>
 
+        <datalist id="invoice-vendor-list">
+          {vendors.map((v) => <option key={v} value={v} />)}
+        </datalist>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Vendor">
-            <Input value={vendor} onChange={(e) => setVendor(e.target.value)} disabled={!editable} />
+            <Input value={vendor} onChange={(e) => setVendor(e.target.value)} disabled={!editable} list="invoice-vendor-list" placeholder="Type or pick a vendor" />
           </Field>
           <Field label="Amount">
             <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!editable} />

@@ -21,9 +21,44 @@
 //   }
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import Anthropic from 'npm:@anthropic-ai/sdk'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
+
+// Ask Claude to match an inbound invoice to a vendor in the account's list.
+// Returns the exact list name, or null when there's no confident match (we only
+// accept a verbatim list member, so a hallucinated name is rejected).
+async function matchVendor(
+  apiKey: string,
+  model: string,
+  sender: { name: string; email: string },
+  subject: string,
+  vendors: string[],
+): Promise<string | null> {
+  try {
+    const anthropic = new Anthropic({ apiKey })
+    const msg = await anthropic.messages.create({
+      model,
+      max_tokens: 100,
+      system:
+        'You match an incoming vendor invoice to the correct vendor from a fixed list. ' +
+        'Reply with ONLY the exact vendor name copied verbatim from the list, or the single ' +
+        'word NONE if there is no confident match. Output nothing else.',
+      messages: [{
+        role: 'user',
+        content: `Sender name: ${sender.name || '(none)'}\nSender email: ${sender.email || '(none)'}\n` +
+          `Email subject: ${subject || '(none)'}\n\nVendor list:\n${vendors.join('\n')}`,
+      }],
+    })
+    const block = msg.content.find((b) => b.type === 'text')
+    const raw = (block && 'text' in block ? block.text : '').trim()
+    if (!raw || raw.toUpperCase() === 'NONE') return null
+    return vendors.find((v) => v.toLowerCase() === raw.toLowerCase()) ?? null
+  } catch {
+    return null
+  }
+}
 
 function json(body: unknown, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -128,6 +163,24 @@ Deno.serve(async (req) => {
 
   const invoiceId = crypto.randomUUID()
 
+  // AI vendor match against this wash's vendor list; fall back to the parsed
+  // sender name when there's no confident match (vendor stays editable).
+  let vendorName = vendorFrom(from)
+  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
+  if (anthropicKey) {
+    const { data: vrows } = await svc
+      .from('invoice_vendors')
+      .select('name')
+      .eq('account_id', accountId)
+      .eq('active', true)
+    const vendors = (vrows ?? []).map((r: Any) => r.name as string)
+    if (vendors.length) {
+      const model = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
+      const matched = await matchVendor(anthropicKey, model, from, subject, vendors)
+      if (matched) vendorName = matched
+    }
+  }
+
   // Store attachments (prefer a PDF/image as the primary file).
   const atts: Any[] = Array.isArray(body.attachments) ? body.attachments : []
   let filePath: string | null = null
@@ -137,7 +190,7 @@ Deno.serve(async (req) => {
   for (const a of atts) {
     const name = String(a.filename ?? a.name ?? a.fileName ?? 'attachment').replace(/[^\w.\-]+/g, '_')
     const ctype = String(a.contentType ?? a.content_type ?? a.type ?? 'application/octet-stream')
-    const b64 = a.content ?? a.content_base64 ?? a.contentBase64 ?? a.data
+    const b64 = a.content ?? a.content_base64 ?? a.contentBase64 ?? a.contentBytes ?? a.data
     if (!b64 || typeof b64 !== 'string') continue
     let bytes: Uint8Array
     try {
@@ -157,7 +210,7 @@ Deno.serve(async (req) => {
   const { error: insErr } = await svc.from('ops_invoices').insert({
     id: invoiceId,
     account_id: accountId,
-    vendor_name: vendorFrom(from),
+    vendor_name: vendorName,
     amount: parseAmount(subject, text),
     status: 'unassigned',
     email_from: from.email || null,

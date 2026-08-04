@@ -2591,6 +2591,38 @@ export type Database = {
           },
         ]
       }
+      invoice_vendors: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_vendors_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labor_benchmark_tiers: {
         Row: {
           account_id: string
@@ -4990,6 +5022,38 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ttaf_retail_snapshots: {
+        Row: {
+          account_id: string
+          month_key: string
+          retail_mtd: number
+          snapshot_date: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          month_key: string
+          retail_mtd?: number
+          snapshot_date: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          month_key?: string
+          retail_mtd?: number
+          snapshot_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ttaf_retail_snapshots_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
