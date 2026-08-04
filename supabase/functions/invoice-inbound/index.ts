@@ -188,9 +188,9 @@ Deno.serve(async (req) => {
   let fileType: string | null = null
   const stored: string[] = []
   for (const a of atts) {
-    const name = String(a.filename ?? a.name ?? a.fileName ?? 'attachment').replace(/[^\w.\-]+/g, '_')
-    const ctype = String(a.contentType ?? a.content_type ?? a.type ?? 'application/octet-stream')
-    const b64 = a.content ?? a.content_base64 ?? a.contentBase64 ?? a.contentBytes ?? a.data
+    const name = String(a.filename ?? a.name ?? a.fileName ?? a.Name ?? 'attachment').replace(/[^\w.\-]+/g, '_')
+    const ctype = String(a.contentType ?? a.content_type ?? a.type ?? a.ContentType ?? 'application/octet-stream')
+    const b64 = a.content ?? a.content_base64 ?? a.contentBase64 ?? a.contentBytes ?? a.ContentBytes ?? a.data
     if (!b64 || typeof b64 !== 'string') continue
     let bytes: Uint8Array
     try {
