@@ -674,13 +674,9 @@ export function Sidebar({ role }: { role: Role }) {
           collapsed ? 'justify-center px-2' : 'px-5',
         )}
       >
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <Logo invert size="lg" />
-            {cobrandLogo && (
-              <img src={cobrandLogo} alt="Mighty Wash" className="h-[29px] w-auto object-contain" />
-            )}
-          </div>
+        {!collapsed && <Logo invert size="lg" />}
+        {!collapsed && cobrandLogo && (
+          <img src={cobrandLogo} alt="Mighty Wash" className="ml-auto h-[29px] w-auto object-contain" />
         )}
         <button
           type="button"
@@ -688,7 +684,7 @@ export function Sidebar({ role }: { role: Role }) {
           aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
           className={cn(
             'rounded-md p-1.5 text-ink-invert-muted/70 transition hover:bg-white/[0.06] hover:text-white',
-            !collapsed && 'ml-auto',
+            !collapsed && (cobrandLogo ? 'ml-3' : 'ml-auto'),
           )}
         >
           {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
