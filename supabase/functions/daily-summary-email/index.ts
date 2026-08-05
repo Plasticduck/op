@@ -232,23 +232,35 @@ Deno.serve(async (req) => {
   // increase in the TTAF month-to-date retail. Null until a baseline snapshot
   // exists (first run) or if the dashboard is unreachable.
   let retailDay: number | null = null
+  // Actual-money Sales (member-wash value removed): SiteWatch sites use TTAF
+  // (recharge + retail) via the day-over-day month-to-date delta; FlexWash sites
+  // already report actual money. Null until a baseline snapshot exists.
+  let netSales: number | null = null
   const dashPw = Deno.env.get('MW_DASHBOARD_PASSWORD')
   if (dashPw) {
     try {
       const cookie = await dashLogin(dashPw)
 
-      // Retail: sum this month's retail_dollars across sites (month-to-date),
-      // diff against the previous day's snapshot, then store today's snapshot.
+      // Retail + actual-money: sum this month's retail_dollars and ttaf across
+      // SiteWatch sites (month-to-date), diff against the previous day's
+      // snapshot, then store today's snapshot.
       try {
         const ttaf = await fetchTtaf(cookie)
         const monthKey = rday.slice(0, 7)
         const bucket = ttaf?.months?.[monthKey]
         if (bucket) {
+          const flexNums = new Set(FLEX_SITES.map((s) => s.n))
           // deno-lint-ignore no-explicit-any
-          const retailMtdNow = Object.values(bucket as Record<string, any>).reduce((s, x) => s + (Number(x.retail_dollars) || 0), 0)
+          const rows = Object.values(bucket as Record<string, any>)
+          const retailMtdNow = rows.reduce((s, x) => s + (Number(x.retail_dollars) || 0), 0)
+          // Exclude FlexWash site numbers so they aren't double-counted (their
+          // actual money is added from FlexWash below).
+          const ttafMtdNow = rows.reduce((s, x) => (flexNums.has(Number(x.site_number)) ? s : s + (Number(x.ttaf) || 0)), 0)
+          const flexActualDay = sites.filter((s) => flexNums.has(s.n)).reduce((a, s) => a + (Number(s.sales) || 0), 0)
+
           const { data: prev } = await svc
             .from('ttaf_retail_snapshots')
-            .select('month_key, retail_mtd')
+            .select('month_key, retail_mtd, ttaf_mtd')
             .eq('account_id', MW_ACCOUNT)
             .lt('snapshot_date', rday)
             .order('snapshot_date', { ascending: false })
@@ -256,15 +268,19 @@ Deno.serve(async (req) => {
             .maybeSingle()
           if (prev) {
             // Same month -> subtract prior cumulative; new month -> the whole
-            // (small) new-month total is the day's retail.
+            // (small) new-month total is the day's figure.
             retailDay = Math.max(0, retailMtdNow - (prev.month_key === monthKey ? Number(prev.retail_mtd) : 0))
+            if (prev.ttaf_mtd != null) {
+              const siteWatchActual = Math.max(0, ttafMtdNow - (prev.month_key === monthKey ? Number(prev.ttaf_mtd) : 0))
+              netSales = siteWatchActual + flexActualDay
+            }
           }
           await svc.from('ttaf_retail_snapshots').upsert(
-            { account_id: MW_ACCOUNT, snapshot_date: rday, month_key: monthKey, retail_mtd: retailMtdNow, updated_at: new Date().toISOString() },
+            { account_id: MW_ACCOUNT, snapshot_date: rday, month_key: monthKey, retail_mtd: retailMtdNow, ttaf_mtd: ttafMtdNow, updated_at: new Date().toISOString() },
             { onConflict: 'account_id,snapshot_date' },
           )
         }
-      } catch { /* retail is best-effort */ }
+      } catch { /* best-effort */ }
 
       const [carsLy, revLy, rechLy, plansT, plansM, plansS, plansW, conv, cvol, ccc] = await Promise.all([
         gq(cookie, 'cars', lyStr), gq(cookie, 'revenue', lyStr), gq(cookie, 'recharge', lyStr),
@@ -404,7 +420,7 @@ Deno.serve(async (req) => {
     <table role="presentation" width="100%" style="border-collapse:collapse;">
       <tr>
         ${kpi('Total cars', nf(day.cars), yoySub(day.cars, dash?.yoyCars))}
-        ${kpi('Sales', money(day.sales), yoySub(day.sales, dash?.yoyRevenue))}
+        ${kpi('Net Sales', netSales != null ? money(netSales) : money(day.sales), netSales != null ? 'recharge + retail (excludes member washes)' : 'gross this day; net not available yet')}
         ${kpi('Recharge', money(day.recharge), yoySub(day.recharge, dash?.yoyRecharge))}
         ${kpi('Retail', retailDay != null ? money(retailDay) : 'n/a', 'sales, excludes memberships + recharge')}
       </tr>
