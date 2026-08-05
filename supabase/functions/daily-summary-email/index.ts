@@ -420,7 +420,7 @@ Deno.serve(async (req) => {
     <table role="presentation" width="100%" style="border-collapse:collapse;">
       <tr>
         ${kpi('Total cars', nf(day.cars), yoySub(day.cars, dash?.yoyCars))}
-        ${kpi('Sales', netSales != null ? money(netSales) : money(day.sales), netSales != null ? 'recharge + memberships + retail; redemptions removed' : 'gross this day; adjusted figure not available yet')}
+        ${kpi('Net Sales', netSales != null ? money(netSales) : money(day.sales), netSales != null ? 'recharge + memberships + retail; member redemptions removed' : 'gross this day; net figure available tomorrow')}
         ${kpi('Recharge', money(day.recharge), yoySub(day.recharge, dash?.yoyRecharge))}
         ${kpi('Retail', retailDay != null ? money(retailDay) : 'n/a', 'sales, excludes memberships + recharge')}
       </tr>
