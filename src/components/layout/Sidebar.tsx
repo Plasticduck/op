@@ -59,7 +59,7 @@ import {
 import { Logo } from '@/components/ui/Logo'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
-import { isBillingHidden } from '@/lib/accountFlags'
+import { isBillingHidden, sidebarCobrandLogo } from '@/lib/accountFlags'
 import { pageAllowed } from '@/lib/permissions'
 import type { Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
@@ -640,6 +640,8 @@ export function SidebarNav({
 const COLLAPSE_KEY = 'tunnelsync.sidebarCollapsed'
 
 export function Sidebar({ role }: { role: Role }) {
+  const { profile } = useAuth()
+  const cobrandLogo = sidebarCobrandLogo(profile?.account_id)
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === '1'
@@ -672,7 +674,14 @@ export function Sidebar({ role }: { role: Role }) {
           collapsed ? 'justify-center px-2' : 'px-5',
         )}
       >
-        {!collapsed && <Logo invert size="lg" />}
+        {!collapsed && (
+          <div className="flex items-center gap-2">
+            <Logo invert size="lg" />
+            {cobrandLogo && (
+              <img src={cobrandLogo} alt="Mighty Wash" className="h-[29px] w-auto object-contain" />
+            )}
+          </div>
+        )}
         <button
           type="button"
           onClick={toggle}
