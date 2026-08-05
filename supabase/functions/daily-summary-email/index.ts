@@ -236,6 +236,10 @@ Deno.serve(async (req) => {
   // (recharge + retail) via the day-over-day month-to-date delta; FlexWash sites
   // already report actual money. Null until a baseline snapshot exists.
   let netSales: number | null = null
+  // Per-site actual money (net of redemptions), keyed by site number. SiteWatch
+  // sites via per-site TTAF delta; FlexWash sites are already net. Empty until a
+  // baseline snapshot exists, in which case the per-site column falls back to gross.
+  const siteNet = new Map<number, number>()
   const dashPw = Deno.env.get('MW_DASHBOARD_PASSWORD')
   if (dashPw) {
     try {
@@ -256,27 +260,47 @@ Deno.serve(async (req) => {
           // Exclude FlexWash site numbers so they aren't double-counted (their
           // actual money is added from FlexWash below).
           const ttafMtdNow = rows.reduce((s, x) => (flexNums.has(Number(x.site_number)) ? s : s + (Number(x.ttaf) || 0)), 0)
-          const flexActualDay = sites.filter((s) => flexNums.has(s.n)).reduce((a, s) => a + (Number(s.sales) || 0), 0)
+          // Per-site month-to-date TTAF (SiteWatch only), for the per-site delta.
+          const siteTtafNow: Record<string, number> = {}
+          for (const x of rows) {
+            const n = Number(x.site_number)
+            if (!flexNums.has(n)) siteTtafNow[String(n)] = Number(x.ttaf) || 0
+          }
+          const flexSites = sites.filter((s) => flexNums.has(s.n))
+          const flexActualDay = flexSites.reduce((a, s) => a + (Number(s.sales) || 0), 0)
+          const flexRetail = flexSites.reduce((a, s) => a + Math.max(0, (Number(s.sales) || 0) - (Number(s.recharge) || 0)), 0)
 
           const { data: prev } = await svc
             .from('ttaf_retail_snapshots')
-            .select('month_key, retail_mtd, ttaf_mtd')
+            .select('month_key, retail_mtd, ttaf_mtd, site_ttaf')
             .eq('account_id', MW_ACCOUNT)
             .lt('snapshot_date', rday)
             .order('snapshot_date', { ascending: false })
             .limit(1)
             .maybeSingle()
           if (prev) {
+            const sameMonth = prev.month_key === monthKey
             // Same month -> subtract prior cumulative; new month -> the whole
-            // (small) new-month total is the day's figure.
-            retailDay = Math.max(0, retailMtdNow - (prev.month_key === monthKey ? Number(prev.retail_mtd) : 0))
+            // (small) new-month total is the day's figure. Retail card includes
+            // FlexWash retail so it reconciles with Net Sales.
+            retailDay = Math.max(0, retailMtdNow - (sameMonth ? Number(prev.retail_mtd) : 0)) + flexRetail
             if (prev.ttaf_mtd != null) {
-              const siteWatchActual = Math.max(0, ttafMtdNow - (prev.month_key === monthKey ? Number(prev.ttaf_mtd) : 0))
+              const siteWatchActual = Math.max(0, ttafMtdNow - (sameMonth ? Number(prev.ttaf_mtd) : 0))
               netSales = siteWatchActual + flexActualDay
             }
+            // Per-site SiteWatch net = per-site TTAF delta (same-month baseline).
+            const prevSite = (sameMonth ? (prev.site_ttaf as Record<string, number> | null) : null) ?? null
+            if (prevSite) {
+              for (const [k, v] of Object.entries(siteTtafNow)) {
+                if (prevSite[k] != null) siteNet.set(Number(k), Math.max(0, v - Number(prevSite[k])))
+              }
+            }
           }
+          // FlexWash sites already report actual money.
+          for (const s of flexSites) siteNet.set(s.n, Number(s.sales) || 0)
+
           await svc.from('ttaf_retail_snapshots').upsert(
-            { account_id: MW_ACCOUNT, snapshot_date: rday, month_key: monthKey, retail_mtd: retailMtdNow, ttaf_mtd: ttafMtdNow, updated_at: new Date().toISOString() },
+            { account_id: MW_ACCOUNT, snapshot_date: rday, month_key: monthKey, retail_mtd: retailMtdNow, ttaf_mtd: ttafMtdNow, site_ttaf: siteTtafNow, updated_at: new Date().toISOString() },
             { onConflict: 'account_id,snapshot_date' },
           )
         }
@@ -370,7 +394,7 @@ Deno.serve(async (req) => {
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;">${esc(cn)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${nf(s.cars)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${delta(s.cars, dash?.carsLyBySite.get(cn))}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.sales)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(siteNet.has(s.n) ? siteNet.get(s.n)! : s.sales)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;font-variant-numeric:tabular-nums;">${money(s.recharge)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${pct(dash?.convBySite.get(cn))}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:right;">${combinedChurn(cn)}</td>
@@ -438,7 +462,7 @@ Deno.serve(async (req) => {
           <th style="padding:6px 8px;text-align:left;">Site</th>
           <th style="padding:6px 8px;text-align:right;">Cars</th>
           <th style="padding:6px 8px;text-align:right;">vs LY</th>
-          <th style="padding:6px 8px;text-align:right;">Sales</th>
+          <th style="padding:6px 8px;text-align:right;">Net Sales</th>
           <th style="padding:6px 8px;text-align:right;">Recharge</th>
           <th style="padding:6px 8px;text-align:right;">Conv %</th>
           <th style="padding:6px 8px;text-align:right;">Monthly Churn %</th>
