@@ -16,6 +16,7 @@ import { NotificationsProvider } from '@/lib/notifications'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { BillingGate } from '@/components/layout/BillingGate'
+import { accountCobrandLogo } from '@/lib/accountFlags'
 
 // Routes that should fill the entire main scroll container with no outer
 // padding so they can manage their own scroll (chat threads, side-by-side
@@ -74,6 +75,10 @@ export function AppShell() {
   if (!profile) return null
 
   const isFullBleed = FULL_BLEED_PATTERNS.some((re) => re.test(location.pathname))
+  // Per-account co-brand logo in the content's top-left margin, on every page
+  // except the Dashboard (which shows the full brand logo in its own content).
+  const cobrandLogo = accountCobrandLogo(profile.account_id)
+  const showCobrand = !!cobrandLogo && location.pathname !== '/app/dashboard'
 
   return (
     // BillingGate replaces the whole shell with a paywall when the account's
@@ -100,7 +105,14 @@ export function AppShell() {
                     // Padded wrapper: bottom padding leaves room for the BottomNav
                     // on mobile so the content can scroll above it without being
                     // covered.
-                    <div className="mx-auto w-full max-w-7xl px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:pb-8">
+                    <div className="relative mx-auto w-full max-w-7xl px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:pb-8">
+                      {showCobrand && cobrandLogo && (
+                        <img
+                          src={cobrandLogo}
+                          alt="Mighty Wash"
+                          className="pointer-events-none absolute right-full top-6 mr-6 hidden h-28 w-auto object-contain min-[1740px]:block"
+                        />
+                      )}
                       <Outlet />
                     </div>
                   )}

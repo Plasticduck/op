@@ -59,7 +59,7 @@ import {
 import { Logo } from '@/components/ui/Logo'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
-import { isBillingHidden, sidebarCobrandLogo } from '@/lib/accountFlags'
+import { isBillingHidden } from '@/lib/accountFlags'
 import { pageAllowed } from '@/lib/permissions'
 import type { Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
@@ -640,12 +640,6 @@ export function SidebarNav({
 const COLLAPSE_KEY = 'tunnelsync.sidebarCollapsed'
 
 export function Sidebar({ role }: { role: Role }) {
-  const { profile } = useAuth()
-  const location = useLocation()
-  const cobrandLogo = sidebarCobrandLogo(profile?.account_id)
-  // Co-brand logo shows in the header on every page except the Dashboard (which
-  // already displays the full brand logo in its own content).
-  const showCobrand = !!cobrandLogo && location.pathname !== '/app/dashboard'
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === '1'
@@ -679,16 +673,13 @@ export function Sidebar({ role }: { role: Role }) {
         )}
       >
         {!collapsed && <Logo invert size="lg" />}
-        {!collapsed && showCobrand && cobrandLogo && (
-          <img src={cobrandLogo} alt="Mighty Wash" className="ml-auto h-7 w-auto object-contain" />
-        )}
         <button
           type="button"
           onClick={toggle}
           aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
           className={cn(
             'rounded-md p-1.5 text-ink-invert-muted/70 transition hover:bg-white/[0.06] hover:text-white',
-            !collapsed && (showCobrand ? 'ml-3' : 'ml-auto'),
+            !collapsed && 'ml-auto',
           )}
         >
           {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
