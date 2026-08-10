@@ -3384,6 +3384,7 @@ export type Database = {
           decision_reason: string | null
           due_date: string | null
           duplicate_of: string | null
+          email_attachment_key: string | null
           email_from: string | null
           email_message_id: string | null
           email_subject: string | null
@@ -3432,6 +3433,7 @@ export type Database = {
           decision_reason?: string | null
           due_date?: string | null
           duplicate_of?: string | null
+          email_attachment_key?: string | null
           email_from?: string | null
           email_message_id?: string | null
           email_subject?: string | null
@@ -3480,6 +3482,7 @@ export type Database = {
           decision_reason?: string | null
           due_date?: string | null
           duplicate_of?: string | null
+          email_attachment_key?: string | null
           email_from?: string | null
           email_message_id?: string | null
           email_subject?: string | null
@@ -6478,6 +6481,7 @@ export type Database = {
           decision_reason: string | null
           due_date: string | null
           duplicate_of: string | null
+          email_attachment_key: string | null
           email_from: string | null
           email_message_id: string | null
           email_subject: string | null
@@ -6535,6 +6539,7 @@ export type Database = {
           decision_reason: string | null
           due_date: string | null
           duplicate_of: string | null
+          email_attachment_key: string | null
           email_from: string | null
           email_message_id: string | null
           email_subject: string | null

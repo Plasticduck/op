@@ -60,6 +60,67 @@ async function matchVendor(
   }
 }
 
+// Read a single attached file (PDF or image) with Claude: decide whether it is
+// actually a vendor invoice, and if so pull the billing fields off the page
+// (vendor matched to the account's list when it clearly refers to a listed
+// company, else as printed; invoice date, total amount, invoice number).
+// Best-effort: any hard failure returns null and the caller falls back to the
+// email-metadata heuristics (and treats the file as an invoice, conservatively).
+async function extractInvoice(
+  apiKey: string,
+  model: string,
+  file: { b64: string; contentType: string },
+  vendors: string[],
+): Promise<{ isInvoice: boolean; vendor: string | null; invoiceDate: string | null; amount: number | null; invoiceNumber: string | null } | null> {
+  const isPdf = file.contentType.includes('pdf')
+  const isImg = file.contentType.startsWith('image/')
+  if (!isPdf && !isImg) return null
+  try {
+    const anthropic = new Anthropic({ apiKey })
+    const doc = isPdf
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file.b64 } }
+      : { type: 'image', source: { type: 'base64', media_type: file.contentType, data: file.b64 } }
+    const msg = await anthropic.messages.create({
+      model,
+      max_tokens: 400,
+      system:
+        'You inspect a single file attached to an email and, if it is a vendor invoice, extract its billing fields. ' +
+        'Reply with ONLY a JSON object and nothing else. Keys: ' +
+        '"is_invoice" (boolean: true if this file is a vendor invoice or bill — a document requesting or recording payment owed to a vendor; ' +
+        'false if it is NOT an invoice, e.g. a company logo or other non-document image, a marketing flyer, an email-signature image, ' +
+        'general correspondence, a blank page, or a plain account statement with no invoice detail. When unsure, use true.), ' +
+        '"vendor" (the company that issued the invoice / is being paid), "invoice_date" (the invoice date as YYYY-MM-DD, or null), ' +
+        '"amount" (the total amount due as a plain number with no currency symbol or commas, or null), "invoice_number" (as printed, or null). ' +
+        'For "vendor": if one of the names in the provided Vendor list clearly refers to the same company, copy that list name VERBATIM; otherwise use the vendor name exactly as printed on the invoice.',
+      messages: [{
+        role: 'user',
+        // deno-lint-ignore no-explicit-any
+        content: [doc as any, { type: 'text', text: `Vendor list:\n${vendors.join('\n') || '(none)'}\n\nReturn the JSON now.` }],
+      }],
+    })
+    const block = msg.content.find((b) => b.type === 'text')
+    const raw = (block && 'text' in block ? block.text : '').trim()
+    const m = raw.match(/\{[\s\S]*\}/)
+    if (!m) return null
+    const parsed = JSON.parse(m[0])
+    const vendorRaw = typeof parsed.vendor === 'string' ? parsed.vendor.trim() : ''
+    const matched = vendors.find((v) => v.toLowerCase() === vendorRaw.toLowerCase())
+    const amt = Number(parsed.amount)
+    const dateStr = typeof parsed.invoice_date === 'string' ? parsed.invoice_date.trim() : ''
+    const numStr = typeof parsed.invoice_number === 'string' ? parsed.invoice_number.trim() : ''
+    return {
+      // Only a confident, explicit false skips the file; anything else is kept.
+      isInvoice: parsed.is_invoice !== false,
+      vendor: matched ?? (vendorRaw || null),
+      invoiceDate: /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr : null,
+      amount: Number.isFinite(amt) && amt > 0 ? amt : null,
+      invoiceNumber: numStr || null,
+    }
+  } catch {
+    return null
+  }
+}
+
 function json(body: unknown, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
@@ -150,82 +211,157 @@ Deno.serve(async (req) => {
   const text = String(body.text ?? body.plain ?? '')
   const messageId = String(body.messageId ?? body.message_id ?? body['message-id'] ?? '').trim() || null
 
-  // Idempotency: skip a message we've already filed for this wash.
-  if (messageId) {
-    const { data: existing } = await svc
-      .from('ops_invoices')
-      .select('id')
-      .eq('account_id', accountId)
-      .eq('email_message_id', messageId)
-      .maybeSingle()
-    if (existing?.id) return json({ ok: true, deduped: true, invoice_id: existing.id }, 200)
-  }
-
-  const invoiceId = crypto.randomUUID()
-
-  // AI vendor match against this wash's vendor list; fall back to the parsed
-  // sender name when there's no confident match (vendor stays editable).
-  let vendorName = vendorFrom(from)
+  // Vendor list + aliases for this wash, read once and reused for every attachment.
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
+  const model = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
+  let vendors: string[] = []
   if (anthropicKey) {
     const { data: vrows } = await svc
-      .from('invoice_vendors')
-      .select('name')
+      .from('invoice_vendors').select('name').eq('account_id', accountId).eq('active', true)
+    vendors = (vrows ?? []).map((r: Any) => r.name as string)
+  }
+  const { data: aliasRows } = await svc
+    .from('invoice_vendor_aliases').select('alias_name, canonical_name').eq('account_id', accountId)
+  const aliases = aliasRows ?? []
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+  // File an invoice under a different dropdown vendor when an alias matches
+  // (e.g. Arnold Oil -> A-Line Auto Parts).
+  const applyAlias = (name: string): string => {
+    const a = aliases.find((x: Any) => norm(String(x.alias_name)) === norm(name))
+    return a ? String(a.canonical_name) : name
+  }
+  // Soft duplicate: same account + vendor + invoice number as an earlier
+  // non-cancelled invoice; the earliest match is treated as the original.
+  const findDuplicate = async (invoiceNumber: string | null, vendorName: string): Promise<string | null> => {
+    if (!invoiceNumber) return null
+    const numKey = invoiceNumber.trim().toLowerCase().replace(/\s+/g, '')
+    const { data: prior } = await svc
+      .from('ops_invoices')
+      .select('id, invoice_number, vendor_name')
       .eq('account_id', accountId)
-      .eq('active', true)
-    const vendors = (vrows ?? []).map((r: Any) => r.name as string)
-    if (vendors.length) {
-      const model = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
+      .not('invoice_number', 'is', null)
+      .neq('status', 'cancelled')
+      .order('submitted_at', { ascending: true })
+    const hit = (prior ?? []).find((p: Any) =>
+      String(p.invoice_number ?? '').trim().toLowerCase().replace(/\s+/g, '') === numKey &&
+      norm(String(p.vendor_name ?? '')) === norm(vendorName))
+    return hit ? (hit.id as string) : null
+  }
+
+  const emailVendor = vendorFrom(from)
+  const emailAmount = parseAmount(subject, text)
+
+  // Attachment keys already filed for this message, so a re-run does not double
+  // file (idempotency is now per attachment, not per message).
+  const seenKeys = new Set<string>()
+  if (messageId) {
+    const { data: prev } = await svc
+      .from('ops_invoices').select('email_attachment_key')
+      .eq('account_id', accountId).eq('email_message_id', messageId)
+    for (const r of prev ?? []) if (r.email_attachment_key) seenKeys.add(r.email_attachment_key as string)
+  }
+
+  // File ONE invoice per attachment that reads as an invoice. Non-invoice files
+  // (logos, marketing, signatures, statements) and unreadable formats are skipped.
+  const atts: Any[] = Array.isArray(body.attachments) ? body.attachments : []
+  const filed: string[] = []
+  const skipped: Array<{ file: string; reason: string }> = []
+
+  for (let idx = 0; idx < atts.length; idx++) {
+    const a = atts[idx]
+    const name = String(a.filename ?? a.name ?? a.fileName ?? a.Name ?? `attachment_${idx}`).replace(/[^\w.\-]+/g, '_')
+    const ctype = String(a.contentType ?? a.content_type ?? a.type ?? a.ContentType ?? 'application/octet-stream')
+    const b64raw = a.content ?? a.content_base64 ?? a.contentBase64 ?? a.contentBytes ?? a.ContentBytes ?? a.data
+    const attKey = `${idx}:${name}`
+    if (seenKeys.has(attKey)) { skipped.push({ file: name, reason: 'already_filed' }); continue }
+    if (!b64raw || typeof b64raw !== 'string') { skipped.push({ file: name, reason: 'no_content' }); continue }
+    const clean = b64raw.replace(/^data:[^;]+;base64,/, '')
+    let bytes: Uint8Array
+    try {
+      const bin = atob(clean)
+      bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    } catch { skipped.push({ file: name, reason: 'bad_base64' }); continue }
+
+    const isPdf = ctype.includes('pdf')
+    const isImg = ctype.startsWith('image/')
+    if (!isPdf && !isImg) { skipped.push({ file: name, reason: 'unreadable_format' }); continue }
+
+    // Read + classify the file. A confident "not an invoice" is skipped; an
+    // extraction error (null) is treated as an invoice with metadata fallback.
+    const extracted = anthropicKey ? await extractInvoice(anthropicKey, model, { b64: clean, contentType: ctype }, vendors) : null
+    if (extracted && !extracted.isInvoice) { skipped.push({ file: name, reason: 'not_an_invoice' }); continue }
+
+    let vendorName = emailVendor
+    let amount = emailAmount
+    let invoiceDate: string | null = null
+    let invoiceNumber: string | null = null
+    if (extracted) {
+      if (extracted.vendor) vendorName = extracted.vendor
+      if (extracted.amount != null) amount = extracted.amount
+      invoiceDate = extracted.invoiceDate
+      invoiceNumber = extracted.invoiceNumber
+    } else if (anthropicKey && vendors.length) {
       const matched = await matchVendor(anthropicKey, model, from, subject, vendors)
       if (matched) vendorName = matched
     }
-  }
+    vendorName = applyAlias(vendorName)
 
-  // Store attachments (prefer a PDF/image as the primary file).
-  const atts: Any[] = Array.isArray(body.attachments) ? body.attachments : []
-  let filePath: string | null = null
-  let fileName: string | null = null
-  let fileType: string | null = null
-  const stored: string[] = []
-  for (const a of atts) {
-    const name = String(a.filename ?? a.name ?? a.fileName ?? a.Name ?? 'attachment').replace(/[^\w.\-]+/g, '_')
-    const ctype = String(a.contentType ?? a.content_type ?? a.type ?? a.ContentType ?? 'application/octet-stream')
-    const b64 = a.content ?? a.content_base64 ?? a.contentBase64 ?? a.contentBytes ?? a.ContentBytes ?? a.data
-    if (!b64 || typeof b64 !== 'string') continue
-    let bytes: Uint8Array
-    try {
-      const bin = atob(b64.replace(/^data:[^;]+;base64,/, ''))
-      bytes = new Uint8Array(bin.length)
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-    } catch {
-      continue
-    }
+    const invoiceId = crypto.randomUUID()
     const path = `${accountId}/${invoiceId}/${name}`
     const { error: upErr } = await svc.storage.from('ops-invoices').upload(path, bytes, { contentType: ctype, upsert: true })
-    if (upErr) continue
-    stored.push(path)
-    if (!filePath) { filePath = path; fileName = name; fileType = ctype }
+    if (upErr) { skipped.push({ file: name, reason: 'upload_failed' }); continue }
+
+    const duplicateOf = await findDuplicate(invoiceNumber, vendorName)
+    const { error: insErr } = await svc.from('ops_invoices').insert({
+      id: invoiceId,
+      account_id: accountId,
+      vendor_name: vendorName,
+      amount,
+      invoice_date: invoiceDate,
+      invoice_number: invoiceNumber,
+      status: 'unassigned',
+      email_from: from.email || null,
+      email_subject: subject || null,
+      email_message_id: messageId,
+      email_attachment_key: attKey,
+      file_name: name,
+      file_type: ctype,
+      file_path: path,
+      duplicate_of: duplicateOf,
+      submitted_by_name: 'Emailed in',
+    })
+    if (insErr) {
+      // Lost an idempotency race for this (message, attachment): drop the orphan file.
+      await svc.storage.from('ops-invoices').remove([path]).catch(() => {})
+      if (insErr.code !== '23505') skipped.push({ file: name, reason: `insert_failed:${insErr.message}` })
+      else skipped.push({ file: name, reason: 'already_filed' })
+      continue
+    }
+    filed.push(invoiceId)
+    seenKeys.add(attKey)
   }
 
-  const { error: insErr } = await svc.from('ops_invoices').insert({
-    id: invoiceId,
-    account_id: accountId,
-    vendor_name: vendorName,
-    amount: parseAmount(subject, text),
-    status: 'unassigned',
-    email_from: from.email || null,
-    email_subject: subject || null,
-    email_message_id: messageId,
-    file_name: fileName,
-    file_type: fileType,
-    file_path: filePath,
-    submitted_by_name: 'Emailed in',
-  })
-  if (insErr) {
-    // Unique (account_id, email_message_id) race -> already filed.
-    if (insErr.code === '23505') return json({ ok: true, deduped: true }, 200)
-    return json({ error: 'insert_failed', message: insErr.message }, 500)
+  // Body-only email (no attachments): keep the legacy single metadata row so a
+  // plain-text invoice notification still lands. Idempotent via a fixed key.
+  if (atts.length === 0 && !(messageId && seenKeys.has('__body__'))) {
+    let vendorName = applyAlias(emailVendor)
+    if (anthropicKey && vendors.length) {
+      const matched = await matchVendor(anthropicKey, model, from, subject, vendors)
+      if (matched) vendorName = applyAlias(matched)
+    }
+    const invoiceId = crypto.randomUUID()
+    const { error: insErr } = await svc.from('ops_invoices').insert({
+      id: invoiceId, account_id: accountId, vendor_name: vendorName, amount: emailAmount,
+      invoice_date: null, invoice_number: null, status: 'unassigned',
+      email_from: from.email || null, email_subject: subject || null,
+      email_message_id: messageId, email_attachment_key: messageId ? '__body__' : null,
+      file_name: null, file_type: null, file_path: null, duplicate_of: null,
+      submitted_by_name: 'Emailed in',
+    })
+    if (!insErr) filed.push(invoiceId)
+    else if (insErr.code !== '23505') return json({ error: 'insert_failed', message: insErr.message }, 500)
   }
 
-  return json({ ok: true, invoice_id: invoiceId, account_id: accountId, attachments: stored.length }, 200)
+  return json({ ok: true, account_id: accountId, filed: filed.length, invoices: filed, skipped }, 200)
 })
