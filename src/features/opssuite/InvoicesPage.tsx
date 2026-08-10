@@ -39,6 +39,7 @@ type InvoiceRow = {
   approvers: string[]
   amount: number
   detail: string | null
+  dueDate: string | null
   submitted_at: string | null
   status: InvoiceStatus
   filePath: string | null
@@ -67,6 +68,7 @@ function toRow(r: OpsInvoice, locName: Map<string, string>): InvoiceRow {
     approvers: approverNames,
     amount: Number(r.amount) || 0,
     detail: r.invoice_number || r.email_subject || r.file_name || null,
+    dueDate: r.due_date,
     submitted_at: r.submitted_at,
     status,
     filePath: r.file_path,
@@ -247,6 +249,8 @@ export default function InvoicesPage() {
   })
 
   const totalAmount = filtered.reduce((sum, r) => sum + r.amount, 0)
+  // Local YYYY-MM-DD for flagging past-due invoices in the Unassigned tab.
+  const todayStr = new Date().toLocaleDateString('en-CA')
   const clearFilters = () => {
     setVendorQuery('')
     setFrom('')
@@ -426,6 +430,7 @@ export default function InvoicesPage() {
               <th className="px-4 py-3 font-medium">Site(s)</th>
               <th className="px-4 py-3 font-medium">Approver(s)</th>
               <th className="px-4 py-3 font-medium">Amount</th>
+              {activeKey === 'unassigned' && <th className="px-4 py-3 font-medium">Due date</th>}
               <th className="px-4 py-3 font-medium">Detail</th>
               <th className="px-4 py-3 font-medium">Submitted</th>
               <th className="px-4 py-3 text-right font-medium">Actions</th>
@@ -434,7 +439,7 @@ export default function InvoicesPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-ink-muted">
+                <td colSpan={activeKey === 'unassigned' ? 9 : 8} className="px-4 py-8 text-center text-sm text-ink-muted">
                   {active.empty}
                 </td>
               </tr>
@@ -464,6 +469,11 @@ export default function InvoicesPage() {
                     {r.approvers.length ? r.approvers.join(', ') : '—'}
                   </td>
                   <td className="px-4 py-3 tabular-nums text-ink">{currency(r.amount)}</td>
+                  {activeKey === 'unassigned' && (
+                    <td className={cn('px-4 py-3 whitespace-nowrap', r.dueDate && r.dueDate < todayStr ? 'font-medium text-danger' : 'text-ink-muted')}>
+                      {r.dueDate ? new Date(r.dueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-ink-muted">{r.detail ?? '—'}</td>
                   <td className="px-4 py-3 text-ink-muted">
                     {r.submitted_at ? shortDate(r.submitted_at) : '—'}
@@ -561,6 +571,7 @@ function InvoiceModal({
   const [amount, setAmount] = useState(String(invoice.amount ?? ''))
   const [invoiceDate, setInvoiceDate] = useState(invoice.invoice_date ?? '')
   const [invoiceNumber, setInvoiceNumber] = useState(invoice.invoice_number ?? '')
+  const [dueDate, setDueDate] = useState(invoice.due_date ?? '')
   const [gl, setGl] = useState(invoice.gl_code ?? '')
   const [siteClasses, setSiteClasses] = useState<string[]>(initClasses)
   const [approverIds, setApproverIds] = useState<string[]>(initApprovers)
@@ -619,6 +630,7 @@ function InvoiceModal({
     amount: total,
     invoice_date: invoiceDate || null,
     invoice_number: invoiceNumber.trim() || null,
+    due_date: dueDate || null,
     gl_code: gl.trim() || null,
     class_names: siteClasses,
     location_id: null,
@@ -683,6 +695,9 @@ function InvoiceModal({
           </Field>
           <Field label="Invoice #">
             <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} disabled={!editable} placeholder="From the invoice" />
+          </Field>
+          <Field label="Due date">
+            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={!editable} />
           </Field>
           <Field label="GL code" required={requireSiteGl}>
             <Combobox value={gl} onChange={setGl} options={glCodes} disabled={!siteGlEditable} placeholder={requireSiteGl ? 'Required — pick a GL code' : 'Pick a GL code'} invalid={requireSiteGl && !gl.trim()} />

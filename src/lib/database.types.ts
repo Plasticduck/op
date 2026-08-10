@@ -1402,6 +1402,7 @@ export type Database = {
           last_message_sender_id: string | null
           location_id: string | null
           name: string | null
+          topic: string | null
         }
         Insert: {
           account_id: string
@@ -1414,6 +1415,7 @@ export type Database = {
           last_message_sender_id?: string | null
           location_id?: string | null
           name?: string | null
+          topic?: string | null
         }
         Update: {
           account_id?: string
@@ -1426,6 +1428,7 @@ export type Database = {
           last_message_sender_id?: string | null
           location_id?: string | null
           name?: string | null
+          topic?: string | null
         }
         Relationships: [
           {
@@ -2591,6 +2594,108 @@ export type Database = {
           },
         ]
       }
+      invoice_classes: {
+        Row: {
+          account_id: string
+          active: boolean
+          class: string
+          created_at: string
+          id: string
+          sort_order: number
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          class: string
+          created_at?: string
+          id?: string
+          sort_order?: number
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          class?: string
+          created_at?: string
+          id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_classes_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_gl_codes: {
+        Row: {
+          account_id: string
+          active: boolean
+          code: string
+          created_at: string
+          id: string
+          sort_order: number
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          code: string
+          created_at?: string
+          id?: string
+          sort_order?: number
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          code?: string
+          created_at?: string
+          id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_gl_codes_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_vendor_aliases: {
+        Row: {
+          account_id: string
+          alias_name: string
+          canonical_name: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          account_id: string
+          alias_name: string
+          canonical_name: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          account_id?: string
+          alias_name?: string
+          canonical_name?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_vendor_aliases_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_vendors: {
         Row: {
           account_id: string
@@ -2979,8 +3084,104 @@ export type Database = {
           },
         ]
       }
+      message_pins: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          id: string
+          message_id: string
+          pinned_by: string
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          id?: string
+          message_id: string
+          pinned_by: string
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          message_id?: string
+          pinned_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_pins_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_pins_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: true
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_pins_pinned_by_fkey"
+            columns: ["pinned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_reactions: {
+        Row: {
+          conversation_id: string
+          created_at: string
+          emoji: string
+          id: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          created_at?: string
+          emoji: string
+          id?: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          created_at?: string
+          emoji?: string
+          id?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_reactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
+          attachment_name: string | null
           attachment_path: string | null
           attachment_type: string | null
           body: string | null
@@ -2988,9 +3189,11 @@ export type Database = {
           created_at: string
           edited_at: string | null
           id: string
+          parent_id: string | null
           sender_id: string
         }
         Insert: {
+          attachment_name?: string | null
           attachment_path?: string | null
           attachment_type?: string | null
           body?: string | null
@@ -2998,9 +3201,11 @@ export type Database = {
           created_at?: string
           edited_at?: string | null
           id?: string
+          parent_id?: string | null
           sender_id: string
         }
         Update: {
+          attachment_name?: string | null
           attachment_path?: string | null
           attachment_type?: string | null
           body?: string | null
@@ -3008,6 +3213,7 @@ export type Database = {
           created_at?: string
           edited_at?: string | null
           id?: string
+          parent_id?: string | null
           sender_id?: string
         }
         Relationships: [
@@ -3016,6 +3222,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
           {
@@ -3158,13 +3371,18 @@ export type Database = {
         Row: {
           account_id: string
           amount: number
+          approver_ids: string[]
+          approver_names: string[]
           assigned_at: string | null
           assigned_to: string | null
           assigned_to_name: string | null
+          class_names: string[]
           decided_at: string | null
           decided_by: string | null
           decided_by_name: string | null
           decision_reason: string | null
+          due_date: string | null
+          duplicate_of: string | null
           email_from: string | null
           email_message_id: string | null
           email_subject: string | null
@@ -3177,8 +3395,14 @@ export type Database = {
           gl_code: string | null
           id: string
           invoice_date: string | null
+          invoice_number: string | null
           location_id: string | null
+          location_ids: string[]
+          memo: string | null
           notify_status: string | null
+          resubmit_by_name: string | null
+          resubmit_note: string | null
+          site_allocations: Json
           status: string
           submitted_at: string
           submitted_by: string | null
@@ -3188,13 +3412,18 @@ export type Database = {
         Insert: {
           account_id: string
           amount?: number
+          approver_ids?: string[]
+          approver_names?: string[]
           assigned_at?: string | null
           assigned_to?: string | null
           assigned_to_name?: string | null
+          class_names?: string[]
           decided_at?: string | null
           decided_by?: string | null
           decided_by_name?: string | null
           decision_reason?: string | null
+          due_date?: string | null
+          duplicate_of?: string | null
           email_from?: string | null
           email_message_id?: string | null
           email_subject?: string | null
@@ -3207,8 +3436,14 @@ export type Database = {
           gl_code?: string | null
           id?: string
           invoice_date?: string | null
+          invoice_number?: string | null
           location_id?: string | null
+          location_ids?: string[]
+          memo?: string | null
           notify_status?: string | null
+          resubmit_by_name?: string | null
+          resubmit_note?: string | null
+          site_allocations?: Json
           status?: string
           submitted_at?: string
           submitted_by?: string | null
@@ -3218,13 +3453,18 @@ export type Database = {
         Update: {
           account_id?: string
           amount?: number
+          approver_ids?: string[]
+          approver_names?: string[]
           assigned_at?: string | null
           assigned_to?: string | null
           assigned_to_name?: string | null
+          class_names?: string[]
           decided_at?: string | null
           decided_by?: string | null
           decided_by_name?: string | null
           decision_reason?: string | null
+          due_date?: string | null
+          duplicate_of?: string | null
           email_from?: string | null
           email_message_id?: string | null
           email_subject?: string | null
@@ -3237,8 +3477,14 @@ export type Database = {
           gl_code?: string | null
           id?: string
           invoice_date?: string | null
+          invoice_number?: string | null
           location_id?: string | null
+          location_ids?: string[]
+          memo?: string | null
           notify_status?: string | null
+          resubmit_by_name?: string | null
+          resubmit_note?: string | null
+          site_allocations?: Json
           status?: string
           submitted_at?: string
           submitted_by?: string | null
@@ -3265,6 +3511,13 @@ export type Database = {
             columns: ["decided_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ops_invoices_duplicate_of_fkey"
+            columns: ["duplicate_of"]
+            isOneToOne: false
+            referencedRelation: "ops_invoices"
             referencedColumns: ["id"]
           },
           {
@@ -5031,21 +5284,27 @@ export type Database = {
           account_id: string
           month_key: string
           retail_mtd: number
+          site_ttaf: Json | null
           snapshot_date: string
+          ttaf_mtd: number | null
           updated_at: string
         }
         Insert: {
           account_id: string
           month_key: string
           retail_mtd?: number
+          site_ttaf?: Json | null
           snapshot_date: string
+          ttaf_mtd?: number | null
           updated_at?: string
         }
         Update: {
           account_id?: string
           month_key?: string
           retail_mtd?: number
+          site_ttaf?: Json | null
           snapshot_date?: string
+          ttaf_mtd?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -6180,6 +6439,56 @@ export type Database = {
         Args: { p_account_id: string; p_site_managers: Json }
         Returns: undefined
       }
+      invoice_approver_digest: {
+        Args: never
+        Returns: {
+          account_id: string
+          amount: number
+          approver_ids: string[]
+          approver_names: string[]
+          assigned_at: string | null
+          assigned_to: string | null
+          assigned_to_name: string | null
+          class_names: string[]
+          decided_at: string | null
+          decided_by: string | null
+          decided_by_name: string | null
+          decision_reason: string | null
+          due_date: string | null
+          duplicate_of: string | null
+          email_from: string | null
+          email_message_id: string | null
+          email_subject: string | null
+          exported_at: string | null
+          exported_by: string | null
+          exported_by_name: string | null
+          file_name: string | null
+          file_path: string | null
+          file_type: string | null
+          gl_code: string | null
+          id: string
+          invoice_date: string | null
+          invoice_number: string | null
+          location_id: string | null
+          location_ids: string[]
+          memo: string | null
+          notify_status: string | null
+          resubmit_by_name: string | null
+          resubmit_note: string | null
+          site_allocations: Json
+          status: string
+          submitted_at: string
+          submitted_by: string | null
+          submitted_by_name: string | null
+          vendor_name: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ops_invoices"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       kiosk_punch: {
         Args: { p_employee_id: string; p_pin: string }
         Returns: string
@@ -6207,7 +6516,9 @@ export type Database = {
         }
         Returns: Json
       }
-      mw_daily_summary: { Args: never; Returns: Json }
+      mw_daily_summary:
+        | { Args: never; Returns: Json }
+        | { Args: { p_day: string }; Returns: Json }
       notify_location_managers: {
         Args: { p_kind: string; p_location_id: string; p_payload: Json }
         Returns: undefined
