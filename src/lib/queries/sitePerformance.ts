@@ -247,6 +247,71 @@ export async function fetchTtafReport(): Promise<TtafReport> {
   return (await dashApi('/api/ttaf_report', 'GET')) as TtafReport
 }
 
+// ---------- Details (Interior Services / attach rate) ----------
+//
+// Powers the standalone Details page, mirroring the dashboard's "Details" tab.
+// Attach rate = (hustles + intro MVP + mighty MVP sales) / cars washed. Teams
+// and per-site rollups each carry a live "today" figure and a month-to-date one;
+// the daily breakdown is a separate per-site + month query.
+export type InteriorDailyRow = {
+  date: string
+  cars: number
+  hustles: number
+  intro_mvp: number
+  mighty_mvp: number
+  conv: number
+  run_pct: number
+  extras: number
+}
+export type InteriorTeam = {
+  team: string
+  sites: number[]
+  today_cars: number; today_conv: number; today_hustles: number
+  today_intro_mvp: number; today_mighty_mvp: number; today_pct: number; today_extras: number
+  mtd_cars: number; mtd_conv: number; mtd_hustles: number
+  mtd_intro_mvp: number; mtd_mighty_mvp: number; mtd_pct: number; mtd_extras: number
+}
+export type InteriorSiteRollup = {
+  site_number: number
+  site_name: string
+  team: string | null
+  yesterday_pct: number | null
+  today_cars: number; today_conv: number; today_hustles: number
+  today_intro_mvp: number; today_mighty_mvp: number; today_pct: number; today_extras: number
+  mtd_cars: number; mtd_conv: number; mtd_hustles: number
+  mtd_intro_mvp: number; mtd_mighty_mvp: number; mtd_pct: number; mtd_extras: number
+}
+export type InteriorServicesReport = {
+  generated_at: string
+  window: { start: string; end: string }
+  commentary: string[]
+  teams: InteriorTeam[]
+  site_rollup: InteriorSiteRollup[]
+  site_daily: Record<string, InteriorDailyRow[]>
+}
+export async function fetchInteriorServicesReport(): Promise<InteriorServicesReport> {
+  return (await dashApi('/api/interior_services_report', 'GET')) as InteriorServicesReport
+}
+
+export type InteriorDailyBreakdown = {
+  site_number: number | string
+  year: number
+  month: number
+  days: InteriorDailyRow[]
+  totals: {
+    cars: number; conv: number; hustles: number
+    intro_mvp: number; mighty_mvp: number; pct: number; extras: number
+  }
+}
+export async function fetchInteriorDailyBreakdown(
+  site: string | number,
+  year: number,
+  month: number,
+): Promise<InteriorDailyBreakdown> {
+  const q = `?site=${encodeURIComponent(String(site))}&year=${year}&month=${month}`
+  return (await dashApi(`/api/interior_daily_breakdown${q}`, 'GET')) as InteriorDailyBreakdown
+}
+
 // Earliest and latest archived dates, so the UI can show what history exists.
 export async function fetchSitePerformanceHistoryBounds(): Promise<{ min: string | null; max: string | null }> {
   const [{ data: lo }, { data: hi }] = await Promise.all([

@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
+  Cctv,
   AlarmClockOff,
   AlertTriangle,
   Award,
@@ -17,6 +18,7 @@ import {
   LifeBuoy,
   Users,
   UserCheck,
+  Trophy,
   ClipboardList,
   Inbox,
   Sparkles,
@@ -122,9 +124,21 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
+        to: '/app/details',
+        label: 'Details',
+        icon: Trophy,
+        roles: ['owner', 'manager'],
+      },
+      {
         to: '/app/msa-performance',
         label: 'MSA Performance',
         icon: UserCheck,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/cameras',
+        label: 'Cameras',
+        icon: Cctv,
         roles: ['owner', 'manager'],
       },
       {
