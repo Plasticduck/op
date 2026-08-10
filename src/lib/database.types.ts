@@ -3376,6 +3376,7 @@ export type Database = {
           assigned_at: string | null
           assigned_to: string | null
           assigned_to_name: string | null
+          awaiting_secondary: boolean
           class_names: string[]
           decided_at: string | null
           decided_by: string | null
@@ -3392,6 +3393,9 @@ export type Database = {
           file_name: string | null
           file_path: string | null
           file_type: string | null
+          first_approved_at: string | null
+          first_approved_by: string | null
+          first_approved_by_name: string | null
           gl_code: string | null
           id: string
           invoice_date: string | null
@@ -3402,6 +3406,8 @@ export type Database = {
           notify_status: string | null
           resubmit_by_name: string | null
           resubmit_note: string | null
+          secondary_approver_ids: string[]
+          secondary_approver_names: string[]
           site_allocations: Json
           status: string
           submitted_at: string
@@ -3417,6 +3423,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_to?: string | null
           assigned_to_name?: string | null
+          awaiting_secondary?: boolean
           class_names?: string[]
           decided_at?: string | null
           decided_by?: string | null
@@ -3433,6 +3440,9 @@ export type Database = {
           file_name?: string | null
           file_path?: string | null
           file_type?: string | null
+          first_approved_at?: string | null
+          first_approved_by?: string | null
+          first_approved_by_name?: string | null
           gl_code?: string | null
           id?: string
           invoice_date?: string | null
@@ -3443,6 +3453,8 @@ export type Database = {
           notify_status?: string | null
           resubmit_by_name?: string | null
           resubmit_note?: string | null
+          secondary_approver_ids?: string[]
+          secondary_approver_names?: string[]
           site_allocations?: Json
           status?: string
           submitted_at?: string
@@ -3458,6 +3470,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_to?: string | null
           assigned_to_name?: string | null
+          awaiting_secondary?: boolean
           class_names?: string[]
           decided_at?: string | null
           decided_by?: string | null
@@ -3474,6 +3487,9 @@ export type Database = {
           file_name?: string | null
           file_path?: string | null
           file_type?: string | null
+          first_approved_at?: string | null
+          first_approved_by?: string | null
+          first_approved_by_name?: string | null
           gl_code?: string | null
           id?: string
           invoice_date?: string | null
@@ -3484,6 +3500,8 @@ export type Database = {
           notify_status?: string | null
           resubmit_by_name?: string | null
           resubmit_note?: string | null
+          secondary_approver_ids?: string[]
+          secondary_approver_names?: string[]
           site_allocations?: Json
           status?: string
           submitted_at?: string
@@ -6449,6 +6467,7 @@ export type Database = {
           assigned_at: string | null
           assigned_to: string | null
           assigned_to_name: string | null
+          awaiting_secondary: boolean
           class_names: string[]
           decided_at: string | null
           decided_by: string | null
@@ -6465,6 +6484,9 @@ export type Database = {
           file_name: string | null
           file_path: string | null
           file_type: string | null
+          first_approved_at: string | null
+          first_approved_by: string | null
+          first_approved_by_name: string | null
           gl_code: string | null
           id: string
           invoice_date: string | null
@@ -6475,6 +6497,8 @@ export type Database = {
           notify_status: string | null
           resubmit_by_name: string | null
           resubmit_note: string | null
+          secondary_approver_ids: string[]
+          secondary_approver_names: string[]
           site_allocations: Json
           status: string
           submitted_at: string

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw } from 'lucide-react'
+import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
@@ -45,6 +45,7 @@ type InvoiceRow = {
   filePath: string | null
   duplicateOf: string | null
   sentBack: boolean
+  secondaryPending: boolean
 }
 
 const KNOWN_STATUSES = new Set<InvoiceStatus>([
@@ -76,6 +77,8 @@ function toRow(r: OpsInvoice, locName: Map<string, string>): InvoiceRow {
     // Show the "Sent Back for Approval" label while it's waiting to be (re)assigned
     // or is back with the approver.
     sentBack: !!r.resubmit_note && (status === 'assigned' || status === 'unassigned'),
+    // Waiting on the second-level approver after the first approval.
+    secondaryPending: !!r.awaiting_secondary && status === 'assigned',
   }
 }
 
@@ -455,6 +458,11 @@ export default function InvoicesPage() {
                           <RotateCcw className="size-3" /> Sent Back for Approval
                         </span>
                       )}
+                      {r.secondaryPending && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warn-soft px-2 py-0.5 text-xs font-semibold text-warn">
+                          <ShieldCheck className="size-3" /> Secondary approval required
+                        </span>
+                      )}
                       {r.duplicateOf && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 text-xs font-semibold text-danger">
                           <TriangleAlert className="size-3" /> Duplicate
@@ -585,10 +593,17 @@ function InvoiceModal({
   // Mandatory memo, entered while the invoice is still unassigned and required
   // before it can be sent for approval. Flows into the QuickBooks Memo column.
   const [memo, setMemo] = useState(invoice.memo ?? '')
+  // Optional second-level approver, named by accounting while unassigned.
+  const [secondaryApproverIds, setSecondaryApproverIds] = useState<string[]>(invoice.secondary_approver_ids ?? [])
 
   // Any assigned approver (or an owner) can approve; the first to do so
   // finalizes it and enters the per-site split.
   const canApprove = status === 'assigned' && (isOwner || initApprovers.includes(currentUserId ?? ''))
+  // Two-level approval: when a secondary approver was named, the first approval
+  // hands off to them (awaiting_secondary) instead of finalizing.
+  const hasSecondary = (invoice.secondary_approver_ids?.length ?? 0) > 0
+  const atSecondaryStage = !!invoice.awaiting_secondary
+  const forwardToSecondary = hasSecondary && !atSecondaryStage
   // Sites + GL are editable during assignment and by the approver at review, but
   // only REQUIRED at the approver stage. In Unassigned they're optional.
   const siteGlEditable = editable || canApprove
@@ -640,6 +655,13 @@ function InvoiceModal({
     assigned_to: approverIds[0] ?? null,
     assigned_to_name: namesOf(approverIds)[0] ?? null,
     memo: memo.trim() || null,
+    // Second-level approval plan (optional); reset the handoff state on (re)assign.
+    secondary_approver_ids: secondaryApproverIds,
+    secondary_approver_names: namesOf(secondaryApproverIds),
+    awaiting_secondary: false,
+    first_approved_by: null,
+    first_approved_by_name: null,
+    first_approved_at: null,
   })
   // Fields the approver can touch at review (sites, GL, split).
   const reviewPatch = (): OpsInvoiceUpdate => ({
@@ -726,6 +748,19 @@ function InvoiceModal({
         </div>
 
         {editable && (
+          <Field label="Second-level approver(s)">
+            <CheckList
+              options={approverUsers.map((u) => ({ id: u.id, label: u.name ?? u.email ?? 'User' }))}
+              selected={secondaryApproverIds}
+              onChange={setSecondaryApproverIds}
+              disabled={!editable}
+              empty="No managers or owners"
+            />
+            <p className="mt-1 text-xs text-ink-subtle">Optional. If set, the invoice goes to them for a final approval after the first approver signs off.</p>
+          </Field>
+        )}
+
+        {editable && (
           <Field label="Memo" required>
             <Input
               value={memo}
@@ -780,9 +815,22 @@ function InvoiceModal({
             Sent back by {invoice.decided_by_name ?? 'an approver'}: {invoice.decision_reason}
           </div>
         )}
+        {status === 'assigned' && atSecondaryStage && (
+          <div className="flex items-start gap-3 rounded-md border border-warn/40 bg-warn-soft px-3 py-2.5 text-sm text-warn">
+            <ShieldCheck className="mt-0.5 size-5 shrink-0" />
+            <p>
+              <span className="font-semibold">Secondary approval required.</span>{' '}
+              {invoice.first_approved_by_name ? `${invoice.first_approved_by_name} gave first-level approval. ` : ''}
+              A second-level approver must sign off before this can move to Approved.
+            </p>
+          </div>
+        )}
         {status === 'assigned' && (
           <p className="text-sm text-ink-muted">
-            Waiting on <span className="font-medium text-ink">{(invoice.approver_names?.length ? invoice.approver_names.join(', ') : invoice.assigned_to_name) ?? 'the approver'}</span>.
+            Waiting on <span className="font-medium text-ink">{(invoice.approver_names?.length ? invoice.approver_names.join(', ') : invoice.assigned_to_name) ?? 'the approver'}</span>{atSecondaryStage ? ' (second-level)' : ''}.
+            {!atSecondaryStage && hasSecondary && (
+              <span className="text-ink-subtle"> Then a second-level approval by {(invoice.secondary_approver_names ?? []).join(', ') || 'the named approver'} is required.</span>
+            )}
           </p>
         )}
         {status === 'approved' && (
@@ -865,8 +913,10 @@ function InvoiceModal({
                 <Button variant={reason.trim() ? 'danger' : 'secondary'} className={reason.trim() ? undefined : 'text-danger'} disabled={busy || !reason.trim()} onClick={() => void act(id, { ...reviewPatch(), status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
                   <XCircle className="size-4" /> Send back
                 </Button>
-                <Button disabled={busy || approveBlocked || mustView} onClick={() => void act(id, { ...reviewPatch(), status: 'approved', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null })}>
-                  <CheckCircle2 className="size-4" /> Approve
+                <Button disabled={busy || approveBlocked || mustView} onClick={() => void act(id, forwardToSecondary
+                  ? { ...reviewPatch(), approver_ids: invoice.secondary_approver_ids, approver_names: invoice.secondary_approver_names, assigned_to: invoice.secondary_approver_ids?.[0] ?? null, assigned_to_name: invoice.secondary_approver_names?.[0] ?? null, assigned_at: nowIso(), awaiting_secondary: true, first_approved_by: currentUserId, first_approved_by_name: currentUserName, first_approved_at: nowIso() }
+                  : { ...reviewPatch(), status: 'approved', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null, awaiting_secondary: false })}>
+                  <CheckCircle2 className="size-4" /> {forwardToSecondary ? 'Approve & send to 2nd approver' : 'Approve'}
                 </Button>
               </>
             )}
