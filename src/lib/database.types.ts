@@ -3404,6 +3404,7 @@ export type Database = {
           location_ids: string[]
           memo: string | null
           notify_status: string | null
+          reminder_sent_at: string | null
           resubmit_by_name: string | null
           resubmit_note: string | null
           secondary_approver_ids: string[]
@@ -3451,6 +3452,7 @@ export type Database = {
           location_ids?: string[]
           memo?: string | null
           notify_status?: string | null
+          reminder_sent_at?: string | null
           resubmit_by_name?: string | null
           resubmit_note?: string | null
           secondary_approver_ids?: string[]
@@ -3498,6 +3500,7 @@ export type Database = {
           location_ids?: string[]
           memo?: string | null
           notify_status?: string | null
+          reminder_sent_at?: string | null
           resubmit_by_name?: string | null
           resubmit_note?: string | null
           secondary_approver_ids?: string[]
@@ -6495,6 +6498,64 @@ export type Database = {
           location_ids: string[]
           memo: string | null
           notify_status: string | null
+          reminder_sent_at: string | null
+          resubmit_by_name: string | null
+          resubmit_note: string | null
+          secondary_approver_ids: string[]
+          secondary_approver_names: string[]
+          site_allocations: Json
+          status: string
+          submitted_at: string
+          submitted_by: string | null
+          submitted_by_name: string | null
+          vendor_name: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ops_invoices"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      invoice_approver_reminders: {
+        Args: never
+        Returns: {
+          account_id: string
+          amount: number
+          approver_ids: string[]
+          approver_names: string[]
+          assigned_at: string | null
+          assigned_to: string | null
+          assigned_to_name: string | null
+          awaiting_secondary: boolean
+          class_names: string[]
+          decided_at: string | null
+          decided_by: string | null
+          decided_by_name: string | null
+          decision_reason: string | null
+          due_date: string | null
+          duplicate_of: string | null
+          email_from: string | null
+          email_message_id: string | null
+          email_subject: string | null
+          exported_at: string | null
+          exported_by: string | null
+          exported_by_name: string | null
+          file_name: string | null
+          file_path: string | null
+          file_type: string | null
+          first_approved_at: string | null
+          first_approved_by: string | null
+          first_approved_by_name: string | null
+          gl_code: string | null
+          id: string
+          invoice_date: string | null
+          invoice_number: string | null
+          location_id: string | null
+          location_ids: string[]
+          memo: string | null
+          notify_status: string | null
+          reminder_sent_at: string | null
           resubmit_by_name: string | null
           resubmit_note: string | null
           secondary_approver_ids: string[]
