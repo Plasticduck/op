@@ -193,6 +193,17 @@ export default function InvoicesPage() {
     if (url) window.open(url, '_blank', 'noopener')
   }
 
+  // Force a download of the attachment (signed URL carries a Content-Disposition
+  // attachment header, so the anchor click saves the file rather than navigating).
+  const downloadFile = async (path: string) => {
+    const url = await opsInvoices.downloadUrl(path)
+    if (!url) return
+    const a = document.createElement('a')
+    a.href = url
+    a.rel = 'noopener'
+    a.click()
+  }
+
   // Apply a workflow transition (or field edit). Realtime reloads the list.
   // Approvers are no longer emailed on assignment: a single daily digest
   // (daily-approver-digest, 5pm Central) summarizes everything assigned to them.
@@ -488,13 +499,23 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     {r.filePath ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); void openFile(r.filePath!) }}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-ink transition hover:bg-content"
-                      >
-                        <FileText className="size-3.5" /> View
-                      </button>
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void openFile(r.filePath!) }}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-ink transition hover:bg-content"
+                        >
+                          <FileText className="size-3.5" /> View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void downloadFile(r.filePath!) }}
+                          title="Download attachment"
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-ink transition hover:bg-content"
+                        >
+                          <Download className="size-3.5" /> Download
+                        </button>
+                      </div>
                     ) : (
                       <span className="text-ink-muted">—</span>
                     )}
@@ -521,6 +542,7 @@ export default function InvoicesPage() {
           busy={busy}
           onClose={() => setOpenId(null)}
           onFile={openFile}
+          onDownload={downloadFile}
           act={act}
           onDelete={del}
         />
@@ -549,7 +571,7 @@ export default function InvoicesPage() {
 // ---- Workflow modal --------------------------------------------------------
 
 function InvoiceModal({
-  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, busy, onClose, onFile, act, onDelete,
+  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, busy, onClose, onFile, onDownload, act, onDelete,
 }: {
   invoice: OpsInvoice
   duplicateOfInvoice: OpsInvoice | null
@@ -564,6 +586,7 @@ function InvoiceModal({
   busy: boolean
   onClose: () => void
   onFile: (path: string) => void
+  onDownload: (path: string) => void
   act: (id: string, patch: OpsInvoiceUpdate, opts?: { keepOpen?: boolean }) => Promise<void>
   onDelete: (id: string, filePath: string | null) => Promise<void>
 }) {
@@ -676,9 +699,14 @@ function InvoiceModal({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <StatusPill status={status} />
           {invoice.file_path && (
-            <Button variant={mustView ? 'primary' : 'secondary'} size="sm" onClick={() => { setViewed(true); onFile(invoice.file_path!) }}>
-              <FileText className="size-4" /> View file{invoice.file_name ? ` (${invoice.file_name})` : ''}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant={mustView ? 'primary' : 'secondary'} size="sm" onClick={() => { setViewed(true); onFile(invoice.file_path!) }}>
+                <FileText className="size-4" /> View file{invoice.file_name ? ` (${invoice.file_name})` : ''}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => onDownload(invoice.file_path!)}>
+                <Download className="size-4" /> Download
+              </Button>
+            </div>
           )}
         </div>
 

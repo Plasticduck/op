@@ -29,4 +29,11 @@ export const opsInvoices = {
     const { data } = await supabase.storage.from('ops-invoices').createSignedUrl(path, 3600)
     return data?.signedUrl ?? null
   },
+
+  // Signed URL that forces a download (Content-Disposition attachment) instead
+  // of opening in the browser.
+  downloadUrl: async (path: string): Promise<string | null> => {
+    const { data } = await supabase.storage.from('ops-invoices').createSignedUrl(path, 3600, { download: true })
+    return data?.signedUrl ?? null
+  },
 }
