@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Ban, Download, CornerUpLeft, TriangleAlert } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
@@ -8,11 +8,12 @@ import { listUsers, type AccountUser } from '@/lib/queries/account'
 import type { CompanySettings } from '@/lib/queries/companySettings'
 import { opsInvoices, type OpsInvoice, type OpsInvoiceUpdate } from '@/lib/queries/opsInvoices'
 import { invoiceVendors } from '@/lib/queries/invoiceVendors'
+import { invoiceGlCodes } from '@/lib/queries/invoiceGlCodes'
+import { invoiceClasses } from '@/lib/queries/invoiceClasses'
 import { supabase } from '@/lib/supabase'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
 
 // Each wash (account) gets its own unique inbound address,
@@ -30,7 +31,6 @@ type InvoiceStatus =
   | 'approved'
   | 'exported'
   | 'needs_attention'
-  | 'cancelled'
 
 type InvoiceRow = {
   id: string
@@ -42,10 +42,12 @@ type InvoiceRow = {
   submitted_at: string | null
   status: InvoiceStatus
   filePath: string | null
+  duplicateOf: string | null
+  sentBack: boolean
 }
 
 const KNOWN_STATUSES = new Set<InvoiceStatus>([
-  'unassigned', 'assigned', 'approved', 'exported', 'needs_attention', 'cancelled',
+  'unassigned', 'assigned', 'approved', 'exported', 'needs_attention',
 ])
 
 // Map an ops_invoices row to the table shape. Emailed-in invoices arrive
@@ -53,22 +55,31 @@ const KNOWN_STATUSES = new Set<InvoiceStatus>([
 // treated as unassigned so nothing is hidden.
 function toRow(r: OpsInvoice, locName: Map<string, string>): InvoiceRow {
   const status = (KNOWN_STATUSES.has(r.status as InvoiceStatus) ? r.status : 'unassigned') as InvoiceStatus
+  // Sites are QuickBooks classes (class_names). Fall back to legacy location
+  // names for older rows.
+  const legacyIds = r.location_ids?.length ? r.location_ids : (r.location_id ? [r.location_id] : [])
+  const siteLabels = r.class_names?.length ? r.class_names : legacyIds.map((sid) => locName.get(sid) ?? 'Unknown site')
+  const approverNames = r.approver_names?.length ? r.approver_names : (r.assigned_to_name ? [r.assigned_to_name] : [])
   return {
     id: r.id,
     vendor: r.vendor_name,
-    sites: r.location_id ? [locName.get(r.location_id) ?? 'Unknown site'] : [],
-    approvers: r.assigned_to_name ? [r.assigned_to_name] : [],
+    sites: siteLabels,
+    approvers: approverNames,
     amount: Number(r.amount) || 0,
-    detail: r.email_subject || r.file_name || null,
+    detail: r.invoice_number || r.email_subject || r.file_name || null,
     submitted_at: r.submitted_at,
     status,
     filePath: r.file_path,
+    duplicateOf: r.duplicate_of,
+    // Show the "Sent Back for Approval" label while it's waiting to be (re)assigned
+    // or is back with the approver.
+    sentBack: !!r.resubmit_note && (status === 'assigned' || status === 'unassigned'),
   }
 }
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
   unassigned: 'Unassigned', assigned: 'Assigned', approved: 'Approved',
-  exported: 'Exported', needs_attention: 'Needs Attention', cancelled: 'Cancelled',
+  exported: 'Exported', needs_attention: 'Needs Attention',
 }
 
 const nowIso = () => new Date().toISOString()
@@ -94,6 +105,12 @@ const TABS: TabDef[] = [
     empty: 'No assigned invoices.',
   },
   {
+    key: 'needs_attention',
+    label: 'Needs Attention',
+    subtitle: 'Invoices that need a fix before they can move forward.',
+    empty: 'Nothing needs attention right now.',
+  },
+  {
     key: 'approved',
     label: 'Approved',
     subtitle: 'Approved invoices, ready to export to accounting.',
@@ -104,18 +121,6 @@ const TABS: TabDef[] = [
     label: 'Exported',
     subtitle: 'Invoices exported to accounting.',
     empty: 'No exported invoices yet.',
-  },
-  {
-    key: 'needs_attention',
-    label: 'Needs Attention',
-    subtitle: 'Invoices that need a fix before they can move forward.',
-    empty: 'Nothing needs attention right now.',
-  },
-  {
-    key: 'cancelled',
-    label: 'Cancelled',
-    subtitle: 'Invoices that were cancelled.',
-    empty: 'No cancelled invoices.',
   },
 ]
 
@@ -162,6 +167,16 @@ export default function InvoicesPage() {
     void invoiceVendors.list().then(({ data }) => setVendorNames(((data as { name: string }[] | null) ?? []).map((v) => v.name)))
   }, [])
 
+  const [glCodes, setGlCodes] = useState<string[]>([])
+  useEffect(() => {
+    void invoiceGlCodes.list().then(({ data }) => setGlCodes(((data as { code: string }[] | null) ?? []).map((g) => g.code)))
+  }, [])
+
+  const [classes, setClasses] = useState<string[]>([])
+  useEffect(() => {
+    void invoiceClasses.list().then(({ data }) => setClasses(((data as { class: string }[] | null) ?? []).map((c) => c.class)))
+  }, [])
+
   const locName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations])
   const rows = useMemo(() => invoices.map((inv) => toRow(inv, locName)), [invoices, locName])
 
@@ -184,6 +199,14 @@ export default function InvoicesPage() {
     if (opts?.notify) await opsInvoices.notifyAssignment(id)
     setBusy(false)
     if (!opts?.keepOpen) setOpenId(null)
+  }
+
+  // Hard-delete (Needs Attention > Delete Invoice). Realtime removes the row.
+  const del = async (invId: string, filePath: string | null) => {
+    setBusy(true)
+    await opsInvoices.remove(invId, filePath)
+    setBusy(false)
+    setOpenId(null)
   }
 
   // This wash's unique inbound invoice address.
@@ -238,11 +261,21 @@ export default function InvoicesPage() {
   // then mark them exported so they move to the Exported tab.
   const exportApproved = async () => {
     if (filteredInvoices.length === 0) return
+    // Memo is now captured while the invoice is unassigned (required before it can
+    // be sent for approval), so approved invoices already carry one.
     downloadCsv(qbFilename(), quickbooksCsv(filteredInvoices))
+    const ids = filteredInvoices.map((i) => i.id)
+    const idSet = new Set(ids)
+    const at = nowIso()
     setBusy(true)
-    await opsInvoices.updateMany(filteredInvoices.map((i) => i.id), {
-      status: 'exported', exported_at: nowIso(), exported_by: profile?.id ?? null, exported_by_name: profile?.name ?? null,
+    await opsInvoices.updateMany(ids, {
+      status: 'exported', exported_at: at, exported_by: profile?.id ?? null, exported_by_name: profile?.name ?? null,
     })
+    // Reflect immediately so the batch leaves Approved for Exported without
+    // waiting on the realtime round-trip.
+    setInvoices((prev) => prev.map((i) => idSet.has(i.id)
+      ? { ...i, status: 'exported', exported_at: at, exported_by: profile?.id ?? null, exported_by_name: profile?.name ?? null }
+      : i))
     setBusy(false)
   }
 
@@ -255,11 +288,8 @@ export default function InvoicesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-md border border-border bg-content px-4 py-2.5 text-center text-sm text-ink-muted">
-        Emailed invoices land on Unassigned. Set the site, GL code, and approver to send for approval, then export approved invoices to QuickBooks from the Approved tab.
-      </div>
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">{active.label}</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-ink">Invoice Approval</h1>
         <p className="mt-1 text-sm text-ink-muted">{active.subtitle}</p>
       </div>
 
@@ -271,10 +301,10 @@ export default function InvoicesPage() {
               <Mail className="size-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-ink">Forward invoices to this wash</div>
+              <div className="text-sm font-semibold text-ink">Forward invoices to this email</div>
               <p className="mt-0.5 text-xs text-ink-muted">
                 Unique to {account?.name ?? 'your wash'}. Any invoice emailed to this address files against
-                this wash automatically, across all of its sites. Give it to vendors or set up auto-forwarding.
+                this wash automatically, across all of its sites.
               </p>
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <code className="break-all rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-sm text-ink">
@@ -411,7 +441,21 @@ export default function InvoicesPage() {
               filtered.map((r, i) => (
                 <tr key={r.id} onClick={() => setOpenId(r.id)} className="cursor-pointer border-t border-border hover:bg-content">
                   <td className="px-4 py-3 text-ink-muted">{i + 1}</td>
-                  <td className="px-4 py-3 font-medium text-ink">{r.vendor ?? '—'}</td>
+                  <td className="px-4 py-3 font-medium text-ink">
+                    <div className="flex items-center gap-2">
+                      <span>{r.vendor ?? '—'}</span>
+                      {r.sentBack && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warn-soft px-2 py-0.5 text-xs font-semibold text-warn">
+                          <RotateCcw className="size-3" /> Sent Back for Approval
+                        </span>
+                      )}
+                      {r.duplicateOf && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 text-xs font-semibold text-danger">
+                          <TriangleAlert className="size-3" /> Duplicate
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-ink-muted">
                     {r.sites.length ? r.sites.join(', ') : '—'}
                   </td>
@@ -446,9 +490,11 @@ export default function InvoicesPage() {
       {openInvoice && (
         <InvoiceModal
           invoice={openInvoice}
+          duplicateOfInvoice={openInvoice.duplicate_of ? (invoices.find((i) => i.id === openInvoice.duplicate_of) ?? null) : null}
           users={users}
           vendors={vendorNames}
-          locName={locName}
+          glCodes={glCodes}
+          classes={classes}
           currentUserId={profile?.id ?? null}
           currentUserName={profile?.name ?? ''}
           isOwner={profile?.role === 'owner'}
@@ -457,6 +503,7 @@ export default function InvoicesPage() {
           onClose={() => setOpenId(null)}
           onFile={openFile}
           act={act}
+          onDelete={del}
         />
       )}
 
@@ -483,12 +530,14 @@ export default function InvoicesPage() {
 // ---- Workflow modal --------------------------------------------------------
 
 function InvoiceModal({
-  invoice, users, vendors, locName, currentUserId, currentUserName, isOwner, canManage, busy, onClose, onFile, act,
+  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, busy, onClose, onFile, act, onDelete,
 }: {
   invoice: OpsInvoice
+  duplicateOfInvoice: OpsInvoice | null
   users: AccountUser[]
   vendors: string[]
-  locName: Map<string, string>
+  glCodes: string[]
+  classes: string[]
   currentUserId: string | null
   currentUserName: string
   isOwner: boolean
@@ -497,35 +546,94 @@ function InvoiceModal({
   onClose: () => void
   onFile: (path: string) => void
   act: (id: string, patch: OpsInvoiceUpdate, opts?: { notify?: boolean; keepOpen?: boolean }) => Promise<void>
+  onDelete: (id: string, filePath: string | null) => Promise<void>
 }) {
+  const status = (KNOWN_STATUSES.has(invoice.status as InvoiceStatus) ? invoice.status : 'unassigned') as InvoiceStatus
+  const editable = canManage && (status === 'unassigned' || status === 'needs_attention')
+  const approverUsers = users.filter((u) => u.role === 'owner' || u.role === 'manager')
+
+  // Sites are QuickBooks classes (from the Class List), stored on class_names.
+  const initClasses = invoice.class_names?.length ? invoice.class_names : []
+  const initApprovers = invoice.approver_ids?.length ? invoice.approver_ids : (invoice.assigned_to ? [invoice.assigned_to] : [])
+
   const [vendor, setVendor] = useState(invoice.vendor_name ?? '')
   const [amount, setAmount] = useState(String(invoice.amount ?? ''))
   const [invoiceDate, setInvoiceDate] = useState(invoice.invoice_date ?? '')
+  const [invoiceNumber, setInvoiceNumber] = useState(invoice.invoice_number ?? '')
   const [gl, setGl] = useState(invoice.gl_code ?? '')
-  const [siteId, setSiteId] = useState(invoice.location_id ?? '')
-  const [approverId, setApproverId] = useState(invoice.assigned_to ?? '')
+  const [siteClasses, setSiteClasses] = useState<string[]>(initClasses)
+  const [approverIds, setApproverIds] = useState<string[]>(initApprovers)
   const [reason, setReason] = useState('')
+  // The approver must open and view the invoice file before approving.
+  const [viewed, setViewed] = useState(false)
+  // Manager's note when returning a Needs-Attention invoice to Unassigned, plus
+  // a two-step guard for the hard delete.
+  const [resubmitNote, setResubmitNote] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  // Mandatory memo, entered while the invoice is still unassigned and required
+  // before it can be sent for approval. Flows into the QuickBooks Memo column.
+  const [memo, setMemo] = useState(invoice.memo ?? '')
 
-  const status = (KNOWN_STATUSES.has(invoice.status as InvoiceStatus) ? invoice.status : 'unassigned') as InvoiceStatus
-  const editable = canManage && (status === 'unassigned' || status === 'needs_attention')
-  const approvers = users.filter((u) => u.role === 'owner' || u.role === 'manager')
-  const canApprove = status === 'assigned' && (isOwner || invoice.assigned_to === currentUserId)
-  // Site + GL code are editable by the manager during assignment and by the
-  // approver while reviewing, but only REQUIRED at the approver stage (the
-  // approver fills them in before approving). In Unassigned they're optional.
+  // Any assigned approver (or an owner) can approve; the first to do so
+  // finalizes it and enters the per-site split.
+  const canApprove = status === 'assigned' && (isOwner || initApprovers.includes(currentUserId ?? ''))
+  // Sites + GL are editable during assignment and by the approver at review, but
+  // only REQUIRED at the approver stage. In Unassigned they're optional.
   const siteGlEditable = editable || canApprove
   const requireSiteGl = canApprove
-  const missingRequired = !siteId || !gl.trim()
+  const multiSite = siteClasses.length > 1
+  // When an invoice has a file, the approver has to open it before approving.
+  const mustView = canApprove && !!invoice.file_path && !viewed
   const id = invoice.id
 
-  const fieldPatch = (): OpsInvoiceUpdate => ({
-    vendor_name: vendor.trim() || null,
-    amount: Number(amount) || 0,
-    invoice_date: invoiceDate || null,
-    gl_code: gl.trim() || null,
-    location_id: siteId || null,
+  // Per-site dollar split the approver enters at approval; prefill an even split
+  // (or whatever was saved earlier).
+  const [alloc, setAlloc] = useState<Record<string, string>>(() => {
+    const saved = (invoice.site_allocations as Alloc[] | null) ?? []
+    return saved.length
+      ? Object.fromEntries(saved.map((a) => [a.name, String(a.amount)]))
+      : evenSplit(Number(invoice.amount) || 0, initClasses)
   })
-  const approverName = (uid: string) => users.find((u) => u.id === uid)?.name ?? null
+
+  const total = Number(amount) || 0
+  const allocSum = siteClasses.reduce((s, cls) => s + (Number(alloc[cls]) || 0), 0)
+  const balanced = Math.abs(allocSum - total) < 0.005
+  const missingRequired = siteClasses.length === 0 || !gl.trim()
+  const approveBlocked = missingRequired || (multiSite && !balanced)
+
+  const nameOf = (uid: string) => users.find((u) => u.id === uid)?.name ?? null
+  const namesOf = (ids: string[]) => ids.map(nameOf).filter((n): n is string => Boolean(n))
+
+  // Allocations are always written at approval: a single site gets the whole
+  // amount, so the QuickBooks export can rely on them for every approved invoice.
+  const allocations = (): Alloc[] =>
+    siteClasses.map((cls) => ({
+      name: cls,
+      amount: multiSite ? (Number(alloc[cls]) || 0) : total,
+    }))
+
+  // Fields the manager sets when assigning (also saved via Save).
+  const assignPatch = (): OpsInvoiceUpdate => ({
+    vendor_name: vendor.trim() || null,
+    amount: total,
+    invoice_date: invoiceDate || null,
+    invoice_number: invoiceNumber.trim() || null,
+    gl_code: gl.trim() || null,
+    class_names: siteClasses,
+    location_id: null,
+    location_ids: [],
+    approver_ids: approverIds,
+    approver_names: namesOf(approverIds),
+    assigned_to: approverIds[0] ?? null,
+    assigned_to_name: namesOf(approverIds)[0] ?? null,
+    memo: memo.trim() || null,
+  })
+  // Fields the approver can touch at review (sites, GL, split).
+  const reviewPatch = (): OpsInvoiceUpdate => ({
+    gl_code: gl.trim() || null,
+    class_names: siteClasses,
+    site_allocations: allocations() as unknown as OpsInvoiceUpdate['site_allocations'],
+  })
 
   return (
     <Modal open onClose={onClose} title="Invoice" size="lg">
@@ -533,18 +641,38 @@ function InvoiceModal({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <StatusPill status={status} />
           {invoice.file_path && (
-            <Button variant="secondary" size="sm" onClick={() => onFile(invoice.file_path!)}>
+            <Button variant={mustView ? 'primary' : 'secondary'} size="sm" onClick={() => { setViewed(true); onFile(invoice.file_path!) }}>
               <FileText className="size-4" /> View file{invoice.file_name ? ` (${invoice.file_name})` : ''}
             </Button>
           )}
         </div>
 
-        <datalist id="invoice-vendor-list">
-          {vendors.map((v) => <option key={v} value={v} />)}
-        </datalist>
+        {invoice.duplicate_of && (
+          <div className="flex items-start gap-3 rounded-md border border-danger/40 bg-danger-soft px-3 py-2.5 text-sm text-danger">
+            <TriangleAlert className="mt-0.5 size-5 shrink-0" />
+            <p>
+              <span className="font-semibold">Possible duplicate.</span>{' '}
+              {duplicateOfInvoice
+                ? <>The same invoice number{duplicateOfInvoice.invoice_number ? <> (<span className="font-semibold">#{duplicateOfInvoice.invoice_number}</span>)</> : ''} from {duplicateOfInvoice.vendor_name ?? 'this vendor'} already came in{duplicateOfInvoice.submitted_at ? ` on ${shortDate(duplicateOfInvoice.submitted_at)}` : ''}.</>
+                : 'The same invoice number from this vendor already came in.'}{' '}
+              Review before approving, or cancel this one.
+            </p>
+          </div>
+        )}
+
+        {status === 'assigned' && invoice.resubmit_note && (
+          <div className="flex items-start gap-3 rounded-md border border-warn/40 bg-warn-soft px-3 py-2.5 text-sm text-warn">
+            <RotateCcw className="mt-0.5 size-5 shrink-0" />
+            <p>
+              <span className="font-semibold">Sent back for approval.</span>{' '}
+              {invoice.resubmit_by_name ? `${invoice.resubmit_by_name} ` : ''}returned this for another look: {invoice.resubmit_note}
+            </p>
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Vendor">
-            <Input value={vendor} onChange={(e) => setVendor(e.target.value)} disabled={!editable} list="invoice-vendor-list" placeholder="Type or pick a vendor" />
+            <Combobox value={vendor} onChange={setVendor} options={vendors} disabled={!editable} placeholder="Type or pick a vendor" />
           </Field>
           <Field label="Amount">
             <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!editable} />
@@ -552,26 +680,78 @@ function InvoiceModal({
           <Field label="Invoice date">
             <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} disabled={!editable} />
           </Field>
+          <Field label="Invoice #">
+            <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} disabled={!editable} placeholder="From the invoice" />
+          </Field>
           <Field label="GL code" required={requireSiteGl}>
-            <Input value={gl} onChange={(e) => setGl(e.target.value)} disabled={!siteGlEditable} placeholder={requireSiteGl ? 'Required' : 'Optional'} invalid={requireSiteGl && !gl.trim()} />
-          </Field>
-          <Field label="Site" required={requireSiteGl}>
-            <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} disabled={!siteGlEditable} invalid={requireSiteGl && !siteId}>
-              <option value="">Select a site...</option>
-              {[...locName.entries()].map(([lid, name]) => (
-                <option key={lid} value={lid}>{name}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Approver">
-            <Select value={approverId} onChange={(e) => setApproverId(e.target.value)} disabled={!editable}>
-              <option value="">Select an approver...</option>
-              {approvers.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </Select>
+            <Combobox value={gl} onChange={setGl} options={glCodes} disabled={!siteGlEditable} placeholder={requireSiteGl ? 'Required — pick a GL code' : 'Pick a GL code'} invalid={requireSiteGl && !gl.trim()} />
           </Field>
         </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Site(s)" required={requireSiteGl}>
+            <CheckList
+              options={classes.map((c) => ({ id: c, label: c }))}
+              selected={siteClasses}
+              onChange={setSiteClasses}
+              disabled={!siteGlEditable}
+              empty="No classes available"
+            />
+          </Field>
+          <Field label="Approver(s)">
+            <CheckList
+              options={approverUsers.map((u) => ({ id: u.id, label: u.name ?? u.email ?? 'User' }))}
+              selected={approverIds}
+              onChange={setApproverIds}
+              disabled={!editable}
+              empty="No managers or owners"
+            />
+          </Field>
+        </div>
+
+        {editable && (
+          <Field label="Memo" required>
+            <Input
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="Required before sending for approval — goes in the QuickBooks Memo column"
+              invalid={!memo.trim()}
+            />
+          </Field>
+        )}
+
+        {/* Approver enters the per-site split when an invoice spans >1 site. */}
+        {canApprove && multiSite && (
+          <div className="rounded-md border border-border bg-content p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-semibold text-ink">Split amount across sites</span>
+              <button type="button" onClick={() => setAlloc(evenSplit(total, siteClasses))} className="text-xs font-medium text-accent hover:underline">
+                Split evenly
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {siteClasses.map((cls) => (
+                <div key={cls} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{cls}</span>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink-subtle">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={alloc[cls] ?? ''}
+                      onChange={(e) => setAlloc((p) => ({ ...p, [cls]: e.target.value }))}
+                      className="h-9 w-32 rounded-md border border-border bg-card pl-5 pr-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className={cn('mt-2 flex items-center justify-between text-xs', balanced ? 'text-ok' : 'text-danger')}>
+              <span>Allocated {currency(allocSum)} of {currency(total)}</span>
+              <span>{balanced ? 'Balanced' : `${currency(Math.abs(total - allocSum))} ${allocSum > total ? 'over' : 'left'}`}</span>
+            </div>
+          </div>
+        )}
 
         {invoice.email_from && (
           <p className="text-xs text-ink-subtle">
@@ -586,11 +766,11 @@ function InvoiceModal({
         )}
         {status === 'assigned' && (
           <p className="text-sm text-ink-muted">
-            Waiting on <span className="font-medium text-ink">{invoice.assigned_to_name ?? 'the approver'}</span>.
+            Waiting on <span className="font-medium text-ink">{(invoice.approver_names?.length ? invoice.approver_names.join(', ') : invoice.assigned_to_name) ?? 'the approver'}</span>.
           </p>
         )}
         {status === 'approved' && (
-          <p className="text-sm text-ok">Approved by {invoice.decided_by_name ?? 'an approver'}. Ready to export.</p>
+          <p className="text-sm text-ok">Approved by {invoice.decided_by_name ?? 'an approver'}. Export from the Approved tab.</p>
         )}
         {status === 'exported' && (
           <p className="text-sm text-ink-muted">Exported by {invoice.exported_by_name ?? 'a teammate'}{invoice.exported_at ? ` on ${shortDate(invoice.exported_at)}` : ''}.</p>
@@ -602,21 +782,46 @@ function InvoiceModal({
           </Field>
         )}
 
+        {editable && status === 'needs_attention' && (
+          <Field label="Reason for sending back to Unassigned (the approver will see this)">
+            <Input value={resubmitNote} onChange={(e) => setResubmitNote(e.target.value)} placeholder="What you changed / why it's going back for approval..." />
+          </Field>
+        )}
+
+        {editable && approverIds.length > 0 && !memo.trim() && (
+          <p className="text-xs text-danger">Add a Memo before sending for approval.</p>
+        )}
         {requireSiteGl && missingRequired && (
-          <p className="text-xs text-danger">Set the site and GL code before approving.</p>
+          <p className="text-xs text-danger">Set at least one site and the GL code before approving.</p>
+        )}
+        {canApprove && multiSite && !balanced && (
+          <p className="text-xs text-danger">The per-site amounts must add up to {currency(total)} before approving.</p>
+        )}
+        {mustView && (
+          <p className="text-xs text-danger">Open and view the invoice file (button up top) before approving.</p>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
           <div className="flex flex-wrap gap-2">
-            {canManage && status !== 'exported' && status !== 'cancelled' && (
-              <Button variant="ghost" size="sm" className="text-danger" disabled={busy} onClick={() => void act(id, { status: 'cancelled' })}>
-                <Ban className="size-4" /> Cancel invoice
-              </Button>
-            )}
+            {/* Needs Attention offers Back-to-unassigned + Delete. */}
             {editable && status === 'needs_attention' && (
-              <Button variant="ghost" size="sm" disabled={busy} onClick={() => void act(id, { ...fieldPatch(), status: 'unassigned', assigned_to: null, assigned_to_name: null })}>
+              <Button variant="ghost" size="sm" disabled={busy || !resubmitNote.trim()} onClick={() => void act(id, { ...assignPatch(), status: 'unassigned', approver_ids: [], approver_names: [], assigned_to: null, assigned_to_name: null, resubmit_note: resubmitNote.trim(), resubmit_by_name: currentUserName || null, decision_reason: null })}>
                 <CornerUpLeft className="size-4" /> Back to unassigned
               </Button>
+            )}
+            {canManage && status === 'needs_attention' && (
+              confirmDelete ? (
+                <>
+                  <Button variant="danger" size="sm" disabled={busy} onClick={() => void onDelete(id, invoice.file_path)}>
+                    <Trash2 className="size-4" /> Confirm delete
+                  </Button>
+                  <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmDelete(false)}>Keep</Button>
+                </>
+              ) : (
+                <Button variant="ghost" size="sm" className="text-danger" disabled={busy} onClick={() => setConfirmDelete(true)}>
+                  <Trash2 className="size-4" /> Delete Invoice
+                </Button>
+              )
             )}
           </div>
 
@@ -624,35 +829,161 @@ function InvoiceModal({
             <Button variant="secondary" disabled={busy} onClick={onClose}>Close</Button>
 
             {(editable || canApprove) && (
-              <Button variant="secondary" disabled={busy} onClick={() => void act(id, editable ? { ...fieldPatch(), assigned_to: approverId || null, assigned_to_name: approverId ? approverName(approverId) : null } : { location_id: siteId || null, gl_code: gl.trim() || null }, { keepOpen: true })}>
+              <Button variant="secondary" disabled={busy} onClick={() => void act(id, editable ? assignPatch() : reviewPatch(), { keepOpen: true })}>
                 Save
               </Button>
             )}
             {canManage && (status === 'unassigned' || status === 'needs_attention') && (
               <Button
-                disabled={busy || !approverId}
-                onClick={() => void act(id, { ...fieldPatch(), assigned_to: approverId, assigned_to_name: approverName(approverId), status: 'assigned', assigned_at: nowIso() }, { notify: true })}
+                disabled={busy || approverIds.length === 0 || !memo.trim()}
+                onClick={() => void act(id, { ...assignPatch(), status: 'assigned', assigned_at: nowIso() }, { notify: true })}
               >
                 <Send className="size-4" /> Send for approval
               </Button>
             )}
             {canApprove && (
               <>
-                <Button variant="secondary" className="text-danger" disabled={busy || !reason.trim()} onClick={() => void act(id, { location_id: siteId || null, gl_code: gl.trim() || null, status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
+                {/* Send back needs ONLY a rejection reason — none of the
+                    approve-side gates (view file, sites, GL, split). It goes
+                    solid the moment a reason is typed. */}
+                <Button variant={reason.trim() ? 'danger' : 'secondary'} className={reason.trim() ? undefined : 'text-danger'} disabled={busy || !reason.trim()} onClick={() => void act(id, { ...reviewPatch(), status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
                   <XCircle className="size-4" /> Send back
                 </Button>
-                <Button disabled={busy || missingRequired} onClick={() => void act(id, { location_id: siteId || null, gl_code: gl.trim() || null, status: 'approved', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null })}>
+                <Button disabled={busy || approveBlocked || mustView} onClick={() => void act(id, { ...reviewPatch(), status: 'approved', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null })}>
                   <CheckCircle2 className="size-4" /> Approve
                 </Button>
               </>
-            )}
-            {status === 'approved' && (
-              <span className="text-xs text-ink-muted">Export approved invoices to CSV from the Approved tab.</span>
             )}
           </div>
         </div>
       </div>
     </Modal>
+  )
+}
+
+// A per-site allocation stored on ops_invoices.site_allocations. `name` is the
+// QuickBooks class (the Site); legacy rows may also carry location_id.
+type Alloc = { name: string; amount: number; location_id?: string | null }
+
+// Even split of a dollar total across ids, in whole cents, remainder to the
+// first sites so the parts always sum back to the total.
+function evenSplit(total: number, ids: string[]): Record<string, string> {
+  const n = ids.length
+  if (!n) return {}
+  const cents = Math.round((Number(total) || 0) * 100)
+  const base = Math.floor(cents / n)
+  const rem = cents - base * n
+  const out: Record<string, string> = {}
+  ids.forEach((id, i) => { out[id] = ((base + (i < rem ? 1 : 0)) / 100).toFixed(2) })
+  return out
+}
+
+// Editable combobox: type to filter, or click the arrow to open the FULL list
+// regardless of what's in the field (the native <datalist> filters itself down
+// to the current value, which is why the arrow felt broken). Free text is still
+// allowed. Used for both the vendor field and the GL-code field.
+function Combobox({ value, onChange, options, disabled, placeholder = 'Type or pick…', invalid }: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  disabled?: boolean
+  placeholder?: string
+  invalid?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  // Arrow / just-opened => the whole list; typing => filter by what's typed.
+  const q = value.trim().toLowerCase()
+  const shown = showAll || !q ? options : options.filter((o) => o.toLowerCase().includes(q))
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <input
+          value={value}
+          disabled={disabled}
+          placeholder={placeholder}
+          onChange={(e) => { onChange(e.target.value); setShowAll(false); setOpen(true) }}
+          onFocus={() => { if (!disabled) { setShowAll(true); setOpen(true) } }}
+          className={cn(
+            'h-10 w-full rounded-md border bg-card pl-3 pr-9 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60',
+            invalid ? 'border-danger' : 'border-border',
+          )}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled}
+          aria-label="Show options"
+          onClick={() => { if (disabled) return; setShowAll(true); setOpen((o) => !o) }}
+          className="absolute right-0 top-0 grid h-10 w-9 place-items-center text-ink-muted hover:text-ink disabled:opacity-40"
+        >
+          <ChevronDown className={cn('size-4 transition', open && 'rotate-180')} />
+        </button>
+      </div>
+      {open && !disabled && shown.length > 0 && (
+        <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg">
+          {shown.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => { onChange(o); setShowAll(false); setOpen(false) }}
+              className={cn(
+                'block w-full px-3 py-1.5 text-left text-sm hover:bg-content',
+                o === value ? 'font-medium text-accent' : 'text-ink',
+              )}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Compact multi-select: a scrollable checkbox list. Used for both the sites and
+// the approvers on an invoice.
+function CheckList({ options, selected, onChange, disabled, empty }: {
+  options: { id: string; label: string }[]
+  selected: string[]
+  onChange: (ids: string[]) => void
+  disabled?: boolean
+  empty?: string
+}) {
+  const toggle = (oid: string) => {
+    if (disabled) return
+    onChange(selected.includes(oid) ? selected.filter((s) => s !== oid) : [...selected, oid])
+  }
+  return (
+    <div className={cn('max-h-44 overflow-y-auto rounded-md border border-border bg-card p-1', disabled && 'opacity-60')}>
+      {options.length === 0 ? (
+        <p className="px-2 py-1.5 text-xs text-ink-subtle">{empty ?? 'None'}</p>
+      ) : (
+        options.map((o) => (
+          <label key={o.id} className={cn('flex items-center gap-2 rounded px-2 py-1.5 text-sm', !disabled && 'cursor-pointer hover:bg-content')}>
+            <input
+              type="checkbox"
+              checked={selected.includes(o.id)}
+              onChange={() => toggle(o.id)}
+              disabled={disabled}
+              className="size-4 rounded border-border accent-accent"
+            />
+            <span className="text-ink">{o.label}</span>
+          </label>
+        ))
+      )}
+    </div>
   )
 }
 
@@ -670,7 +1001,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 function StatusPill({ status }: { status: InvoiceStatus }) {
   const tone =
     status === 'approved' || status === 'exported' ? 'bg-ok-soft text-ok'
-      : status === 'needs_attention' || status === 'cancelled' ? 'bg-danger-soft text-danger'
+      : status === 'needs_attention' ? 'bg-danger-soft text-danger'
         : status === 'assigned' ? 'bg-accent-soft text-accent'
           : 'bg-ink/10 text-ink-muted'
   return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', tone)}>{STATUS_LABEL[status]}</span>
@@ -697,9 +1028,10 @@ function mdY(iso: string | null | undefined): string {
   return y && m && d ? `${m}/${d}/${y}` : ''
 }
 
-// Best-effort bill number from the email subject ("Invoice #INV-4821" -> INV-4821),
-// falling back to the attachment filename.
+// Bill number: the AI-extracted invoice number first, then the email subject
+// ("Invoice #INV-4821" -> INV-4821), then the attachment filename.
 function billNoOf(inv: OpsInvoice): string {
+  if (inv.invoice_number?.trim()) return inv.invoice_number.trim()
   const subj = inv.email_subject ?? ''
   const m = subj.match(/#\s*([A-Za-z0-9][\w-]*)/) ?? subj.match(/\b(INV[-\s]?[A-Za-z0-9-]+)\b/i)
   if (m) return m[1].replace(/\s+/g, '')
@@ -708,20 +1040,27 @@ function billNoOf(inv: OpsInvoice): string {
 }
 
 // Build the QuickBooks CSV for a set of invoices. Fields we hold map to their QB
-// columns (Vendor, Date, GL -> Expense Account, amount -> Expense Amount); the
-// rest stay blank, exactly like the template.
+// columns (Vendor, Date, GL -> Expense Account, amount -> Expense Amount, site ->
+// Expense Class); the rest stay blank, exactly like the template. An invoice
+// split across sites produces one line per site (its own amount + Class) so the
+// per-site cost allocation carries into accounting.
 function quickbooksCsv(invs: OpsInvoice[]): string {
-  const rows = invs.map((inv) => {
-    const cell: Record<string, string> = {
+  const rows: string[] = []
+  for (const inv of invs) {
+    const base: Record<string, string> = {
       'Bill No': billNoOf(inv),
       Vendor: inv.vendor_name ?? '',
       Date: mdY(inv.invoice_date) || mdY(inv.submitted_at),
       'Expense Account': inv.gl_code ?? '',
-      'Expense Amount': String(Number(inv.amount) || 0),
+      Memo: inv.memo ?? '',
       Currency: 'USD',
     }
-    return QB_HEADERS.map((h) => csvEsc(cell[h] ?? '')).join(',')
-  })
+    const allocs = (inv.site_allocations as Alloc[] | null) ?? []
+    const lines: Record<string, string>[] = Array.isArray(allocs) && allocs.length
+      ? allocs.map((a) => ({ ...base, 'Expense Amount': String(Number(a.amount) || 0), 'Expense Class': String(a.name ?? '') }))
+      : [{ ...base, 'Expense Amount': String(Number(inv.amount) || 0) }]
+    for (const cell of lines) rows.push(QB_HEADERS.map((h) => csvEsc(cell[h] ?? '')).join(','))
+  }
   return [QB_HEADERS.map(csvEsc).join(','), ...rows].join('\r\n') + '\r\n'
 }
 
