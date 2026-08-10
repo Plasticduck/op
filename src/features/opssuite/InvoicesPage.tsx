@@ -189,14 +189,15 @@ export default function InvoicesPage() {
   }
 
   // Apply a workflow transition (or field edit). Realtime reloads the list.
+  // Approvers are no longer emailed on assignment: a single daily digest
+  // (daily-approver-digest, 5pm Central) summarizes everything assigned to them.
   const act = async (
     id: string,
     patch: OpsInvoiceUpdate,
-    opts?: { notify?: boolean; keepOpen?: boolean },
+    opts?: { keepOpen?: boolean },
   ) => {
     setBusy(true)
     await opsInvoices.update(id, patch)
-    if (opts?.notify) await opsInvoices.notifyAssignment(id)
     setBusy(false)
     if (!opts?.keepOpen) setOpenId(null)
   }
@@ -545,7 +546,7 @@ function InvoiceModal({
   busy: boolean
   onClose: () => void
   onFile: (path: string) => void
-  act: (id: string, patch: OpsInvoiceUpdate, opts?: { notify?: boolean; keepOpen?: boolean }) => Promise<void>
+  act: (id: string, patch: OpsInvoiceUpdate, opts?: { keepOpen?: boolean }) => Promise<void>
   onDelete: (id: string, filePath: string | null) => Promise<void>
 }) {
   const status = (KNOWN_STATUSES.has(invoice.status as InvoiceStatus) ? invoice.status : 'unassigned') as InvoiceStatus
@@ -836,7 +837,7 @@ function InvoiceModal({
             {canManage && (status === 'unassigned' || status === 'needs_attention') && (
               <Button
                 disabled={busy || approverIds.length === 0 || !memo.trim()}
-                onClick={() => void act(id, { ...assignPatch(), status: 'assigned', assigned_at: nowIso() }, { notify: true })}
+                onClick={() => void act(id, { ...assignPatch(), status: 'assigned', assigned_at: nowIso() })}
               >
                 <Send className="size-4" /> Send for approval
               </Button>

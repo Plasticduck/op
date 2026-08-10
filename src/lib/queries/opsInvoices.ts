@@ -17,9 +17,12 @@ export const opsInvoices = {
   updateMany: (ids: string[], patch: OpsInvoiceUpdate) =>
     supabase.from('ops_invoices').update(patch).in('id', ids).select('id'),
 
-  // Email the assigned approver that an invoice is waiting on them.
-  notifyAssignment: (invoiceId: string) =>
-    supabase.functions.invoke('notify-invoice-assignment', { body: { invoice_id: invoiceId } }),
+  // Hard-delete an invoice (Needs Attention > Delete Invoice). Best-effort
+  // removes the stored file first so it isn't orphaned.
+  remove: async (id: string, filePath?: string | null) => {
+    if (filePath) await supabase.storage.from('ops-invoices').remove([filePath])
+    return supabase.from('ops_invoices').delete().eq('id', id)
+  },
 
   // Short-lived signed URL to view/download an emailed-in invoice file.
   fileUrl: async (path: string): Promise<string | null> => {
