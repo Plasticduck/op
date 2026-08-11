@@ -343,6 +343,7 @@ export type SiteMetrics = {
   conversion: number | null
   churn: number | null
   rechargeMtd: number | null
+  plansSold: number | null
 }
 
 export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null): SiteMetrics {
@@ -350,6 +351,9 @@ export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null):
   const day = days && days.length ? days[days.length - 1] : undefined
   const msaRow = feed?.msa?.rows?.find((r) => siteNumber(r.site) === n)
   const churn = findByNumber(feed?.churn?.sites, n)
+  // Plans sold today = the sum of every plan tier's today count for the site.
+  const plan = findByNumber<PlanSite>(feed?.plan_breakdown?.sites, n)
+  const plansSold = plan?.today ? Object.values(plan.today).reduce((a, b) => a + (Number(b) || 0), 0) : null
   return {
     cars: day?.cars ?? null,
     sales: day?.sales ?? msaRow?.today_sales ?? null,
@@ -358,6 +362,7 @@ export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null):
     conversion: msaRow?.today_conversion_pct ?? null,
     churn: churn?.voluntary_churn_pct ?? null,
     rechargeMtd: findByNumber<number>(feed?.recharge_revenue?.mtd_by_site, n) ?? null,
+    plansSold,
   }
 }
 

@@ -48,7 +48,6 @@ function rotIndex(s: Selection, rotation: Selection[]): number {
 const num = (n: number | null | undefined) => (n == null ? '—' : Math.round(n).toLocaleString('en-US'))
 const money = (n: number | null | undefined) => (n == null ? '—' : currency(n))
 const pct = (n: number | null | undefined) => (n == null ? '—' : `${n.toFixed(1)}%`)
-const oneDp = (n: number | null | undefined) => (n == null ? '—' : n.toFixed(1))
 
 // Sum a metric across sites (nulls ignored); null when none reported.
 function agg(ms: SiteMetrics[], key: keyof SiteMetrics, mode: 'sum' | 'avg'): number | null {
@@ -68,6 +67,7 @@ function combine(feed: SitePerformanceFeed | null, locs: LocationRow[]): SiteMet
     conversion: agg(ms, 'conversion', 'avg'),
     churn: agg(ms, 'churn', 'avg'),
     laborPct: agg(ms, 'laborPct', 'avg'),
+    plansSold: agg(ms, 'plansSold', 'sum'),
   }
 }
 
@@ -246,7 +246,7 @@ export default function PresentationMode() {
     { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent', feed: true },
     { label: isRoll ? 'Conversion (avg)' : 'Conversion', value: pct(m.conversion), dot: 'bg-warn', feed: true },
     { label: isRoll ? 'Churn (avg)' : 'Churn', value: pct(m.churn), dot: 'bg-danger', feed: true },
-    { label: isRoll ? 'Cars / hr (avg)' : 'Cars / hr', value: oneDp(m.carsPerHour), dot: 'bg-ok', feed: true },
+    { label: isRoll ? 'Plans Sold (total)' : 'Plans Sold', value: num(m.plansSold), dot: 'bg-ok', feed: true },
   ]
 
   const pickBtn = (label: string, onClick: () => void, activeSel: boolean, icon?: ReactNode) => (
