@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, X, Building2, Layers, Dot, Check } from 'lucide-react'
-import { Logo } from '@/components/ui/Logo'
 import { usePresentationMode } from '@/lib/presentation'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
 import { useSitePerformanceFeed } from '@/lib/useSitePerformanceFeed'
 import { siteMetrics, siteNumber, type SiteMetrics, type SitePerformanceFeed } from '@/lib/queries/sitePerformance'
 import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
+import { computeScorecards, letterFor, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
+import { ratings, type SiteRating } from '@/lib/queries/ratings'
+import { assets } from '@/lib/queries/assets'
 import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -60,6 +62,10 @@ export default function PresentationMode() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const [now, setNow] = useState('')
+  // Per-location scorecards, Google ratings, and equipment-down counts.
+  const [cards, setCards] = useState<Record<string, Scorecard>>({})
+  const [rmap, setRmap] = useState<Record<string, SiteRating>>({})
+  const [dmap, setDmap] = useState<Record<string, number>>({})
 
   // Open on the currently active site (if any) the first time we enter.
   useEffect(() => {
@@ -93,29 +99,77 @@ export default function PresentationMode() {
     setNow(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
   }, [active, feed])
 
+  // Load scorecards + Google ratings + equipment-down counts for every site.
+  useEffect(() => {
+    if (!active || !locations.length) return
+    let cancel = false
+    void (async () => {
+      const locIds = locations.map((l) => l.id)
+      const [rats, downs] = await Promise.all([
+        ratings.fetch(locIds).catch(() => [] as SiteRating[]),
+        assets.downCounts().catch(() => ({} as Record<string, number>)),
+      ])
+      if (cancel) return
+      const r: Record<string, SiteRating> = {}
+      for (const x of rats) r[x.location_id] = x
+      setRmap(r)
+      setDmap(downs)
+      const perfByLoc: Record<string, SitePerformanceInput> = {}
+      for (const l of locations) {
+        const sm = siteMetrics(feed, siteNumber(l.name))
+        perfByLoc[l.id] = {
+          carsPerHour: sm.carsPerHour ?? undefined,
+          laborPct: sm.laborPct ?? undefined,
+          conversion: sm.conversion ?? undefined,
+          churn: sm.churn ?? undefined,
+          googleRating: r[l.id]?.rating ?? undefined,
+        }
+      }
+      const sc = await computeScorecards(locIds, perfByLoc).catch(() => ({} as Record<string, Scorecard>))
+      if (!cancel) setCards(sc)
+    })()
+    return () => { cancel = true }
+  }, [active, feed, locations])
+
   const byId = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
 
   // Resolve the current selection into a title, subtitle, and metric set.
   const view = useMemo(() => {
     if (sel.kind === 'site') {
       const loc = byId.get(sel.id)
-      if (loc) return { title: loc.name, subtitle: 'Single site', metrics: siteMetrics(feed, siteNumber(loc.name)), count: 1 }
+      if (loc) return { title: loc.name, subtitle: 'Single site', metrics: siteMetrics(feed, siteNumber(loc.name)), count: 1, locs: [loc] }
     }
     if (sel.kind === 'region') {
       const g = groups.find((x) => x.region === sel.name)
       const locs = g?.locations ?? []
-      return { title: sel.name, subtitle: `${locs.length} ${locs.length === 1 ? 'site' : 'sites'}`, metrics: combine(feed, locs), count: locs.length }
+      return { title: sel.name, subtitle: `${locs.length} ${locs.length === 1 ? 'site' : 'sites'}`, metrics: combine(feed, locs), count: locs.length, locs }
     }
-    return { title: 'All Sites', subtitle: `${locations.length} ${locations.length === 1 ? 'site' : 'sites'}`, metrics: combine(feed, locations), count: locations.length }
+    return { title: 'All Sites', subtitle: `${locations.length} ${locations.length === 1 ? 'site' : 'sites'}`, metrics: combine(feed, locations), count: locations.length, locs: locations }
   }, [sel, byId, groups, feed, locations])
 
   if (!active) return null
 
   const m = view.metrics
   const isRoll = view.count !== 1
-  // Metric tiles. For a roll-up, cars/sales/recharge are totals and cars-per-hour/
-  // conversion/churn are averages across the sites. `dot` is an app status color.
-  const tiles: { label: string; value: string; dot: string }[] = [
+  const selLocs = view.locs
+
+  // Score Card: the site's letter grade, or the region/all average grade.
+  const scoreTotals = selLocs.map((l) => cards[l.id]?.total).filter((v): v is number => v != null)
+  const scoreAvg = scoreTotals.length ? scoreTotals.reduce((a, b) => a + b, 0) / scoreTotals.length : null
+  const scoreLetter = selLocs.length === 1 ? (cards[selLocs[0]?.id]?.letter ?? null) : scoreAvg != null ? letterFor(scoreAvg) : null
+  const scoreTone = scoreAvg == null ? '' : scoreAvg >= 90 ? 'text-ok' : scoreAvg >= 75 ? 'text-accent' : scoreAvg >= 60 ? 'text-warn' : 'text-danger'
+  // Google Rating: the site's rating, or the average across the selection.
+  const rVals = selLocs.map((l) => rmap[l.id]?.rating).filter((v): v is number => v != null)
+  const ratingVal = rVals.length ? rVals.reduce((a, b) => a + b, 0) / rVals.length : null
+  // Equipment Down: total units in an unplanned-offline state across the selection.
+  const downVal = selLocs.reduce((a, l) => a + (dmap[l.id] ?? 0), 0)
+
+  // Metric tiles. For a roll-up, cars/sales/recharge/equipment-down are totals and
+  // cars-per-hour/conversion/churn/rating are averages. `dot` is an app status color.
+  const tiles: { label: string; value: string; dot: string; tone?: string }[] = [
+    { label: 'Score Card', value: scoreLetter ?? '—', dot: 'bg-accent', tone: scoreTone },
+    { label: 'Google Rating', value: ratingVal != null ? `${ratingVal.toFixed(1)} ★` : '—', dot: 'bg-warn' },
+    { label: isRoll ? 'Equipment Down (total)' : 'Equipment Down', value: String(downVal), dot: downVal > 0 ? 'bg-danger' : 'bg-ok', tone: downVal > 0 ? 'text-danger' : '' },
     { label: isRoll ? 'Cars today (total)' : 'Cars today', value: num(m.cars), dot: 'bg-accent' },
     { label: isRoll ? 'Sales today (total)' : 'Sales today', value: money(m.sales), dot: 'bg-ok' },
     { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent' },
@@ -143,7 +197,8 @@ export default function PresentationMode() {
     <div className="fixed inset-0 z-[70] flex flex-col overflow-y-auto bg-content text-ink">
       {/* top bar (highest z so its dropdown overlays the content below) */}
       <div className="relative z-30 flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4 sm:px-10 sm:py-5">
-        <Logo size="lg" className="w-36 sm:w-48" />
+        {/* Mighty Wash logo, 30% larger than the dashboard logo (lg = 128px). */}
+        <img src="/mighty-max-in-flight.png" alt="Mighty Wash" className="h-auto w-[166px] max-w-[55vw]" />
         <div className="flex items-center gap-2 sm:gap-3">
           {/* site / region picker */}
           <div className="relative" ref={pickerRef}>
@@ -207,7 +262,7 @@ export default function PresentationMode() {
                 <span className={cn('size-2 rounded-full', t.dot)} />
                 {t.label}
               </div>
-              <div className="mt-3 text-5xl font-bold tabular-nums leading-none text-ink sm:text-7xl">{t.value}</div>
+              <div className={cn('mt-3 text-5xl font-bold tabular-nums leading-none sm:text-7xl', t.tone || 'text-ink')}>{t.value}</div>
             </div>
           ))}
         </div>

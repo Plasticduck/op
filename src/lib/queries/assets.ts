@@ -66,6 +66,20 @@ export const assets = {
     return q
   },
 
+  // Count of equipment currently DOWN (unplanned offline) per location, across
+  // the whole account. Used by the "Equipment down" metric.
+  downCounts: async (): Promise<Record<string, number>> => {
+    const { data } = await supabase
+      .from('equipment')
+      .select('location_id')
+      .eq('status', 'offline_unplanned')
+    const out: Record<string, number> = {}
+    for (const r of (data ?? []) as { location_id: string | null }[]) {
+      if (r.location_id) out[r.location_id] = (out[r.location_id] ?? 0) + 1
+    }
+    return out
+  },
+
   byId: (id: string) =>
     supabase
       .from('equipment')
