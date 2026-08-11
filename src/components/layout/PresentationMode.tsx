@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, X, Building2, Layers, Dot, Check } from 'lucide-react'
+import { ChevronDown, X, Building2, Layers, Dot, Check, Sun, Moon } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
+import { useTheme } from '@/lib/theme'
 import { usePresentationMode } from '@/lib/presentation'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
@@ -48,6 +49,8 @@ function combine(feed: SitePerformanceFeed | null, locs: LocationRow[]): SiteMet
 
 export default function PresentationMode() {
   const { active, exit } = usePresentationMode()
+  const { resolved, setTheme } = useTheme()
+  const dark = resolved === 'dark'
   const { locations, activeLocation } = useLocations()
   const { settings } = useCompany()
   const { feed, error } = useSitePerformanceFeed(active)
@@ -226,6 +229,15 @@ export default function PresentationMode() {
               </div>
             )}
           </div>
+          <button
+            type="button"
+            onClick={() => setTheme(dark ? 'light' : 'dark')}
+            title={dark ? 'Light mode' : 'Dark mode'}
+            aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="rounded-lg border border-border bg-card p-2.5 text-ink-muted hover:border-accent hover:text-ink"
+          >
+            {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+          </button>
           <button
             type="button"
             onClick={exit}
