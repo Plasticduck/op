@@ -6,6 +6,7 @@ import { pageAllowed } from '@/lib/permissions'
 import type { Role } from '@/lib/rbac'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { CommandPalette } from '@/components/layout/CommandPalette'
+import PresentationMode from '@/components/layout/PresentationMode'
 import { MessageNotifier } from '@/lib/messageNotifier'
 import { TopBar } from '@/components/layout/TopBar'
 import { TrialBanner } from '@/components/layout/TrialBanner'
@@ -110,6 +111,7 @@ export function AppShell() {
             <BottomNav role={profile.role} />
             <CommandPalette />
             <MessageNotifier />
+            <PresentationMode />
           </div>
         </NotificationsProvider>
       </LocationProvider>

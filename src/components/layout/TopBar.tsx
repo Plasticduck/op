@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Bell, Check, ChevronDown, CreditCard, LogOut, Search, Wrench } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
+import { PresentationToggle } from '@/components/ui/PresentationToggle'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
+import { useCompany } from '@/lib/company'
+import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
 import { useNotifications, type Notification } from '@/lib/notifications'
 import { timeAgo } from '@/lib/format'
 import { ROLE_LABEL } from '@/lib/rbac'
@@ -33,6 +36,7 @@ function renderNotification(n: Notification): { icon: typeof Bell; text: string;
 export function TopBar() {
   const { profile, signOut } = useAuth()
   const { locations, activeLocation, setActiveId } = useLocations()
+  const { settings } = useCompany()
   const { items, unread, markRead, markAllRead } = useNotifications()
   const [locOpen, setLocOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
@@ -86,32 +90,41 @@ export function TopBar() {
               </span>
               <ChevronDown className="size-3.5 shrink-0" />
             </button>
-            {locOpen && (
-              <div className="absolute right-0 mt-1 max-h-[70vh] w-52 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg">
-                {locations.map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveId(l.id)
-                      setLocOpen(false)
-                    }}
-                    className={cn(
-                      'flex w-full items-center justify-between px-3 py-1.5 text-sm hover:bg-content',
-                      l.id === activeLocation?.id ? 'text-ink' : 'text-ink-muted',
-                    )}
-                  >
-                    {l.name}
-                    {l.id === activeLocation?.id && (
-                      <Check className="size-3.5 text-accent" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+            {locOpen && (() => {
+              const item = (l: (typeof locations)[number]) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => { setActiveId(l.id); setLocOpen(false) }}
+                  className={cn(
+                    'flex w-full items-center justify-between px-3 py-1.5 text-sm hover:bg-content',
+                    l.id === activeLocation?.id ? 'text-ink' : 'text-ink-muted',
+                  )}
+                >
+                  {l.name}
+                  {l.id === activeLocation?.id && <Check className="size-3.5 text-accent" />}
+                </button>
+              )
+              const regs = resolveRegions(settings.regions)
+              return (
+                <div className="absolute right-0 mt-1 max-h-[70vh] w-52 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg">
+                  {regs.length === 0
+                    ? locations.map(item)
+                    : groupByRegions(locations, regs).map((g) => (
+                        <div key={g.region}>
+                          <div className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">
+                            {shortRegionLabel(g.region)}
+                          </div>
+                          {g.locations.map(item)}
+                        </div>
+                      ))}
+                </div>
+              )
+            })()}
           </div>
         )}
 
+        <PresentationToggle />
         <ThemeToggle />
 
         <div className="relative" ref={bellRef}>
