@@ -351,10 +351,10 @@ export default function PresentationMode() {
       </div>
 
       {/* auto-scroll progress: fills over the interval, resets on each advance */}
-      <div className="relative z-30 h-1 w-full bg-border/60">
+      <div className="relative z-30 h-2 w-full shrink-0 bg-ink/10">
         <div
-          className={cn('h-full', autoplay ? 'bg-accent' : 'bg-ink-subtle')}
-          style={{ width: `${Math.round(progress * 100)}%` }}
+          className={cn('h-full transition-[width] duration-100 ease-linear', autoplay ? 'bg-accent' : 'bg-ink-subtle')}
+          style={{ width: `${Math.max(0, Math.min(100, progress * 100))}%` }}
         />
       </div>
 
