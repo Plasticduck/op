@@ -20,6 +20,30 @@ type Selection =
   | { kind: 'region'; name: string }
   | { kind: 'site'; id: string }
 
+// What the auto-scroll rotates through.
+type Scope = 'sites' | 'regions' | 'all'
+type Group = { region: string; locations: LocationRow[] }
+
+const INTERVALS = [15, 30, 45, 60, 90, 120] as const
+const fmtInterval = (s: number) => (s >= 60 ? (s % 60 === 0 ? `${s / 60}m` : `${(s / 60).toFixed(1)}m`) : `${s}s`)
+const SCOPE_LABEL: Record<Scope, string> = { sites: 'Sites', regions: 'Regions', all: 'Full tour' }
+
+// The ordered list of views the auto-scroll steps through for a given scope.
+function buildRotation(scope: Scope, orderedSites: LocationRow[], groups: Group[]): Selection[] {
+  const sites: Selection[] = orderedSites.map((l) => ({ kind: 'site', id: l.id }))
+  const regions: Selection[] = groups.map((g) => ({ kind: 'region', name: g.region }))
+  if (scope === 'regions') return regions.length ? regions : sites
+  if (scope === 'all') return [{ kind: 'all' }, ...regions, ...sites]
+  return sites
+}
+// Index of the current selection within a rotation (-1 if absent).
+function rotIndex(s: Selection, rotation: Selection[]): number {
+  return rotation.findIndex((r) =>
+    r.kind === s.kind &&
+    (r.kind === 'site' ? r.id === (s as { id: string }).id : r.kind === 'region' ? r.name === (s as { name: string }).name : true),
+  )
+}
+
 // ---- formatters (null-safe, big-and-legible) ----
 const num = (n: number | null | undefined) => (n == null ? '—' : Math.round(n).toLocaleString('en-US'))
 const money = (n: number | null | undefined) => (n == null ? '—' : currency(n))
@@ -64,6 +88,10 @@ export default function PresentationMode() {
 
   const [sel, setSel] = useState<Selection>({ kind: 'all' })
   const [autoplay, setAutoplay] = useState(true)
+  const [scope, setScope] = useState<Scope>('sites')
+  const [intervalSec, setIntervalSec] = useState(60)
+  const [progress, setProgress] = useState(0)
+  const startRef = useRef(0)
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const [now, setNow] = useState('')
@@ -72,11 +100,13 @@ export default function PresentationMode() {
   const [rmap, setRmap] = useState<Record<string, SiteRating>>({})
   const [dmap, setDmap] = useState<Record<string, number>>({})
 
-  // All sites in number order — the auto-scroll rotation.
+  // All sites in number order, and the rotation the auto-scroll steps through.
   const orderedSites = useMemo(
     () => [...locations].sort((a, b) => (siteNumber(a.name) ?? 1e9) - (siteNumber(b.name) ?? 1e9)),
     [locations],
   )
+  const rotation = useMemo(() => buildRotation(scope, orderedSites, groups), [scope, orderedSites, groups])
+  const scopes: Scope[] = groups.length ? ['sites', 'regions', 'all'] : ['sites']
 
   // On enter: start auto-scroll and open on the active site (or the first site).
   useEffect(() => {
@@ -92,17 +122,25 @@ export default function PresentationMode() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
 
-  // Auto-scroll: every 60s advance to the next site by number (wraps around).
+  // Auto-scroll + progress: a light ticker drives the progress bar and advances
+  // to the next view in the rotation when the interval elapses (wraps around).
   useEffect(() => {
-    if (!active || !autoplay || orderedSites.length === 0) return
+    if (!active || !autoplay || rotation.length === 0) return
+    startRef.current = Date.now()
+    setProgress(0)
+    const ms = intervalSec * 1000
     const id = setInterval(() => {
-      setSel((cur) => {
-        const i = cur.kind === 'site' ? orderedSites.findIndex((l) => l.id === cur.id) : -1
-        return { kind: 'site', id: orderedSites[(i + 1) % orderedSites.length].id }
-      })
-    }, 60_000)
+      const elapsed = Date.now() - startRef.current
+      if (elapsed >= ms) {
+        setSel((cur) => rotation[(rotIndex(cur, rotation) + 1) % rotation.length])
+        startRef.current = Date.now()
+        setProgress(0)
+      } else {
+        setProgress(elapsed / ms)
+      }
+    }, 120)
     return () => clearInterval(id)
-  }, [active, autoplay, orderedSites])
+  }, [active, autoplay, intervalSec, rotation])
 
   // Exit on Esc or Tab, per the spec (plus the on-screen button).
   useEffect(() => {
@@ -231,7 +269,32 @@ export default function PresentationMode() {
       {/* top bar (highest z so its dropdown overlays the content below) */}
       <div className="relative z-30 flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4 sm:px-10 sm:py-5">
         <Logo size="lg" className="w-32 sm:w-40" />
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          {/* auto-scroll scope: what the rotation steps through */}
+          {scopes.length > 1 && (
+            <button
+              type="button"
+              onClick={() => {
+                const next = scopes[(scopes.indexOf(scope) + 1) % scopes.length]
+                setScope(next)
+                setSel(buildRotation(next, orderedSites, groups)[0] ?? { kind: 'all' })
+                setAutoplay(true)
+              }}
+              title="Auto-scroll through"
+              className="rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-medium text-ink-muted hover:border-accent hover:text-ink"
+            >
+              {SCOPE_LABEL[scope]}
+            </button>
+          )}
+          {/* auto-scroll interval (click to cycle presets) */}
+          <button
+            type="button"
+            onClick={() => setIntervalSec((s) => INTERVALS[(INTERVALS.indexOf(s as typeof INTERVALS[number]) + 1) % INTERVALS.length])}
+            title="Auto-scroll interval"
+            className="rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-medium tabular-nums text-ink-muted hover:border-accent hover:text-ink"
+          >
+            {fmtInterval(intervalSec)}
+          </button>
           {/* auto-scroll pause / play, directly left of the site picker */}
           <button
             type="button"
@@ -285,6 +348,14 @@ export default function PresentationMode() {
             <X className="size-5" />
           </button>
         </div>
+      </div>
+
+      {/* auto-scroll progress: fills over the interval, resets on each advance */}
+      <div className="relative z-30 h-1 w-full bg-border/60">
+        <div
+          className={cn('h-full', autoplay ? 'bg-accent' : 'bg-ink-subtle')}
+          style={{ width: `${Math.round(progress * 100)}%` }}
+        />
       </div>
 
       {/* headline (Mighty Wash logo centered, 30% larger than the dashboard logo) */}
