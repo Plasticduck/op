@@ -400,12 +400,16 @@ Deno.serve(async (req) => {
           }
         }
       }
-      // Headline conversion = average of the monthly values across the sites this
-      // email lists (keeps low-volume non-tunnel sites out of it).
+      // Headline conversion = the dashboard's own month-to-date company average
+      // (rinsed `company_avg`), which is volume-weighted and the authoritative
+      // number. Fall back to a simple mean of the per-site values only if the
+      // dashboard didn't provide it. A plain per-site mean over-weights low-volume
+      // outliers (e.g. the Lube & Tune site), so it is the fallback, not the source.
       const convVals = sites
         .map((s) => convBySite.get('MightyWash ' + String(s.n).padStart(3, '0')))
         .filter((v): v is number => v != null)
-      const conversionAvg = convVals.length ? convVals.reduce((a, b) => a + b, 0) / convVals.length : null
+      const companyAvg = rinsed && typeof rinsed.company_avg === 'number' ? rinsed.company_avg : null
+      const conversionAvg = companyAvg ?? (convVals.length ? convVals.reduce((a, b) => a + b, 0) / convVals.length : null)
       const churnVolBySite = gqMap(cvol)
       const churnCcBySite = gqMap(ccc)
       // Same-day-last-year cars: the default roster plus the explicitly-named
@@ -527,7 +531,7 @@ Deno.serve(async (req) => {
     <table role="presentation" width="100%" style="border-collapse:collapse;table-layout:fixed;">
       <tr>
         ${kpi('Plans sold', nf(dash.plansTotal), `Mighty ${nf(dash.plansMighty ?? 0)} · Super ${nf(dash.plansSuper ?? 0)} · Wonder ${nf(dash.plansWonder ?? 0)}`)}
-        ${kpi('Monthly Conversion', dash.conversion != null ? dash.conversion.toFixed(1) + '%' : 'n/a', 'month-to-date average across sites')}
+        ${kpi('Monthly Conversion', dash.conversion != null ? dash.conversion.toFixed(1) + '%' : 'n/a', 'company average, month to date')}
         ${kpi('Monthly Churn', dash.churnVol != null || dash.churnCc != null ? ((dash.churnVol ?? 0) + (dash.churnCc ?? 0)).toFixed(1) + '%' : 'n/a', `voluntary ${dash.churnVol != null ? dash.churnVol.toFixed(1) : 'n/a'}% + credit-card ${dash.churnCc != null ? dash.churnCc.toFixed(1) : 'n/a'}%, trailing month`)}
       </tr>
     </table>
