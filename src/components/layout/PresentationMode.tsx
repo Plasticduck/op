@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, X, Building2, Layers, Dot, Check } from 'lucide-react'
+import { Logo } from '@/components/ui/Logo'
 import { usePresentationMode } from '@/lib/presentation'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
@@ -49,7 +50,7 @@ export default function PresentationMode() {
   const { active, exit } = usePresentationMode()
   const { locations, activeLocation } = useLocations()
   const { settings } = useCompany()
-  const { feed, loading, error } = useSitePerformanceFeed(active)
+  const { feed, error } = useSitePerformanceFeed(active)
 
   // Region groups when the account has regions configured; otherwise sites are
   // offered flat (no redundant "Other" bucket).
@@ -93,9 +94,9 @@ export default function PresentationMode() {
     return () => window.removeEventListener('mousedown', onDown)
   }, [pickerOpen])
 
-  // Light "updated" clock, refreshed as the feed re-fetches.
+  // "Updated" clock, stamped only once the live feed actually arrives.
   useEffect(() => {
-    if (!active) return
+    if (!active || !feed) return
     setNow(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
   }, [active, feed])
 
@@ -164,18 +165,20 @@ export default function PresentationMode() {
   // Equipment Down: total units in an unplanned-offline state across the selection.
   const downVal = selLocs.reduce((a, l) => a + (dmap[l.id] ?? 0), 0)
 
+  // Feed-based tiles show a skeleton until the (slow) live feed arrives.
+  const feedLoading = !feed && !error
   // Metric tiles. For a roll-up, cars/sales/recharge/equipment-down are totals and
   // cars-per-hour/conversion/churn/rating are averages. `dot` is an app status color.
-  const tiles: { label: string; value: string; dot: string; tone?: string }[] = [
+  const tiles: { label: string; value: string; dot: string; tone?: string; feed?: boolean }[] = [
     { label: 'Score Card', value: scoreLetter ?? '—', dot: 'bg-accent', tone: scoreTone },
     { label: 'Google Rating', value: ratingVal != null ? `${ratingVal.toFixed(1)} ★` : '—', dot: 'bg-warn' },
     { label: isRoll ? 'Equipment Down (total)' : 'Equipment Down', value: String(downVal), dot: downVal > 0 ? 'bg-danger' : 'bg-ok', tone: downVal > 0 ? 'text-danger' : '' },
-    { label: isRoll ? 'Cars today (total)' : 'Cars today', value: num(m.cars), dot: 'bg-accent' },
-    { label: isRoll ? 'Sales today (total)' : 'Sales today', value: money(m.sales), dot: 'bg-ok' },
-    { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent' },
-    { label: isRoll ? 'Conversion (avg)' : 'Conversion', value: pct(m.conversion), dot: 'bg-warn' },
-    { label: isRoll ? 'Churn (avg)' : 'Churn', value: pct(m.churn), dot: 'bg-danger' },
-    { label: isRoll ? 'Cars / hr (avg)' : 'Cars / hr', value: oneDp(m.carsPerHour), dot: 'bg-ok' },
+    { label: isRoll ? 'Cars today (total)' : 'Cars today', value: num(m.cars), dot: 'bg-accent', feed: true },
+    { label: isRoll ? 'Sales today (total)' : 'Sales today', value: money(m.sales), dot: 'bg-ok', feed: true },
+    { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent', feed: true },
+    { label: isRoll ? 'Conversion (avg)' : 'Conversion', value: pct(m.conversion), dot: 'bg-warn', feed: true },
+    { label: isRoll ? 'Churn (avg)' : 'Churn', value: pct(m.churn), dot: 'bg-danger', feed: true },
+    { label: isRoll ? 'Cars / hr (avg)' : 'Cars / hr', value: oneDp(m.carsPerHour), dot: 'bg-ok', feed: true },
   ]
 
   const pickBtn = (label: string, onClick: () => void, activeSel: boolean, icon?: ReactNode) => (
@@ -197,8 +200,7 @@ export default function PresentationMode() {
     <div className="fixed inset-0 z-[70] flex flex-col overflow-y-auto bg-content text-ink">
       {/* top bar (highest z so its dropdown overlays the content below) */}
       <div className="relative z-30 flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4 sm:px-10 sm:py-5">
-        {/* Mighty Wash logo, 30% larger than the dashboard logo (lg = 128px). */}
-        <img src="/mighty-max-in-flight.png" alt="Mighty Wash" className="h-auto w-[166px] max-w-[55vw]" />
+        <Logo size="lg" className="w-32 sm:w-40" />
         <div className="flex items-center gap-2 sm:gap-3">
           {/* site / region picker */}
           <div className="relative" ref={pickerRef}>
@@ -236,8 +238,13 @@ export default function PresentationMode() {
         </div>
       </div>
 
-      {/* headline */}
+      {/* headline (Mighty Wash logo centered, 30% larger than the dashboard logo) */}
       <div className="relative z-10 px-6 pt-6 sm:px-10 sm:pt-8">
+        <img
+          src="/mighty-max-in-flight.png"
+          alt="Mighty Wash"
+          className="pointer-events-none absolute left-1/2 top-5 h-auto w-[166px] max-w-[36vw] -translate-x-1/2 sm:top-7"
+        />
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-4xl font-bold tracking-tight text-ink sm:text-6xl">{view.title}</h1>
@@ -245,10 +252,10 @@ export default function PresentationMode() {
           </div>
           <div className="flex items-center gap-2 text-sm text-ink-muted">
             <span className="relative flex size-2.5">
-              <span className={cn('absolute inline-flex h-full w-full rounded-full bg-ok', !error && 'animate-ping opacity-75')} />
-              <span className={cn('relative inline-flex size-2.5 rounded-full', error ? 'bg-danger' : 'bg-ok')} />
+              <span className={cn('absolute inline-flex h-full w-full rounded-full', error ? 'bg-danger' : feed ? 'bg-ok animate-ping opacity-75' : 'bg-warn')} />
+              <span className={cn('relative inline-flex size-2.5 rounded-full', error ? 'bg-danger' : feed ? 'bg-ok' : 'bg-warn')} />
             </span>
-            {error ? 'Live data unavailable' : loading && !feed ? 'Connecting...' : `Live, updated ${now}`}
+            {error ? 'Live data unavailable' : !feed ? 'Loading site data...' : `Live, updated ${now}`}
           </div>
         </div>
       </div>
@@ -262,7 +269,11 @@ export default function PresentationMode() {
                 <span className={cn('size-2 rounded-full', t.dot)} />
                 {t.label}
               </div>
-              <div className={cn('mt-3 text-5xl font-bold tabular-nums leading-none sm:text-7xl', t.tone || 'text-ink')}>{t.value}</div>
+              {t.feed && feedLoading ? (
+                <div className="mt-4 h-9 w-28 animate-pulse rounded-md bg-ink/10 sm:h-12 sm:w-40" />
+              ) : (
+                <div className={cn('mt-3 text-5xl font-bold tabular-nums leading-none sm:text-7xl', t.tone || 'text-ink')}>{t.value}</div>
+              )}
             </div>
           ))}
         </div>
