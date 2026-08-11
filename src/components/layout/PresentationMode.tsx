@@ -265,7 +265,7 @@ export default function PresentationMode() {
   )
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col overflow-y-auto bg-content text-ink">
+    <div className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-content text-ink">
       {/* top bar (highest z so its dropdown overlays the content below) */}
       <div className="relative z-30 flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4 sm:px-10 sm:py-5">
         <Logo size="lg" className="w-32 sm:w-40" />
@@ -373,26 +373,27 @@ export default function PresentationMode() {
         </div>
       </div>
 
-      {/* metric tiles */}
-      <div className="relative z-0 flex flex-1 items-center px-6 py-6 sm:px-10 sm:py-8">
-        <div className="grid w-full grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
+      {/* metric tiles — the grid fills the remaining height; rows split evenly and
+          the numbers scale with the viewport so it always fits without scrolling. */}
+      <div className="relative z-0 min-h-0 flex-1 px-6 py-3 sm:px-10 sm:py-4">
+        <div className="grid h-full min-h-0 auto-rows-fr grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
           {tiles.map((t) => (
-            <div key={t.label} className="rounded-xl border border-border bg-card p-6 sm:p-8">
+            <div key={t.label} className="flex min-h-0 flex-col justify-center overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-6">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted sm:text-sm">
-                <span className={cn('size-2 rounded-full', t.dot)} />
-                {t.label}
+                <span className={cn('size-2 shrink-0 rounded-full', t.dot)} />
+                <span className="truncate">{t.label}</span>
               </div>
               {t.feed && feedLoading ? (
-                <div className="mt-4 h-9 w-28 animate-pulse rounded-md bg-ink/10 sm:h-12 sm:w-40" />
+                <div className="mt-2 h-[6vh] w-32 max-w-[60%] animate-pulse rounded-md bg-ink/10" />
               ) : (
-                <div className={cn('mt-3 text-5xl font-bold tabular-nums leading-none sm:text-7xl', t.tone || 'text-ink')}>{t.value}</div>
+                <div className={cn('mt-1 font-bold tabular-nums leading-none text-[clamp(1.5rem,7vh,4.5rem)]', t.tone || 'text-ink')}>{t.value}</div>
               )}
             </div>
           ))}
         </div>
       </div>
 
-      <div className="relative z-0 px-6 pb-6 text-center text-xs text-ink-subtle sm:px-10">
+      <div className="relative z-0 px-6 pb-1.5 pt-0.5 text-center text-[11px] text-ink-subtle sm:px-10">
         Press Esc or Tab, or tap the X, to exit presentation mode.
       </div>
 
