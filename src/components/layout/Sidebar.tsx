@@ -125,7 +125,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         to: '/app/details',
-        label: 'Details',
+        label: 'Detail Performance',
         icon: Trophy,
         roles: ['owner', 'manager'],
       },
