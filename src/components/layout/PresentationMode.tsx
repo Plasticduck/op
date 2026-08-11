@@ -66,6 +66,7 @@ function combine(feed: SitePerformanceFeed | null, locs: LocationRow[]): SiteMet
     carsPerHour: agg(ms, 'carsPerHour', 'avg'),
     conversion: agg(ms, 'conversion', 'avg'),
     churn: agg(ms, 'churn', 'avg'),
+    churnCc: agg(ms, 'churnCc', 'avg'),
     laborPct: agg(ms, 'laborPct', 'avg'),
     plansSold: agg(ms, 'plansSold', 'sum'),
   }
@@ -232,6 +233,8 @@ export default function PresentationMode() {
   const ratingVal = rVals.length ? rVals.reduce((a, b) => a + b, 0) / rVals.length : null
   // Equipment Down: total units in an unplanned-offline state across the selection.
   const downVal = selLocs.reduce((a, l) => a + (dmap[l.id] ?? 0), 0)
+  // Churn = voluntary + credit-card churn combined (null only when both are).
+  const churnCombined = m.churn == null && m.churnCc == null ? null : (m.churn ?? 0) + (m.churnCc ?? 0)
 
   // Feed-based tiles show a skeleton until the (slow) live feed arrives.
   const feedLoading = !feed && !error
@@ -245,7 +248,7 @@ export default function PresentationMode() {
     { label: isRoll ? 'Sales today (total)' : 'Sales today', value: money(m.sales), dot: 'bg-ok', feed: true },
     { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent', feed: true },
     { label: isRoll ? 'Conversion (avg)' : 'Conversion', value: pct(m.conversion), dot: 'bg-warn', feed: true },
-    { label: isRoll ? 'Churn (avg)' : 'Churn', value: pct(m.churn), dot: 'bg-danger', feed: true },
+    { label: isRoll ? 'Churn (avg)' : 'Churn', value: pct(churnCombined), dot: 'bg-danger', feed: true },
     { label: isRoll ? 'Plans Sold (total)' : 'Plans Sold', value: num(m.plansSold), dot: 'bg-ok', feed: true },
   ]
 

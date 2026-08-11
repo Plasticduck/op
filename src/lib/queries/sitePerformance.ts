@@ -342,6 +342,7 @@ export type SiteMetrics = {
   laborPct: number | null
   conversion: number | null
   churn: number | null
+  churnCc: number | null
   rechargeMtd: number | null
   plansSold: number | null
 }
@@ -361,6 +362,7 @@ export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null):
     laborPct: day?.labor_pct ?? null,
     conversion: msaRow?.today_conversion_pct ?? null,
     churn: churn?.voluntary_churn_pct ?? null,
+    churnCc: churn?.cc_churn_pct ?? null,
     rechargeMtd: findByNumber<number>(feed?.recharge_revenue?.mtd_by_site, n) ?? null,
     plansSold,
   }
