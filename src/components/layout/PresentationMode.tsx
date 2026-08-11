@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, X, Building2, Layers, Dot, Check, Sun, Moon } from 'lucide-react'
+import { ChevronDown, X, Building2, Layers, Dot, Check, Sun, Moon, Pause, Play } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { useTheme } from '@/lib/theme'
 import { usePresentationMode } from '@/lib/presentation'
@@ -63,6 +63,7 @@ export default function PresentationMode() {
   }, [locations, settings.regions])
 
   const [sel, setSel] = useState<Selection>({ kind: 'all' })
+  const [autoplay, setAutoplay] = useState(true)
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const [now, setNow] = useState('')
@@ -71,11 +72,37 @@ export default function PresentationMode() {
   const [rmap, setRmap] = useState<Record<string, SiteRating>>({})
   const [dmap, setDmap] = useState<Record<string, number>>({})
 
-  // Open on the currently active site (if any) the first time we enter.
+  // All sites in number order — the auto-scroll rotation.
+  const orderedSites = useMemo(
+    () => [...locations].sort((a, b) => (siteNumber(a.name) ?? 1e9) - (siteNumber(b.name) ?? 1e9)),
+    [locations],
+  )
+
+  // On enter: start auto-scroll and open on the active site (or the first site).
   useEffect(() => {
-    if (active) setSel(activeLocation ? { kind: 'site', id: activeLocation.id } : { kind: 'all' })
+    if (!active) return
+    setAutoplay(true)
+    setSel(
+      activeLocation
+        ? { kind: 'site', id: activeLocation.id }
+        : orderedSites[0]
+          ? { kind: 'site', id: orderedSites[0].id }
+          : { kind: 'all' },
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
+
+  // Auto-scroll: every 60s advance to the next site by number (wraps around).
+  useEffect(() => {
+    if (!active || !autoplay || orderedSites.length === 0) return
+    const id = setInterval(() => {
+      setSel((cur) => {
+        const i = cur.kind === 'site' ? orderedSites.findIndex((l) => l.id === cur.id) : -1
+        return { kind: 'site', id: orderedSites[(i + 1) % orderedSites.length].id }
+      })
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [active, autoplay, orderedSites])
 
   // Exit on Esc or Tab, per the spec (plus the on-screen button).
   useEffect(() => {
@@ -187,7 +214,7 @@ export default function PresentationMode() {
   const pickBtn = (label: string, onClick: () => void, activeSel: boolean, icon?: ReactNode) => (
     <button
       type="button"
-      onClick={() => { onClick(); setPickerOpen(false) }}
+      onClick={() => { onClick(); setPickerOpen(false); setAutoplay(false) }}
       className={cn(
         'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition',
         activeSel ? 'bg-content text-ink' : 'text-ink-muted hover:bg-content hover:text-ink',
@@ -205,6 +232,16 @@ export default function PresentationMode() {
       <div className="relative z-30 flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4 sm:px-10 sm:py-5">
         <Logo size="lg" className="w-32 sm:w-40" />
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* auto-scroll pause / play, directly left of the site picker */}
+          <button
+            type="button"
+            onClick={() => setAutoplay((v) => !v)}
+            title={autoplay ? 'Pause auto-scroll' : 'Resume auto-scroll'}
+            aria-label={autoplay ? 'Pause auto-scroll' : 'Resume auto-scroll'}
+            className="rounded-lg border border-border bg-card p-2.5 text-ink-muted hover:border-accent hover:text-ink"
+          >
+            {autoplay ? <Pause className="size-5" /> : <Play className="size-5" />}
+          </button>
           {/* site / region picker */}
           <div className="relative" ref={pickerRef}>
             <button
