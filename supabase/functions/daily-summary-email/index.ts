@@ -5,8 +5,9 @@
 // actually sends when it is 7:50am Central (guards on the America/Chicago hour),
 // so it fires exactly once whether Central is on CDT or CST.
 //
-// Body (optional): { force?: true, to?: "override@…" }  — force bypasses the
-// time guard for manual testing; to overrides the recipient.
+// Body (optional): { force?: true, to?: "override@…", subjectTag?: "Corrected" }
+// force bypasses the time guard for manual testing; to overrides the recipient;
+// subjectTag appends " (tag)" to the subject (e.g. a corrected re-send).
 //
 // Secrets: RESEND_API_KEY (required). Optional: RESEND_FROM, SUMMARY_EMAIL_TO.
 
@@ -36,20 +37,31 @@ async function dashLogin(password: string): Promise<string> {
 
 // One guided-query metric for every site over a single day. Returns the raw
 // { columns, rows } (rows end with a ["TOTAL", n] row for count metrics), or
-// null on any failure so the email still sends.
+// null on any failure so the email still sends. `sites` defaults to [] (the
+// dashboard's current roster); pass explicit "MightyWash 0NN" names to include
+// sites the roster drops, e.g. former SiteWatch sites now on FlexWash whose
+// last-year history is still queryable.
 // deno-lint-ignore no-explicit-any
-async function gq(cookie: string, metric: string, day: string): Promise<any | null> {
+async function gq(cookie: string, metric: string, day: string, sites: string[] = []): Promise<any | null> {
   try {
     const r = await fetch(`${DASH_BASE}/api/guided_query`, {
       method: 'POST',
       headers: { Cookie: cookie, 'User-Agent': BROWSER_UA, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ metric, sites: [], start: day, end: day }),
+      body: JSON.stringify({ metric, sites, start: day, end: day }),
       signal: AbortSignal.timeout(25000),
     })
     if (!r.ok) return null
-    return await r.json()
+    const j = await r.json()
+    // An explicit-sites request rejects an unknown site with { error }; treat
+    // that as "no data" rather than letting it poison the caller.
+    if (j && typeof j === 'object' && 'error' in j) return null
+    return j
   } catch { return null }
 }
+// Sites the default roster drops but that were on SiteWatch previously, so their
+// same-day-last-year cars are still available when named explicitly. The
+// dashboard silently omits any of these with no data for the requested date.
+const LY_EXTRA_SITES = ['MightyWash 017', 'MightyWash 018', 'MightyWash 029', 'MightyWash 030']
 // Monthly TTAF report (per-site recharge + retail dollars), keyed "YYYY-MM".
 // deno-lint-ignore no-explicit-any
 async function fetchTtaf(cookie: string): Promise<any | null> {
@@ -60,6 +72,48 @@ async function fetchTtaf(cookie: string): Promise<any | null> {
     })
     if (!r.ok) return null
     return await r.json()
+  } catch { return null }
+}
+// Conversions tab "Day by Day" per-site daily conversion %, from the dashboard's
+// rinsed report: { sites: { "Mighty Wash #N": { days: [{date, conversion_pct}] } } }.
+// deno-lint-ignore no-explicit-any
+async function fetchRinsed(cookie: string): Promise<any | null> {
+  try {
+    const r = await fetch(`${DASH_BASE}/api/rinsed_report`, {
+      headers: { Cookie: cookie, 'User-Agent': BROWSER_UA },
+      signal: AbortSignal.timeout(25000),
+    })
+    if (!r.ok) return null
+    return await r.json()
+  } catch { return null }
+}
+// EXACT SiteWatch daily figures straight from the POS ledger, so Net Sales
+// equals the General Sales Report's "TOTAL TO ACCOUNT FOR" to the penny.
+//   ttaf     = -SUM(AMT) over the Tenders (001008) + Deposits (001005) report
+//              categories = the money to account for (all tenders collected).
+//   recharge = SUM(AMT) over the ARM Plans Recharged category (001004006) =
+//              the report's "ARM PLANS RECHARGED".
+// Date-bounded by SALE.LOGDATE, so it's a hard end-of-day cutoff (no bleed past
+// midnight of the reporting day). Verified exact on 2026-08-04..07.
+async function fetchSiteWatchLedger(cookie: string, day: string): Promise<{ ttaf: number; recharge: number } | null> {
+  const sql =
+    "SELECT -SUM(CASE WHEN (rc.BRANCH STARTING WITH '001008' OR rc.BRANCH STARTING WITH '001005') THEN si.AMT ELSE 0 END) AS TTAF, " +
+    "SUM(CASE WHEN rc.BRANCH STARTING WITH '001004006' THEN si.AMT ELSE 0 END) AS RECHARGE " +
+    "FROM SALEITEMS si JOIN SALE s ON s.SITE=si.SITE AND s.OBJID=si.SALEID " +
+    "JOIN ITEM it ON it.OBJID=si.ITEM JOIN ITEMRPTCATEGORY rc ON rc.OBJID=it.REPORTCATEGORY " +
+    `WHERE s.LOGDATE='${day}'`
+  try {
+    const r = await fetch(`${DASH_BASE}/api/custom_query`, {
+      method: 'POST',
+      headers: { Cookie: cookie, 'User-Agent': BROWSER_UA, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!r.ok) return null
+    const j = await r.json()
+    const row = j?.rows?.[0]
+    if (!row || row[0] == null) return null
+    return { ttaf: Number(row[0]) || 0, recharge: Number(row[1]) || 0 }
   } catch { return null }
 }
 // deno-lint-ignore no-explicit-any
@@ -83,12 +137,6 @@ function gqMap(res: any): Map<string, number> {
     if (String(r[0]).toUpperCase() !== 'TOTAL') m.set(String(r[0]), Number(r[1]))
   }
   return m
-}
-function mapAvg(m: Map<string, number>): number | null {
-  if (m.size === 0) return null
-  let s = 0
-  for (const v of m.values()) s += v
-  return s / m.size
 }
 
 // Company churn = average of voluntary and credit-card churn across sites,
@@ -198,15 +246,21 @@ Deno.serve(async (req) => {
     if (!p || p.role !== 'owner') return json({ error: 'forbidden' }, 403)
   }
 
-  let body: { force?: boolean; to?: string } = {}
+  let body: { force?: boolean; to?: string; subjectTag?: string; dryRun?: boolean; date?: string } = {}
   try { body = await req.json() } catch { /* empty */ }
 
   // Time guard: only send at 7am Central unless forced.
   const chicagoHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }).format(new Date()))
   if (!body.force && chicagoHour !== 7) return json({ skipped: true, reason: 'not 7am Central', chicagoHour }, 200)
 
+  // Optional reporting-day override (backfill / re-send a past day). When set we
+  // pin the RPC to that date and must NOT write the retail snapshot, since it
+  // would overwrite that historical day's month-to-date baseline with today's.
+  const dateOverride = typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : null
   // deno-lint-ignore no-explicit-any
-  const { data: d, error } = await svc.rpc('mw_daily_summary') as { data: any; error: unknown }
+  const { data: d, error } = (dateOverride
+    ? await svc.rpc('mw_daily_summary', { p_day: dateOverride })
+    : await svc.rpc('mw_daily_summary')) as { data: any; error: unknown }
   if (error || !d) return json({ error: 'data_failed', detail: String(error) }, 500)
 
   const day = d.day, prev = d.prev_day
@@ -232,10 +286,15 @@ Deno.serve(async (req) => {
   // increase in the TTAF month-to-date retail. Null until a baseline snapshot
   // exists (first run) or if the dashboard is unreachable.
   let retailDay: number | null = null
-  // Actual-money Sales (member-wash value removed): SiteWatch sites use TTAF
-  // (recharge + retail) via the day-over-day month-to-date delta; FlexWash sites
-  // already report actual money. Null until a baseline snapshot exists.
+  // Billed recharge = the POS "ARM PLANS RECHARGED" (from the ledger) + FlexWash.
+  let rechargeDay: number | null = null
+  // Net Sales = actual money in. For SiteWatch sites it equals the General Sales
+  // Report's TOTAL TO ACCOUNT FOR (exact, from the ledger); FlexWash adds on top.
   let netSales: number | null = null
+  // Same-basis year-over-year for Net Sales and Retail: last year's ledger figures
+  // for the same calendar date (FlexWash sites are new, so LY is SiteWatch only).
+  let netSalesLy: number | null = null
+  let retailLy: number | null = null
   // Per-site actual money (net of redemptions), keyed by site number. SiteWatch
   // sites via per-site TTAF delta; FlexWash sites are already net. Empty until a
   // baseline snapshot exists, in which case the per-site column falls back to gross.
@@ -257,8 +316,6 @@ Deno.serve(async (req) => {
           // deno-lint-ignore no-explicit-any
           const rows = Object.values(bucket as Record<string, any>)
           const retailMtdNow = rows.reduce((s, x) => s + (Number(x.retail_dollars) || 0), 0)
-          // Exclude FlexWash site numbers so they aren't double-counted (their
-          // actual money is added from FlexWash below).
           const ttafMtdNow = rows.reduce((s, x) => (flexNums.has(Number(x.site_number)) ? s : s + (Number(x.ttaf) || 0)), 0)
           // Per-site month-to-date TTAF (SiteWatch only), for the per-site delta.
           const siteTtafNow: Record<string, number> = {}
@@ -267,12 +324,31 @@ Deno.serve(async (req) => {
             if (!flexNums.has(n)) siteTtafNow[String(n)] = Number(x.ttaf) || 0
           }
           const flexSites = sites.filter((s) => flexNums.has(s.n))
-          const flexActualDay = flexSites.reduce((a, s) => a + (Number(s.sales) || 0), 0)
           const flexRetail = flexSites.reduce((a, s) => a + Math.max(0, (Number(s.sales) || 0) - (Number(s.recharge) || 0)), 0)
+          const flexRecharge = flexSites.reduce((a, s) => a + (Number(s.recharge) || 0), 0)
+          const flexActualDay = flexSites.reduce((a, s) => a + (Number(s.sales) || 0), 0)
 
+          // EXACT SiteWatch figures from the POS ledger (= the General Sales Report
+          // to the penny), plus FlexWash on top. All three cards reconcile:
+          // Net = Recharge + Retail = SiteWatch TTAF + FlexWash.
+          const ledger = await fetchSiteWatchLedger(cookie, rday)
+          if (ledger) {
+            rechargeDay = ledger.recharge + flexRecharge
+            retailDay = Math.max(0, ledger.ttaf - ledger.recharge) + flexRetail
+            netSales = ledger.ttaf + flexActualDay
+          }
+          // Last year's ledger (same calendar day) for the Net Sales / Retail YoY.
+          const ledgerLy = await fetchSiteWatchLedger(cookie, lyStr)
+          if (ledgerLy) {
+            netSalesLy = ledgerLy.ttaf
+            retailLy = Math.max(0, ledgerLy.ttaf - ledgerLy.recharge)
+          }
+
+          // Per-site SiteWatch net still uses the per-site TTAF month-to-date delta
+          // (the ledger total is exact, but per-site needs the internal-site map).
           const { data: prev } = await svc
             .from('ttaf_retail_snapshots')
-            .select('month_key, retail_mtd, ttaf_mtd, site_ttaf')
+            .select('month_key, site_ttaf')
             .eq('account_id', MW_ACCOUNT)
             .lt('snapshot_date', rday)
             .order('snapshot_date', { ascending: false })
@@ -280,15 +356,6 @@ Deno.serve(async (req) => {
             .maybeSingle()
           if (prev) {
             const sameMonth = prev.month_key === monthKey
-            // Same month -> subtract prior cumulative; new month -> the whole
-            // (small) new-month total is the day's figure. Retail card includes
-            // FlexWash retail so it reconciles with Net Sales.
-            retailDay = Math.max(0, retailMtdNow - (sameMonth ? Number(prev.retail_mtd) : 0)) + flexRetail
-            if (prev.ttaf_mtd != null) {
-              const siteWatchActual = Math.max(0, ttafMtdNow - (sameMonth ? Number(prev.ttaf_mtd) : 0))
-              netSales = siteWatchActual + flexActualDay
-            }
-            // Per-site SiteWatch net = per-site TTAF delta (same-month baseline).
             const prevSite = (sameMonth ? (prev.site_ttaf as Record<string, number> | null) : null) ?? null
             if (prevSite) {
               for (const [k, v] of Object.entries(siteTtafNow)) {
@@ -299,22 +366,53 @@ Deno.serve(async (req) => {
           // FlexWash sites already report actual money.
           for (const s of flexSites) siteNet.set(s.n, Number(s.sales) || 0)
 
-          await svc.from('ttaf_retail_snapshots').upsert(
-            { account_id: MW_ACCOUNT, snapshot_date: rday, month_key: monthKey, retail_mtd: retailMtdNow, ttaf_mtd: ttafMtdNow, site_ttaf: siteTtafNow, updated_at: new Date().toISOString() },
-            { onConflict: 'account_id,snapshot_date' },
-          )
+          // Skip the snapshot write on a backdated re-send: the TTAF month-to-date
+          // read is as-of-now, so upserting it into a past day's row would corrupt
+          // that day's baseline and throw off subsequent daily retail deltas.
+          if (!dateOverride) {
+            await svc.from('ttaf_retail_snapshots').upsert(
+              { account_id: MW_ACCOUNT, snapshot_date: rday, month_key: monthKey, retail_mtd: retailMtdNow, ttaf_mtd: ttafMtdNow, site_ttaf: siteTtafNow, updated_at: new Date().toISOString() },
+              { onConflict: 'account_id,snapshot_date' },
+            )
+          }
         }
       } catch { /* best-effort */ }
 
-      const [carsLy, revLy, rechLy, plansT, plansM, plansS, plansW, conv, cvol, ccc] = await Promise.all([
-        gq(cookie, 'cars', lyStr), gq(cookie, 'revenue', lyStr), gq(cookie, 'recharge', lyStr),
+      const [carsLy, carsLyExtra, revLy, rechLy, plansT, plansM, plansS, plansW, cvol, ccc] = await Promise.all([
+        gq(cookie, 'cars', lyStr), gq(cookie, 'cars', lyStr, LY_EXTRA_SITES), gq(cookie, 'revenue', lyStr), gq(cookie, 'recharge', lyStr),
         gq(cookie, 'plans_total', rday), gq(cookie, 'plans_mighty', rday), gq(cookie, 'plans_super', rday), gq(cookie, 'plans_wonder', rday),
-        gq(cookie, 'conversion_pct', rday), gq(cookie, 'churn_voluntary', rday), gq(cookie, 'churn_cc', rday),
+        gq(cookie, 'churn_voluntary', rday), gq(cookie, 'churn_cc', rday),
       ])
-      const convBySite = gqMap(conv)
+      // Per-site MONTHLY conversion %: the Conversions tab's month-to-date average
+      // (`avg_to_date` in /api/rinsed_report), keyed by store number. We use the
+      // monthly figure (not the single reporting day) so every site has a value —
+      // the daily value lags a few days for the slower-settling sites. Covers
+      // #17/#18/#29/#30 via FlexWash.
+      const rinsed = await fetchRinsed(cookie)
+      const convBySite = new Map<string, number>()
+      if (rinsed?.sites) {
+        // deno-lint-ignore no-explicit-any
+        for (const [nm, obj] of Object.entries(rinsed.sites as Record<string, any>)) {
+          const num = Number(String(nm).match(/#\s*(\d+)/)?.[1] ?? NaN)
+          if (!Number.isFinite(num)) continue
+          if (obj?.avg_to_date != null) {
+            convBySite.set('MightyWash ' + String(num).padStart(3, '0'), Number(obj.avg_to_date))
+          }
+        }
+      }
+      // Headline conversion = average of the monthly values across the sites this
+      // email lists (keeps low-volume non-tunnel sites out of it).
+      const convVals = sites
+        .map((s) => convBySite.get('MightyWash ' + String(s.n).padStart(3, '0')))
+        .filter((v): v is number => v != null)
+      const conversionAvg = convVals.length ? convVals.reduce((a, b) => a + b, 0) / convVals.length : null
       const churnVolBySite = gqMap(cvol)
       const churnCcBySite = gqMap(ccc)
+      // Same-day-last-year cars: the default roster plus the explicitly-named
+      // former-SiteWatch sites (17/18/29/...), so their per-site "vs LY" fills in
+      // wherever last-year history exists.
       const carsLyBySite = gqMap(carsLy)
+      for (const [k, v] of gqMap(carsLyExtra)) carsLyBySite.set(k, v)
       let plansTotal = gqTotal(plansT) ?? 0
       let plansMighty = gqTotal(plansM) ?? 0
       let plansSuper = gqTotal(plansS) ?? 0
@@ -353,10 +451,14 @@ Deno.serve(async (req) => {
       } catch { /* FlexWash is best-effort */ }
 
       const chAvg = churnAverages(churnVolBySite, churnCcBySite)
+      // Headline last-year cars = the roster total plus any extra former-SiteWatch
+      // sites, matching this year's all-sites count for a fair comparison.
+      const yoyCarsBase = gqTotal(carsLy)
+      const yoyCars = yoyCarsBase == null ? null : yoyCarsBase + (gqTotal(carsLyExtra) ?? 0)
       dash = {
-        yoyCars: gqTotal(carsLy), yoyRevenue: gqTotal(revLy), yoyRecharge: gqTotal(rechLy),
+        yoyCars, yoyRevenue: gqTotal(revLy), yoyRecharge: gqTotal(rechLy),
         plansTotal, plansMighty, plansSuper, plansWonder,
-        conversion: mapAvg(convBySite), churnVol: chAvg.vol, churnCc: chAvg.cc,
+        conversion: conversionAvg, churnVol: chAvg.vol, churnCc: chAvg.cc,
         convBySite, churnVolBySite, churnCcBySite, carsLyBySite,
       }
     } catch { dash = null }
@@ -365,12 +467,15 @@ Deno.serve(async (req) => {
 
   const memTotal = (m: { mighty: number; super: number; wonder: number }) => m.mighty + m.super + m.wonder
 
+  // Cards live in table-layout:fixed rows so every client (incl. Gmail mobile)
+  // gives each card an equal share of the width and none get hidden. Kept compact
+  // so four fit side by side on a phone without wrapping or clipping the number.
   const kpi = (label: string, value: string, sub: string) => `
-    <td style="padding:8px;">
-      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;">${label}</div>
-        <div style="font-size:24px;font-weight:700;color:#0f172a;margin-top:2px;">${value}</div>
-        <div style="font-size:12px;color:#475569;margin-top:4px;">${sub}</div>
+    <td style="padding:3px;vertical-align:top;">
+      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:9px 8px;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.02em;color:#64748b;">${label}</div>
+        <div style="font-size:16px;font-weight:700;color:#0f172a;margin-top:2px;">${value}</div>
+        <div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.25;">${sub}</div>
       </div>
     </td>`
 
@@ -387,7 +492,12 @@ Deno.serve(async (req) => {
     // A 0% reading is treated as missing, not a real value.
     return total > 0 ? total.toFixed(1) + '%' : 'n/a'
   }
-  const siteRows = [...sites].sort((a, b) => a.n - b.n).map((s) => {
+  const siteRows = [...sites]
+    // Hide sites with no store number AND no activity (e.g. a not-yet-open
+    // location that's in the feed but reported 0 cars / $0) — otherwise it
+    // renders as "MightyWash null" and sorts to the top.
+    .filter((s) => s.n != null || (Number(s.cars) || 0) > 0 || (Number(s.sales) || 0) > 0)
+    .sort((a, b) => a.n - b.n).map((s) => {
     const cn = siteName(s.n)
     return `
     <tr>
@@ -414,17 +524,17 @@ Deno.serve(async (req) => {
   // the monthly GM-bonus figures only if the dashboard was unreachable.
   const memBlock = (dash && dash.plansTotal != null) ? `
     <h3 style="font-size:14px;color:#0f172a;margin:22px 0 8px;">Membership (${dateLabel})</h3>
-    <table role="presentation" width="100%" style="border-collapse:collapse;">
+    <table role="presentation" width="100%" style="border-collapse:collapse;table-layout:fixed;">
       <tr>
         ${kpi('Plans sold', nf(dash.plansTotal), `Mighty ${nf(dash.plansMighty ?? 0)} · Super ${nf(dash.plansSuper ?? 0)} · Wonder ${nf(dash.plansWonder ?? 0)}`)}
-        ${kpi('Conversion', dash.conversion != null ? dash.conversion.toFixed(1) + '%' : 'n/a', 'avg across sites, reporting day')}
+        ${kpi('Monthly Conversion', dash.conversion != null ? dash.conversion.toFixed(1) + '%' : 'n/a', 'month-to-date average across sites')}
         ${kpi('Monthly Churn', dash.churnVol != null || dash.churnCc != null ? ((dash.churnVol ?? 0) + (dash.churnCc ?? 0)).toFixed(1) + '%' : 'n/a', `voluntary ${dash.churnVol != null ? dash.churnVol.toFixed(1) : 'n/a'}% + credit-card ${dash.churnCc != null ? dash.churnCc.toFixed(1) : 'n/a'}%, trailing month`)}
       </tr>
     </table>
     ${churnNote}
   ` : (mem ? `
     <h3 style="font-size:14px;color:#0f172a;margin:22px 0 8px;">Membership for ${new Date(mem.period + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (latest monthly)</h3>
-    <table role="presentation" width="100%" style="border-collapse:collapse;">
+    <table role="presentation" width="100%" style="border-collapse:collapse;table-layout:fixed;">
       <tr>
         ${kpi('Total members', nf(memTotal(mem)), memPrev ? `${delta(memTotal(mem), memTotal(memPrev))} vs last month` : '')}
         ${kpi('Monthly Churn', mem.churn.toFixed(2) + '%', memPrev ? `${deltaPts(mem.churn, memPrev.churn, false)} vs last month` : '')}
@@ -436,19 +546,27 @@ Deno.serve(async (req) => {
 
   const html = `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:680px;margin:0 auto;color:#0f172a;">
-    <div style="padding:20px 8px 4px;">
-      <div style="font-size:20px;font-weight:700;">Mighty Wash Daily Summary</div>
-      <div style="font-size:13px;color:#64748b;">${dateLabel} · ${day.sites} sites reporting</div>
-    </div>
-
-    <table role="presentation" width="100%" style="border-collapse:collapse;">
+    <table role="presentation" style="border-collapse:collapse;padding:20px 8px 4px;">
       <tr>
-        ${kpi('Total cars', nf(day.cars), yoySub(day.cars, dash?.yoyCars))}
-        ${kpi('Net Sales', netSales != null ? money(netSales) : money(day.sales), netSales != null ? 'recharge + memberships + retail; member redemptions removed' : 'gross this day; net figure available tomorrow')}
-        ${kpi('Recharge', money(day.recharge), yoySub(day.recharge, dash?.yoyRecharge))}
-        ${kpi('Retail', retailDay != null ? money(retailDay) : 'n/a', 'sales, excludes memberships + recharge')}
+        <td style="padding:16px 12px 4px 8px;vertical-align:middle;white-space:nowrap;">
+          <img src="https://operator.washlyfe.com/mighty-max-in-flight.png" alt="Mighty Wash" width="135" height="48" style="display:block;border:0;width:135px;height:auto;" />
+        </td>
+        <td style="padding:16px 8px 4px 0;vertical-align:middle;">
+          <div style="font-size:20px;font-weight:700;">Daily Summary</div>
+          <div style="font-size:13px;color:#64748b;">${dateLabel}</div>
+        </td>
       </tr>
     </table>
+
+    <table role="presentation" width="100%" style="border-collapse:collapse;table-layout:fixed;">
+      <tr>
+        ${kpi('Cars', nf(day.cars), yoySub(day.cars, dash?.yoyCars))}
+        ${kpi('Net Sales', netSales != null ? money(netSales) : money(day.sales), netSales != null ? yoySub(netSales, netSalesLy) : 'gross this day; net figure available tomorrow')}
+        ${kpi('Recharge', money(rechargeDay ?? day.recharge), yoySub(rechargeDay ?? day.recharge, dash?.yoyRecharge))}
+        ${kpi('Retail', retailDay != null ? money(retailDay) : 'n/a', retailDay != null ? yoySub(retailDay, retailLy) : '')}
+      </tr>
+    </table>
+    ${netSales != null ? `<div style="font-size:12px;color:#475569;padding:2px 8px;">Net Sales = actual money in = total to account for (matches the POS report).</div>` : ''}
     <div style="font-size:12px;color:#475569;padding:2px 8px;">
       Prior day: ${nf(prev?.cars ?? 0)} cars. 4-week ${rdate.toLocaleDateString('en-US', { weekday: 'long' })} average: ${nf(Math.round(d.avg4_cars ?? 0))} cars (${delta(day.cars, d.avg4_cars)}).
     </div>
@@ -464,7 +582,7 @@ Deno.serve(async (req) => {
           <th style="padding:6px 8px;text-align:right;">vs LY</th>
           <th style="padding:6px 8px;text-align:right;">Net Sales</th>
           <th style="padding:6px 8px;text-align:right;">Recharge</th>
-          <th style="padding:6px 8px;text-align:right;">Conv %</th>
+          <th style="padding:6px 8px;text-align:right;">Monthly Conversion %</th>
           <th style="padding:6px 8px;text-align:right;">Monthly Churn %</th>
         </tr>
       </thead>
@@ -472,9 +590,22 @@ Deno.serve(async (req) => {
     </table>
 
     <div style="font-size:11px;color:#94a3b8;padding:12px 8px 24px;">
-      "vs last year" compares the same calendar date last year. Per-site Conv % is the reporting day's conversion; Churn % is combined voluntary + credit-card churn (a trailing-month figure). Membership data is pulled live from the dashboard. Reply with tweaks and we'll adjust. Sent from WashLyfe Operator.
+      "vs last year" compares the same calendar date last year. Per-site Monthly Conversion % is the month-to-date average; Churn % is combined voluntary + credit-card churn (a trailing-month figure). Membership data is pulled live from the dashboard. Reply with tweaks and we'll adjust. Sent from WashLyfe Operator.
     </div>
   </div>`
+
+  // dryRun returns the computed conversion numbers without sending, for verifying
+  // the per-site data source against the dashboard.
+  if (body.dryRun) {
+    return json({
+      reporting_date: rday,
+      net_sales: netSales,
+      recharge: rechargeDay ?? day.recharge,
+      retail: retailDay,
+      recharge_plus_retail: (rechargeDay != null && retailDay != null) ? rechargeDay + retailDay : null,
+      conversion_avg: dash?.conversion ?? null,
+    }, 200)
+  }
 
   // body.to overrides for one-off tests; otherwise the scheduled send goes to
   // the comma-separated SUMMARY_EMAIL_TO list (falling back to the default).
@@ -486,7 +617,7 @@ Deno.serve(async (req) => {
   try {
     const { error: sendErr } = await resend.emails.send({
       from, to,
-      subject: `Mighty Wash Daily Summary for ${dateLabel}`,
+      subject: `Mighty Wash Daily Summary for ${dateLabel}${body.subjectTag ? ` (${body.subjectTag})` : ''}`,
       html,
     })
     if (sendErr) return json({ ok: false, error: (sendErr as { message?: string }).message ?? 'send_failed' }, 502)
