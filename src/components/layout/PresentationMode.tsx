@@ -356,7 +356,7 @@ export default function PresentationMode() {
         <img
           src="/mighty-max-in-flight.png"
           alt="Mighty Wash"
-          className="pointer-events-none absolute left-1/2 top-0 h-auto w-[415px] max-w-[70vw] -translate-x-1/2 sm:top-1"
+          className="pointer-events-none absolute left-1/2 top-0 h-auto w-[374px] max-w-[70vw] -translate-x-1/2 sm:top-1"
         />
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
