@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, X, Building2, Layers, Dot } from 'lucide-react'
+import { ChevronDown, X, Building2, Layers, Dot, Check } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { usePresentationMode } from '@/lib/presentation'
 import { useLocations } from '@/lib/locations'
@@ -114,14 +114,14 @@ export default function PresentationMode() {
   const m = view.metrics
   const isRoll = view.count !== 1
   // Metric tiles. For a roll-up, cars/sales/recharge are totals and cars-per-hour/
-  // conversion/churn are averages across the sites.
-  const tiles: { label: string; value: string; glow: string }[] = [
-    { label: isRoll ? 'Cars today (total)' : 'Cars today', value: num(m.cars), glow: 'from-sky-400/30' },
-    { label: isRoll ? 'Sales today (total)' : 'Sales today', value: money(m.sales), glow: 'from-emerald-400/30' },
-    { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), glow: 'from-violet-400/30' },
-    { label: isRoll ? 'Conversion (avg)' : 'Conversion', value: pct(m.conversion), glow: 'from-amber-400/30' },
-    { label: isRoll ? 'Churn (avg)' : 'Churn', value: pct(m.churn), glow: 'from-rose-400/30' },
-    { label: isRoll ? 'Cars / hr (avg)' : 'Cars / hr', value: oneDp(m.carsPerHour), glow: 'from-cyan-400/30' },
+  // conversion/churn are averages across the sites. `dot` is an app status color.
+  const tiles: { label: string; value: string; dot: string }[] = [
+    { label: isRoll ? 'Cars today (total)' : 'Cars today', value: num(m.cars), dot: 'bg-accent' },
+    { label: isRoll ? 'Sales today (total)' : 'Sales today', value: money(m.sales), dot: 'bg-ok' },
+    { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent' },
+    { label: isRoll ? 'Conversion (avg)' : 'Conversion', value: pct(m.conversion), dot: 'bg-warn' },
+    { label: isRoll ? 'Churn (avg)' : 'Churn', value: pct(m.churn), dot: 'bg-danger' },
+    { label: isRoll ? 'Cars / hr (avg)' : 'Cars / hr', value: oneDp(m.carsPerHour), dot: 'bg-ok' },
   ]
 
   const pickBtn = (label: string, onClick: () => void, activeSel: boolean, icon?: ReactNode) => (
@@ -129,43 +129,41 @@ export default function PresentationMode() {
       type="button"
       onClick={() => { onClick(); setPickerOpen(false) }}
       className={cn(
-        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[15px] transition',
-        activeSel ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white',
+        'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition',
+        activeSel ? 'bg-content text-ink' : 'text-ink-muted hover:bg-content hover:text-ink',
       )}
     >
       {icon}
       <span className="truncate">{label}</span>
+      {activeSel && <Check className="ml-auto size-4 shrink-0 text-accent" />}
     </button>
   )
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col overflow-y-auto bg-[#0a0f1a] text-white">
-      {/* ambient glow */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(1200px_600px_at_50%_-10%,rgba(37,99,235,0.25),transparent)]" />
-
-      {/* top bar */}
-      <div className="relative z-10 flex items-center justify-between gap-4 px-6 py-5 sm:px-10 sm:py-6">
-        <Logo invert size="lg" className="w-40 sm:w-52" />
-        <div className="flex items-center gap-3">
+    <div className="fixed inset-0 z-[70] flex flex-col overflow-y-auto bg-content text-ink">
+      {/* top bar (highest z so its dropdown overlays the content below) */}
+      <div className="relative z-30 flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4 sm:px-10 sm:py-5">
+        <Logo size="lg" className="w-36 sm:w-48" />
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* site / region picker */}
           <div className="relative" ref={pickerRef}>
             <button
               type="button"
               onClick={() => setPickerOpen((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white hover:bg-white/10"
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-ink hover:border-accent"
             >
               <span className="max-w-[40vw] truncate">{view.title}</span>
-              <ChevronDown className="size-4 shrink-0 opacity-70" />
+              <ChevronDown className="size-4 shrink-0 text-ink-muted" />
             </button>
             {pickerOpen && (
-              <div className="absolute right-0 z-20 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-2xl border border-white/10 bg-[#0d1424] p-1.5 shadow-2xl">
-                {pickBtn('All Sites', () => setSel({ kind: 'all' }), sel.kind === 'all', <Building2 className="size-4 shrink-0 opacity-70" />)}
-                {groups.length === 0 && locations.map((l) => pickBtn(l.name, () => setSel({ kind: 'site', id: l.id }), sel.kind === 'site' && sel.id === l.id, <Dot className="size-4 shrink-0 opacity-70" />))}
+              <div className="absolute right-0 z-40 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-border bg-card p-1.5 shadow-lg">
+                {pickBtn('All Sites', () => setSel({ kind: 'all' }), sel.kind === 'all', <Building2 className="size-4 shrink-0 text-ink-subtle" />)}
+                {groups.length === 0 && locations.map((l) => pickBtn(l.name, () => setSel({ kind: 'site', id: l.id }), sel.kind === 'site' && sel.id === l.id, <Dot className="size-4 shrink-0 text-ink-subtle" />))}
                 {groups.map((g) => (
                   <div key={g.region} className="mt-1">
-                    <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">{shortRegionLabel(g.region)}</div>
-                    {pickBtn(`Entire ${shortRegionLabel(g.region)}`, () => setSel({ kind: 'region', name: g.region }), sel.kind === 'region' && sel.name === g.region, <Layers className="size-4 shrink-0 opacity-70" />)}
-                    {g.locations.map((l) => pickBtn(l.name, () => setSel({ kind: 'site', id: l.id }), sel.kind === 'site' && sel.id === l.id, <Dot className="size-4 shrink-0 opacity-70" />))}
+                    <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">{shortRegionLabel(g.region)}</div>
+                    {pickBtn(`Entire ${shortRegionLabel(g.region)}`, () => setSel({ kind: 'region', name: g.region }), sel.kind === 'region' && sel.name === g.region, <Layers className="size-4 shrink-0 text-ink-subtle" />)}
+                    {g.locations.map((l) => pickBtn(l.name, () => setSel({ kind: 'site', id: l.id }), sel.kind === 'site' && sel.id === l.id, <Dot className="size-4 shrink-0 text-ink-subtle" />))}
                   </div>
                 ))}
               </div>
@@ -176,7 +174,7 @@ export default function PresentationMode() {
             onClick={exit}
             title="Exit presentation (Esc)"
             aria-label="Exit presentation"
-            className="rounded-xl border border-white/15 bg-white/5 p-2.5 text-white/80 hover:bg-white/10 hover:text-white"
+            className="rounded-lg border border-border bg-card p-2.5 text-ink-muted hover:border-accent hover:text-ink"
           >
             <X className="size-5" />
           </button>
@@ -184,42 +182,38 @@ export default function PresentationMode() {
       </div>
 
       {/* headline */}
-      <div className="relative z-10 px-6 sm:px-10">
+      <div className="relative z-10 px-6 pt-6 sm:px-10 sm:pt-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">{view.title}</h1>
-            <p className="mt-1 text-base text-white/50 sm:text-lg">{view.subtitle}</p>
+            <h1 className="text-4xl font-bold tracking-tight text-ink sm:text-6xl">{view.title}</h1>
+            <p className="mt-1 text-base text-ink-muted sm:text-lg">{view.subtitle}</p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-white/50">
+          <div className="flex items-center gap-2 text-sm text-ink-muted">
             <span className="relative flex size-2.5">
-              <span className={cn('absolute inline-flex h-full w-full rounded-full bg-emerald-400', !error && 'animate-ping opacity-75')} />
-              <span className={cn('relative inline-flex size-2.5 rounded-full', error ? 'bg-rose-500' : 'bg-emerald-400')} />
+              <span className={cn('absolute inline-flex h-full w-full rounded-full bg-ok', !error && 'animate-ping opacity-75')} />
+              <span className={cn('relative inline-flex size-2.5 rounded-full', error ? 'bg-danger' : 'bg-ok')} />
             </span>
-            {error ? 'Live data unavailable' : loading && !feed ? 'Connecting…' : `Live · updated ${now}`}
+            {error ? 'Live data unavailable' : loading && !feed ? 'Connecting...' : `Live, updated ${now}`}
           </div>
         </div>
       </div>
 
       {/* metric tiles */}
-      <div className="relative z-10 flex flex-1 items-center px-6 py-6 sm:px-10 sm:py-8">
+      <div className="relative z-0 flex flex-1 items-center px-6 py-6 sm:px-10 sm:py-8">
         <div className="grid w-full grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
           {tiles.map((t) => (
-            <div
-              key={t.label}
-              className={cn(
-                'relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-8',
-                'bg-gradient-to-br to-transparent',
-                t.glow,
-              )}
-            >
-              <div className="text-xs font-semibold uppercase tracking-widest text-white/50 sm:text-sm">{t.label}</div>
-              <div className="mt-3 text-5xl font-bold tabular-nums leading-none sm:text-7xl">{t.value}</div>
+            <div key={t.label} className="rounded-xl border border-border bg-card p-6 sm:p-8">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted sm:text-sm">
+                <span className={cn('size-2 rounded-full', t.dot)} />
+                {t.label}
+              </div>
+              <div className="mt-3 text-5xl font-bold tabular-nums leading-none text-ink sm:text-7xl">{t.value}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="relative z-10 px-6 pb-6 text-center text-xs text-white/30 sm:px-10">
+      <div className="relative z-0 px-6 pb-6 text-center text-xs text-ink-subtle sm:px-10">
         Press Esc or Tab, or tap the X, to exit presentation mode.
       </div>
     </div>
