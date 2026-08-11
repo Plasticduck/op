@@ -350,13 +350,6 @@ export default function PresentationMode() {
         </div>
       </div>
 
-      {/* auto-scroll progress: fills over the interval, resets on each advance */}
-      <div className="relative z-30 h-2 w-full shrink-0 bg-ink/10">
-        <div
-          className={cn('h-full transition-[width] duration-100 ease-linear', autoplay ? 'bg-accent' : 'bg-ink-subtle')}
-          style={{ width: `${Math.max(0, Math.min(100, progress * 100))}%` }}
-        />
-      </div>
 
       {/* headline (Mighty Wash logo centered, 30% larger than the dashboard logo) */}
       <div className="relative z-10 px-6 pt-6 sm:px-10 sm:pt-8">
@@ -401,6 +394,14 @@ export default function PresentationMode() {
 
       <div className="relative z-0 px-6 pb-6 text-center text-xs text-ink-subtle sm:px-10">
         Press Esc or Tab, or tap the X, to exit presentation mode.
+      </div>
+
+      {/* auto-scroll progress: a subtle gray bar pinned to the bottom of the screen */}
+      <div className="relative z-30 h-1.5 w-full shrink-0 bg-ink/10">
+        <div
+          className="h-full bg-ink-subtle transition-[width] duration-100 ease-linear"
+          style={{ width: `${Math.max(0, Math.min(100, progress * 100))}%` }}
+        />
       </div>
     </div>
   )
