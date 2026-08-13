@@ -195,27 +195,60 @@ export const flexwashSales = {
     return { revenue, wash: wsh, plans, churn: churnR, accounting, discounts, days }
   },
 
-  // Every transaction line item for a site + range, aggregated by classification
-  // then by line-item name (revenue + count) — the detailed sales breakdown.
+  // Detailed sales breakdown. Each order's adjustment lines (discounts, membership
+  // benefit, prorate/next-bill discounts, refunds) are FOLDED into that order's
+  // product line(s) so the price shown is net (like DRB adjusting a wash's value).
+  // Tax lines are excluded (they're in the accounting totals). Product names have
+  // their per-member code prefix stripped so like items collapse to one line.
   lineItemBreakdown: async (carWashId: string, start: string, end: string): Promise<FlexLineGroup[]> => {
     const data = await flexApi('/external/accounting/get-line-items-detail', {
       carWashIds: [carWashId],
       dateRange: { start, end },
     })
     const items = (data?.lineItemsDetail ?? []) as Any[]
-    const groups = new Map<string, { revenue: number; count: number; items: Map<string, FlexLineRow> }>()
+
+    const PRODUCT_TYPES = new Set(['Package', 'Add On Service', 'Rewash'])
+    const FOLD_TYPES = new Set(['Discount', 'Next Bill Discount', 'Prorate Discount', 'Refund', 'Membership Benefit'])
+    const stripCode = (name: string) => name.replace(/^[A-Za-z0-9]+ - /, '')
+
+    // Group by order so adjustments can be applied to the same order's products.
+    const byOrder = new Map<string, Any[]>()
     for (const it of items) {
-      const cls = String(it.orderClassification ?? 'miscellaneous')
-      const name = String(it.name ?? '—')
-      const rev = toDollars(it.priceInCents)
-      let g = groups.get(cls)
-      if (!g) { g = { revenue: 0, count: 0, items: new Map() }; groups.set(cls, g) }
-      g.revenue += rev
+      const oid = String((it.order ?? {}).id ?? it.id)
+      const arr = byOrder.get(oid) ?? []
+      arr.push(it)
+      byOrder.set(oid, arr)
+    }
+
+    // Net product lines (one entry per product line, adjustments folded in).
+    const nets: { classification: string; name: string; revenue: number }[] = []
+    for (const lines of byOrder.values()) {
+      const products = lines.filter((l) => PRODUCT_TYPES.has(String(l.type)))
+      if (!products.length) continue // orphaned adjustments (e.g. standalone refund) drop out; still in the accounting net
+      const adjust = lines.filter((l) => FOLD_TYPES.has(String(l.type))).reduce((a, l) => a + toDollars(l.priceInCents), 0)
+      const weights = products.map((p) => Math.abs(toDollars(p.priceInCents)))
+      const wsum = weights.reduce((a, b) => a + b, 0)
+      products.forEach((p, i) => {
+        const share = wsum > 0 ? adjust * (weights[i] / wsum) : adjust / products.length
+        nets.push({
+          classification: String(p.orderClassification ?? 'miscellaneous'),
+          name: stripCode(String(p.name ?? '—')),
+          revenue: toDollars(p.priceInCents) + share,
+        })
+      })
+    }
+
+    // Aggregate by classification, then by product name.
+    const groups = new Map<string, { revenue: number; count: number; items: Map<string, FlexLineRow> }>()
+    for (const n of nets) {
+      let g = groups.get(n.classification)
+      if (!g) { g = { revenue: 0, count: 0, items: new Map() }; groups.set(n.classification, g) }
+      g.revenue += n.revenue
       g.count += 1
-      const row = g.items.get(name) ?? { name, revenue: 0, count: 0 }
-      row.revenue += rev
+      const row = g.items.get(n.name) ?? { name: n.name, revenue: 0, count: 0 }
+      row.revenue += n.revenue
       row.count += 1
-      g.items.set(name, row)
+      g.items.set(n.name, row)
     }
     const rank = (k: string) => { const i = CLASS_ORDER.indexOf(k); return i < 0 ? 99 : i }
     return [...groups.entries()]

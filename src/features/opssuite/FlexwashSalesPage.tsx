@@ -148,7 +148,7 @@ export default function FlexwashSalesPage() {
             <Kpi label="Plans sold" value={num(r.plans.total)} sub={churnCombined != null ? `${churnCombined.toFixed(1)}% churn` : 'new memberships'} />
           </div>
 
-          <Section title="Line Item Sales Breakdown" sub="Every transaction line item, grouped by category and product (FlexWash accounting detail).">
+          <Section title="Line Item Sales Breakdown" sub="Net sales by product (discounts folded into each wash, like items grouped; tax excluded). Ticket Avg = revenue / count.">
             {bdLoading && !breakdown ? (
               <p className="px-4 py-6 text-sm text-ink-muted sm:px-5">Loading line items...</p>
             ) : breakdown && breakdown.length ? (
