@@ -79,6 +79,7 @@ export async function downloadFlexwashSalesPdf(
     columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
     body: [
       ['Cars washed', num(report.wash.total)],
+      ...(breakdown?.carsByTier ?? []).map((t): Cell[] => [`    ${t.label}`, num(t.count)]),
       ['Net site sales', money(report.accounting?.net ?? report.revenue.total)],
       ['Membership recharge', money(report.revenue.membership)],
       ['Plans sold', num(report.plans.total)],

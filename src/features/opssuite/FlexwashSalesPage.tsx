@@ -162,6 +162,33 @@ export default function FlexwashSalesPage() {
             <Kpi label="Plans sold" value={num(r.plans.total)} sub="new memberships" />
           </div>
 
+          {breakdown && breakdown.carsByTier.length > 0 && (
+            <Section title="Cars Washed" sub="Every wash rolled up by package family (Mighty, Super Shine, Wonder), across single, member, and fleet washes.">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={th}>Wash</th>
+                      <th className={th}>Cars</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {breakdown.carsByTier.map((t) => (
+                      <tr key={t.label} className="border-t border-border">
+                        <td className={td}>{t.label}</td>
+                        <td className={td}>{num(t.count)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-border bg-content/60 font-semibold">
+                      <td className={cn(td, 'font-semibold')}>Total Cars Washed</td>
+                      <td className={td}>{num(r.wash.total)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          )}
+
           <Section title="Line Item Sales Breakdown" sub="Net sales by product (discounts folded into each wash, like items grouped; tax excluded). Ticket Avg = revenue / count.">
             {bdLoading && !breakdown ? (
               <p className="px-4 py-6 text-sm text-ink-muted sm:px-5">Loading line items...</p>
