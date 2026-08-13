@@ -50,6 +50,22 @@ async function flexApi(path: string, body: unknown): Promise<Any> {
 
 const toDollars = (cents: unknown) => (Number(cents) || 0) / 100
 
+// Line-item breakdown (from get-line-items-detail), grouped like FlexWash's own
+// "Line Item Sales Breakdown" report.
+export type FlexLineRow = { name: string; revenue: number; count: number }
+export type FlexLineGroup = { key: string; label: string; revenue: number; count: number; items: FlexLineRow[] }
+
+const CLASS_LABEL: Record<string, string> = {
+  membershipsSoldNew: 'Memberships Sold (New)',
+  membershipsRebilled: 'Memberships Recharged',
+  memberWashes: 'Member Washes',
+  fleetWashes: 'Fleet Washes',
+  singleWashes: 'Single Washes',
+  otherWashes: 'Other Washes',
+  miscellaneous: 'Tax, Discounts & Misc',
+}
+const CLASS_ORDER = ['membershipsSoldNew', 'membershipsRebilled', 'memberWashes', 'fleetWashes', 'singleWashes', 'otherWashes', 'miscellaneous']
+
 export const flexwashSales = {
   // The FlexWash sites for this account (manager+ only, per RLS).
   sites: async (): Promise<FlexSite[]> => {
@@ -116,5 +132,39 @@ export const flexwashSales = {
     const days = new Set([...rs.map((x) => String(x.iso8601).slice(0, 10)), ...ws.map((x) => String(x.iso8601).slice(0, 10))]).size
 
     return { revenue, wash: wsh, plans, churn: churnR, days }
+  },
+
+  // Every transaction line item for a site + range, aggregated by classification
+  // then by line-item name (revenue + count) — the detailed sales breakdown.
+  lineItemBreakdown: async (carWashId: string, start: string, end: string): Promise<FlexLineGroup[]> => {
+    const data = await flexApi('/external/accounting/get-line-items-detail', {
+      carWashIds: [carWashId],
+      dateRange: { start, end },
+    })
+    const items = (data?.lineItemsDetail ?? []) as Any[]
+    const groups = new Map<string, { revenue: number; count: number; items: Map<string, FlexLineRow> }>()
+    for (const it of items) {
+      const cls = String(it.orderClassification ?? 'miscellaneous')
+      const name = String(it.name ?? '—')
+      const rev = toDollars(it.priceInCents)
+      let g = groups.get(cls)
+      if (!g) { g = { revenue: 0, count: 0, items: new Map() }; groups.set(cls, g) }
+      g.revenue += rev
+      g.count += 1
+      const row = g.items.get(name) ?? { name, revenue: 0, count: 0 }
+      row.revenue += rev
+      row.count += 1
+      g.items.set(name, row)
+    }
+    const rank = (k: string) => { const i = CLASS_ORDER.indexOf(k); return i < 0 ? 99 : i }
+    return [...groups.entries()]
+      .map(([key, g]) => ({
+        key,
+        label: CLASS_LABEL[key] ?? key,
+        revenue: g.revenue,
+        count: g.count,
+        items: [...g.items.values()].sort((a, b) => b.revenue - a.revenue),
+      }))
+      .sort((a, b) => rank(a.key) - rank(b.key))
   },
 }

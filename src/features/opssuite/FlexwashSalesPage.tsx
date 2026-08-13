@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { RefreshCw, TriangleAlert } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
 import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { flexwashSales, type FlexSite, type FlexSalesReport } from '@/lib/queries/flexwashSales'
+import { flexwashSales, type FlexSite, type FlexSalesReport, type FlexLineGroup } from '@/lib/queries/flexwashSales'
 
 const num = (n: number) => Math.round(n).toLocaleString('en-US')
 const money = (n: number) => currency(n)
@@ -56,6 +56,8 @@ export default function FlexwashSalesPage() {
   const [report, setReport] = useState<FlexSalesReport | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [breakdown, setBreakdown] = useState<FlexLineGroup[] | null>(null)
+  const [bdLoading, setBdLoading] = useState(false)
 
   useEffect(() => {
     flexwashSales.sites().then((s) => {
@@ -73,6 +75,11 @@ export default function FlexwashSalesPage() {
       .report(carWashId, start, end)
       .then((r) => { if (active) { setReport(r); setLoading(false) } })
       .catch((e) => { if (active) { setError(e instanceof Error ? e.message : String(e)); setLoading(false) } })
+    setBdLoading(true)
+    flexwashSales
+      .lineItemBreakdown(carWashId, start, end)
+      .then((b) => { if (active) { setBreakdown(b); setBdLoading(false) } })
+      .catch(() => { if (active) { setBreakdown(null); setBdLoading(false) } })
     return () => { active = false }
   }, [carWashId, start, end])
 
@@ -140,6 +147,47 @@ export default function FlexwashSalesPage() {
             <Kpi label="Membership recharge" value={money(r.revenue.membership)} sub="ARM plans recharged" />
             <Kpi label="Plans sold" value={num(r.plans.total)} sub={churnCombined != null ? `${churnCombined.toFixed(1)}% churn` : 'new memberships'} />
           </div>
+
+          <Section title="Line Item Sales Breakdown" sub="Every transaction line item, grouped by category and product (FlexWash accounting detail).">
+            {bdLoading && !breakdown ? (
+              <p className="px-4 py-6 text-sm text-ink-muted sm:px-5">Loading line items...</p>
+            ) : breakdown && breakdown.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={th}>Line Item</th>
+                      <th className={th}>Count</th>
+                      <th className={th}>Revenue</th>
+                      <th className={th}>Ticket Avg</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {breakdown.map((g) => (
+                      <Fragment key={g.key}>
+                        <tr className="border-t-2 border-border bg-content/60">
+                          <td className={cn(td, 'font-semibold')}>{g.label}</td>
+                          <td className={cn(td, 'font-semibold')}>{num(g.count)}</td>
+                          <td className={cn(td, 'font-semibold')}>{money(g.revenue)}</td>
+                          <td className={cn(td, 'font-semibold')}>{money(g.count ? g.revenue / g.count : 0)}</td>
+                        </tr>
+                        {g.items.map((it) => (
+                          <tr key={g.key + it.name} className="border-t border-border">
+                            <td className="px-4 py-2 pl-8 text-left text-sm text-ink-muted">{it.name}</td>
+                            <td className={td}>{num(it.count)}</td>
+                            <td className={td}>{money(it.revenue)}</td>
+                            <td className={td}>{money(it.count ? it.revenue / it.count : 0)}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="px-4 py-6 text-sm text-ink-muted sm:px-5">No line items for this range.</p>
+            )}
+          </Section>
 
           <Section title="Carwash Sales" sub="Washes and retail revenue by service tier (FlexWash reports by tier, not by wash package name).">
             <div className="overflow-x-auto">
@@ -216,8 +264,7 @@ export default function FlexwashSalesPage() {
           </Section>
 
           <p className="px-1 text-xs leading-relaxed text-ink-subtle">
-            {siteLabel} · {r.days} {r.days === 1 ? 'day' : 'days'}. Mapped from the FlexWash API to match the DRB General Sales Report where the data exists.
-            FlexWash does not expose some DRB detail: individual wash-package line items, named discount/coupon lines, or the tender breakdown (cash, deposits, credit-card by type). Revenue is grouped by service tier and membership instead.
+            {siteLabel} · {r.days} {r.days === 1 ? 'day' : 'days'}. The Line Item Sales Breakdown is the full FlexWash accounting detail (every transaction line, grouped like the DRB wash/plan lines). The tender breakdown (cash, deposits, credit-card by type) is the one DRB section FlexWash does not expose.
           </p>
         </>
       )}
