@@ -368,6 +368,28 @@ export default function FlexwashSalesPage() {
             </Section>
           )}
 
+          {finalized && r.settlement && (
+            <Section title="Processor Settlement (Adyen)" sub="Final card figures from the Adyen settlement: card processed, less chargebacks and processor fees, equals the deposit that hit the bank.">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={th}>Description</th>
+                      <th className={th} />
+                      <th className={th}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <Row label="Card Processed" amount={r.settlement.card} />
+                    <Row label="Chargebacks" amount={r.settlement.chargebacks} />
+                    <Row label="Processor Fees" amount={r.settlement.fees} />
+                    <Row label="Net Deposit" amount={r.settlement.deposit} strong />
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          )}
+
           <p className="px-1 text-xs leading-relaxed text-ink-subtle">
             {siteLabel} · {r.days} {r.days === 1 ? 'day' : 'days'}. All pulled live from the FlexWash partner API and grouped to match the DRB General Sales Report: line items, discounts, tenders, and total to account for. FlexWash reports card tenders by processor (Adyen/Clover/Pax) rather than by card brand.
           </p>

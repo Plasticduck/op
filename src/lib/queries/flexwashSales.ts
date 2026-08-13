@@ -61,6 +61,16 @@ export type FlexSalesReport = {
   // Card payouts land ~1-2 days later, so recent days read false. (Days with no
   // card sales are settled immediately.)
   cardSettled: boolean
+  // Adyen settlement roll-up (null until settled). card = processed card volume,
+  // chargebacks + fees (both stored as their signed impact, fees negative) reduce
+  // it to deposit, the amount that actually hit the bank. deposit = card +
+  // chargebacks + fees.
+  settlement: {
+    card: number
+    chargebacks: number
+    fees: number
+    deposit: number
+  } | null
   days: number
 }
 
@@ -171,6 +181,8 @@ export const flexwashSales = {
     // Finalized when every payout group that took card money has posted a payout
     // (adyenPayout / cloverPayout / ...). No accounting at all -> treat as not final.
     let cardSettled = false
+    const settle = { card: 0, chargebacks: 0, fees: 0, deposit: 0 }
+    let anySettlement = false
     const acctRoot = (acct?.accounting ?? []) as Any[]
     if (acctRoot.length) {
       cardSettled = true
@@ -180,9 +192,11 @@ export const flexwashSales = {
         for (const pg of (cw.payoutGroups ?? []) as Any[]) {
           const groupHasPayout = Object.entries(pg).some(([k, v]) => k.endsWith('Payout') && v != null)
           let groupCard = 0
+          let groupAdyenCard = 0
           for (const dt of (pg.dates ?? []) as Any[]) {
             const a = dt.accounting ?? {}
             groupCard += toDollars(a.cardNetPayments)
+            groupAdyenCard += toDollars(a.cardNetPaymentsByProcessor?.adyen ?? a.cardNetPayments)
             t.cash += toDollars(a.cashNetPayments)
             t.card += toDollars(a.cardNetPayments)
             t.giftCard += toDollars(a.giftCardNetPayments)
@@ -204,10 +218,22 @@ export const flexwashSales = {
           }
           // A group that took card money but hasn't posted a payout isn't settled.
           if (groupCard > 0 && !groupHasPayout) cardSettled = false
+          // Adyen settlement: deposit = card + chargebacks + fees (both negative).
+          const payout = pg.adyenPayout
+          if (payout) {
+            anySettlement = true
+            const deposit = toDollars(payout.payoutAmount)
+            const chargebacks = toDollars(payout.chargebackAmount) + toDollars(payout.chargebackReversalAmount)
+            settle.card += groupAdyenCard
+            settle.chargebacks += chargebacks
+            settle.deposit += deposit
+            settle.fees += deposit - groupAdyenCard - chargebacks // residual, negative
+          }
         }
       }
       accounting = { ...t, cardByProcessor }
     }
+    const settlement = anySettlement ? settle : null
 
     // Group discount records by name (records come per-site when >1 site).
     const discMap = new Map<string, { name: string; count: number; amount: number }>()
@@ -222,7 +248,7 @@ export const flexwashSales = {
 
     const days = new Set([...rs.map((x) => String(x.iso8601).slice(0, 10)), ...ws.map((x) => String(x.iso8601).slice(0, 10))]).size
 
-    return { revenue, wash: wsh, plans, churn: churnR, accounting, discounts, cardSettled, days }
+    return { revenue, wash: wsh, plans, churn: churnR, accounting, discounts, cardSettled, settlement, days }
   },
 
   // Detailed sales breakdown. Each order's adjustment lines (discounts, membership

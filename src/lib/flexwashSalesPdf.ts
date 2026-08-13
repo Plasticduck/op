@@ -148,6 +148,23 @@ export async function downloadFlexwashSalesPdf(
     table({ startY: y, head: [['Description', headR('Amount')]], columnStyles: { 1: { halign: 'right' } }, body: rows })
   }
 
+  // Processor Settlement (Adyen) — final card figures from the settlement.
+  if (report.settlement) {
+    const s = report.settlement
+    heading('Processor Settlement (Adyen)')
+    table({
+      startY: y,
+      head: [['Description', headR('Amount')]],
+      columnStyles: { 1: { halign: 'right' } },
+      body: [
+        ['Card Processed', money(s.card)],
+        ['Chargebacks', money(s.chargebacks)],
+        ['Processor Fees', money(s.fees)],
+        [bold('Net Deposit'), boldR(money(s.deposit))],
+      ],
+    })
+  }
+
   const pages = doc.getNumberOfPages()
   for (let p = 1; p <= pages; p++) {
     doc.setPage(p)
