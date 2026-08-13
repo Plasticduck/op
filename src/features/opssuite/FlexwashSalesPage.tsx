@@ -132,7 +132,7 @@ export default function FlexwashSalesPage() {
           variant="secondary"
           className="ml-auto"
           disabled={!report || loading}
-          onClick={() => report && downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, start, end })}
+          onClick={() => report && downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, start, end, brandLogoUrl: '/mighty-max-in-flight.png' })}
         >
           <Download className="size-4" /> Export PDF
         </Button>
