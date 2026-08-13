@@ -171,8 +171,8 @@ export default function FlexwashSalesPage() {
                     <tr>
                       <th className={th}>Line Item</th>
                       <th className={th}>Count</th>
-                      <th className={th}>Revenue</th>
                       <th className={th}>Ticket Avg</th>
+                      <th className={th}>Revenue</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -181,15 +181,15 @@ export default function FlexwashSalesPage() {
                         <tr className="border-t-2 border-border bg-content/60">
                           <td className={cn(td, 'font-semibold')}>{g.label}</td>
                           <td className={cn(td, 'font-semibold')}>{num(g.count)}</td>
-                          <td className={cn(td, 'font-semibold')}>{money(g.revenue)}</td>
                           <td className={cn(td, 'font-semibold')}>{money(g.count ? g.revenue / g.count : 0)}</td>
+                          <td className={cn(td, 'font-semibold')}>{money(g.revenue)}</td>
                         </tr>
                         {g.items.map((it) => (
                           <tr key={g.key + it.name} className="border-t border-border">
                             <td className="px-4 py-2 pl-8 text-left text-sm text-ink-muted">{it.name}</td>
                             <td className={td}>{num(it.count)}</td>
-                            <td className={td}>{money(it.revenue)}</td>
                             <td className={td}>{money(it.count ? it.revenue / it.count : 0)}</td>
+                            <td className={td}>{money(it.revenue)}</td>
                           </tr>
                         ))}
                       </Fragment>

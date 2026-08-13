@@ -92,12 +92,12 @@ export async function downloadFlexwashSalesPdf(
     const groupRows = new Set<number>()
     for (const g of breakdown) {
       groupRows.add(body.length)
-      body.push([g.label, num(g.count), money(g.revenue), ticket(g.revenue, g.count)])
-      for (const it of g.items) body.push([`    ${it.name}`, num(it.count), money(it.revenue), ticket(it.revenue, it.count)])
+      body.push([g.label, num(g.count), ticket(g.revenue, g.count), money(g.revenue)])
+      for (const it of g.items) body.push([`    ${it.name}`, num(it.count), ticket(it.revenue, it.count), money(it.revenue)])
     }
     table({
       startY: y,
-      head: [['Line Item', 'Count', 'Revenue', 'Ticket Avg']],
+      head: [['Line Item', 'Count', 'Ticket Avg', 'Revenue']],
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
       body,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
