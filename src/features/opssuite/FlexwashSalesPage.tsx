@@ -242,29 +242,65 @@ export default function FlexwashSalesPage() {
             </div>
           </Section>
 
-          <Section title="Total to Account For" sub="All revenue components summed (FlexWash does not break out tenders or credit-card types).">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className={th}>Description</th>
-                    <th className={th} />
-                    <th className={th}>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <Row label="Retail wash sales" amount={r.revenue.retailWash} />
-                  <Row label="Membership recharge" amount={r.revenue.membership} />
-                  <Row label="Wash book + gift cards" amount={r.revenue.washBook + r.revenue.giftCard} />
-                  <Row label="Adjustments / other" amount={r.revenue.other} />
-                  <Row label="Net Site Sales (Total to Account For)" amount={r.revenue.total} strong />
-                </tbody>
-              </table>
-            </div>
-          </Section>
+          {r.discounts.length > 0 && (
+            <Section title="Discounts" sub="Named discount lines (DRB: Less Wash Discounts).">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={th}>Discount</th>
+                      <th className={th}>Count</th>
+                      <th className={th}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.discounts.map((d) => (
+                      <Row key={d.name} label={d.name} count={d.count} amount={-Math.abs(d.amount)} />
+                    ))}
+                    <Row label="Total Discounts" count={r.discounts.reduce((a, d) => a + d.count, 0)} amount={-r.discounts.reduce((a, d) => a + Math.abs(d.amount), 0)} strong />
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          )}
+
+          {r.accounting && (
+            <Section title="Total to Account For" sub="Sales summary and tender breakdown (DRB: Total to Account For + credit-card/cash tenders).">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={th}>Description</th>
+                      <th className={th} />
+                      <th className={th}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <Row label="Gross Sales" amount={r.accounting.gross} />
+                    <Row label="Less Discounts" amount={-r.accounting.discount} />
+                    {r.accounting.promotion !== 0 && <Row label="Less Promotions" amount={-r.accounting.promotion} />}
+                    <Row label="Less Refunds" amount={-r.accounting.refund} />
+                    <Row label="Net Sales" amount={r.accounting.net} strong />
+                    <Row label="Cash" amount={r.accounting.cash} />
+                    <Row label="Credit / Debit Card" amount={r.accounting.card} />
+                    {r.accounting.giftCard !== 0 && <Row label="Gift Card" amount={r.accounting.giftCard} />}
+                    {r.accounting.fleetUnpaid !== 0 && <Row label="Fleet (unpaid / A/R)" amount={r.accounting.fleetUnpaid} />}
+                    <Row label="Total to Account For" amount={r.accounting.cash + r.accounting.card + r.accounting.giftCard + r.accounting.fleetUnpaid} strong />
+                    <Row label="Sales Tax" amount={r.accounting.tax} />
+                    {r.accounting.tip !== 0 && <Row label="Tips" amount={r.accounting.tip} />}
+                  </tbody>
+                </table>
+              </div>
+              {Object.entries(r.accounting.cardByProcessor).filter(([, v]) => v).length > 1 && (
+                <div className="border-t border-border px-4 py-2 text-xs text-ink-subtle sm:px-5">
+                  Card by processor: {Object.entries(r.accounting.cardByProcessor).filter(([, v]) => v).map(([k, v]) => `${k} ${money(v)}`).join(' · ')}.
+                </div>
+              )}
+            </Section>
+          )}
 
           <p className="px-1 text-xs leading-relaxed text-ink-subtle">
-            {siteLabel} · {r.days} {r.days === 1 ? 'day' : 'days'}. The Line Item Sales Breakdown is the full FlexWash accounting detail (every transaction line, grouped like the DRB wash/plan lines). The tender breakdown (cash, deposits, credit-card by type) is the one DRB section FlexWash does not expose.
+            {siteLabel} · {r.days} {r.days === 1 ? 'day' : 'days'}. All pulled live from the FlexWash partner API and grouped to match the DRB General Sales Report: line items, discounts, tenders, and total to account for. FlexWash reports card tenders by processor (Adyen/Clover/Pax) rather than by card brand.
           </p>
         </>
       )}

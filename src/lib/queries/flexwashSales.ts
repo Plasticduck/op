@@ -35,6 +35,27 @@ export type FlexSalesReport = {
   plans: { total: number; byTier: { name: string; count: number }[] }
   // Churn %, from get-churn-percentages (fractions -> percent).
   churn: { voluntary: number | null; cc: number | null }
+  // Tenders + accounting totals, from get-accounting (DRB "Total to Account For").
+  accounting: {
+    cash: number
+    card: number
+    giftCard: number
+    fleetUnpaid: number
+    cardByProcessor: Record<string, number>
+    gross: number
+    net: number
+    discount: number
+    promotion: number
+    refund: number
+    tax: number
+    tip: number
+    cashDeposit: number
+    washBookSales: number
+    giftCardSales: number
+    prepaidSales: number
+  } | null
+  // Named discount lines, from get-discount-stats (DRB "Less Wash Discounts").
+  discounts: { name: string; count: number; amount: number }[]
   days: number
 }
 
@@ -81,11 +102,13 @@ export const flexwashSales = {
   // is start === end. Values are summed across the range.
   report: async (carWashId: string, start: string, end: string): Promise<FlexSalesReport> => {
     const scope = { carWashIds: [carWashId], dateRange: { start, end } }
-    const [rev, wash, mem, churn] = await Promise.all([
+    const [rev, wash, mem, churn, acct, disc] = await Promise.all([
       flexApi('/external/wash-and-revenue-stats/get-temporal-revenue-stats', { ...scope, interval: 'day' }),
       flexApi('/external/wash-and-revenue-stats/get-temporal-wash-stats', { ...scope, interval: 'day' }),
       flexApi('/external/memberships/get-new-membership-stats', scope),
       flexApi('/external/memberships/get-churn-percentages', scope).catch(() => null),
+      flexApi('/external/accounting/get-accounting', scope).catch(() => null),
+      flexApi('/external/discounts/get-discount-stats', scope).catch(() => null),
     ])
 
     const rs = (rev?.revenueStats ?? []) as Any[]
@@ -129,9 +152,47 @@ export const flexwashSales = {
       cc: churn?.involuntaryChurnPercent != null ? Number(churn.involuntaryChurnPercent) * 100 : null,
     }
 
+    // Accounting: sum every date across every payout group for the site.
+    let accounting: FlexSalesReport['accounting'] = null
+    const acctRoot = (acct?.accounting ?? []) as Any[]
+    if (acctRoot.length) {
+      const t = { cash: 0, card: 0, giftCard: 0, fleetUnpaid: 0, gross: 0, net: 0, discount: 0, promotion: 0, refund: 0, tax: 0, tip: 0, cashDeposit: 0, washBookSales: 0, giftCardSales: 0, prepaidSales: 0 }
+      const cardByProcessor: Record<string, number> = {}
+      for (const cw of acctRoot) {
+        for (const pg of (cw.payoutGroups ?? []) as Any[]) {
+          for (const dt of (pg.dates ?? []) as Any[]) {
+            const a = dt.accounting ?? {}
+            t.cash += toDollars(a.cashNetPayments)
+            t.card += toDollars(a.cardNetPayments)
+            t.giftCard += toDollars(a.giftCardNetPayments)
+            t.fleetUnpaid += toDollars(a.fleetUnpaidNetPayments)
+            t.gross += toDollars(a.grossSales)
+            t.net += toDollars(a.netSales)
+            t.discount += toDollars(a.discountAmount)
+            t.promotion += toDollars(a.promotionAmount)
+            t.refund += toDollars(a.refundAmount)
+            t.tax += toDollars(a.taxAmount)
+            t.tip += toDollars(a.tipAmount)
+            t.cashDeposit += toDollars(a.cashDepositAmount)
+            t.washBookSales += toDollars(a.washBookSalesAmount)
+            t.giftCardSales += toDollars(a.giftCardSalesAmount)
+            t.prepaidSales += toDollars(a.prepaidSalesAmount)
+            for (const [k, v] of Object.entries((a.cardNetPaymentsByProcessor ?? {}) as Record<string, unknown>)) {
+              cardByProcessor[k] = (cardByProcessor[k] ?? 0) + toDollars(v)
+            }
+          }
+        }
+      }
+      accounting = { ...t, cardByProcessor }
+    }
+
+    const discounts = ((disc?.records ?? []) as Any[])
+      .map((d) => ({ name: String(d.discount?.name ?? '—'), count: Number(d.count) || 0, amount: toDollars(d.amountInCents) }))
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+
     const days = new Set([...rs.map((x) => String(x.iso8601).slice(0, 10)), ...ws.map((x) => String(x.iso8601).slice(0, 10))]).size
 
-    return { revenue, wash: wsh, plans, churn: churnR, days }
+    return { revenue, wash: wsh, plans, churn: churnR, accounting, discounts, days }
   },
 
   // Every transaction line item for a site + range, aggregated by classification
