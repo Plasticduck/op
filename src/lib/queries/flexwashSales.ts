@@ -83,7 +83,7 @@ export type FlexBreakdown = { groups: FlexLineGroup[]; extraDiscounts: { name: s
 const CLASS_LABEL: Record<string, string> = {
   membershipsSoldNew: 'Memberships Sold (New)',
   membershipsRebilled: 'Memberships Recharged',
-  memberWashes: 'Member Washes',
+  memberWashes: 'Member Redemptions',
   fleetWashes: 'Fleet Washes',
   singleWashes: 'Single Washes',
   otherWashes: 'Other Washes',

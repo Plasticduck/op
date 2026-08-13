@@ -247,7 +247,7 @@ export default function FlexwashSalesPage() {
                   ))}
                   <Row label="Plans Sold (total)" count={r.plans.total} strong />
                   <Row label="Membership Recharge" amount={r.revenue.membership} />
-                  <Row label="Member Washes (redemptions)" count={r.wash.member} />
+                  <Row label="Member Redemptions" count={r.wash.member} />
                   <Row
                     label="Churn (voluntary + credit card)"
                     count={churnCombined != null ? `${churnCombined.toFixed(1)}%` : '—'}
