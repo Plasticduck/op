@@ -54,23 +54,47 @@ function siteNum(name: string): number | null {
   return m ? parseInt(m[1], 10) : null
 }
 
+// Retried login: a brief DRB/SiteWatch outage at the 4:40am sync time otherwise
+// blanks the whole day's per-site data (0 cars/sales for every SiteWatch site).
 async function login(base: string, password: string): Promise<string> {
-  const res = await fetch(`${base}/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': BROWSER_UA },
-    body: `password=${encodeURIComponent(password)}`,
-    redirect: 'manual',
-  })
-  const setCookie = res.headers.get('set-cookie') ?? ''
-  const match = setCookie.match(/session=[^;]+/)
-  if (!match) throw new Error(`login failed (status ${res.status}, no session cookie)`)
-  return match[0]
+  let lastErr: unknown = new Error('login failed')
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${base}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': BROWSER_UA },
+        body: `password=${encodeURIComponent(password)}`,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15000),
+      })
+      const match = (res.headers.get('set-cookie') ?? '').match(/session=[^;]+/)
+      if (match) return match[0]
+      lastErr = new Error(`login failed (status ${res.status}, no session cookie)`)
+    } catch (e) {
+      lastErr = e
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 2000))
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('login failed')
 }
 
-async function getFeed(base: string, cookie: string, path: string): Promise<unknown> {
-  const res = await fetch(`${base}${path}`, { headers: { Cookie: cookie, 'User-Agent': BROWSER_UA } })
-  if (!res.ok) throw new Error(`${path} -> ${res.status}`)
-  return res.json()
+// Retried feed fetch with a timeout, so a transient blip doesn't fail the sync.
+async function getFeed(base: string, cookie: string, path: string, attempts = 3): Promise<unknown> {
+  let lastErr: unknown = new Error(`${path} failed`)
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(`${base}${path}`, {
+        headers: { Cookie: cookie, 'User-Agent': BROWSER_UA },
+        signal: AbortSignal.timeout(30000),
+      })
+      if (res.ok) return await res.json()
+      lastErr = new Error(`${path} -> ${res.status}`)
+    } catch (e) {
+      lastErr = e
+    }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500))
+  }
+  throw lastErr
 }
 
 // deno-lint-ignore no-explicit-any
