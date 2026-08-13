@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
   Cctv,
+  ReceiptText,
   AlarmClockOff,
   AlertTriangle,
   Award,
@@ -133,6 +134,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/msa-performance',
         label: 'MSA Performance',
         icon: UserCheck,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/flexwash-sales',
+        label: 'FlexWash Sales Reports',
+        icon: ReceiptText,
         roles: ['owner', 'manager'],
       },
       {
