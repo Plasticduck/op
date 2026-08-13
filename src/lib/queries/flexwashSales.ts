@@ -244,8 +244,9 @@ export const flexwashSales = {
 
     // Cars washed rolled up by wash family. Every wash order carries a Package line
     // whose name starts with the tier (Mighty Protect, Super Shine, Wonder Clean,
-    // including their "- Issue" and member variants); one Package = one car. Summed
-    // across all wash classifications this reconciles to the cars-washed total.
+    // including their "- Issue" and member variants); one Package = one car. Only
+    // settled (paid) washes count, matching how the wash-stats cars-washed total is
+    // measured, so the tiers reconcile to that total (pending washes aren't in it).
     const WASH_CLASSES = new Set(['memberWashes', 'singleWashes', 'otherWashes', 'fleetWashes'])
     const tierOf = (name: string): string => {
       const n = name.toLowerCase()
@@ -258,6 +259,7 @@ export const flexwashSales = {
     for (const it of items) {
       if (String(it.type) !== 'Package') continue
       if (!WASH_CLASSES.has(String(it.orderClassification))) continue
+      if (String((it.order ?? {}).status) !== 'paid') continue
       const t = tierOf(String(it.name ?? ''))
       tierCount.set(t, (tierCount.get(t) ?? 0) + 1)
     }
