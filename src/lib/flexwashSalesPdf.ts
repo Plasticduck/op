@@ -20,6 +20,8 @@ const ticket = (rev: number, cnt: number) => money(cnt ? rev / cnt : 0)
 const fileSafe = (s: string) => s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'flexwash-sales'
 const bold = (content: string): Cell => ({ content, styles: { fontStyle: 'bold' } })
 const boldR = (content: string): Cell => ({ content, styles: { fontStyle: 'bold', halign: 'right' } })
+// Right-aligned header cell, so a numeric column's title lines up over its values.
+const headR = (content: string): Cell => ({ content, styles: { halign: 'right' } })
 
 export async function downloadFlexwashSalesPdf(
   report: FlexSalesReport,
@@ -74,7 +76,7 @@ export async function downloadFlexwashSalesPdf(
   heading('Summary')
   table({
     startY: y,
-    head: [['Metric', 'Value']],
+    head: [['Metric', headR('Value')]],
     columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
     body: [
       ['Cars washed', num(report.wash.total)],
@@ -97,7 +99,7 @@ export async function downloadFlexwashSalesPdf(
     }
     table({
       startY: y,
-      head: [['Line Item', 'Count', 'Ticket Avg', 'Revenue']],
+      head: [['Line Item', headR('Count'), headR('Ticket Avg'), headR('Revenue')]],
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
       body,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,7 +117,7 @@ export async function downloadFlexwashSalesPdf(
     heading('Discounts')
     table({
       startY: y,
-      head: [['Discount', 'Count', 'Amount']],
+      head: [['Discount', headR('Count'), headR('Amount')]],
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
       body: [
         ...report.discounts.map((x) => [x.name, num(x.count), money(-Math.abs(x.amount))]),
@@ -142,7 +144,7 @@ export async function downloadFlexwashSalesPdf(
     if (a.fleetUnpaid) rows.push(['Fleet (unpaid / A/R)', money(a.fleetUnpaid)])
     rows.push([bold('Total to Account For'), boldR(money(toAccount))])
     rows.push(['Sales Tax', money(a.tax)])
-    table({ startY: y, head: [['Description', 'Amount']], columnStyles: { 1: { halign: 'right' } }, body: rows })
+    table({ startY: y, head: [['Description', headR('Amount')]], columnStyles: { 1: { halign: 'right' } }, body: rows })
   }
 
   const pages = doc.getNumberOfPages()
