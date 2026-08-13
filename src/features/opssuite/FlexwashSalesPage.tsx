@@ -93,7 +93,6 @@ export default function FlexwashSalesPage() {
   }, [sites, carWashId])
 
   const r = report
-  const churnCombined = r ? (r.churn.voluntary == null && r.churn.cc == null ? null : (r.churn.voluntary ?? 0) + (r.churn.cc ?? 0)) : null
   // Discounts from FlexWash's discount endpoint plus rewashes (pulled from the line items).
   const discounts = r ? [...r.discounts, ...(breakdown?.extraDiscounts ?? [])].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)) : []
 
@@ -160,7 +159,7 @@ export default function FlexwashSalesPage() {
             <Kpi label="Cars washed" value={num(r.wash.total)} sub={`${num(r.wash.single)} single · ${num(r.wash.member)} member`} />
             <Kpi label="Net site sales" value={money(r.revenue.total)} sub="total to account for" />
             <Kpi label="Membership recharge" value={money(r.revenue.membership)} sub="ARM plans recharged" />
-            <Kpi label="Plans sold" value={num(r.plans.total)} sub={churnCombined != null ? `${churnCombined.toFixed(1)}% churn` : 'new memberships'} />
+            <Kpi label="Plans sold" value={num(r.plans.total)} sub="new memberships" />
           </div>
 
           <Section title="Line Item Sales Breakdown" sub="Net sales by product (discounts folded into each wash, like items grouped; tax excluded). Ticket Avg = revenue / count.">
@@ -248,10 +247,6 @@ export default function FlexwashSalesPage() {
                   <Row label="Plans Sold (total)" count={r.plans.total} strong />
                   <Row label="Membership Recharge" amount={r.revenue.membership} />
                   <Row label="Member Redemptions" count={r.wash.member} />
-                  <Row
-                    label="Churn (voluntary + credit card)"
-                    count={churnCombined != null ? `${churnCombined.toFixed(1)}%` : '—'}
-                  />
                 </tbody>
               </table>
             </div>

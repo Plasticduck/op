@@ -72,7 +72,6 @@ export async function downloadFlexwashSalesPdf(
   const table = (opts: Record<string, unknown>) => { autoTable(doc, { ...common, ...opts } as any); y = afterTable() }
 
   // Summary
-  const churn = report.churn.voluntary == null && report.churn.cc == null ? null : (report.churn.voluntary ?? 0) + (report.churn.cc ?? 0)
   heading('Summary')
   table({
     startY: y,
@@ -83,7 +82,6 @@ export async function downloadFlexwashSalesPdf(
       ['Net site sales', money(report.accounting?.net ?? report.revenue.total)],
       ['Membership recharge', money(report.revenue.membership)],
       ['Plans sold', num(report.plans.total)],
-      ['Churn', churn != null ? `${churn.toFixed(1)}%` : '—'],
     ],
   })
 
