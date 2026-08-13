@@ -80,9 +80,9 @@ export async function downloadFlexwashSalesPdf(
     body: [
       ['Cars washed', num(report.wash.total)],
       ...(breakdown?.carsByTier ?? []).map((t): Cell[] => [`    ${t.label}`, num(t.count)]),
+      ['Plans sold', num(report.plans.total)],
       ['Net site sales', money(report.accounting?.net ?? report.revenue.total)],
       ['Membership recharge', money(report.revenue.membership)],
-      ['Plans sold', num(report.plans.total)],
     ],
   })
 

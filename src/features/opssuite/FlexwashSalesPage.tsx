@@ -157,9 +157,9 @@ export default function FlexwashSalesPage() {
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Kpi label="Cars washed" value={num(r.wash.total)} sub={`${num(r.wash.single)} single · ${num(r.wash.member)} member`} />
+            <Kpi label="Plans sold" value={num(r.plans.total)} sub="new memberships" />
             <Kpi label="Net site sales" value={money(r.revenue.total)} sub="total to account for" />
             <Kpi label="Membership recharge" value={money(r.revenue.membership)} sub="ARM plans recharged" />
-            <Kpi label="Plans sold" value={num(r.plans.total)} sub="new memberships" />
           </div>
 
           {breakdown && breakdown.carsByTier.length > 0 && (
