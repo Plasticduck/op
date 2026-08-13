@@ -23,16 +23,40 @@ const DASH_BASE = (Deno.env.get('MW_DASHBOARD_URL') ?? 'https://dashboard.tail1e
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 
+// Log in to the SiteWatch/DRB dashboard. Retried a few times with a short
+// backoff: a brief DRB outage right at the 7:50am send time otherwise blanks
+// every dashboard number in the report.
 async function dashLogin(password: string): Promise<string> {
-  const res = await fetch(`${DASH_BASE}/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': BROWSER_UA },
-    body: `password=${encodeURIComponent(password)}`,
-    redirect: 'manual',
-  })
-  const m = (res.headers.get('set-cookie') ?? '').match(/session=[^;]+/)
-  if (!m) throw new Error(`dashboard login failed (${res.status})`)
-  return m[0]
+  let lastErr: unknown = new Error('dashboard login failed')
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${DASH_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': BROWSER_UA },
+        body: `password=${encodeURIComponent(password)}`,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15000),
+      })
+      const m = (res.headers.get('set-cookie') ?? '').match(/session=[^;]+/)
+      if (m) return m[0]
+      lastErr = new Error(`dashboard login failed (${res.status})`)
+    } catch (e) {
+      lastErr = e
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 2000))
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('dashboard login failed')
+}
+
+// Retry a best-effort DRB fetch that returns null on failure, so a brief blip at
+// send time doesn't drop the number. Returns the first non-null result.
+async function drbRetry<T>(fn: () => Promise<T | null>, attempts = 2, delayMs = 1200): Promise<T | null> {
+  for (let i = 0; i < attempts; i++) {
+    const v = await fn().catch(() => null)
+    if (v != null) return v
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs))
+  }
+  return null
 }
 
 // One guided-query metric for every site over a single day. Returns the raw
@@ -308,7 +332,7 @@ Deno.serve(async (req) => {
       // SiteWatch sites (month-to-date), diff against the previous day's
       // snapshot, then store today's snapshot.
       try {
-        const ttaf = await fetchTtaf(cookie)
+        const ttaf = await drbRetry(() => fetchTtaf(cookie))
         const monthKey = rday.slice(0, 7)
         const bucket = ttaf?.months?.[monthKey]
         if (bucket) {
@@ -331,14 +355,14 @@ Deno.serve(async (req) => {
           // EXACT SiteWatch figures from the POS ledger (= the General Sales Report
           // to the penny), plus FlexWash on top. All three cards reconcile:
           // Net = Recharge + Retail = SiteWatch TTAF + FlexWash.
-          const ledger = await fetchSiteWatchLedger(cookie, rday)
+          const ledger = await drbRetry(() => fetchSiteWatchLedger(cookie, rday))
           if (ledger) {
             rechargeDay = ledger.recharge + flexRecharge
             retailDay = Math.max(0, ledger.ttaf - ledger.recharge) + flexRetail
             netSales = ledger.ttaf + flexActualDay
           }
           // Last year's ledger (same calendar day) for the Net Sales / Retail YoY.
-          const ledgerLy = await fetchSiteWatchLedger(cookie, lyStr)
+          const ledgerLy = await drbRetry(() => fetchSiteWatchLedger(cookie, lyStr))
           if (ledgerLy) {
             netSalesLy = ledgerLy.ttaf
             retailLy = Math.max(0, ledgerLy.ttaf - ledgerLy.recharge)
@@ -388,7 +412,7 @@ Deno.serve(async (req) => {
       // monthly figure (not the single reporting day) so every site has a value —
       // the daily value lags a few days for the slower-settling sites. Covers
       // #17/#18/#29/#30 via FlexWash.
-      const rinsed = await fetchRinsed(cookie)
+      const rinsed = await drbRetry(() => fetchRinsed(cookie))
       const convBySite = new Map<string, number>()
       if (rinsed?.sites) {
         // deno-lint-ignore no-explicit-any
