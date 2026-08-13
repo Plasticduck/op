@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/auth'
 import { flexwashSales, type FlexSite, type FlexSalesReport, type FlexBreakdown } from '@/lib/queries/flexwashSales'
 import { downloadFlexwashSalesPdf } from '@/lib/flexwashSalesPdf'
 
@@ -51,6 +52,7 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
 }
 
 export default function FlexwashSalesPage() {
+  const { profile } = useAuth()
   const [sites, setSites] = useState<FlexSite[]>([])
   const [carWashId, setCarWashId] = useState<string>('')
   const [start, setStart] = useState(yesterday())
@@ -138,7 +140,7 @@ export default function FlexwashSalesPage() {
           variant="secondary"
           className="ml-auto"
           disabled={!report || loading}
-          onClick={() => report && downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, fileTag, start, end, brandLogoUrl: '/mighty-max-in-flight.png' })}
+          onClick={() => report && downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, fileTag, start, end, generatedBy: profile ? (profile.name ?? '').trim() || profile.email : undefined, brandLogoUrl: '/mighty-max-in-flight.png' })}
         >
           <Download className="size-4" /> Export PDF
         </Button>

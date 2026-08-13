@@ -25,7 +25,7 @@ const headR = (content: string): Cell => ({ content, styles: { halign: 'right' }
 export async function downloadFlexwashSalesPdf(
   report: FlexSalesReport,
   breakdown: FlexBreakdown | null,
-  meta: { siteLabel: string; fileTag: string; start: string; end: string; brandLogoUrl?: string | null; accountName?: string },
+  meta: { siteLabel: string; fileTag: string; start: string; end: string; generatedBy?: string; brandLogoUrl?: string | null; accountName?: string },
 ): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
@@ -39,14 +39,15 @@ export async function downloadFlexwashSalesPdf(
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(17)
   doc.setTextColor(20)
-  doc.text('FlexWash Sales Report', MARGIN, 18)
+  doc.text(`${meta.fileTag} Sales Report`, MARGIN, 18)
 
   const d = (s: string) => format(new Date(s + 'T12:00:00'), 'PP')
   const range = meta.start === meta.end ? d(meta.start) : `${d(meta.start)} - ${d(meta.end)}`
+  const generated = `Generated ${format(new Date(), 'PP')}${meta.generatedBy ? ` by ${meta.generatedBy}` : ''}`
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   doc.setTextColor(MUTED)
-  doc.text([meta.siteLabel, range, meta.accountName, `Generated ${format(new Date(), 'PP')}`].filter(Boolean).join('  ·  '), MARGIN, 25)
+  doc.text([range, meta.accountName, generated].filter(Boolean).join('  ·  '), MARGIN, 25)
 
   doc.setDrawColor(...ACCENT)
   doc.setLineWidth(0.6)
