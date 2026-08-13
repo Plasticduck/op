@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { RefreshCw, TriangleAlert } from 'lucide-react'
+import { RefreshCw, TriangleAlert, Download } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
 import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { flexwashSales, type FlexSite, type FlexSalesReport, type FlexLineGroup } from '@/lib/queries/flexwashSales'
+import { downloadFlexwashSalesPdf } from '@/lib/flexwashSalesPdf'
 
 const num = (n: number) => Math.round(n).toLocaleString('en-US')
 const money = (n: number) => currency(n)
@@ -67,23 +69,25 @@ export default function FlexwashSalesPage() {
   }, [])
 
   useEffect(() => {
-    if (!carWashId || !start || !end || start > end) return
+    const ids = carWashId === 'all' ? sites.map((s) => s.car_wash_id) : carWashId ? [carWashId] : []
+    if (!ids.length || !start || !end || start > end) return
     let active = true
     setLoading(true)
     setError(null)
     flexwashSales
-      .report(carWashId, start, end)
+      .report(ids, start, end)
       .then((r) => { if (active) { setReport(r); setLoading(false) } })
       .catch((e) => { if (active) { setError(e instanceof Error ? e.message : String(e)); setLoading(false) } })
     setBdLoading(true)
     flexwashSales
-      .lineItemBreakdown(carWashId, start, end)
+      .lineItemBreakdown(ids, start, end)
       .then((b) => { if (active) { setBreakdown(b); setBdLoading(false) } })
       .catch(() => { if (active) { setBreakdown(null); setBdLoading(false) } })
     return () => { active = false }
-  }, [carWashId, start, end])
+  }, [carWashId, sites, start, end])
 
   const siteLabel = useMemo(() => {
+    if (carWashId === 'all') return 'All Sites'
     const s = sites.find((x) => x.car_wash_id === carWashId)
     return s ? `#${s.site_number}` : ''
   }, [sites, carWashId])
@@ -107,7 +111,8 @@ export default function FlexwashSalesPage() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <label htmlFor="fw-site" className="text-xs font-medium text-ink-muted">Site</label>
-          <Select id="fw-site" value={carWashId} onChange={(e) => setCarWashId(e.target.value)} className="h-9 w-44">
+          <Select id="fw-site" value={carWashId} onChange={(e) => setCarWashId(e.target.value)} className="h-9 w-48">
+            <option value="all">All Sites</option>
             {sites.map((s) => (
               <option key={s.car_wash_id} value={s.car_wash_id}>#{s.site_number}{s.name ? ` — ${s.name}` : ''}</option>
             ))}
@@ -121,6 +126,14 @@ export default function FlexwashSalesPage() {
           <label htmlFor="fw-end" className="text-xs font-medium text-ink-muted">To</label>
           <Input id="fw-end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="h-9 w-40" />
         </div>
+        <Button
+          variant="secondary"
+          className="ml-auto"
+          disabled={!report || loading}
+          onClick={() => report && downloadFlexwashSalesPdf(report, breakdown, { siteLabel, start, end })}
+        >
+          <Download className="size-4" /> Export PDF
+        </Button>
       </div>
 
       {error && (

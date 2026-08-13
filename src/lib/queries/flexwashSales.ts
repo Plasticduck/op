@@ -98,10 +98,10 @@ export const flexwashSales = {
     return (data as FlexSite[] | null) ?? []
   },
 
-  // One combined report for a site over a date range (inclusive). A single day
-  // is start === end. Values are summed across the range.
-  report: async (carWashId: string, start: string, end: string): Promise<FlexSalesReport> => {
-    const scope = { carWashIds: [carWashId], dateRange: { start, end } }
+  // One combined report over a date range (inclusive) for one or more sites.
+  // Pass all car-wash IDs for an all-sites roll-up; FlexWash combines them.
+  report: async (carWashIds: string[], start: string, end: string): Promise<FlexSalesReport> => {
+    const scope = { carWashIds, dateRange: { start, end } }
     const [rev, wash, mem, churn, acct, disc] = await Promise.all([
       flexApi('/external/wash-and-revenue-stats/get-temporal-revenue-stats', { ...scope, interval: 'day' }),
       flexApi('/external/wash-and-revenue-stats/get-temporal-wash-stats', { ...scope, interval: 'day' }),
@@ -186,9 +186,16 @@ export const flexwashSales = {
       accounting = { ...t, cardByProcessor }
     }
 
-    const discounts = ((disc?.records ?? []) as Any[])
-      .map((d) => ({ name: String(d.discount?.name ?? '—'), count: Number(d.count) || 0, amount: toDollars(d.amountInCents) }))
-      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+    // Group discount records by name (records come per-site when >1 site).
+    const discMap = new Map<string, { name: string; count: number; amount: number }>()
+    for (const d of (disc?.records ?? []) as Any[]) {
+      const name = String(d.discount?.name ?? '—')
+      const row = discMap.get(name) ?? { name, count: 0, amount: 0 }
+      row.count += Number(d.count) || 0
+      row.amount += toDollars(d.amountInCents)
+      discMap.set(name, row)
+    }
+    const discounts = [...discMap.values()].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 
     const days = new Set([...rs.map((x) => String(x.iso8601).slice(0, 10)), ...ws.map((x) => String(x.iso8601).slice(0, 10))]).size
 
@@ -200,9 +207,9 @@ export const flexwashSales = {
   // product line(s) so the price shown is net (like DRB adjusting a wash's value).
   // Tax lines are excluded (they're in the accounting totals). Product names have
   // their per-member code prefix stripped so like items collapse to one line.
-  lineItemBreakdown: async (carWashId: string, start: string, end: string): Promise<FlexLineGroup[]> => {
+  lineItemBreakdown: async (carWashIds: string[], start: string, end: string): Promise<FlexLineGroup[]> => {
     const data = await flexApi('/external/accounting/get-line-items-detail', {
-      carWashIds: [carWashId],
+      carWashIds,
       dateRange: { start, end },
     })
     const items = (data?.lineItemsDetail ?? []) as Any[]

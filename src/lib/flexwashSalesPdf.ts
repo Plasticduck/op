@@ -1,0 +1,159 @@
+import { format } from 'date-fns'
+import { loadPdfLogo, placePdfLogo } from '@/lib/pdfLogo'
+import { currency } from '@/lib/format'
+import type { FlexSalesReport, FlexLineGroup } from '@/lib/queries/flexwashSales'
+
+// Renders the FlexWash sales report to a branded PDF (jspdf + autotable load on
+// demand). Mirrors the on-screen sections.
+
+const ACCENT: [number, number, number] = [37, 99, 235]
+const GROUP_FILL: [number, number, number] = [230, 236, 245]
+const MUTED = 120
+const MARGIN = 14
+
+type Doc = import('jspdf').jsPDF & { lastAutoTable?: { finalY: number } }
+type Cell = string | { content: string; styles?: Record<string, unknown> }
+
+const money = (n: number) => currency(n)
+const num = (n: number) => Math.round(n).toLocaleString('en-US')
+const ticket = (rev: number, cnt: number) => money(cnt ? rev / cnt : 0)
+const fileSafe = (s: string) => s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'flexwash-sales'
+const bold = (content: string): Cell => ({ content, styles: { fontStyle: 'bold' } })
+const boldR = (content: string): Cell => ({ content, styles: { fontStyle: 'bold', halign: 'right' } })
+
+export async function downloadFlexwashSalesPdf(
+  report: FlexSalesReport,
+  breakdown: FlexLineGroup[] | null,
+  meta: { siteLabel: string; start: string; end: string; brandLogoUrl?: string | null; accountName?: string },
+): Promise<void> {
+  const { jsPDF } = await import('jspdf')
+  const autoTable = (await import('jspdf-autotable')).default
+  const logo = await loadPdfLogo(meta.brandLogoUrl)
+
+  const doc = new jsPDF() as Doc
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  placePdfLogo(doc, logo)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(17)
+  doc.setTextColor(20)
+  doc.text('FlexWash Sales Report', MARGIN, 18)
+
+  const d = (s: string) => format(new Date(s + 'T12:00:00'), 'PP')
+  const range = meta.start === meta.end ? d(meta.start) : `${d(meta.start)} - ${d(meta.end)}`
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(MUTED)
+  doc.text([meta.siteLabel, range, meta.accountName, `Generated ${format(new Date(), 'PP')}`].filter(Boolean).join('  ·  '), MARGIN, 25)
+
+  doc.setDrawColor(...ACCENT)
+  doc.setLineWidth(0.6)
+  doc.line(MARGIN, 29, pageW - MARGIN, 29)
+
+  const common = {
+    styles: { fontSize: 9, cellPadding: 2.2, overflow: 'linebreak' as const },
+    headStyles: { fillColor: ACCENT, fontStyle: 'bold' as const },
+    margin: { left: MARGIN, right: MARGIN },
+  }
+  let y = 37
+  const afterTable = () => (doc.lastAutoTable?.finalY ?? y) + 7
+  const heading = (t: string) => {
+    if (y > pageH - 34) { doc.addPage(); y = 18 }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.setTextColor(20)
+    doc.text(t, MARGIN, y)
+    y += 5
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const table = (opts: Record<string, unknown>) => { autoTable(doc, { ...common, ...opts } as any); y = afterTable() }
+
+  // Summary
+  const churn = report.churn.voluntary == null && report.churn.cc == null ? null : (report.churn.voluntary ?? 0) + (report.churn.cc ?? 0)
+  heading('Summary')
+  table({
+    startY: y,
+    head: [['Metric', 'Value']],
+    columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
+    body: [
+      ['Cars washed', num(report.wash.total)],
+      ['Net site sales', money(report.accounting?.net ?? report.revenue.total)],
+      ['Membership recharge', money(report.revenue.membership)],
+      ['Plans sold', num(report.plans.total)],
+      ['Churn', churn != null ? `${churn.toFixed(1)}%` : '—'],
+    ],
+  })
+
+  // Line Item Sales Breakdown
+  if (breakdown && breakdown.length) {
+    heading('Line Item Sales Breakdown')
+    const body: Cell[][] = []
+    const groupRows = new Set<number>()
+    for (const g of breakdown) {
+      groupRows.add(body.length)
+      body.push([g.label, num(g.count), money(g.revenue), ticket(g.revenue, g.count)])
+      for (const it of g.items) body.push([`    ${it.name}`, num(it.count), money(it.revenue), ticket(it.revenue, it.count)])
+    }
+    table({
+      startY: y,
+      head: [['Line Item', 'Count', 'Revenue', 'Ticket Avg']],
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+      body,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      didParseCell: (data: any) => {
+        if (data.section === 'body' && groupRows.has(data.row.index)) {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.fillColor = GROUP_FILL
+        }
+      },
+    })
+  }
+
+  // Discounts
+  if (report.discounts.length) {
+    heading('Discounts')
+    table({
+      startY: y,
+      head: [['Discount', 'Count', 'Amount']],
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+      body: [
+        ...report.discounts.map((x) => [x.name, num(x.count), money(-Math.abs(x.amount))]),
+        [bold('Total Discounts'), boldR(num(report.discounts.reduce((a, x) => a + x.count, 0))), boldR(money(-report.discounts.reduce((a, x) => a + Math.abs(x.amount), 0)))],
+      ],
+    })
+  }
+
+  // Total to Account For
+  if (report.accounting) {
+    const a = report.accounting
+    const toAccount = a.cash + a.card + a.giftCard + a.fleetUnpaid
+    heading('Total to Account For')
+    const rows: Cell[][] = [
+      ['Gross Sales', money(a.gross)],
+      ['Less Discounts', money(-a.discount)],
+    ]
+    if (a.promotion) rows.push(['Less Promotions', money(-a.promotion)])
+    rows.push(['Less Refunds', money(-a.refund)])
+    rows.push([bold('Net Sales'), boldR(money(a.net))])
+    rows.push(['Cash', money(a.cash)])
+    rows.push(['Credit / Debit Card', money(a.card)])
+    if (a.giftCard) rows.push(['Gift Card', money(a.giftCard)])
+    if (a.fleetUnpaid) rows.push(['Fleet (unpaid / A/R)', money(a.fleetUnpaid)])
+    rows.push([bold('Total to Account For'), boldR(money(toAccount))])
+    rows.push(['Sales Tax', money(a.tax)])
+    table({ startY: y, head: [['Description', 'Amount']], columnStyles: { 1: { halign: 'right' } }, body: rows })
+  }
+
+  const pages = doc.getNumberOfPages()
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(150)
+    doc.text('FlexWash Sales Report · WashLyfe Operator', MARGIN, pageH - 8)
+    doc.text(`Page ${p} of ${pages}`, pageW - MARGIN, pageH - 8, { align: 'right' })
+  }
+
+  doc.save(`flexwash-sales-${fileSafe(meta.siteLabel)}-${meta.start}${meta.start !== meta.end ? `_${meta.end}` : ''}.pdf`)
+}
