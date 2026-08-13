@@ -62,6 +62,7 @@ export default function FlexwashSalesPage() {
   const [error, setError] = useState<string | null>(null)
   const [breakdown, setBreakdown] = useState<FlexBreakdown | null>(null)
   const [bdLoading, setBdLoading] = useState(false)
+  const [exportBlocked, setExportBlocked] = useState(false)
 
   useEffect(() => {
     flexwashSales.sites().then((s) => {
@@ -76,6 +77,7 @@ export default function FlexwashSalesPage() {
     let active = true
     setLoading(true)
     setError(null)
+    setExportBlocked(false)
     flexwashSales
       .report(ids, start, end)
       .then((r) => { if (active) { setReport(r); setLoading(false) } })
@@ -102,6 +104,8 @@ export default function FlexwashSalesPage() {
   }, [sites, carWashId])
 
   const r = report
+  // A day is exportable only once the card processor has settled (totals final).
+  const finalized = !!r && r.cardSettled
   // Discounts from FlexWash's discount endpoint plus rewashes (pulled from the line items).
   const discounts = r ? [...r.discounts, ...(breakdown?.extraDiscounts ?? [])].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)) : []
 
@@ -136,14 +140,23 @@ export default function FlexwashSalesPage() {
           <label htmlFor="fw-end" className="text-xs font-medium text-ink-muted">To</label>
           <Input id="fw-end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="h-9 w-40" />
         </div>
-        <Button
-          variant="secondary"
-          className="ml-auto"
-          disabled={!report || loading}
-          onClick={() => report && downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, fileTag, start, end, generatedBy: profile ? (profile.name ?? '').trim() || profile.email : undefined, brandLogoUrl: '/mighty-max-in-flight.png' })}
-        >
-          <Download className="size-4" /> Export PDF
-        </Button>
+        <div className="ml-auto flex flex-col items-end gap-1">
+          <Button
+            variant="secondary"
+            disabled={!report || loading}
+            onClick={() => {
+              if (!report) return
+              if (!finalized) { setExportBlocked(true); return }
+              setExportBlocked(false)
+              downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, fileTag, start, end, generatedBy: profile ? (profile.name ?? '').trim() || profile.email : undefined, brandLogoUrl: '/mighty-max-in-flight.png' })
+            }}
+          >
+            <Download className="size-4" /> Export PDF
+          </Button>
+          {exportBlocked && !finalized && (
+            <p className="max-w-xs text-right text-xs font-medium text-danger">Export Not Available Until All Sales are Finalized</p>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -164,6 +177,16 @@ export default function FlexwashSalesPage() {
 
       {r && (
         <>
+          {!finalized && (
+            <div className="flex items-start gap-2 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm text-warn">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+              <div>
+                <p className="font-medium">All sales are not yet finalized.</p>
+                <p className="mt-0.5 text-warn/80">Pending transactions are still settling and the card processor has not posted its final payout for this date. These numbers may still change, and the report cannot be exported until they are final (usually 2 to 3 days later).</p>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Kpi label="Cars washed" value={num(r.wash.total)} sub={`${num(r.wash.single)} single · ${num(r.wash.member)} member`} />
             <Kpi label="Plans sold" value={num(r.plans.total)} sub="new memberships" />

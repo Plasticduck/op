@@ -56,6 +56,11 @@ export type FlexSalesReport = {
   } | null
   // Named discount lines, from get-discount-stats (DRB "Less Wash Discounts").
   discounts: { name: string; count: number; amount: number }[]
+  // True once the card processor has posted its settlement payout for every date
+  // and site that had card sales: the day's totals are final and won't change.
+  // Card payouts land ~1-2 days later, so recent days read false. (Days with no
+  // card sales are settled immediately.)
+  cardSettled: boolean
   days: number
 }
 
@@ -163,14 +168,21 @@ export const flexwashSales = {
 
     // Accounting: sum every date across every payout group for the site.
     let accounting: FlexSalesReport['accounting'] = null
+    // Finalized when every payout group that took card money has posted a payout
+    // (adyenPayout / cloverPayout / ...). No accounting at all -> treat as not final.
+    let cardSettled = false
     const acctRoot = (acct?.accounting ?? []) as Any[]
     if (acctRoot.length) {
+      cardSettled = true
       const t = { cash: 0, card: 0, giftCard: 0, fleetUnpaid: 0, gross: 0, net: 0, discount: 0, promotion: 0, refund: 0, tax: 0, tip: 0, cashDeposit: 0, washBookSales: 0, giftCardSales: 0, prepaidSales: 0 }
       const cardByProcessor: Record<string, number> = {}
       for (const cw of acctRoot) {
         for (const pg of (cw.payoutGroups ?? []) as Any[]) {
+          const groupHasPayout = Object.entries(pg).some(([k, v]) => k.endsWith('Payout') && v != null)
+          let groupCard = 0
           for (const dt of (pg.dates ?? []) as Any[]) {
             const a = dt.accounting ?? {}
+            groupCard += toDollars(a.cardNetPayments)
             t.cash += toDollars(a.cashNetPayments)
             t.card += toDollars(a.cardNetPayments)
             t.giftCard += toDollars(a.giftCardNetPayments)
@@ -190,6 +202,8 @@ export const flexwashSales = {
               cardByProcessor[k] = (cardByProcessor[k] ?? 0) + toDollars(v)
             }
           }
+          // A group that took card money but hasn't posted a payout isn't settled.
+          if (groupCard > 0 && !groupHasPayout) cardSettled = false
         }
       }
       accounting = { ...t, cardByProcessor }
@@ -208,7 +222,7 @@ export const flexwashSales = {
 
     const days = new Set([...rs.map((x) => String(x.iso8601).slice(0, 10)), ...ws.map((x) => String(x.iso8601).slice(0, 10))]).size
 
-    return { revenue, wash: wsh, plans, churn: churnR, accounting, discounts, days }
+    return { revenue, wash: wsh, plans, churn: churnR, accounting, discounts, cardSettled, days }
   },
 
   // Detailed sales breakdown. Each order's adjustment lines (discounts, membership
