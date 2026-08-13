@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { flexwashSales, type FlexSite, type FlexSalesReport, type FlexLineGroup } from '@/lib/queries/flexwashSales'
+import { flexwashSales, type FlexSite, type FlexSalesReport, type FlexBreakdown } from '@/lib/queries/flexwashSales'
 import { downloadFlexwashSalesPdf } from '@/lib/flexwashSalesPdf'
 
 const num = (n: number) => Math.round(n).toLocaleString('en-US')
@@ -58,7 +58,7 @@ export default function FlexwashSalesPage() {
   const [report, setReport] = useState<FlexSalesReport | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [breakdown, setBreakdown] = useState<FlexLineGroup[] | null>(null)
+  const [breakdown, setBreakdown] = useState<FlexBreakdown | null>(null)
   const [bdLoading, setBdLoading] = useState(false)
 
   useEffect(() => {
@@ -94,6 +94,8 @@ export default function FlexwashSalesPage() {
 
   const r = report
   const churnCombined = r ? (r.churn.voluntary == null && r.churn.cc == null ? null : (r.churn.voluntary ?? 0) + (r.churn.cc ?? 0)) : null
+  // Discounts from FlexWash's discount endpoint plus rewashes (pulled from the line items).
+  const discounts = r ? [...r.discounts, ...(breakdown?.rewashDiscounts ?? [])].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)) : []
 
   return (
     <div className="flex flex-col gap-5">
@@ -130,7 +132,7 @@ export default function FlexwashSalesPage() {
           variant="secondary"
           className="ml-auto"
           disabled={!report || loading}
-          onClick={() => report && downloadFlexwashSalesPdf(report, breakdown, { siteLabel, start, end })}
+          onClick={() => report && downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, start, end })}
         >
           <Download className="size-4" /> Export PDF
         </Button>
@@ -164,7 +166,7 @@ export default function FlexwashSalesPage() {
           <Section title="Line Item Sales Breakdown" sub="Net sales by product (discounts folded into each wash, like items grouped; tax excluded). Ticket Avg = revenue / count.">
             {bdLoading && !breakdown ? (
               <p className="px-4 py-6 text-sm text-ink-muted sm:px-5">Loading line items...</p>
-            ) : breakdown && breakdown.length ? (
+            ) : breakdown && breakdown.groups.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
@@ -176,7 +178,7 @@ export default function FlexwashSalesPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {breakdown.map((g) => (
+                    {breakdown.groups.map((g) => (
                       <Fragment key={g.key}>
                         <tr className="border-t-2 border-border bg-content/60">
                           <td className={cn(td, 'font-semibold')}>{g.label}</td>
@@ -255,7 +257,7 @@ export default function FlexwashSalesPage() {
             </div>
           </Section>
 
-          {r.discounts.length > 0 && (
+          {discounts.length > 0 && (
             <Section title="Discounts" sub="Named discount lines (DRB: Less Wash Discounts).">
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
@@ -267,10 +269,10 @@ export default function FlexwashSalesPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {r.discounts.map((d) => (
+                    {discounts.map((d) => (
                       <Row key={d.name} label={d.name} count={d.count} amount={-Math.abs(d.amount)} />
                     ))}
-                    <Row label="Total Discounts" count={r.discounts.reduce((a, d) => a + d.count, 0)} amount={-r.discounts.reduce((a, d) => a + Math.abs(d.amount), 0)} strong />
+                    <Row label="Total Discounts" count={discounts.reduce((a, d) => a + d.count, 0)} amount={-discounts.reduce((a, d) => a + Math.abs(d.amount), 0)} strong />
                   </tbody>
                 </table>
               </div>

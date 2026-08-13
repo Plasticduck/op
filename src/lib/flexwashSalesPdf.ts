@@ -1,7 +1,7 @@
 import { format } from 'date-fns'
 import { loadPdfLogo, placePdfLogo } from '@/lib/pdfLogo'
 import { currency } from '@/lib/format'
-import type { FlexSalesReport, FlexLineGroup } from '@/lib/queries/flexwashSales'
+import type { FlexSalesReport, FlexBreakdown } from '@/lib/queries/flexwashSales'
 
 // Renders the FlexWash sales report to a branded PDF (jspdf + autotable load on
 // demand). Mirrors the on-screen sections.
@@ -23,7 +23,7 @@ const boldR = (content: string): Cell => ({ content, styles: { fontStyle: 'bold'
 
 export async function downloadFlexwashSalesPdf(
   report: FlexSalesReport,
-  breakdown: FlexLineGroup[] | null,
+  breakdown: FlexBreakdown | null,
   meta: { siteLabel: string; start: string; end: string; brandLogoUrl?: string | null; accountName?: string },
 ): Promise<void> {
   const { jsPDF } = await import('jspdf')
@@ -86,11 +86,11 @@ export async function downloadFlexwashSalesPdf(
   })
 
   // Line Item Sales Breakdown
-  if (breakdown && breakdown.length) {
+  if (breakdown && breakdown.groups.length) {
     heading('Line Item Sales Breakdown')
     const body: Cell[][] = []
     const groupRows = new Set<number>()
-    for (const g of breakdown) {
+    for (const g of breakdown.groups) {
       groupRows.add(body.length)
       body.push([g.label, num(g.count), ticket(g.revenue, g.count), money(g.revenue)])
       for (const it of g.items) body.push([`    ${it.name}`, num(it.count), ticket(it.revenue, it.count), money(it.revenue)])

@@ -75,6 +75,9 @@ const toDollars = (cents: unknown) => (Number(cents) || 0) / 100
 // "Line Item Sales Breakdown" report.
 export type FlexLineRow = { name: string; revenue: number; count: number }
 export type FlexLineGroup = { key: string; label: string; revenue: number; count: number; items: FlexLineRow[] }
+// The grouped product breakdown plus any Rewash lines pulled out to show as
+// discounts (FlexWash's discount endpoint doesn't include rewashes).
+export type FlexBreakdown = { groups: FlexLineGroup[]; rewashDiscounts: { name: string; count: number; amount: number }[] }
 
 const CLASS_LABEL: Record<string, string> = {
   membershipsSoldNew: 'Memberships Sold (New)',
@@ -207,14 +210,26 @@ export const flexwashSales = {
   // product line(s) so the price shown is net (like DRB adjusting a wash's value).
   // Tax lines are excluded (they're in the accounting totals). Product names have
   // their per-member code prefix stripped so like items collapse to one line.
-  lineItemBreakdown: async (carWashIds: string[], start: string, end: string): Promise<FlexLineGroup[]> => {
+  lineItemBreakdown: async (carWashIds: string[], start: string, end: string): Promise<FlexBreakdown> => {
     const data = await flexApi('/external/accounting/get-line-items-detail', {
       carWashIds,
       dateRange: { start, end },
     })
     const items = (data?.lineItemsDetail ?? []) as Any[]
 
-    const PRODUCT_TYPES = new Set(['Package', 'Add On Service', 'Rewash'])
+    // Rewashes are free re-dos (a credit); treated as a discount line, not a wash.
+    const rewash = new Map<string, { name: string; count: number; amount: number }>()
+    for (const it of items) {
+      if (String(it.type) !== 'Rewash') continue
+      const name = String(it.name ?? 'Rewash')
+      const row = rewash.get(name) ?? { name, count: 0, amount: 0 }
+      row.count += 1
+      row.amount += Math.abs(toDollars(it.priceInCents))
+      rewash.set(name, row)
+    }
+    const rewashDiscounts = [...rewash.values()].sort((a, b) => b.amount - a.amount)
+
+    const PRODUCT_TYPES = new Set(['Package', 'Add On Service'])
     const FOLD_TYPES = new Set(['Discount', 'Next Bill Discount', 'Prorate Discount', 'Refund', 'Membership Benefit'])
     const stripCode = (name: string) => name.replace(/^[A-Za-z0-9]+ - /, '')
 
@@ -258,7 +273,7 @@ export const flexwashSales = {
       g.items.set(n.name, row)
     }
     const rank = (k: string) => { const i = CLASS_ORDER.indexOf(k); return i < 0 ? 99 : i }
-    return [...groups.entries()]
+    const gr = [...groups.entries()]
       .map(([key, g]) => ({
         key,
         label: CLASS_LABEL[key] ?? key,
@@ -267,5 +282,6 @@ export const flexwashSales = {
         items: [...g.items.values()].sort((a, b) => b.revenue - a.revenue),
       }))
       .sort((a, b) => rank(a.key) - rank(b.key))
+    return { groups: gr, rewashDiscounts }
   },
 }
