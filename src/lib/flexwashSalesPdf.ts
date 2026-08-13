@@ -52,10 +52,12 @@ export async function downloadFlexwashSalesPdf(
   doc.setLineWidth(0.6)
   doc.line(MARGIN, 29, pageW - MARGIN, 29)
 
+  // Reserve top/bottom margins so tables break before the page edge and never
+  // collide with the footer (some printers also clip ~6mm at the bottom edge).
   const common = {
     styles: { fontSize: 9, cellPadding: 2.2, overflow: 'linebreak' as const },
     headStyles: { fillColor: ACCENT, fontStyle: 'bold' as const },
-    margin: { left: MARGIN, right: MARGIN },
+    margin: { left: MARGIN, right: MARGIN, top: 16, bottom: 20 },
   }
   let y = 37
   const afterTable = () => (doc.lastAutoTable?.finalY ?? y) + 7
@@ -151,8 +153,8 @@ export async function downloadFlexwashSalesPdf(
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.setTextColor(150)
-    doc.text('FlexWash Sales Report · WashLyfe Operator', MARGIN, pageH - 8)
-    doc.text(`Page ${p} of ${pages}`, pageW - MARGIN, pageH - 8, { align: 'right' })
+    doc.text('FlexWash Sales Report · WashLyfe Operator', MARGIN, pageH - 11)
+    doc.text(`Page ${p} of ${pages}`, pageW - MARGIN, pageH - 11, { align: 'right' })
   }
 
   const dateTag = meta.start === meta.end ? meta.start : `${meta.start} to ${meta.end}`
