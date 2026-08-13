@@ -85,15 +85,23 @@ Deno.serve(async (req) => {
   for (const m of messages) {
     const id = m.id as string
     try {
+      // No $select here: Graph omits contentBytes from an attachments-collection
+      // response whenever $select is present, so the bytes must be fetched with
+      // the full projection or they come back empty.
       const attRes = await fetch(
-        `${GRAPH}/users/${mb}/messages/${id}/attachments?$top=25&$select=name,contentType,contentBytes,isInline`,
+        `${GRAPH}/users/${mb}/messages/${id}/attachments?$top=25`,
         { headers: gh },
       )
       // deno-lint-ignore no-explicit-any
       const attJson: any = await attRes.json().catch(() => ({}))
+      // A real file attachment is the only kind that carries contentBytes
+      // (item/reference attachments don't), so that presence is a more reliable
+      // filter than @odata.type — which Graph omits when we narrow $select.
+      // Keep inline PDFs: some senders flag an attached invoice as inline; only
+      // non-PDF inline parts (signature images, etc.) are dropped as noise.
       const attachments = (attJson.value ?? [])
         // deno-lint-ignore no-explicit-any
-        .filter((a: any) => a['@odata.type'] === '#microsoft.graph.fileAttachment' && a.contentBytes && !a.isInline)
+        .filter((a: any) => a.contentBytes && (a.contentType === 'application/pdf' || !a.isInline))
         // deno-lint-ignore no-explicit-any
         .map((a: any) => ({ name: a.name, contentType: a.contentType, contentBytes: a.contentBytes }))
 

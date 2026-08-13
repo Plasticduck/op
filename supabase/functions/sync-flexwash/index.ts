@@ -166,13 +166,11 @@ Deno.serve(async (req) => {
         if (s.start_date && d < s.start_date) continue
         const w = washByDate.get(d)
         const r = revByDate.get(d)
+        // Cars = washes by payment type (single + member). FlexWash also breaks
+        // the SAME washes down by service tier (express/fullService/detail/fleet),
+        // so those must NOT be added or every car is counted twice.
         const cars = w
-          ? (Number(w.singleWashCount) || 0) +
-            (Number(w.memberWashCount) || 0) +
-            (Number(w.expressWashCount) || 0) +
-            (Number(w.fleetWashCount) || 0) +
-            (Number(w.detailWashCount) || 0) +
-            (Number(w.fullServiceWashCount) || 0)
+          ? (Number(w.singleWashCount) || 0) + (Number(w.memberWashCount) || 0)
           : null
         const sales = r
           ? money(

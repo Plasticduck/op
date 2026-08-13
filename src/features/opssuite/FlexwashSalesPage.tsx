@@ -95,7 +95,7 @@ export default function FlexwashSalesPage() {
   const r = report
   const churnCombined = r ? (r.churn.voluntary == null && r.churn.cc == null ? null : (r.churn.voluntary ?? 0) + (r.churn.cc ?? 0)) : null
   // Discounts from FlexWash's discount endpoint plus rewashes (pulled from the line items).
-  const discounts = r ? [...r.discounts, ...(breakdown?.rewashDiscounts ?? [])].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)) : []
+  const discounts = r ? [...r.discounts, ...(breakdown?.extraDiscounts ?? [])].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)) : []
 
   return (
     <div className="flex flex-col gap-5">

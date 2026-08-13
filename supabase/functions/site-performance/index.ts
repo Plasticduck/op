@@ -107,7 +107,9 @@ async function flexMetric(token: string, cw: string, metric: string, start: stri
   switch (metric) {
     case 'cars': {
       const d = await flexPost(token, '/external/wash-and-revenue-stats/get-temporal-wash-stats', { ...dr, interval: 'day' })
-      return d ? sumArr(d.washStats, (w) => num(w.singleWashCount) + num(w.memberWashCount) + num(w.expressWashCount) + num(w.fleetWashCount) + num(w.detailWashCount) + num(w.fullServiceWashCount)) : null
+      // Cars = single + member only. The express/fullService/detail/fleet fields
+      // re-count the SAME washes by service tier, so adding them double-counts.
+      return d ? sumArr(d.washStats, (w) => num(w.singleWashCount) + num(w.memberWashCount)) : null
     }
     case 'revenue': {
       const d = await flexPost(token, '/external/wash-and-revenue-stats/get-temporal-revenue-stats', { ...dr, interval: 'day' })
@@ -150,7 +152,8 @@ async function flexDaily(token: string, cw: string, start: string, end: string):
   const day = (iso: string) => String(iso).slice(0, 10)
   for (const w of wash?.washStats ?? []) {
     const d = day(w.iso8601)
-    const cars = num(w.singleWashCount) + num(w.memberWashCount) + num(w.expressWashCount) + num(w.fleetWashCount) + num(w.detailWashCount) + num(w.fullServiceWashCount)
+    // Single + member only; the service-tier fields re-count the same washes.
+    const cars = num(w.singleWashCount) + num(w.memberWashCount)
     m.set(d, { cars, sales: m.get(d)?.sales ?? 0 })
   }
   for (const r of rev?.revenueStats ?? []) {

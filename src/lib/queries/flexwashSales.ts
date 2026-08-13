@@ -75,9 +75,10 @@ const toDollars = (cents: unknown) => (Number(cents) || 0) / 100
 // "Line Item Sales Breakdown" report.
 export type FlexLineRow = { name: string; revenue: number; count: number }
 export type FlexLineGroup = { key: string; label: string; revenue: number; count: number; items: FlexLineRow[] }
-// The grouped product breakdown plus any Rewash lines pulled out to show as
-// discounts (FlexWash's discount endpoint doesn't include rewashes).
-export type FlexBreakdown = { groups: FlexLineGroup[]; rewashDiscounts: { name: string; count: number; amount: number }[] }
+// The grouped product breakdown plus discount-type adjustments that reduce Total
+// to Account For but aren't in the discounts endpoint (rewashes, next-bill and
+// prorate discounts), so the Discounts section can itemize everything.
+export type FlexBreakdown = { groups: FlexLineGroup[]; extraDiscounts: { name: string; count: number; amount: number }[] }
 
 const CLASS_LABEL: Record<string, string> = {
   membershipsSoldNew: 'Memberships Sold (New)',
@@ -217,17 +218,21 @@ export const flexwashSales = {
     })
     const items = (data?.lineItemsDetail ?? []) as Any[]
 
-    // Rewashes are free re-dos (a credit); treated as a discount line, not a wash.
-    const rewash = new Map<string, { name: string; count: number; amount: number }>()
+    // Discount-type reductions that flow into Total to Account For but aren't in
+    // the discounts endpoint: rewashes (free re-do credits) and next-bill / prorate
+    // discounts. Labeled by type, magnitude summed. ("Discount" type is already in
+    // get-discount-stats; Membership Benefit is the member-wash offset, not a discount.)
+    const EXTRA_DISCOUNT_TYPES = new Set(['Rewash', 'Next Bill Discount', 'Prorate Discount'])
+    const extra = new Map<string, { name: string; count: number; amount: number }>()
     for (const it of items) {
-      if (String(it.type) !== 'Rewash') continue
-      const name = String(it.name ?? 'Rewash')
-      const row = rewash.get(name) ?? { name, count: 0, amount: 0 }
+      const t = String(it.type)
+      if (!EXTRA_DISCOUNT_TYPES.has(t)) continue
+      const row = extra.get(t) ?? { name: t, count: 0, amount: 0 }
       row.count += 1
       row.amount += Math.abs(toDollars(it.priceInCents))
-      rewash.set(name, row)
+      extra.set(t, row)
     }
-    const rewashDiscounts = [...rewash.values()].sort((a, b) => b.amount - a.amount)
+    const extraDiscounts = [...extra.values()].sort((a, b) => b.amount - a.amount)
 
     const PRODUCT_TYPES = new Set(['Package', 'Add On Service'])
     const FOLD_TYPES = new Set(['Discount', 'Next Bill Discount', 'Prorate Discount', 'Refund', 'Membership Benefit'])
@@ -282,6 +287,6 @@ export const flexwashSales = {
         items: [...g.items.values()].sort((a, b) => b.revenue - a.revenue),
       }))
       .sort((a, b) => rank(a.key) - rank(b.key))
-    return { groups: gr, rewashDiscounts }
+    return { groups: gr, extraDiscounts }
   },
 }

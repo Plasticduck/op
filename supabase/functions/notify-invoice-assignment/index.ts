@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
 
   const { data: caller } = await svc
     .from('users')
-    .select('account_id, role')
+    .select('account_id, role, name')
     .eq('id', callerId)
     .maybeSingle()
   if (!caller || (caller.role !== 'owner' && caller.role !== 'manager')) {
@@ -95,52 +95,63 @@ Deno.serve(async (req) => {
 
   const { data: invoice } = await svc
     .from('ops_invoices')
-    .select('id, account_id, vendor_name, amount, location_id, assigned_to, assigned_to_name, submitted_by_name')
+    .select('id, account_id, vendor_name, amount, location_id, location_ids, class_names, assigned_to, approver_ids, submitted_by_name')
     .eq('id', invoiceId)
     .maybeSingle()
   if (!invoice || invoice.account_id !== caller.account_id) {
     return json({ error: 'not_found' }, 404, origin)
   }
-  if (!invoice.assigned_to) {
+  // Any assigned approver can act, so notify all of them (fall back to the
+  // legacy single assignee).
+  const approverIds: string[] = invoice.approver_ids?.length
+    ? invoice.approver_ids
+    : (invoice.assigned_to ? [invoice.assigned_to] : [])
+  if (approverIds.length === 0) {
     return json({ error: 'no_assignee' }, 400, origin)
   }
 
-  const { data: assignee } = await svc
+  const { data: approvers } = await svc
     .from('users')
     .select('email, name')
-    .eq('id', invoice.assigned_to)
-    .maybeSingle()
-  if (!assignee?.email) {
+    .in('id', approverIds)
+  const recipients = (approvers ?? []).filter((a) => a.email)
+  if (recipients.length === 0) {
     return json({ error: 'assignee_missing' }, 404, origin)
   }
 
-  let locationName: string | null = null
-  if (invoice.location_id) {
-    const { data: loc } = await svc
-      .from('locations')
-      .select('name')
-      .eq('id', invoice.location_id)
-      .maybeSingle()
-    locationName = loc?.name ?? null
+  // Site name(s): QuickBooks classes (class_names) first; fall back to legacy
+  // location rows for older invoices.
+  let siteLabel = 'Unassigned site'
+  const classNames: string[] = invoice.class_names ?? []
+  if (classNames.length) {
+    siteLabel = classNames.join(', ')
+  } else {
+    const siteIds: string[] = invoice.location_ids?.length
+      ? invoice.location_ids
+      : (invoice.location_id ? [invoice.location_id] : [])
+    if (siteIds.length) {
+      const { data: locs } = await svc.from('locations').select('name').in('id', siteIds)
+      const names = (locs ?? []).map((l) => l.name).filter(Boolean)
+      if (names.length) siteLabel = names.join(', ')
+    }
   }
 
   const vendor = invoice.vendor_name?.trim() || 'Unnamed vendor'
   const amount = formatCurrency(Number(invoice.amount ?? 0))
-  const site = locationName ?? 'Unassigned site'
-  const submittedBy = invoice.submitted_by_name?.trim() || 'A teammate'
-  const greeting = assignee.name?.trim() || 'there'
+  // Who routed it to the approver: the current user clicking "Send for approval".
+  const assignedBy = caller.name?.trim() || 'A teammate'
   const reviewUrl = `${appUrl}/app/invoices`
-
   const subject = `Invoice assigned to you: ${vendor}`
-  const html = `
+
+  const htmlFor = (greeting: string) => `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">
       <h2 style="margin:0 0 16px;font-size:20px;">You have a new invoice to review</h2>
-      <p style="margin:0 0 16px;">Hi ${escapeHtml(greeting)}, ${escapeHtml(submittedBy)} assigned an invoice to you in WashLyfe Operator.</p>
+      <p style="margin:0 0 16px;">Hi ${escapeHtml(greeting)}, ${escapeHtml(assignedBy)} assigned an invoice to you in WashLyfe Operator.</p>
       <table style="border-collapse:collapse;width:100%;margin:0 0 20px;font-size:14px;">
         <tr><td style="padding:6px 0;color:#666;width:120px;">Vendor</td><td style="padding:6px 0;">${escapeHtml(vendor)}</td></tr>
         <tr><td style="padding:6px 0;color:#666;">Amount</td><td style="padding:6px 0;">${escapeHtml(amount)}</td></tr>
-        <tr><td style="padding:6px 0;color:#666;">Site</td><td style="padding:6px 0;">${escapeHtml(site)}</td></tr>
-        <tr><td style="padding:6px 0;color:#666;">Submitted by</td><td style="padding:6px 0;">${escapeHtml(submittedBy)}</td></tr>
+        <tr><td style="padding:6px 0;color:#666;">Site</td><td style="padding:6px 0;">${escapeHtml(siteLabel)}</td></tr>
+        <tr><td style="padding:6px 0;color:#666;">Assigned by</td><td style="padding:6px 0;">${escapeHtml(assignedBy)}</td></tr>
       </table>
       <p style="margin:0 0 24px;">
         <a href="${reviewUrl}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Review invoice</a>
@@ -150,20 +161,22 @@ Deno.serve(async (req) => {
   `
 
   const resend = new Resend(resendKey)
-  try {
-    const { error } = await resend.emails.send({
-      from: fromAddr,
-      to: [assignee.email],
-      subject,
-      html,
-    })
-    if (error) {
-      const msg = (error as { message?: string }).message ?? 'send_failed'
-      return json({ ok: false, error: msg }, 502, origin)
+  let sent = 0
+  let lastError: string | null = null
+  for (const r of recipients) {
+    try {
+      const { error } = await resend.emails.send({
+        from: fromAddr,
+        to: [r.email as string],
+        subject,
+        html: htmlFor(r.name?.trim() || 'there'),
+      })
+      if (error) lastError = (error as { message?: string }).message ?? 'send_failed'
+      else sent++
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : 'send_failed'
     }
-    return json({ ok: true }, 200, origin)
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'send_failed'
-    return json({ ok: false, error: msg }, 502, origin)
   }
+  if (sent === 0) return json({ ok: false, error: lastError ?? 'send_failed' }, 502, origin)
+  return json({ ok: true, sent }, 200, origin)
 })

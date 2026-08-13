@@ -67,17 +67,42 @@ export const conversations = {
       .update({ last_read_at: new Date().toISOString() })
       .eq('conversation_id', conversationId)
       .eq('user_id', userId),
+  // A named, members-based channel (kind 'channel' with a topic). Like a group
+  // but Slack-styled with a # name + topic.
+  createChannel: async (accountId: string, myId: string, name: string, topic: string, memberIds: string[]) => {
+    const { data: conv, error: e1 } = await supabase
+      .from('conversations')
+      .insert({ account_id: accountId, kind: 'channel', name, topic: topic || null, created_by: myId })
+      .select()
+      .single()
+    if (e1 || !conv) return { error: e1, data: null }
+    const ids = Array.from(new Set([myId, ...memberIds]))
+    const { error: e2 } = await supabase
+      .from('conversation_members')
+      .insert(ids.map((u) => ({ conversation_id: conv.id, user_id: u })))
+    return { error: e2, data: conv }
+  },
+  setTopic: (conversationId: string, topic: string) =>
+    supabase.from('conversations').update({ topic: topic || null }).eq('id', conversationId),
 }
 
 export const messages = {
-  forConversation: (id: string, limit = 200) =>
+  // Timeline for a conversation. Includes thread replies (parent_id set); the UI
+  // keeps replies out of the main list and shows them in the thread panel.
+  forConversation: (id: string, limit = 300) =>
     supabase
       .from('messages')
       .select('*')
       .eq('conversation_id', id)
       .order('created_at', { ascending: true })
       .limit(limit),
-  send: (conversationId: string, senderId: string, body: string, attachment?: { path: string; type: string }) =>
+  send: (
+    conversationId: string,
+    senderId: string,
+    body: string,
+    attachment?: { path: string; type: string; name?: string },
+    parentId?: string | null,
+  ) =>
     supabase
       .from('messages')
       .insert({
@@ -86,10 +111,57 @@ export const messages = {
         body: body || null,
         attachment_path: attachment?.path ?? null,
         attachment_type: attachment?.type ?? null,
+        // Keep the original filename (upload path is a uuid) for nice downloads.
+        attachment_name: attachment?.name ?? null,
+        parent_id: parentId ?? null,
       })
       .select()
       .single(),
+  edit: (id: string, body: string) =>
+    supabase
+      .from('messages')
+      .update({ body: body || null, edited_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single(),
   remove: (id: string) => supabase.from('messages').delete().eq('id', id),
+  // Search my visible messages (RLS restricts to conversations I'm in).
+  search: (query: string, limit = 50) =>
+    supabase
+      .from('messages')
+      .select('*, conversation:conversations(id, name, kind, location:locations(name))')
+      .ilike('body', `%${query}%`)
+      .is('parent_id', null)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+}
+
+// Emoji reactions on messages.
+export const reactions = {
+  forConversation: (conversationId: string) =>
+    supabase.from('message_reactions').select('message_id, user_id, emoji').eq('conversation_id', conversationId),
+  toggle: async (messageId: string, conversationId: string, userId: string, emoji: string) => {
+    const { data: existing } = await supabase
+      .from('message_reactions')
+      .select('id')
+      .eq('message_id', messageId)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle()
+    if (existing?.id) return supabase.from('message_reactions').delete().eq('id', existing.id)
+    return supabase
+      .from('message_reactions')
+      .insert({ message_id: messageId, conversation_id: conversationId, user_id: userId, emoji })
+  },
+}
+
+// Pinned messages (any member can pin/unpin).
+export const pins = {
+  forConversation: (conversationId: string) =>
+    supabase.from('message_pins').select('message_id, pinned_by, created_at').eq('conversation_id', conversationId),
+  add: (messageId: string, conversationId: string, userId: string) =>
+    supabase.from('message_pins').insert({ message_id: messageId, conversation_id: conversationId, pinned_by: userId }),
+  remove: (messageId: string) => supabase.from('message_pins').delete().eq('message_id', messageId),
 }
 
 // Upload an image into the message-attachments bucket. Path is namespaced by

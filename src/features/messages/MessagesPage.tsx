@@ -4,17 +4,25 @@ import {
   ArrowLeft,
   AtSign,
   Bell,
+  Download,
+  FileText,
   Hash,
   ImageIcon,
   Info,
+  Link2,
   Loader2,
   LogOut,
   MapPin,
   MessageSquare,
   Paperclip,
+  Pencil,
+  Pin,
   Plus,
+  Reply,
   Search,
   Send,
+  SmilePlus,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -34,6 +42,8 @@ import {
   messages as msgQ,
   directory as dirQ,
   attachments as attQ,
+  reactions as reactQ,
+  pins as pinQ,
   type Message,
 } from '@/lib/queries/messages'
 import { enrollForPush, isPushSupported, notificationPermission } from '@/lib/push'
@@ -42,20 +52,22 @@ type DirUser = { id: string; name: string | null; email: string; role: string; a
 type ConvRow = {
   id: string
   account_id: string
-  kind: 'dm' | 'group' | 'site'
+  kind: 'dm' | 'group' | 'site' | 'channel'
   location_id: string | null
   name: string | null
+  topic?: string | null
   last_message_at: string | null
   last_message_preview: string | null
   last_message_sender_id: string | null
   location: { id: string; name: string } | null
   members: Array<{ user_id: string; last_read_at: string }>
 }
-type Filter = 'all' | 'sites' | 'direct' | 'groups'
+type Filter = 'all' | 'sites' | 'direct' | 'groups' | 'channels'
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'direct', label: 'Direct' },
+  { key: 'channels', label: 'Channels' },
   { key: 'sites', label: 'Sites' },
   { key: 'groups', label: 'Groups' },
 ]
@@ -87,6 +99,7 @@ function relativeStamp(iso: string | null): string {
 
 function conversationLabel(c: ConvRow, myId: string, userById: Map<string, DirUser>): string {
   if (c.kind === 'site') return c.location?.name ? `${c.location.name} Team` : (c.name ?? 'Site')
+  if (c.kind === 'channel') return c.name ? `#${c.name}` : 'Channel'
   if (c.kind === 'group') return c.name ?? 'Group'
   const other = c.members.find((m) => m.user_id !== myId)
   const u = other ? userById.get(other.user_id) : null
@@ -112,6 +125,8 @@ export default function MessagesPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [newDm, setNewDm] = useState(false)
   const [newGroup, setNewGroup] = useState(false)
+  const [newChannel, setNewChannel] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const loadConvs = useCallback(async () => {
     const [{ data: cs }, { data: ds }] = await Promise.all([
@@ -165,6 +180,7 @@ export default function MessagesPage() {
         if (filter === 'sites' && c.kind !== 'site') return false
         if (filter === 'direct' && c.kind !== 'dm') return false
         if (filter === 'groups' && c.kind !== 'group') return false
+        if (filter === 'channels' && c.kind !== 'channel') return false
         if (!q) return true
         const name = conversationLabel(c, profile?.id ?? '', userById).toLowerCase()
         const preview = (c.last_message_preview ?? '').toLowerCase()
@@ -192,6 +208,12 @@ export default function MessagesPage() {
           subtitle="Team chats per site, plus 1:1 DMs and ad-hoc groups."
           actions={
             <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setSearchOpen(true)}>
+                <Search className="size-4" /> Search
+              </Button>
+              <Button variant="secondary" onClick={() => setNewChannel(true)}>
+                <Hash className="size-4" /> New channel
+              </Button>
               <Button variant="secondary" onClick={() => setNewDm(true)}>
                 <MessageSquare className="size-4" /> New DM
               </Button>
@@ -213,6 +235,20 @@ export default function MessagesPage() {
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 lg:hidden">
             <h1 className="text-lg font-semibold text-ink">Messages</h1>
             <div className="flex gap-1">
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="grid size-9 place-items-center rounded-full bg-content text-ink-muted hover:text-accent"
+                aria-label="Search messages"
+              >
+                <Search className="size-4" />
+              </button>
+              <button
+                onClick={() => setNewChannel(true)}
+                className="grid size-9 place-items-center rounded-full bg-content text-ink-muted hover:text-accent"
+                aria-label="New channel"
+              >
+                <Hash className="size-4" />
+              </button>
               <button
                 onClick={() => setNewDm(true)}
                 className="grid size-9 place-items-center rounded-full bg-content text-ink-muted hover:text-accent"
@@ -323,6 +359,26 @@ export default function MessagesPage() {
           onOpened={(id) => { setNewGroup(false); void loadConvs(); navigate(`/app/messages/${id}`) }}
         />
       )}
+      {newChannel && (
+        <NewChannelModal
+          dir={dir.filter((u) => u.id !== profile?.id)}
+          accountId={profile?.account_id ?? ''}
+          myId={profile?.id ?? ''}
+          onClose={() => setNewChannel(false)}
+          onOpened={(id) => { setNewChannel(false); void loadConvs(); navigate(`/app/messages/${id}`) }}
+        />
+      )}
+      {searchOpen && (
+        <SearchModal
+          userById={userById}
+          onClose={() => setSearchOpen(false)}
+          onJump={(convId, msgId) => {
+            setSearchOpen(false)
+            navigate(`/app/messages/${convId}`)
+            setTimeout(() => document.getElementById('msg-' + msgId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 400)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -386,6 +442,13 @@ function ConvAvatar({ conversation, myId, userById }: { conversation: ConvRow; m
   if (conversation.kind === 'site') {
     return (
       <span className="grid size-11 shrink-0 place-items-center rounded-full bg-accent/15 text-accent">
+        <Hash className="size-5" />
+      </span>
+    )
+  }
+  if (conversation.kind === 'channel') {
+    return (
+      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-ok/15 text-ok">
         <Hash className="size-5" />
       </span>
     )
@@ -525,6 +588,10 @@ function ChatThread({
   const [pendingPreview, setPendingPreview] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [info, setInfo] = useState(false)
+  // Slack-style: reactions per message, pinned message ids, inline edit target.
+  const [reactionsByMsg, setReactionsByMsg] = useState<Map<string, Array<{ user_id: string; emoji: string }>>>(new Map())
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
+  const [editing, setEditing] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
@@ -550,17 +617,27 @@ function ChatThread({
   }, [mention, memberUsers])
   const [mentionIdx, setMentionIdx] = useState(0)
 
+  const reloadReactions = useCallback(async () => {
+    const { data } = await reactQ.forConversation(conversation.id)
+    setReactionsByMsg(groupReactions((data as Array<{ message_id: string; user_id: string; emoji: string }> | null) ?? []))
+  }, [conversation.id])
+  const reloadPins = useCallback(async () => {
+    const { data } = await pinQ.forConversation(conversation.id)
+    setPinnedIds(new Set(((data as Array<{ message_id: string }> | null) ?? []).map((p) => p.message_id)))
+  }, [conversation.id])
+
   useEffect(() => {
     let alive = true
     void (async () => {
       const { data } = await msgQ.forConversation(conversation.id)
       if (!alive) return
       setMsgs((data as Message[] | null) ?? [])
+      await Promise.all([reloadReactions(), reloadPins()])
       await convQ.markRead(conversation.id, currentUserId)
       onRefresh()
     })()
     return () => { alive = false }
-  }, [conversation.id, currentUserId, onRefresh])
+  }, [conversation.id, currentUserId, onRefresh, reloadReactions, reloadPins])
 
   useEffect(() => {
     const ch = supabase
@@ -578,15 +655,59 @@ function ChatThread({
       )
       .on(
         'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversation.id}` },
+        (payload) => {
+          const m = payload.new as Message
+          setMsgs((prev) => prev.map((p) => (p.id === m.id ? m : p)))
+        },
+      )
+      .on(
+        'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversation.id}` },
         (payload) => {
           const id = (payload.old as { id: string }).id
           setMsgs((prev) => prev.filter((p) => p.id !== id))
         },
       )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions', filter: `conversation_id=eq.${conversation.id}` }, () => { void reloadReactions() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_pins', filter: `conversation_id=eq.${conversation.id}` }, () => { void reloadPins() })
       .subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [conversation.id, currentUserId])
+  }, [conversation.id, currentUserId, reloadReactions, reloadPins])
+
+  const toggleReaction = async (messageId: string, emoji: string) => {
+    await reactQ.toggle(messageId, conversation.id, currentUserId, emoji)
+    void reloadReactions()
+  }
+  const togglePin = async (messageId: string) => {
+    if (pinnedIds.has(messageId)) await pinQ.remove(messageId)
+    else await pinQ.add(messageId, conversation.id, currentUserId)
+    void reloadPins()
+  }
+  const saveEdit = async (id: string, body: string) => {
+    const { data } = await msgQ.edit(id, body.trim())
+    if (data) setMsgs((prev) => prev.map((m) => (m.id === id ? (data as Message) : m)))
+    setEditing(null)
+  }
+
+  // Threads: replies grouped by parent, and the currently-open thread.
+  const [threadParentId, setThreadParentId] = useState<string | null>(null)
+  const repliesByParent = useMemo(() => {
+    const map = new Map<string, Message[]>()
+    for (const m of msgs) if (m.parent_id) {
+      const arr = map.get(m.parent_id) ?? []
+      arr.push(m)
+      map.set(m.parent_id, arr)
+    }
+    return map
+  }, [msgs])
+  const sendReply = async (parentId: string, body: string) => {
+    const { data } = await msgQ.send(conversation.id, currentUserId, body, undefined, parentId)
+    if (data) {
+      setMsgs((prev) => (prev.some((p) => p.id === data.id) ? prev : [...prev, data as Message]))
+      void supabase.functions.invoke('send-push', { body: { conversation_id: conversation.id, message_id: data.id } })
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -641,17 +762,13 @@ function ChatThread({
       setPendingPreview(null)
       return
     }
-    if (!file.type.startsWith('image/')) {
-      setSendError('Only image files are supported.')
-      return
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      setSendError('Image too large (max 8 MB).')
+    if (file.size > 25 * 1024 * 1024) {
+      setSendError('File too large (max 25 MB).')
       return
     }
     setSendError(null)
     setPendingFile(file)
-    setPendingPreview(URL.createObjectURL(file))
+    setPendingPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null)
   }
 
   const send = async () => {
@@ -659,7 +776,7 @@ function ChatThread({
     if ((!body && !pendingFile) || sending) return
     setSending(true)
     setSendError(null)
-    let attachment: { path: string; type: string } | undefined
+    let attachment: { path: string; type: string; name?: string } | undefined
     if (pendingFile) {
       const up = await attQ.upload(conversation.id, pendingFile)
       if (up.error || !up.path) {
@@ -667,7 +784,7 @@ function ChatThread({
         setSendError(up.error?.message || 'Image upload failed.')
         return
       }
-      attachment = { path: up.path, type: pendingFile.type }
+      attachment = { path: up.path, type: pendingFile.type, name: pendingFile.name }
     }
     const { data, error } = await msgQ.send(conversation.id, currentUserId, body, attachment)
     setSending(false)
@@ -693,12 +810,44 @@ function ChatThread({
     setMsgs((prev) => prev.filter((p) => p.id !== id))
   }
 
+  // Thread replies (parent_id set) live in the thread panel, not the main list.
+  const visibleMsgs = useMemo(() => msgs.filter((m) => !m.parent_id), [msgs])
+
+  // Render one message row with all handlers bound (shared by the main list and
+  // the thread panel).
+  const renderMessage = (m: Message, showHeader: boolean, inThread = false) => (
+    <MessageRow
+      key={m.id}
+      m={m}
+      showHeader={showHeader}
+      mine={m.sender_id === currentUserId}
+      sender={userById.get(m.sender_id)}
+      memberFirstNames={memberFirstNames}
+      reactions={reactionsByMsg.get(m.id) ?? []}
+      currentUserId={currentUserId}
+      pinned={pinnedIds.has(m.id)}
+      editing={editing === m.id}
+      conversationId={conversation.id}
+      replyCount={inThread ? 0 : (repliesByParent.get(m.id)?.length ?? 0)}
+      lastReplyAt={inThread ? null : (repliesByParent.get(m.id)?.at(-1)?.created_at ?? null)}
+      inThread={inThread}
+      onReact={(emoji) => void toggleReaction(m.id, emoji)}
+      onOpenThread={() => setThreadParentId(m.id)}
+      onStartEdit={() => setEditing(m.id)}
+      onCancelEdit={() => setEditing(null)}
+      onSaveEdit={(body) => void saveEdit(m.id, body)}
+      onTogglePin={() => void togglePin(m.id)}
+      onDelete={() => void remove(m.id)}
+    />
+  )
   const label = conversationLabel(conversation, currentUserId, userById)
   const memberCount = conversation.members.length
   const subtitle = conversation.kind === 'site'
     ? (conversation.location?.name ?? null)
     : conversation.kind === 'dm'
     ? (userById.get(conversation.members.find((m) => m.user_id !== currentUserId)?.user_id ?? '')?.email ?? null)
+    : conversation.kind === 'channel'
+    ? (conversation.topic || `${memberCount} members`)
     : `${memberCount} members`
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -719,7 +868,7 @@ function ChatThread({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       {/* Chat header */}
       <div className="flex items-center gap-2 border-b border-border bg-card px-2 py-2.5 sm:px-3">
         <button
@@ -754,53 +903,25 @@ function ChatThread({
         </button>
       </div>
 
+      {/* Pinned bar */}
+      <PinnedBar
+        pinnedIds={pinnedIds}
+        msgs={msgs}
+        userById={userById}
+        onUnpin={(id) => void togglePin(id)}
+        onJump={(id) => document.getElementById('msg-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+      />
+
       {/* Messages */}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4">
-        {msgs.length === 0 ? (
+        {visibleMsgs.length === 0 ? (
           <p className="text-sm text-ink-muted">No messages yet. Send the first one.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {msgs.map((m, i) => {
-              const prev = msgs[i - 1]
+            {visibleMsgs.map((m, i) => {
+              const prev = visibleMsgs[i - 1]
               const showHeader = !prev || prev.sender_id !== m.sender_id || (new Date(m.created_at).getTime() - new Date(prev.created_at).getTime()) > 5 * 60 * 1000
-              const mine = m.sender_id === currentUserId
-              const sender = userById.get(m.sender_id)
-              return (
-                <div key={m.id} className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
-                  {showHeader && (
-                    <div className={cn('mb-1 mt-1 flex items-center gap-2 text-[11px] text-ink-subtle', mine && 'flex-row-reverse')}>
-                      <Avatar name={sender?.name ?? null} email={sender?.email ?? ''} />
-                      <span className="font-medium text-ink-muted">{mine ? 'You' : (sender?.name || sender?.email || 'Unknown')}</span>
-                      <span>{format(new Date(m.created_at), 'p')}</span>
-                    </div>
-                  )}
-                  <div className="group relative flex max-w-[80%] flex-col gap-1.5">
-                    {m.attachment_path && (
-                      <div className={cn('overflow-hidden rounded-2xl', mine ? 'self-end' : 'self-start')}>
-                        <MessageAttachment path={m.attachment_path} />
-                      </div>
-                    )}
-                    {m.body && (
-                      <div className={cn(
-                        'whitespace-pre-wrap rounded-2xl px-3 py-2 text-[15px] leading-snug',
-                        mine ? 'bg-accent text-white' : 'bg-content text-ink',
-                      )}>
-                        {renderBodyWithMentions(m.body, memberFirstNames, mine)}
-                      </div>
-                    )}
-                    {mine && (
-                      <button
-                        type="button"
-                        onClick={() => void remove(m.id)}
-                        className="absolute -top-2 right-0 hidden rounded-full bg-card p-0.5 text-ink-subtle ring-1 ring-border hover:text-danger group-hover:block"
-                        title="Delete"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
+              return renderMessage(m, showHeader)
             })}
             <div ref={bottomRef} />
           </div>
@@ -811,14 +932,16 @@ function ChatThread({
       {/* BottomNav is hidden in chat-thread routes (see BottomNav.tsx) so the
           composer can hug the bottom safe-area cleanly. */}
       <div className="border-t border-border bg-card p-2 pb-[max(env(safe-area-inset-bottom),0.5rem)]">
-        {pendingPreview && (
-          <div className="relative mb-2 inline-block">
-            <img src={pendingPreview} alt="Preview" className="max-h-32 rounded-md border border-border" />
+        {pendingFile && (
+          <div className="relative mb-2 inline-flex items-center gap-2 rounded-md border border-border bg-content p-2 pr-6">
+            {pendingPreview
+              ? <img src={pendingPreview} alt="Preview" className="max-h-32 rounded" />
+              : <><FileText className="size-5 text-ink-muted" /><span className="max-w-[220px] truncate text-sm text-ink">{pendingFile.name}</span></>}
             <button
               type="button"
               onClick={() => pickFile(null)}
               className="absolute -right-2 -top-2 rounded-full bg-card p-0.5 text-ink-muted ring-1 ring-border hover:text-danger"
-              aria-label="Remove image"
+              aria-label="Remove file"
             >
               <X className="size-3" />
             </button>
@@ -855,7 +978,6 @@ function ChatThread({
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
             className="hidden"
             onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
           />
@@ -863,8 +985,8 @@ function ChatThread({
             type="button"
             onClick={() => fileRef.current?.click()}
             className="grid size-9 shrink-0 place-items-center rounded-full text-ink-muted hover:bg-content hover:text-accent"
-            title="Attach image"
-            aria-label="Attach image"
+            title="Attach a file or image"
+            aria-label="Attach a file or image"
           >
             {pendingFile ? <ImageIcon className="size-5 text-accent" /> : <Paperclip className="size-5" />}
           </button>
@@ -883,6 +1005,20 @@ function ChatThread({
         </div>
       </div>
 
+      {threadParentId && (() => {
+        const parent = msgs.find((m) => m.id === threadParentId)
+        if (!parent) return null
+        return (
+          <ThreadPanel
+            parent={parent}
+            replies={repliesByParent.get(parent.id) ?? []}
+            renderMessage={renderMessage}
+            onClose={() => setThreadParentId(null)}
+            onSendReply={(body) => sendReply(parent.id, body)}
+          />
+        )
+      })()}
+
       {info && (
         <ConversationInfoModal
           conversation={conversation}
@@ -899,35 +1035,305 @@ function ChatThread({
   )
 }
 
-// Render a message body with @first-name tokens highlighted when they match a
-// member of the conversation. Plain string scanning (no rich-text storage).
-function renderBodyWithMentions(body: string, firstNames: Set<string>, mine: boolean) {
-  const parts = body.split(/(@[\w-]+)/g)
-  return parts.map((p, i) => {
-    if (p.startsWith('@')) {
-      const key = p.slice(1).toLowerCase()
-      if (firstNames.has(key)) {
-        return (
-          <span
-            key={i}
-            className={cn(
-              'rounded px-1 py-0.5 text-[14px] font-semibold',
-              mine ? 'bg-white/20 text-white' : 'bg-accent/15 text-accent',
-            )}
-          >
-            {p}
-          </span>
-        )
-      }
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '👀', '✅', '🙏', '🔥']
+
+function groupReactions(rows: Array<{ message_id: string; user_id: string; emoji: string }>) {
+  const m = new Map<string, Array<{ user_id: string; emoji: string }>>()
+  for (const r of rows) {
+    if (!m.has(r.message_id)) m.set(r.message_id, [])
+    m.get(r.message_id)!.push({ user_id: r.user_id, emoji: r.emoji })
+  }
+  return m
+}
+
+// ---- Rich text (markdown-lite) + @mentions --------------------------------
+type RNode = string | React.ReactElement
+function applyPass(nodes: RNode[], re: RegExp, render: (m: RegExpExecArray, key: string) => React.ReactElement): RNode[] {
+  const out: RNode[] = []
+  nodes.forEach((n, ni) => {
+    if (typeof n !== 'string') { out.push(n); return }
+    let last = 0, idx = 0
+    let m: RegExpExecArray | null
+    re.lastIndex = 0
+    while ((m = re.exec(n)) !== null) {
+      if (m.index > last) out.push(n.slice(last, m.index))
+      out.push(render(m, `${ni}-${idx++}`))
+      last = m.index + m[0].length
+      if (m[0].length === 0) re.lastIndex++
     }
-    return <span key={i}>{p}</span>
+    if (last < n.length) out.push(n.slice(last))
   })
+  return out
+}
+function formatInline(text: string, firstNames: Set<string>, mine: boolean): RNode[] {
+  let nodes: RNode[] = [text]
+  nodes = applyPass(nodes, /https?:\/\/[^\s]+/g, (m, k) => (
+    <a key={k} href={m[0]} target="_blank" rel="noreferrer" className={cn('underline underline-offset-2', mine ? 'text-white' : 'text-accent')}>{m[0]}</a>
+  ))
+  nodes = applyPass(nodes, /@[\w-]+/g, (m, k) => {
+    const key = m[0].slice(1).toLowerCase()
+    return firstNames.has(key)
+      ? <span key={k} className={cn('rounded px-1 font-semibold', mine ? 'bg-white/20 text-white' : 'bg-accent/15 text-accent')}>{m[0]}</span>
+      : <span key={k}>{m[0]}</span>
+  })
+  nodes = applyPass(nodes, /\*\*([^*]+)\*\*/g, (m, k) => <strong key={k}>{m[1]}</strong>)
+  nodes = applyPass(nodes, /~~([^~]+)~~/g, (m, k) => <s key={k}>{m[1]}</s>)
+  nodes = applyPass(nodes, /(?:\*([^*\n]+)\*|_([^_\n]+)_)/g, (m, k) => <em key={k}>{m[1] ?? m[2]}</em>)
+  return nodes
+}
+function renderRichBody(body: string, firstNames: Set<string>, mine: boolean) {
+  const segs = body.split(/```([\s\S]*?)```/g)
+  return segs.map((seg, i) => {
+    if (i % 2 === 1) {
+      return <pre key={i} className={cn('my-1 overflow-x-auto rounded-md px-2 py-1.5 font-mono text-[13px]', mine ? 'bg-white/15' : 'bg-ink/10')}><code>{seg.replace(/^\n/, '')}</code></pre>
+    }
+    const codeParts = seg.split(/(`[^`\n]+`)/g)
+    return (
+      <span key={i}>
+        {codeParts.map((cp, j) =>
+          cp.startsWith('`') && cp.endsWith('`') && cp.length > 2
+            ? <code key={j} className={cn('rounded px-1 py-0.5 font-mono text-[13px]', mine ? 'bg-white/15' : 'bg-ink/10')}>{cp.slice(1, -1)}</code>
+            : <span key={j}>{formatInline(cp, firstNames, mine)}</span>,
+        )}
+      </span>
+    )
+  })
+}
+
+// ---- One message row: bubble + reactions + hover actions ------------------
+function MessageRow({
+  m, showHeader, mine, sender, memberFirstNames, reactions, currentUserId, pinned, editing,
+  conversationId, replyCount, lastReplyAt, inThread, onReact, onOpenThread, onStartEdit, onCancelEdit, onSaveEdit, onTogglePin, onDelete,
+}: {
+  m: Message
+  showHeader: boolean
+  mine: boolean
+  sender: DirUser | undefined
+  memberFirstNames: Set<string>
+  reactions: Array<{ user_id: string; emoji: string }>
+  currentUserId: string
+  pinned: boolean
+  editing: boolean
+  conversationId: string
+  replyCount: number
+  lastReplyAt: string | null
+  inThread?: boolean
+  onReact: (emoji: string) => void
+  onOpenThread: () => void
+  onStartEdit: () => void
+  onCancelEdit: () => void
+  onSaveEdit: (body: string) => void
+  onTogglePin: () => void
+  onDelete: () => void
+}) {
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [editText, setEditText] = useState(m.body ?? '')
+  useEffect(() => { setEditText(m.body ?? '') }, [m.body, editing])
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, { count: number; mine: boolean }>()
+    for (const r of reactions) {
+      const e = map.get(r.emoji) ?? { count: 0, mine: false }
+      e.count++
+      if (r.user_id === currentUserId) e.mine = true
+      map.set(r.emoji, e)
+    }
+    return [...map.entries()]
+  }, [reactions, currentUserId])
+
+  const copyLink = () => { void navigator.clipboard.writeText(`${window.location.origin}/app/messages/${conversationId}#${m.id}`) }
+  const fileName = m.attachment_name ?? null
+
+  return (
+    <div id={'msg-' + m.id} className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
+      {showHeader && (
+        <div className={cn('mb-1 mt-1 flex items-center gap-2 text-[11px] text-ink-subtle', mine && 'flex-row-reverse')}>
+          <Avatar name={sender?.name ?? null} email={sender?.email ?? ''} />
+          <span className="font-medium text-ink-muted">{mine ? 'You' : (sender?.name || sender?.email || 'Unknown')}</span>
+          <span>{format(new Date(m.created_at), 'p')}</span>
+        </div>
+      )}
+      {pinned && (
+        <span className={cn('mb-0.5 inline-flex items-center gap-1 text-[10px] font-medium text-accent', mine && 'self-end')}>
+          <Pin className="size-2.5" /> Pinned
+        </span>
+      )}
+      <div className="group relative flex max-w-[85%] flex-col gap-1">
+        {m.attachment_path && (
+          <div className={cn('overflow-hidden rounded-2xl', mine ? 'self-end' : 'self-start')}>
+            <MessageAttachment path={m.attachment_path} type={m.attachment_type} fileName={fileName} />
+          </div>
+        )}
+        {editing ? (
+          <div className="flex w-72 flex-col gap-1">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              rows={2}
+              autoFocus
+              className="w-full resize-none rounded-lg border border-border bg-content px-3 py-2 text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <div className="flex gap-3 text-xs">
+              <button type="button" onClick={() => onSaveEdit(editText)} className="font-medium text-accent">Save</button>
+              <button type="button" onClick={onCancelEdit} className="text-ink-muted">Cancel</button>
+            </div>
+          </div>
+        ) : m.body ? (
+          <div className={cn('whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[15px] leading-snug', mine ? 'bg-accent text-white' : 'bg-content text-ink')}>
+            {renderRichBody(m.body, memberFirstNames, mine)}
+            {m.edited_at && <span className={cn('ml-1 align-middle text-[10px]', mine ? 'text-white/60' : 'text-ink-subtle')}>(edited)</span>}
+          </div>
+        ) : null}
+
+        {grouped.length > 0 && (
+          <div className={cn('flex flex-wrap gap-1', mine && 'justify-end')}>
+            {grouped.map(([emoji, info]) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => onReact(emoji)}
+                className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs',
+                  info.mine ? 'border-accent bg-accent-soft text-accent' : 'border-border bg-card text-ink-muted hover:bg-content')}
+              >
+                <span>{emoji}</span><span>{info.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!inThread && replyCount > 0 && (
+          <button
+            type="button"
+            onClick={onOpenThread}
+            className={cn('inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent-soft', mine && 'self-end')}
+          >
+            <MessageSquare className="size-3" /> {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+            {lastReplyAt && <span className="text-ink-subtle">· {format(new Date(lastReplyAt), 'p')}</span>}
+          </button>
+        )}
+
+        {!editing && (
+          <div className="absolute -top-3 right-0 z-10 hidden items-center gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm group-hover:flex">
+            <div className="relative">
+              <button type="button" onClick={() => setEmojiOpen((o) => !o)} className="grid size-6 place-items-center rounded text-ink-muted hover:bg-content hover:text-ink" title="React"><SmilePlus className="size-3.5" /></button>
+              {emojiOpen && (
+                <div className="absolute bottom-7 right-0 z-20 flex gap-0.5 rounded-md border border-border bg-card p-1 shadow-md">
+                  {QUICK_EMOJIS.map((e) => (
+                    <button key={e} type="button" onClick={() => { onReact(e); setEmojiOpen(false) }} className="rounded px-1 text-base leading-none hover:bg-content">{e}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {!inThread && <button type="button" onClick={onOpenThread} className="grid size-6 place-items-center rounded text-ink-muted hover:bg-content hover:text-ink" title="Reply in thread"><Reply className="size-3.5" /></button>}
+            <button type="button" onClick={onTogglePin} className={cn('grid size-6 place-items-center rounded hover:bg-content', pinned ? 'text-accent' : 'text-ink-muted hover:text-ink')} title={pinned ? 'Unpin' : 'Pin'}><Pin className="size-3.5" /></button>
+            <button type="button" onClick={copyLink} className="grid size-6 place-items-center rounded text-ink-muted hover:bg-content hover:text-ink" title="Copy link"><Link2 className="size-3.5" /></button>
+            {mine && m.body && <button type="button" onClick={onStartEdit} className="grid size-6 place-items-center rounded text-ink-muted hover:bg-content hover:text-ink" title="Edit"><Pencil className="size-3.5" /></button>}
+            {mine && <button type="button" onClick={onDelete} className="grid size-6 place-items-center rounded text-ink-muted hover:bg-content hover:text-danger" title="Delete"><Trash2 className="size-3.5" /></button>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---- Pinned messages bar --------------------------------------------------
+function PinnedBar({ pinnedIds, msgs, userById, onUnpin, onJump }: {
+  pinnedIds: Set<string>
+  msgs: Message[]
+  userById: Map<string, DirUser>
+  onUnpin: (id: string) => void
+  onJump: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const pinned = useMemo(() => msgs.filter((m) => pinnedIds.has(m.id)), [msgs, pinnedIds])
+  if (pinned.length === 0) return null
+  return (
+    <div className="border-b border-border bg-content/40">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink">
+        <Pin className="size-3.5 text-accent" /> {pinned.length} pinned {pinned.length === 1 ? 'message' : 'messages'}
+        <span className="ml-auto text-ink-subtle">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="max-h-48 space-y-0.5 overflow-y-auto px-2 pb-2">
+          {pinned.map((m) => {
+            const sender = userById.get(m.sender_id)
+            return (
+              <div key={m.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-card">
+                <button type="button" onClick={() => onJump(m.id)} className="min-w-0 flex-1 text-left">
+                  <div className="text-[11px] font-medium text-ink-muted">{sender?.name || sender?.email || 'Unknown'}</div>
+                  <div className="truncate text-sm text-ink">{m.body || (m.attachment_path ? '📎 Attachment' : '')}</div>
+                </button>
+                <button type="button" onClick={() => onUnpin(m.id)} className="shrink-0 text-ink-subtle hover:text-danger" title="Unpin"><X className="size-3.5" /></button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---- Thread panel (Slack-style replies) -----------------------------------
+function ThreadPanel({ parent, replies, renderMessage, onClose, onSendReply }: {
+  parent: Message
+  replies: Message[]
+  renderMessage: (m: Message, showHeader: boolean, inThread?: boolean) => React.ReactNode
+  onClose: () => void
+  onSendReply: (body: string) => Promise<void>
+}) {
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const endRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [replies.length])
+
+  const send = async () => {
+    const body = draft.trim()
+    if (!body || sending) return
+    setSending(true)
+    await onSendReply(body)
+    setSending(false)
+    setDraft('')
+  }
+
+  return (
+    <div className="absolute inset-y-0 right-0 z-30 flex w-full flex-col border-l border-border bg-card shadow-xl sm:w-[380px]">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+        <div className="text-sm font-semibold text-ink">Thread</div>
+        <button type="button" onClick={onClose} className="grid size-8 place-items-center rounded-full text-ink-muted hover:bg-content" aria-label="Close thread"><X className="size-4" /></button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {renderMessage(parent, true, true)}
+        <div className="my-3 flex items-center gap-2 text-[11px] text-ink-subtle">
+          <span className="h-px flex-1 bg-border" />
+          {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+          <span className="h-px flex-1 bg-border" />
+        </div>
+        <div className="flex flex-col gap-2">
+          {replies.map((r, i) => renderMessage(r, !replies[i - 1] || replies[i - 1].sender_id !== r.sender_id, true))}
+        </div>
+        <div ref={endRef} />
+      </div>
+      <div className="border-t border-border p-2">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
+            rows={1}
+            placeholder="Reply..."
+            className="max-h-32 flex-1 resize-none rounded-2xl border border-border bg-content px-3 py-2 text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          <Button onClick={() => void send()} disabled={!draft.trim() || sending} size="icon">{sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}</Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ---- Avatar + attachment helpers ------------------------------------------
 
 const SIGNED_URL_CACHE = new Map<string, { url: string; exp: number }>()
-function MessageAttachment({ path }: { path: string }) {
+function MessageAttachment({ path, type, fileName }: { path: string; type: string | null; fileName: string | null }) {
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -954,15 +1360,34 @@ function MessageAttachment({ path }: { path: string }) {
     return () => { alive = false }
   }, [path])
 
+  const name = fileName || (path.split('/').pop() ?? 'file')
+  const isImage = (type ?? '').startsWith('image/') || /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(path)
+
   if (loading) {
-    return <div className="grid h-32 w-48 place-items-center rounded-md bg-content/40 text-xs text-ink-subtle"><Loader2 className="size-4 animate-spin" /></div>
+    return <div className="grid h-24 w-40 place-items-center rounded-md bg-content/40 text-xs text-ink-subtle"><Loader2 className="size-4 animate-spin" /></div>
   }
   if (error || !url) {
-    return <div className="rounded-md bg-danger-soft px-2 py-1 text-xs text-danger">Couldn't load image</div>
+    return <div className="rounded-md bg-danger-soft px-2 py-1 text-xs text-danger">Couldn't load attachment</div>
+  }
+  // Supabase honors a `download` query param to force a save with the filename.
+  const downloadHref = `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(name)}`
+  if (isImage) {
+    return (
+      <div className="group/att relative">
+        <a href={url} target="_blank" rel="noreferrer" className="block">
+          <img src={url} alt={name} loading="lazy" className="max-h-72 max-w-[280px] rounded-2xl object-cover" />
+        </a>
+        <a href={downloadHref} className="absolute right-2 top-2 hidden rounded-full bg-black/50 p-1.5 text-white group-hover/att:block" title="Download" aria-label="Download">
+          <Download className="size-3.5" />
+        </a>
+      </div>
+    )
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="block">
-      <img src={url} alt="Attachment" loading="lazy" className="max-h-72 max-w-[280px] rounded-2xl object-cover" />
+    <a href={downloadHref} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 hover:bg-content" title="Download">
+      <FileText className="size-5 shrink-0 text-ink-muted" />
+      <span className="max-w-[200px] truncate text-sm text-ink">{name}</span>
+      <Download className="size-4 shrink-0 text-ink-subtle" />
     </a>
   )
 }
@@ -1292,6 +1717,169 @@ function NewGroupModal({
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={() => void create()} disabled={busy}>Create</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// New channel: a named, members-based conversation with a topic.
+function NewChannelModal({
+  dir, accountId, myId, onClose, onOpened,
+}: {
+  dir: DirUser[]
+  accountId: string
+  myId: string
+  onClose: () => void
+  onOpened: (id: string) => void
+}) {
+  const [name, setName] = useState('')
+  const [topic, setTopic] = useState('')
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const toggle = (id: string) => setPicked((s) => {
+    const n = new Set(s)
+    if (n.has(id)) n.delete(id); else n.add(id)
+    return n
+  })
+  const create = async () => {
+    setError(null)
+    const clean = name.trim().replace(/^#/, '').replace(/\s+/g, '-').toLowerCase()
+    if (!clean) return setError('Give the channel a name')
+    setBusy(true)
+    const { data, error: err } = await convQ.createChannel(accountId, myId, clean, topic.trim(), Array.from(picked))
+    setBusy(false)
+    if (err || !data) return setError(err?.message ?? 'Could not create channel')
+    onOpened(data.id)
+  }
+  const filtered = dir.filter((u) => {
+    const s = q.trim().toLowerCase()
+    if (!s) return true
+    return (u.name ?? '').toLowerCase().includes(s) || u.email.toLowerCase().includes(s)
+  })
+
+  return (
+    <Modal open onClose={onClose} title="New channel">
+      <div className="flex flex-col gap-3">
+        <Field label="Channel name" required>
+          {(id) => (
+            <div className="relative">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle">#</span>
+              <Input id={id} value={name} onChange={(e) => setName(e.target.value)} placeholder="operations" className="pl-6" />
+            </div>
+          )}
+        </Field>
+        <Field label="Topic (optional)">
+          {(id) => <Input id={id} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="What's this channel about?" />}
+        </Field>
+        <div className="text-xs text-ink-subtle">Add people (you can add more later from the channel info panel).</div>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-subtle" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search teammates..." className="h-9 pl-8 text-sm" />
+        </div>
+        <div className="max-h-52 overflow-y-auto rounded-md border border-border">
+          {filtered.map((u) => {
+            const on = picked.has(u.id)
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => toggle(u.id)}
+                className={cn('flex w-full items-center gap-2.5 border-b border-border px-3 py-2 text-left text-sm last:border-0', on ? 'bg-accent-soft' : 'hover:bg-content')}
+              >
+                <Avatar name={u.name} email={u.email} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-ink">{u.name || u.email}</div>
+                  <div className="truncate text-[11px] text-ink-subtle">{u.email} . {u.role}</div>
+                </div>
+                {on && <Plus className="size-4 rotate-45 text-accent" />}
+              </button>
+            )
+          })}
+        </div>
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => void create()} disabled={busy}>Create channel</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Search across all my messages (RLS limits results to my conversations).
+type SearchConv = { id: string; name: string | null; kind: string; location: { name: string } | null } | null
+type SearchHit = Message & { conversation: SearchConv }
+function SearchModal({
+  userById, onClose, onJump,
+}: {
+  userById: Map<string, DirUser>
+  onClose: () => void
+  onJump: (convId: string, msgId: string) => void
+}) {
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState<SearchHit[] | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const s = q.trim()
+    if (s.length < 2) { setResults(null); return }
+    setBusy(true)
+    const t = setTimeout(async () => {
+      const { data } = await msgQ.search(s)
+      setResults((data as SearchHit[] | null) ?? [])
+      setBusy(false)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [q])
+
+  const convName = (c: SearchConv) => {
+    if (!c) return 'Conversation'
+    if (c.kind === 'site') return c.location?.name ? `${c.location.name} Team` : (c.name ?? 'Site')
+    if (c.kind === 'channel') return c.name ? `#${c.name}` : 'Channel'
+    if (c.kind === 'group') return c.name ?? 'Group'
+    return 'Direct message'
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Search messages">
+      <div className="flex flex-col gap-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-subtle" />
+          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search all your messages..." className="h-10 pl-8" />
+        </div>
+        <div className="max-h-96 min-h-[3rem] overflow-y-auto">
+          {q.trim().length < 2 ? (
+            <p className="px-1 py-2 text-sm text-ink-subtle">Type at least 2 characters.</p>
+          ) : busy ? (
+            <p className="px-1 py-2 text-sm text-ink-muted">Searching…</p>
+          ) : results && results.length === 0 ? (
+            <p className="px-1 py-2 text-sm text-ink-muted">No messages found.</p>
+          ) : (
+            (results ?? []).map((m) => {
+              const sender = userById.get(m.sender_id)
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => m.conversation && onJump(m.conversation.id, m.id)}
+                  className="flex w-full flex-col gap-0.5 border-b border-border px-2 py-2 text-left last:border-0 hover:bg-content"
+                >
+                  <div className="flex items-center gap-1.5 text-[11px] text-ink-subtle">
+                    <span className="font-medium text-ink-muted">{convName(m.conversation)}</span>
+                    <span>·</span>
+                    <span>{sender?.name || sender?.email || 'Unknown'}</span>
+                    <span>·</span>
+                    <span>{format(new Date(m.created_at), 'MMM d, p')}</span>
+                  </div>
+                  <div className="line-clamp-2 text-sm text-ink">{m.body}</div>
+                </button>
+              )
+            })
+          )}
         </div>
       </div>
     </Modal>
