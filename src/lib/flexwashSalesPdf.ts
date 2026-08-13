@@ -17,7 +17,6 @@ type Cell = string | { content: string; styles?: Record<string, unknown> }
 const money = (n: number) => currency(n)
 const num = (n: number) => Math.round(n).toLocaleString('en-US')
 const ticket = (rev: number, cnt: number) => money(cnt ? rev / cnt : 0)
-const fileSafe = (s: string) => s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'flexwash-sales'
 const bold = (content: string): Cell => ({ content, styles: { fontStyle: 'bold' } })
 const boldR = (content: string): Cell => ({ content, styles: { fontStyle: 'bold', halign: 'right' } })
 // Right-aligned header cell, so a numeric column's title lines up over its values.
@@ -26,7 +25,7 @@ const headR = (content: string): Cell => ({ content, styles: { halign: 'right' }
 export async function downloadFlexwashSalesPdf(
   report: FlexSalesReport,
   breakdown: FlexBreakdown | null,
-  meta: { siteLabel: string; start: string; end: string; brandLogoUrl?: string | null; accountName?: string },
+  meta: { siteLabel: string; fileTag: string; start: string; end: string; brandLogoUrl?: string | null; accountName?: string },
 ): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
@@ -156,5 +155,6 @@ export async function downloadFlexwashSalesPdf(
     doc.text(`Page ${p} of ${pages}`, pageW - MARGIN, pageH - 8, { align: 'right' })
   }
 
-  doc.save(`flexwash-sales-${fileSafe(meta.siteLabel)}-${meta.start}${meta.start !== meta.end ? `_${meta.end}` : ''}.pdf`)
+  const dateTag = meta.start === meta.end ? meta.start : `${meta.start} to ${meta.end}`
+  doc.save(`${meta.fileTag} FW Sales Report ${dateTag}.pdf`)
 }

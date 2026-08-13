@@ -92,6 +92,13 @@ export default function FlexwashSalesPage() {
     return s ? `#${s.site_number}` : ''
   }, [sites, carWashId])
 
+  // Site token for the export filename, e.g. "MW17" or "MW All Sites".
+  const fileTag = useMemo(() => {
+    if (carWashId === 'all') return 'MW All Sites'
+    const s = sites.find((x) => x.car_wash_id === carWashId)
+    return s ? `MW${s.site_number}` : 'MW'
+  }, [sites, carWashId])
+
   const r = report
   // Discounts from FlexWash's discount endpoint plus rewashes (pulled from the line items).
   const discounts = r ? [...r.discounts, ...(breakdown?.extraDiscounts ?? [])].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)) : []
@@ -131,7 +138,7 @@ export default function FlexwashSalesPage() {
           variant="secondary"
           className="ml-auto"
           disabled={!report || loading}
-          onClick={() => report && downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, start, end, brandLogoUrl: '/mighty-max-in-flight.png' })}
+          onClick={() => report && downloadFlexwashSalesPdf({ ...report, discounts }, breakdown, { siteLabel, fileTag, start, end, brandLogoUrl: '/mighty-max-in-flight.png' })}
         >
           <Download className="size-4" /> Export PDF
         </Button>
