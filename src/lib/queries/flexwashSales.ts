@@ -222,11 +222,14 @@ export const flexwashSales = {
     // the discounts endpoint: rewashes (free re-do credits) and next-bill / prorate
     // discounts. Labeled by type, magnitude summed. ("Discount" type is already in
     // get-discount-stats; Membership Benefit is the member-wash offset, not a discount.)
+    // Only settled (paid) orders count, matching the discount + accounting rollups:
+    // a pending order's discount isn't realized money yet.
     const EXTRA_DISCOUNT_TYPES = new Set(['Rewash', 'Next Bill Discount', 'Prorate Discount'])
     const extra = new Map<string, { name: string; count: number; amount: number }>()
     for (const it of items) {
       const t = String(it.type)
       if (!EXTRA_DISCOUNT_TYPES.has(t)) continue
+      if (String((it.order ?? {}).status) !== 'paid') continue
       const row = extra.get(t) ?? { name: t, count: 0, amount: 0 }
       row.count += 1
       row.amount += Math.abs(toDollars(it.priceInCents))
