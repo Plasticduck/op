@@ -30,15 +30,15 @@ const INVOICE_INBOX_DOMAIN = 'invoices.washlyfe.com'
 // if they're an owner/manager. People on the list who don't yet have a login
 // simply won't appear until their account exists. Accounts with no matching
 // user (e.g. non-MW washes, demo) fall back to all owners/managers so the
-// dropdown is never empty. (Staci Wyatt's login is staci@mighty-wash.com; the
-// spreadsheet's staci@mymightywash.com is included too in case it changes.)
+// dropdown is never empty. (Staci Wyatt is staci@mymightywash.com per the list;
+// her account email must match this for her to appear.)
 const INVOICE_APPROVER_EMAILS = new Set([
   'berhl@mighty-wash.com', 'hmurry@mighty-wash.com', 'kstaton@mighty-wash.com',
   'ernest@mighty-wash.com', 'justin.gamboa@mighty-wash.com', 'mcanales@mighty-wash.com',
   'rbreed@mighty-wash.com', 'lester@mighty-wash.com', 'isabel@mighty-wash.com',
   'djones@mighty-wash.com', 'josh.roberts@mighty-wash.com', 'kellyspiller@mighty-wash.com',
   'gwatson@mighty-wash.com', 'shelbi@mighty-wash.com', 'kjowers@mighty-wash.com',
-  'ncarter@mighty-wash.com', 'staci@mighty-wash.com', 'staci@mymightywash.com',
+  'ncarter@mighty-wash.com', 'staci@mymightywash.com',
   'kwatson@mighty-wash.com', 'debra@mighty-wash.com',
 ])
 
