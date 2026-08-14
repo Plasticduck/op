@@ -42,6 +42,17 @@ const INVOICE_APPROVER_EMAILS = new Set([
   'kwatson@mighty-wash.com', 'debra@mighty-wash.com',
 ])
 
+// Invoice-approval tab access is scoped to the Mighty Wash account. Within MW,
+// only these people see every tab; everyone else who can reach the page is an
+// "approver" and sees just their own Assigned tab + Invoice History. Other
+// accounts keep the default (owners/managers see every tab).
+const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
+const INVOICE_FULL_ACCESS_EMAILS = new Set([
+  'kjowers@mighty-wash.com', 'kevan@washlyfe.com', 'hmurry@mighty-wash.com',
+  'epineda@mighty-wash.com', 'becca.jowers@mighty-wash.com', 'rhipp@mighty-wash.com',
+  'mikala@mighty-wash.com',
+])
+
 type InvoiceStatus =
   | 'unassigned'
   | 'assigned'
@@ -106,12 +117,18 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
 
 const nowIso = () => new Date().toISOString()
 
+// 'history' is a read-only archive spanning multiple statuses, not a real status.
+type TabKey = InvoiceStatus | 'history'
+
 type TabDef = {
-  key: InvoiceStatus
+  key: TabKey
   label: string
   subtitle: string
   empty: string
 }
+
+// Statuses that count as "approved and submitted" for the Invoice History tab.
+const HISTORY_STATUSES = new Set<InvoiceStatus>(['approved', 'exported'])
 
 const TABS: TabDef[] = [
   {
@@ -144,10 +161,16 @@ const TABS: TabDef[] = [
     subtitle: 'Invoices exported to accounting.',
     empty: 'No exported invoices yet.',
   },
+  {
+    key: 'history',
+    label: 'Invoice History',
+    subtitle: 'A record of the invoices you approved, kept for future reference.',
+    empty: 'No approved invoices yet.',
+  },
 ]
 
 export default function InvoicesPage() {
-  const [activeKey, setActiveKey] = useState<InvoiceStatus>('unassigned')
+  const [activeKey, setActiveKey] = useState<TabKey>('unassigned')
   const [vendorQuery, setVendorQuery] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -205,6 +228,29 @@ export default function InvoicesPage() {
   const canManage = profile?.role === 'owner' || profile?.role === 'manager'
   const openInvoice = invoices.find((i) => i.id === openId) ?? null
 
+  // Tab access. In the MW account only the full-access list sees every tab;
+  // everyone else is a restricted approver limited to Assigned + Invoice History,
+  // each scoped to invoices that are theirs. Other accounts are unaffected.
+  const currentUserId = profile?.id ?? null
+  const fullAccess = profile?.account_id !== MW_ACCOUNT_ID
+    || INVOICE_FULL_ACCESS_EMAILS.has((profile?.email ?? '').toLowerCase())
+  const visibleTabs = fullAccess ? TABS : TABS.filter((t) => t.key === 'assigned' || t.key === 'history')
+  const myIds = useMemo(() => {
+    const s = new Set<string>()
+    if (!currentUserId) return s
+    for (const i of invoices) {
+      if ((i.approver_ids ?? []).includes(currentUserId)
+        || (i.secondary_approver_ids ?? []).includes(currentUserId)
+        || i.assigned_to === currentUserId
+        || i.decided_by === currentUserId) s.add(i.id)
+    }
+    return s
+  }, [invoices, currentUserId])
+
+  // Fall back to the first visible tab when the stored key is hidden for this
+  // user (e.g. a restricted approver whose default would be Unassigned).
+  const activeKeyEff: TabKey = visibleTabs.some((t) => t.key === activeKey) ? activeKey : (visibleTabs[0]?.key ?? 'assigned')
+
   const openFile = async (path: string) => {
     const url = await opsInvoices.fileUrl(path)
     if (url) window.open(url, '_blank', 'noopener')
@@ -259,16 +305,23 @@ export default function InvoicesPage() {
       ? `${account.invoice_inbox_token}@${INVOICE_INBOX_DOMAIN}`
       : null
 
-  const active = TABS.find((t) => t.key === activeKey) ?? TABS[0]
+  const active = TABS.find((t) => t.key === activeKeyEff) ?? TABS[0]
+
+  // Restricted approvers only ever count/see invoices that are theirs.
+  const scoped = (list: typeof rows) => (fullAccess ? list : list.filter((r) => myIds.has(r.id)))
 
   const counts = useMemo(() => {
-    const c = {} as Record<InvoiceStatus, number>
+    const c = {} as Record<TabKey, number>
     for (const t of TABS) c[t.key] = 0
-    for (const r of rows) c[r.status] = (c[r.status] ?? 0) + 1
+    for (const r of rows) {
+      if (!fullAccess && !myIds.has(r.id)) continue
+      c[r.status] = (c[r.status] ?? 0) + 1
+      if (HISTORY_STATUSES.has(r.status)) c.history += 1
+    }
     return c
-  }, [rows])
+  }, [rows, fullAccess, myIds])
 
-  const inTab = rows.filter((r) => r.status === activeKey)
+  const inTab = scoped(rows.filter((r) => (activeKeyEff === 'history' ? HISTORY_STATUSES.has(r.status) : r.status === activeKeyEff)))
 
   const filtered = inTab.filter((r) => {
     if (vendorQuery && !(r.vendor ?? '').toLowerCase().includes(vendorQuery.toLowerCase())) {
@@ -329,8 +382,8 @@ export default function InvoicesPage() {
         <p className="mt-1 text-sm text-ink-muted">{active.subtitle}</p>
       </div>
 
-      {/* This wash's unique invoice inbox address */}
-      {inboxEmail && (
+      {/* This wash's unique invoice inbox address (intake, hidden from approvers) */}
+      {fullAccess && inboxEmail && (
         <div className="rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
           <div className="flex items-start gap-3">
             <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent/15 text-accent">
@@ -355,8 +408,8 @@ export default function InvoicesPage() {
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border">
-        {TABS.map((t) => {
-          const isActive = t.key === activeKey
+        {visibleTabs.map((t) => {
+          const isActive = t.key === activeKeyEff
           return (
             <button
               key={t.key}
@@ -428,7 +481,7 @@ export default function InvoicesPage() {
           >
             Clear
           </button>
-          {activeKey === 'approved' && canManage && (
+          {activeKeyEff === 'approved' && canManage && (
             <button
               type="button"
               onClick={() => void exportApproved()}
@@ -438,7 +491,7 @@ export default function InvoicesPage() {
               <Download className="size-4" /> Export to CSV
             </button>
           )}
-          {activeKey === 'exported' && (
+          {activeKeyEff === 'exported' && (
             <button
               type="button"
               onClick={() => setWarnOpen(true)}
@@ -461,7 +514,7 @@ export default function InvoicesPage() {
               <th className="px-4 py-3 font-medium">Site(s)</th>
               <th className="px-4 py-3 font-medium">Approver(s)</th>
               <th className="px-4 py-3 font-medium">Amount</th>
-              {activeKey === 'unassigned' && <th className="px-4 py-3 font-medium">Due date</th>}
+              {activeKeyEff === 'unassigned' && <th className="px-4 py-3 font-medium">Due date</th>}
               <th className="px-4 py-3 font-medium">Detail</th>
               <th className="px-4 py-3 font-medium">Submitted</th>
               <th className="px-4 py-3 text-right font-medium">Actions</th>
@@ -470,7 +523,7 @@ export default function InvoicesPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={activeKey === 'unassigned' ? 9 : 8} className="px-4 py-8 text-center text-sm text-ink-muted">
+                <td colSpan={activeKeyEff === 'unassigned' ? 9 : 8} className="px-4 py-8 text-center text-sm text-ink-muted">
                   {active.empty}
                 </td>
               </tr>
@@ -505,7 +558,7 @@ export default function InvoicesPage() {
                     {r.approvers.length ? r.approvers.join(', ') : '—'}
                   </td>
                   <td className="px-4 py-3 tabular-nums text-ink">{currency(r.amount)}</td>
-                  {activeKey === 'unassigned' && (
+                  {activeKeyEff === 'unassigned' && (
                     <td className={cn('px-4 py-3 whitespace-nowrap', r.dueDate && r.dueDate < todayStr ? 'font-medium text-danger' : 'text-ink-muted')}>
                       {r.dueDate ? new Date(r.dueDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                     </td>
