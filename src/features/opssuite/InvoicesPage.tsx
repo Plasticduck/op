@@ -25,6 +25,23 @@ import { cn } from '@/lib/utils'
 // screen surfaces the address + shows the invoices it produces.
 const INVOICE_INBOX_DOMAIN = 'invoices.washlyfe.com'
 
+// The approver dropdown is restricted to MW's official "Invoice Approvers List"
+// (matched by email, case-insensitive). Anyone not on this list is hidden even
+// if they're an owner/manager. People on the list who don't yet have a login
+// simply won't appear until their account exists. Accounts with no matching
+// user (e.g. non-MW washes, demo) fall back to all owners/managers so the
+// dropdown is never empty. (Staci Wyatt's login is staci@mighty-wash.com; the
+// spreadsheet's staci@mymightywash.com is included too in case it changes.)
+const INVOICE_APPROVER_EMAILS = new Set([
+  'berhl@mighty-wash.com', 'hmurry@mighty-wash.com', 'kstaton@mighty-wash.com',
+  'ernest@mighty-wash.com', 'justin.gamboa@mighty-wash.com', 'mcanales@mighty-wash.com',
+  'rbreed@mighty-wash.com', 'lester@mighty-wash.com', 'isabel@mighty-wash.com',
+  'djones@mighty-wash.com', 'josh.roberts@mighty-wash.com', 'kellyspiller@mighty-wash.com',
+  'gwatson@mighty-wash.com', 'shelbi@mighty-wash.com', 'kjowers@mighty-wash.com',
+  'ncarter@mighty-wash.com', 'staci@mighty-wash.com', 'staci@mymightywash.com',
+  'kwatson@mighty-wash.com', 'debra@mighty-wash.com',
+])
+
 type InvoiceStatus =
   | 'unassigned'
   | 'assigned'
@@ -592,7 +609,10 @@ function InvoiceModal({
 }) {
   const status = (KNOWN_STATUSES.has(invoice.status as InvoiceStatus) ? invoice.status : 'unassigned') as InvoiceStatus
   const editable = canManage && (status === 'unassigned' || status === 'needs_attention')
-  const approverUsers = users.filter((u) => u.role === 'owner' || u.role === 'manager')
+  // Restrict to the official approver list; fall back to owners/managers when no
+  // listed user exists on this account (non-MW washes, demo) so it's never empty.
+  const listedApprovers = users.filter((u) => u.email && INVOICE_APPROVER_EMAILS.has(u.email.toLowerCase()))
+  const approverUsers = listedApprovers.length ? listedApprovers : users.filter((u) => u.role === 'owner' || u.role === 'manager')
 
   // Sites are QuickBooks classes (from the Class List), stored on class_names.
   const initClasses = invoice.class_names?.length ? invoice.class_names : []
