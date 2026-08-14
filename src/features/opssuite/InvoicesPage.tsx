@@ -47,8 +47,10 @@ const INVOICE_APPROVER_EMAILS = new Set([
 // "approver" and sees just their own Assigned tab + Invoice History. Other
 // accounts keep the default (owners/managers see every tab).
 const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
+// Kevan's manager login (kjowers@mighty-wash.com) is intentionally NOT here: it's
+// a restricted approver. His owner login (kevan@washlyfe.com) keeps full access.
 const INVOICE_FULL_ACCESS_EMAILS = new Set([
-  'kjowers@mighty-wash.com', 'kevan@washlyfe.com', 'hmurry@mighty-wash.com',
+  'kevan@washlyfe.com', 'hmurry@mighty-wash.com',
   'epineda@mighty-wash.com', 'becca.jowers@mighty-wash.com', 'rhipp@mighty-wash.com',
   'mikala@mighty-wash.com',
 ])
@@ -234,7 +236,11 @@ export default function InvoicesPage() {
   const currentUserId = profile?.id ?? null
   const fullAccess = profile?.account_id !== MW_ACCOUNT_ID
     || INVOICE_FULL_ACCESS_EMAILS.has((profile?.email ?? '').toLowerCase())
-  const visibleTabs = fullAccess ? TABS : TABS.filter((t) => t.key === 'assigned' || t.key === 'history')
+  // Invoice History is an approver-only tab: full-access users (who assign and see
+  // every workflow tab) don't get it.
+  const visibleTabs = fullAccess
+    ? TABS.filter((t) => t.key !== 'history')
+    : TABS.filter((t) => t.key === 'assigned' || t.key === 'history')
   const myIds = useMemo(() => {
     const s = new Set<string>()
     if (!currentUserId) return s
