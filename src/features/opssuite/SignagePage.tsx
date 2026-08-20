@@ -154,6 +154,16 @@ function ArtworkLibrary({
     return items.filter((i) => i.artwork_path && !seen.has(i.artwork_path) && seen.add(i.artwork_path))
   }, [items])
 
+  // Signed URLs so each card can show a small preview of the artwork itself.
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const paths = unique.map((u) => u.artwork_path)
+    if (!paths.length) return
+    let active = true
+    void signage.artworkUrls(paths).then((m) => { if (active) setThumbs(m) })
+    return () => { active = false }
+  }, [unique])
+
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -199,25 +209,43 @@ function ArtworkLibrary({
       {unique.length === 0 ? (
         <p className="p-4 text-sm text-ink-muted">Artwork you upload on orders will collect here.</p>
       ) : (
-        <ul className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-2 gap-px bg-border sm:grid-cols-3 lg:grid-cols-4">
           {unique.map((a) => (
-            <li key={a.artwork_path} className="flex items-center justify-between gap-3 bg-card p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <FileText className="size-4 shrink-0 text-accent" />
+            <li key={a.artwork_path} className="flex flex-col bg-card">
+              <button
+                type="button"
+                onClick={() => void openArtwork(a.artwork_path)}
+                title={`View artwork${a.artwork_name ? `: ${a.artwork_name}` : ''}`}
+                className="block h-32 w-full overflow-hidden border-b border-border bg-content"
+              >
+                {thumbs[a.artwork_path] ? (
+                  <object
+                    data={`${thumbs[a.artwork_path]}#page=1&view=Fit&toolbar=0&navpanes=0&scrollbar=0`}
+                    type="application/pdf"
+                    aria-label={a.artwork_name ?? 'Artwork preview'}
+                    className="pointer-events-none h-full w-full"
+                  >
+                    <div className="flex h-full items-center justify-center"><FileText className="size-8 text-accent" /></div>
+                  </object>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-ink-subtle"><FileText className="size-8" /></div>
+                )}
+              </button>
+              <div className="flex items-center justify-between gap-2 p-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm text-ink">{a.artwork_name ?? 'Artwork.pdf'}</p>
                   <p className="truncate text-xs text-ink-subtle">
                     {a.sign_category ?? 'Signage'}{a.sign_type ? ` · ${a.sign_type}` : ''} · {shortDate(a.created_at)}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void openArtwork(a.artwork_path)}
+                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-ink-muted hover:text-accent"
+                >
+                  View
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void openArtwork(a.artwork_path)}
-                className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-ink-muted hover:text-accent"
-              >
-                View
-              </button>
             </li>
           ))}
         </ul>

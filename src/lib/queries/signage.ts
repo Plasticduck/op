@@ -147,4 +147,12 @@ export const signage = {
       .createSignedUrl(path, expiresIn)
     return { error, url: data?.signedUrl ?? null }
   },
+  // Batch signed URLs for library thumbnails, returned as a path -> url map.
+  artworkUrls: async (paths: string[], expiresIn = 3600): Promise<Record<string, string>> => {
+    if (!paths.length) return {}
+    const { data } = await supabase.storage.from('signage-artwork').createSignedUrls(paths, expiresIn)
+    const map: Record<string, string> = {}
+    for (const d of data ?? []) if (d.path && d.signedUrl) map[d.path] = d.signedUrl
+    return map
+  },
 }
