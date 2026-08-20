@@ -220,14 +220,14 @@ function ArtworkLibrary({
       {unique.length === 0 ? (
         <p className="p-4 text-sm text-ink-muted">Artwork you upload on orders will collect here.</p>
       ) : (
-        <ul className="grid grid-cols-3 gap-px bg-border sm:grid-cols-4 lg:grid-cols-6">
+        <ul className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4 lg:grid-cols-6">
           {unique.map((a) => (
             <li key={a.artwork_path} className="flex flex-col bg-card">
               <button
                 type="button"
                 onClick={() => void openArtwork(a.artwork_path)}
                 title={`View artwork${a.artwork_name ? `: ${a.artwork_name}` : ''}`}
-                className="flex h-24 w-full items-center justify-center overflow-hidden border-b border-border bg-content p-1.5"
+                className="flex h-56 w-full items-center justify-center overflow-hidden border-b border-border bg-content p-2"
               >
                 {thumbs[a.artwork_path] ? (
                   <img
