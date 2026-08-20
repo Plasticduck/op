@@ -370,6 +370,8 @@ function OrderModal({
       return
     }
     setFile(f)
+    // Choosing a file switches away from a library pick (the two are exclusive).
+    if (f) { setArtSource('upload'); setLibraryPath('') }
   }
 
   const save = async () => {
@@ -490,31 +492,20 @@ function OrderModal({
         <Field label="Artwork (PDF)">
           {() => (
             <div className="flex flex-col gap-2">
-              <div className="inline-flex gap-1 rounded-lg border border-border bg-content p-1">
-                {(['upload', 'library'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setArtSource(s)}
-                    disabled={s === 'library' && uniqueLibrary.length === 0}
-                    className={
-                      'rounded-md px-3 py-1 text-xs font-medium transition disabled:opacity-40 ' +
-                      (artSource === s ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')
-                    }
-                  >
-                    {s === 'upload' ? 'Upload new' : 'From library'}
-                  </button>
-                ))}
+              <div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={uniqueLibrary.length === 0}
+                  className={artSource === 'library' ? 'border-accent text-accent' : undefined}
+                  onClick={() => setArtSource('library')}
+                >
+                  Upload From Library
+                </Button>
               </div>
-              {artSource === 'upload' ? (
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-                  className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-accent-hover"
-                />
-              ) : (
-                <Select value={libraryPath} onChange={(e) => setLibraryPath(e.target.value)}>
+              {artSource === 'library' && (
+                <Select value={libraryPath} onChange={(e) => { setLibraryPath(e.target.value); setFile(null) }}>
                   <option value="">Choose existing artwork…</option>
                   {uniqueLibrary.map((a) => (
                     <option key={a.artwork_path} value={a.artwork_path}>
@@ -523,6 +514,12 @@ function OrderModal({
                   ))}
                 </Select>
               )}
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-accent-hover"
+              />
             </div>
           )}
         </Field>
