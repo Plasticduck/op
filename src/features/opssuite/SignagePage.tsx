@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FileText, Images, Plus, Signpost, Upload } from 'lucide-react'
+import { FileText, Images, Plus, Signpost, Trash2, Upload } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -126,7 +126,12 @@ function Inner({ locationId }: { locationId: string }) {
       )}
 
       {!loading && (
-        <ArtworkLibrary items={library} accountId={profile?.account_id ?? ''} onChanged={load} />
+        <ArtworkLibrary
+          items={library}
+          accountId={profile?.account_id ?? ''}
+          canDelete={(profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'}
+          onChanged={load}
+        />
       )}
 
       {creating && (
@@ -144,10 +149,11 @@ function Inner({ locationId }: { locationId: string }) {
 // Every artwork, reusable on a new order. Direct uploads (no order) plus artwork
 // from past orders. Deduped by file path.
 function ArtworkLibrary({
-  items, accountId, onChanged,
+  items, accountId, canDelete, onChanged,
 }: {
   items: ArtworkItem[]
   accountId: string
+  canDelete: boolean
   onChanged: () => void
 }) {
   const unique = useMemo(() => {
@@ -189,6 +195,17 @@ function ArtworkLibrary({
     const { error: err } = await signage.addArtwork(accountId, f)
     setBusy(false)
     if (fileRef.current) fileRef.current.value = ''
+    if (err) return setError(err.message)
+    onChanged()
+  }
+
+  const [removing, setRemoving] = useState<string | null>(null)
+  const remove = async (path: string, name: string | null) => {
+    if (!window.confirm(`Remove "${name ?? 'this artwork'}" from the library? This cannot be undone.`)) return
+    setError(null)
+    setRemoving(path)
+    const { error: err } = await signage.removeArtwork(path)
+    setRemoving(null)
     if (err) return setError(err.message)
     onChanged()
   }
@@ -246,13 +263,26 @@ function ArtworkLibrary({
                     {a.sign_category ?? 'Signage'}{a.sign_type ? ` · ${a.sign_type}` : ''} · {shortDate(a.created_at)}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void openArtwork(a.artwork_path)}
-                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-ink-muted hover:text-accent"
-                >
-                  View
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void openArtwork(a.artwork_path)}
+                    className="rounded-md border border-border px-2 py-1 text-xs text-ink-muted hover:text-accent"
+                  >
+                    View
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => void remove(a.artwork_path, a.artwork_name)}
+                      disabled={removing === a.artwork_path}
+                      title="Remove from library"
+                      className="rounded-md border border-border p-1 text-ink-muted hover:border-danger hover:text-danger disabled:opacity-50"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </li>
           ))}

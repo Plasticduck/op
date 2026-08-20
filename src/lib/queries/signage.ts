@@ -133,6 +133,11 @@ export const signage = {
   emailRequest: (requestId: string) =>
     supabase.functions.invoke('signage-request-email', { body: { request_id: requestId } }),
 
+  // Remove an artwork from the library (file + rows + order refs). Server-side
+  // this is locked to a single admin; everyone else gets 403.
+  removeArtwork: (path: string) =>
+    supabase.functions.invoke('signage-artwork-remove', { body: { path } }),
+
   // Artwork: PDF only, stored under the account folder in a private bucket.
   uploadArtwork: async (accountId: string, file: File) => {
     const path = `${accountId}/${crypto.randomUUID()}.pdf`
