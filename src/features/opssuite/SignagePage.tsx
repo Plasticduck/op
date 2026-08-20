@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { timeAgo, shortDate } from '@/lib/format'
+import { renderPdfThumb } from '@/lib/pdfThumb'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import {
@@ -154,13 +155,23 @@ function ArtworkLibrary({
     return items.filter((i) => i.artwork_path && !seen.has(i.artwork_path) && seen.add(i.artwork_path))
   }, [items])
 
-  // Signed URLs so each card can show a small preview of the artwork itself.
+  // Small rendered preview (first PDF page) per artwork, so users can see the
+  // whole sign without opening it. Rendered on demand and cached across visits.
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   useEffect(() => {
     const paths = unique.map((u) => u.artwork_path)
     if (!paths.length) return
     let active = true
-    void signage.artworkUrls(paths).then((m) => { if (active) setThumbs(m) })
+    void (async () => {
+      const urls = await signage.artworkUrls(paths)
+      for (const p of paths) {
+        if (!active) return
+        const url = urls[p]
+        if (!url) continue
+        const img = await renderPdfThumb(url, p)
+        if (active && img) setThumbs((prev) => (prev[p] ? prev : { ...prev, [p]: img }))
+      }
+    })()
     return () => { active = false }
   }, [unique])
 
@@ -209,32 +220,29 @@ function ArtworkLibrary({
       {unique.length === 0 ? (
         <p className="p-4 text-sm text-ink-muted">Artwork you upload on orders will collect here.</p>
       ) : (
-        <ul className="grid grid-cols-2 gap-px bg-border sm:grid-cols-3 lg:grid-cols-4">
+        <ul className="grid grid-cols-3 gap-px bg-border sm:grid-cols-4 lg:grid-cols-6">
           {unique.map((a) => (
             <li key={a.artwork_path} className="flex flex-col bg-card">
               <button
                 type="button"
                 onClick={() => void openArtwork(a.artwork_path)}
                 title={`View artwork${a.artwork_name ? `: ${a.artwork_name}` : ''}`}
-                className="block h-32 w-full overflow-hidden border-b border-border bg-content"
+                className="flex h-24 w-full items-center justify-center overflow-hidden border-b border-border bg-content p-1.5"
               >
                 {thumbs[a.artwork_path] ? (
-                  <object
-                    data={`${thumbs[a.artwork_path]}#page=1&view=Fit&toolbar=0&navpanes=0&scrollbar=0`}
-                    type="application/pdf"
-                    aria-label={a.artwork_name ?? 'Artwork preview'}
-                    className="pointer-events-none h-full w-full"
-                  >
-                    <div className="flex h-full items-center justify-center"><FileText className="size-8 text-accent" /></div>
-                  </object>
+                  <img
+                    src={thumbs[a.artwork_path]}
+                    alt={a.artwork_name ?? 'Artwork preview'}
+                    className="max-h-full max-w-full object-contain"
+                  />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-ink-subtle"><FileText className="size-8" /></div>
+                  <FileText className="size-7 text-ink-subtle" />
                 )}
               </button>
-              <div className="flex items-center justify-between gap-2 p-3">
+              <div className="flex items-center justify-between gap-2 p-2.5">
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-ink">{a.artwork_name ?? 'Artwork.pdf'}</p>
-                  <p className="truncate text-xs text-ink-subtle">
+                  <p className="truncate text-xs font-medium text-ink">{a.artwork_name ?? 'Artwork.pdf'}</p>
+                  <p className="truncate text-[11px] text-ink-subtle">
                     {a.sign_category ?? 'Signage'}{a.sign_type ? ` · ${a.sign_type}` : ''} · {shortDate(a.created_at)}
                   </p>
                 </div>

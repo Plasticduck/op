@@ -26,6 +26,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.16.0",
+    "pdfjs-dist": "^4.10.38",
     "pg": "^8.21.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",
