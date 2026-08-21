@@ -148,6 +148,13 @@ export const signage = {
   removeArtwork: (path: string) =>
     supabase.functions.invoke('signage-artwork-remove', { body: { path } }),
 
+  // Add an existing library artwork to a category's gallery (upsert a library row
+  // for its path with the category set). Works for standalone + order artwork.
+  assignToCategory: (accountId: string, path: string, name: string | null, category: string) =>
+    supabase
+      .from('signage_artwork')
+      .upsert({ account_id: accountId, path, name, sign_category: category }, { onConflict: 'account_id,path' }),
+
   // Artwork: PDF only, stored under the account folder in a private bucket.
   uploadArtwork: async (accountId: string, file: File) => {
     const path = `${accountId}/${crypto.randomUUID()}.pdf`

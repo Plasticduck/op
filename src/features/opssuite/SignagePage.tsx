@@ -389,6 +389,90 @@ function ArtworkLibrary({
   )
 }
 
+// Pick existing library artwork to add to a category's gallery.
+function AddFromLibraryModal({
+  category, items, accountId, onClose, onChanged,
+}: {
+  category: string
+  items: ArtworkItem[]
+  accountId: string
+  onClose: () => void
+  onChanged: () => void
+}) {
+  // Candidates: unique library artwork not already in this category.
+  const candidates = useMemo(() => {
+    const inCat = new Set(signsInCategory(items, category).map((s) => s.artwork_path))
+    const seen = new Set<string>()
+    return items.filter((i) => i.artwork_path && !inCat.has(i.artwork_path) && !seen.has(i.artwork_path) && seen.add(i.artwork_path))
+  }, [items, category])
+
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const paths = candidates.map((s) => s.artwork_path)
+    if (!paths.length) return
+    let active = true
+    void (async () => {
+      const urls = await signage.artworkUrls(paths)
+      for (const p of paths) {
+        if (!active) return
+        const url = urls[p]
+        if (!url) continue
+        const img = await renderPdfThumb(url, p)
+        if (active && img) setThumbs((prev) => (prev[p] ? prev : { ...prev, [p]: img }))
+      }
+    })()
+    return () => { active = false }
+  }, [candidates])
+
+  const [added, setAdded] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState<string | null>(null)
+  const add = async (item: ArtworkItem) => {
+    setBusy(item.artwork_path)
+    const { error } = await signage.assignToCategory(accountId, item.artwork_path, item.artwork_name, category)
+    setBusy(null)
+    if (!error) {
+      setAdded((prev) => new Set(prev).add(item.artwork_path))
+      onChanged()
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Add to ${category}`} size="lg">
+      <div className="flex flex-col gap-4">
+        {candidates.length === 0 ? (
+          <p className="py-6 text-center text-sm text-ink-muted">Every library artwork is already in this category.</p>
+        ) : (
+          <div className="grid max-h-[60vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
+            {candidates.map((s) => (
+              <div key={s.artwork_path} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-2">
+                <div className="flex h-32 items-center justify-center overflow-hidden rounded-md bg-content p-1.5">
+                  {thumbs[s.artwork_path] ? (
+                    <img src={thumbs[s.artwork_path]} alt={s.artwork_name ?? 'Sign'} className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <FileText className="size-7 text-ink-subtle" />
+                  )}
+                </div>
+                <p className="truncate text-center text-xs font-medium text-ink">{s.artwork_name ?? 'Sign.pdf'}</p>
+                <Button
+                  variant={added.has(s.artwork_path) ? 'secondary' : 'primary'}
+                  size="sm"
+                  disabled={busy === s.artwork_path || added.has(s.artwork_path)}
+                  onClick={() => void add(s)}
+                >
+                  {added.has(s.artwork_path) ? 'Added' : busy === s.artwork_path ? 'Adding…' : 'Add'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={onClose}>Done</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // The gallery of signs in one category. Pick a sign to order it (quantity only).
 function SignGallery({
   category, items, accountId, onBack, onChanged, onPick,
@@ -422,6 +506,7 @@ function SignGallery({
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
   const upload = async (f: File | null) => {
     setError(null)
     if (!f) return
@@ -440,10 +525,24 @@ function SignGallery({
         <button type="button" onClick={onBack} className="text-sm text-ink-muted hover:text-ink">← All categories</button>
         <h2 className="text-base font-semibold text-ink">{category}</h2>
         <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => void upload(e.target.files?.[0] ?? null)} />
-        <Button variant="secondary" size="sm" className="ml-auto" disabled={busy} onClick={() => fileRef.current?.click()}>
-          <Upload className="size-4" /> {busy ? 'Uploading…' : 'Upload a sign'}
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setPicking(true)}>
+            <Images className="size-4" /> Add from library
+          </Button>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => fileRef.current?.click()}>
+            <Upload className="size-4" /> {busy ? 'Uploading…' : 'Upload a sign'}
+          </Button>
+        </div>
       </div>
+      {picking && (
+        <AddFromLibraryModal
+          category={category}
+          items={items}
+          accountId={accountId}
+          onClose={() => setPicking(false)}
+          onChanged={onChanged}
+        />
+      )}
       {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
       {signs.length === 0 ? (
         <EmptyState
