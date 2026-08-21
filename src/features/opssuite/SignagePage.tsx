@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { timeAgo, shortDate } from '@/lib/format'
 import { renderPdfThumb } from '@/lib/pdfThumb'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import {
@@ -51,6 +52,7 @@ function Inner({ locationId }: { locationId: string }) {
   // Category chosen from a catalog tile, preselected in the order form.
   const [presetCategory, setPresetCategory] = useState<string | null>(null)
   const startOrder = (category: string | null) => { setPresetCategory(category); setCreating(true) }
+  const [tab, setTab] = useState<'catalog' | 'history'>('catalog')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,34 +72,52 @@ function Inner({ locationId }: { locationId: string }) {
         actions={<Button variant="secondary" onClick={() => startOrder(null)}><Plus className="size-4" /> Custom order</Button>}
       />
 
-      {/* Catalog: pick a category to start an order. */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-ink">Choose a category</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {SIGNAGE_CATALOG.map((c) => (
-            <button
-              key={c.name}
-              type="button"
-              onClick={() => startOrder(c.name)}
-              className="group flex flex-col items-center gap-2.5"
-            >
-              <div className="grid aspect-square w-full place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
-                <c.icon className="size-12" strokeWidth={1.5} />
-              </div>
-              <span className="text-center text-sm font-semibold text-ink">{c.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* Tabs */}
+      <div className="flex items-center gap-6 border-b border-border">
+        {([['catalog', 'Catalog'], ['history', 'Order History']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={cn(
+              '-mb-px border-b-2 pb-2 pt-1 text-sm font-medium transition',
+              tab === key ? 'border-accent text-ink' : 'border-transparent text-ink-muted hover:text-ink',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      <h2 className="text-sm font-semibold text-ink">Recent orders</h2>
-      {loading ? (
+      {/* Catalog: pick a category to start an order. */}
+      {tab === 'catalog' && (
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-ink">Choose a category</h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {SIGNAGE_CATALOG.map((c) => (
+              <button
+                key={c.name}
+                type="button"
+                onClick={() => startOrder(c.name)}
+                className="group flex flex-col items-center gap-2.5"
+              >
+                <div className="grid aspect-square w-full place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
+                  <c.icon className="size-12" strokeWidth={1.5} />
+                </div>
+                <span className="text-center text-sm font-semibold text-ink">{c.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {tab === 'history' && (loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : rows.length === 0 ? (
         <EmptyState
           icon={Signpost}
           title="No signage orders"
-          description="Pick a category above to submit your first order. It goes straight to the print team."
+          description="Pick a category on the Catalog tab to submit your first order. It goes straight to the print team."
         />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
@@ -159,9 +179,9 @@ function Inner({ locationId }: { locationId: string }) {
             </tbody>
           </table>
         </div>
-      )}
+      ))}
 
-      {!loading && (
+      {tab === 'catalog' && !loading && (
         <ArtworkLibrary
           items={library}
           accountId={profile?.account_id ?? ''}
