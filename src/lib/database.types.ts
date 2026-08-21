@@ -4330,6 +4330,7 @@ export type Database = {
           id: string
           name: string | null
           path: string
+          sign_category: string | null
         }
         Insert: {
           account_id: string
@@ -4338,6 +4339,7 @@ export type Database = {
           id?: string
           name?: string | null
           path: string
+          sign_category?: string | null
         }
         Update: {
           account_id?: string
@@ -4346,6 +4348,7 @@ export type Database = {
           id?: string
           name?: string | null
           path?: string
+          sign_category?: string | null
         }
         Relationships: [
           {

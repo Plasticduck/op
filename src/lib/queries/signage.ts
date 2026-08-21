@@ -112,21 +112,22 @@ export const signage = {
   // artwork attached to past orders, newest first. Deduped by path in the UI.
   libraryList: async (): Promise<ArtworkItem[]> => {
     const [std, orders] = await Promise.all([
-      supabase.from('signage_artwork').select('path, name, created_at'),
+      supabase.from('signage_artwork').select('path, name, sign_category, created_at'),
       supabase
         .from('signage_requests')
         .select('artwork_path, artwork_name, sign_category, sign_type, created_at')
         .not('artwork_path', 'is', null),
     ])
-    const a: ArtworkItem[] = ((std.data as { path: string; name: string | null; created_at: string }[] | null) ?? []).map(
-      (s) => ({ artwork_path: s.path, artwork_name: s.name, sign_category: null, sign_type: null, created_at: s.created_at }),
+    const a: ArtworkItem[] = ((std.data as { path: string; name: string | null; sign_category: string | null; created_at: string }[] | null) ?? []).map(
+      (s) => ({ artwork_path: s.path, artwork_name: s.name, sign_category: s.sign_category, sign_type: null, created_at: s.created_at }),
     )
     const b: ArtworkItem[] = (orders.data as ArtworkItem[] | null) ?? []
     return [...a, ...b].sort((x, y) => (y.created_at > x.created_at ? 1 : -1))
   },
 
-  // Upload a PDF straight to the library, no order needed.
-  addArtwork: async (accountId: string, file: File) => {
+  // Upload a PDF straight to the library, no order needed. Optionally tag it with a
+  // product category so it shows up in that catalog tile's gallery.
+  addArtwork: async (accountId: string, file: File, category?: string | null) => {
     const path = `${accountId}/${crypto.randomUUID()}.pdf`
     const { error: upErr } = await supabase.storage
       .from('signage-artwork')
@@ -134,7 +135,7 @@ export const signage = {
     if (upErr) return { error: upErr }
     const { error } = await supabase
       .from('signage_artwork')
-      .insert({ account_id: accountId, path, name: file.name })
+      .insert({ account_id: accountId, path, name: file.name, sign_category: category ?? null })
     return { error }
   },
 

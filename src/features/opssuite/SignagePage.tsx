@@ -38,6 +38,23 @@ const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
   { name: 'Other Items', icon: Package },
 ]
 
+const CATALOG_NAMES = new Set<string>(SIGNAGE_CATALOG.map((c) => c.name))
+// Library artwork that belongs in a category's gallery (deduped by path). Other
+// Items catches anything uncategorized or tagged to a name we no longer show.
+function signsInCategory(items: ArtworkItem[], category: string): ArtworkItem[] {
+  const seen = new Set<string>()
+  const out: ArtworkItem[] = []
+  for (const i of items) {
+    if (!i.artwork_path || seen.has(i.artwork_path)) continue
+    const cat = i.sign_category
+    const match = category === 'Other Items'
+      ? (!cat || !CATALOG_NAMES.has(cat) || cat === 'Other Items')
+      : cat === category
+    if (match) { seen.add(i.artwork_path); out.push(i) }
+  }
+  return out
+}
+
 async function openArtwork(path: string) {
   const { url } = await signage.artworkUrl(path)
   if (url) window.open(url, '_blank', 'noopener')
@@ -53,6 +70,10 @@ function Inner({ locationId }: { locationId: string }) {
   const [presetCategory, setPresetCategory] = useState<string | null>(null)
   const startOrder = (category: string | null) => { setPresetCategory(category); setCreating(true) }
   const [tab, setTab] = useState<'catalog' | 'library' | 'history'>('catalog')
+  // Catalog drill-down: a chosen category shows its gallery; picking a sign opens
+  // the quantity-only order confirm.
+  const [galleryCat, setGalleryCat] = useState<string | null>(null)
+  const [pickedSign, setPickedSign] = useState<ArtworkItem | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -89,8 +110,17 @@ function Inner({ locationId }: { locationId: string }) {
         ))}
       </div>
 
-      {/* Catalog: pick a category to start an order. */}
-      {tab === 'catalog' && (
+      {/* Catalog: pick a category, then pick a sign from its gallery. */}
+      {tab === 'catalog' && (galleryCat ? (
+        <SignGallery
+          category={galleryCat}
+          items={library}
+          accountId={profile?.account_id ?? ''}
+          onBack={() => setGalleryCat(null)}
+          onChanged={load}
+          onPick={setPickedSign}
+        />
+      ) : (
         <section>
           <h2 className="mb-3 text-sm font-semibold text-ink">Choose a category</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -98,7 +128,7 @@ function Inner({ locationId }: { locationId: string }) {
               <button
                 key={c.name}
                 type="button"
-                onClick={() => startOrder(c.name)}
+                onClick={() => setGalleryCat(c.name)}
                 className="group flex flex-col items-center gap-2.5"
               >
                 <div className="grid aspect-square w-full place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
@@ -109,7 +139,7 @@ function Inner({ locationId }: { locationId: string }) {
             ))}
           </div>
         </section>
-      )}
+      ))}
 
       {tab === 'history' && (loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
@@ -187,6 +217,16 @@ function Inner({ locationId }: { locationId: string }) {
           accountId={profile?.account_id ?? ''}
           canDelete={(profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'}
           onChanged={load}
+        />
+      )}
+
+      {pickedSign && galleryCat && (
+        <PlaceOrderModal
+          category={galleryCat}
+          sign={pickedSign}
+          locationId={locationId}
+          onClose={() => setPickedSign(null)}
+          onPlaced={() => { setPickedSign(null); setTab('history'); void load() }}
         />
       )}
 
@@ -346,6 +386,179 @@ function ArtworkLibrary({
         </ul>
       )}
     </section>
+  )
+}
+
+// The gallery of signs in one category. Pick a sign to order it (quantity only).
+function SignGallery({
+  category, items, accountId, onBack, onChanged, onPick,
+}: {
+  category: string
+  items: ArtworkItem[]
+  accountId: string
+  onBack: () => void
+  onChanged: () => void
+  onPick: (sign: ArtworkItem) => void
+}) {
+  const signs = useMemo(() => signsInCategory(items, category), [items, category])
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const paths = signs.map((s) => s.artwork_path)
+    if (!paths.length) return
+    let active = true
+    void (async () => {
+      const urls = await signage.artworkUrls(paths)
+      for (const p of paths) {
+        if (!active) return
+        const url = urls[p]
+        if (!url) continue
+        const img = await renderPdfThumb(url, p)
+        if (active && img) setThumbs((prev) => (prev[p] ? prev : { ...prev, [p]: img }))
+      }
+    })()
+    return () => { active = false }
+  }, [signs])
+
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const upload = async (f: File | null) => {
+    setError(null)
+    if (!f) return
+    if (f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) return setError('Artwork must be a PDF file.')
+    setBusy(true)
+    const { error: err } = await signage.addArtwork(accountId, f, category)
+    setBusy(false)
+    if (fileRef.current) fileRef.current.value = ''
+    if (err) return setError(err.message)
+    onChanged()
+  }
+
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={onBack} className="text-sm text-ink-muted hover:text-ink">← All categories</button>
+        <h2 className="text-base font-semibold text-ink">{category}</h2>
+        <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => void upload(e.target.files?.[0] ?? null)} />
+        <Button variant="secondary" size="sm" className="ml-auto" disabled={busy} onClick={() => fileRef.current?.click()}>
+          <Upload className="size-4" /> {busy ? 'Uploading…' : 'Upload a sign'}
+        </Button>
+      </div>
+      {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+      {signs.length === 0 ? (
+        <EmptyState
+          icon={Images}
+          title="No signs in this category yet"
+          description="Upload a sign to this category, then anyone can order it in a couple taps."
+          action={<Button onClick={() => fileRef.current?.click()}>Upload a sign</Button>}
+        />
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {signs.map((s) => (
+            <button
+              key={s.artwork_path}
+              type="button"
+              onClick={() => onPick(s)}
+              className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-2 text-left transition hover:border-accent"
+            >
+              <div className="flex h-40 items-center justify-center overflow-hidden rounded-lg bg-content p-2">
+                {thumbs[s.artwork_path] ? (
+                  <img src={thumbs[s.artwork_path]} alt={s.artwork_name ?? 'Sign'} className="max-h-full max-w-full object-contain" />
+                ) : (
+                  <FileText className="size-8 text-ink-subtle" />
+                )}
+              </div>
+              <p className="truncate px-1 text-sm font-medium text-ink group-hover:text-accent">{s.artwork_name ?? 'Sign.pdf'}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// Confirm a picked sign: choose the site and quantity, then place the order.
+function PlaceOrderModal({
+  category, sign, locationId, onClose, onPlaced,
+}: {
+  category: string
+  sign: ArtworkItem
+  locationId: string
+  onClose: () => void
+  onPlaced: () => void
+}) {
+  const { profile } = useAuth()
+  const { activeLocation, locations } = useLocations()
+  const [siteId, setSiteId] = useState<string>(activeLocation?.id ?? locationId)
+  const [quantity, setQuantity] = useState('1')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void signage.artworkUrl(sign.artwork_path).then(async ({ url }) => {
+      if (!url || !active) return
+      const img = await renderPdfThumb(url, sign.artwork_path)
+      if (active) setPreview(img)
+    })
+    return () => { active = false }
+  }, [sign.artwork_path])
+
+  const place = async () => {
+    setError(null)
+    const [pf, ...pl] = (profile?.name ?? '').trim().split(' ')
+    setBusy(true)
+    const { data: created, error: err } = await signage.create({
+      account_id: profile?.account_id ?? '',
+      location_id: siteId === 'all' ? null : siteId,
+      requested_by: profile?.id ?? null,
+      first_name: pf || null,
+      last_name: pl.join(' ') || null,
+      title: sign.artwork_name ?? category,
+      sign_category: category,
+      quantity: Number(quantity) || 1,
+      artwork_path: sign.artwork_path,
+      artwork_name: sign.artwork_name,
+    })
+    setBusy(false)
+    if (err) return setError(err.message)
+    if (created?.id) void signage.emailRequest(created.id)
+    onPlaced()
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Order sign" size="sm">
+      <div className="flex flex-col gap-4">
+        <div className="flex h-48 items-center justify-center overflow-hidden rounded-lg border border-border bg-content p-2">
+          {preview ? (
+            <img src={preview} alt={sign.artwork_name ?? 'Sign'} className="max-h-full max-w-full object-contain" />
+          ) : (
+            <FileText className="size-8 text-ink-subtle" />
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-medium text-ink">{sign.artwork_name ?? 'Sign.pdf'}</p>
+          <p className="text-xs text-ink-muted">{category}</p>
+        </div>
+        <Field label="Site" required>
+          {(id) => (
+            <Select id={id} value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+              <option value="all">ALL SITES</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+          )}
+        </Field>
+        <Field label="Quantity" required>
+          {(id) => <Input id={id} type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />}
+        </Field>
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={() => void place()} disabled={busy}>{busy ? 'Placing…' : 'Place order'}</Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
