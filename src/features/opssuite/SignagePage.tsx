@@ -52,7 +52,7 @@ function Inner({ locationId }: { locationId: string }) {
   // Category chosen from a catalog tile, preselected in the order form.
   const [presetCategory, setPresetCategory] = useState<string | null>(null)
   const startOrder = (category: string | null) => { setPresetCategory(category); setCreating(true) }
-  const [tab, setTab] = useState<'catalog' | 'history'>('catalog')
+  const [tab, setTab] = useState<'catalog' | 'library' | 'history'>('catalog')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -74,7 +74,7 @@ function Inner({ locationId }: { locationId: string }) {
 
       {/* Tabs */}
       <div className="flex items-center gap-6 border-b border-border">
-        {([['catalog', 'Catalog'], ['history', 'Order History']] as const).map(([key, label]) => (
+        {([['catalog', 'Catalog'], ['library', 'Artwork Library'], ['history', 'Order History']] as const).map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -181,7 +181,7 @@ function Inner({ locationId }: { locationId: string }) {
         </div>
       ))}
 
-      {tab === 'catalog' && !loading && (
+      {tab === 'library' && !loading && (
         <ArtworkLibrary
           items={library}
           accountId={profile?.account_id ?? ''}
