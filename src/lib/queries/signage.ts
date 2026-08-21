@@ -19,7 +19,7 @@ export const SIGN_CATEGORIES = [
   'Aluminum Signs',
   'Safety Signs',
   'Wind Signs',
-  'Business Card',
+  'Business Cards',
   'Courtesy Cards',
   'Note Pads',
   'Other Items',

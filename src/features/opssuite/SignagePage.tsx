@@ -32,7 +32,7 @@ const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
   { name: 'Aluminum Signs', icon: Square },
   { name: 'Safety Signs', icon: ShieldAlert },
   { name: 'Wind Signs', icon: Wind },
-  { name: 'Business Card', icon: CreditCard },
+  { name: 'Business Cards', icon: CreditCard },
   { name: 'Courtesy Cards', icon: Gift },
   { name: 'Note Pads', icon: StickyNote },
   { name: 'Other Items', icon: Package },
@@ -74,6 +74,8 @@ function Inner({ locationId }: { locationId: string }) {
   // the quantity-only order confirm.
   const [galleryCat, setGalleryCat] = useState<string | null>(null)
   const [pickedSign, setPickedSign] = useState<ArtworkItem | null>(null)
+  // A representative sample thumbnail per category, shown on its catalog tile.
+  const [catThumbs, setCatThumbs] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -84,6 +86,26 @@ function Inner({ locationId }: { locationId: string }) {
   }, [locationId])
 
   useEffect(() => { void load() }, [load])
+
+  // Render one sample thumbnail per category (the first sign in it) for the tiles.
+  useEffect(() => {
+    const reps = SIGNAGE_CATALOG
+      .map((c) => ({ cat: c.name, path: signsInCategory(library, c.name)[0]?.artwork_path }))
+      .filter((r): r is { cat: string; path: string } => !!r.path)
+    if (!reps.length) return
+    let active = true
+    void (async () => {
+      const urls = await signage.artworkUrls(reps.map((r) => r.path))
+      for (const r of reps) {
+        if (!active) return
+        const url = urls[r.path]
+        if (!url) continue
+        const img = await renderPdfThumb(url, r.path)
+        if (active && img) setCatThumbs((prev) => (prev[r.cat] ? prev : { ...prev, [r.cat]: img }))
+      }
+    })()
+    return () => { active = false }
+  }, [library])
 
   return (
     <div className="flex flex-col gap-6">
@@ -132,8 +154,12 @@ function Inner({ locationId }: { locationId: string }) {
                 onClick={() => setGalleryCat(c.name)}
                 className="group flex flex-col items-center gap-2.5"
               >
-                <div className="grid aspect-square w-full place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
-                  <c.icon className="size-12" strokeWidth={1.5} />
+                <div className="grid aspect-square w-full place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
+                  {catThumbs[c.name] ? (
+                    <img src={catThumbs[c.name]} alt={c.name} className="max-h-full max-w-full object-contain p-4" />
+                  ) : (
+                    <c.icon className="size-12" strokeWidth={1.5} />
+                  )}
                 </div>
                 <span className="text-center text-sm font-semibold text-ink">{c.name}</span>
               </button>
@@ -221,7 +247,16 @@ function Inner({ locationId }: { locationId: string }) {
         />
       )}
 
-      {pickedSign && galleryCat && (
+      {pickedSign && galleryCat === 'Business Cards' && (
+        <BusinessCardOrderModal
+          sign={pickedSign}
+          locationId={locationId}
+          onClose={() => setPickedSign(null)}
+          onPlaced={() => { setPickedSign(null); setTab('history'); void load() }}
+        />
+      )}
+
+      {pickedSign && galleryCat && galleryCat !== 'Business Cards' && (
         <PlaceOrderModal
           category={galleryCat}
           sign={pickedSign}
@@ -676,6 +711,101 @@ function PlaceOrderModal({
         </Field>
         <Field label="Quantity" required>
           {(id) => <Input id={id} type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />}
+        </Field>
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={() => void place()} disabled={busy}>{busy ? 'Placing…' : 'Place order'}</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Business cards need the card owner's name and a quantity in multiples of 500.
+function BusinessCardOrderModal({
+  sign, locationId, onClose, onPlaced,
+}: {
+  sign: ArtworkItem
+  locationId: string
+  onClose: () => void
+  onPlaced: () => void
+}) {
+  const { profile } = useAuth()
+  const { activeLocation, locations } = useLocations()
+  const [pf, ...pl] = (profile?.name ?? '').trim().split(' ')
+  const [siteId, setSiteId] = useState<string>(activeLocation?.id ?? locationId)
+  const [firstName, setFirstName] = useState(pf ?? '')
+  const [lastName, setLastName] = useState(pl.join(' '))
+  const [quantity, setQuantity] = useState('500')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void signage.artworkUrl(sign.artwork_path).then(async ({ url }) => {
+      if (!url || !active) return
+      const img = await renderPdfThumb(url, sign.artwork_path)
+      if (active) setPreview(img)
+    })
+    return () => { active = false }
+  }, [sign.artwork_path])
+
+  const place = async () => {
+    setError(null)
+    if (!firstName.trim() || !lastName.trim()) return setError('Enter the first and last name for the card.')
+    const qty = Number(quantity) || 0
+    if (qty <= 0 || qty % 500 !== 0) return setError('Quantity must be in increments of 500.')
+    setBusy(true)
+    const { data: created, error: err } = await signage.create({
+      account_id: profile?.account_id ?? '',
+      location_id: siteId === 'all' ? null : siteId,
+      requested_by: profile?.id ?? null,
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      title: `Business Cards - ${firstName.trim()} ${lastName.trim()}`,
+      sign_category: 'Business Cards',
+      quantity: qty,
+      artwork_path: sign.artwork_path,
+      artwork_name: sign.artwork_name,
+    })
+    setBusy(false)
+    if (err) return setError(err.message)
+    if (created?.id) void signage.emailRequest(created.id)
+    onPlaced()
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Order business cards" size="sm">
+      <div className="flex flex-col gap-4">
+        <div className="flex h-40 items-center justify-center overflow-hidden rounded-lg border border-border bg-content p-2">
+          {preview ? (
+            <img src={preview} alt={sign.artwork_name ?? 'Business card'} className="max-h-full max-w-full object-contain" />
+          ) : (
+            <FileText className="size-8 text-ink-subtle" />
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="First name" required>{(id) => <Input id={id} value={firstName} onChange={(e) => setFirstName(e.target.value)} />}</Field>
+          <Field label="Last name" required>{(id) => <Input id={id} value={lastName} onChange={(e) => setLastName(e.target.value)} />}</Field>
+        </div>
+        <Field label="Quantity (cards)" required>
+          {(id) => (
+            <Select id={id} value={quantity} onChange={(e) => setQuantity(e.target.value)}>
+              {[500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000].map((q) => (
+                <option key={q} value={q}>{q.toLocaleString('en-US')}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Site" required>
+          {(id) => (
+            <Select id={id} value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+              <option value="all">ALL SITES</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+          )}
         </Field>
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
