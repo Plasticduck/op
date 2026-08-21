@@ -154,9 +154,9 @@ function Inner({ locationId }: { locationId: string }) {
                 onClick={() => setGalleryCat(c.name)}
                 className="group flex flex-col items-center gap-2.5"
               >
-                <div className="grid aspect-square w-full place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
+                <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 p-3 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
                   {catThumbs[c.name] ? (
-                    <img src={catThumbs[c.name]} alt={c.name} className="max-h-full max-w-full object-contain p-4" />
+                    <img src={catThumbs[c.name]} alt={c.name} className="max-h-full max-w-full object-contain" />
                   ) : (
                     <c.icon className="size-12" strokeWidth={1.5} />
                   )}
