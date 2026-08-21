@@ -426,19 +426,21 @@ function AddFromLibraryModal({
 
   const [added, setAdded] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const add = async (item: ArtworkItem) => {
+    setError(null)
     setBusy(item.artwork_path)
-    const { error } = await signage.assignToCategory(accountId, item.artwork_path, item.artwork_name, category)
+    const { error: err } = await signage.assignToCategory(accountId, item.artwork_path, item.artwork_name, category)
     setBusy(null)
-    if (!error) {
-      setAdded((prev) => new Set(prev).add(item.artwork_path))
-      onChanged()
-    }
+    if (err) { setError(err.message); return }
+    setAdded((prev) => new Set(prev).add(item.artwork_path))
+    onChanged()
   }
 
   return (
     <Modal open onClose={onClose} title={`Add to ${category}`} size="lg">
       <div className="flex flex-col gap-4">
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         {candidates.length === 0 ? (
           <p className="py-6 text-center text-sm text-ink-muted">Every library artwork is already in this category.</p>
         ) : (
