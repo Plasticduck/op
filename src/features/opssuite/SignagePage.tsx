@@ -468,7 +468,7 @@ function SignGallery({
                   <FileText className="size-8 text-ink-subtle" />
                 )}
               </div>
-              <p className="truncate px-1 text-sm font-medium text-ink group-hover:text-accent">{s.artwork_name ?? 'Sign.pdf'}</p>
+              <p className="truncate px-1 text-center text-sm font-medium text-ink group-hover:text-accent">{s.artwork_name ?? 'Sign.pdf'}</p>
             </button>
           ))}
         </div>
