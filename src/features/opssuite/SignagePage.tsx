@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FileText, Images, Plus, Signpost, Trash2, Upload } from 'lucide-react'
+import { CreditCard, FileText, Gift, Images, Package, Plus, ShieldAlert, Signpost, Square, StickyNote, Trash2, Upload, Wind, type LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -24,6 +24,19 @@ import {
 
 type Row = SignageRequest & { requested_by: { name: string } | null }
 
+// Catalog tiles shown on the signage landing. Names must match SIGN_CATEGORIES so
+// a tile can preset the order form's category. Placeholder icons for now.
+const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
+  { name: 'A-Frame Signs', icon: Signpost },
+  { name: 'Aluminum Signs', icon: Square },
+  { name: 'Safety Signs', icon: ShieldAlert },
+  { name: 'Wind Signs', icon: Wind },
+  { name: 'Business Card', icon: CreditCard },
+  { name: 'Courtesy Cards', icon: Gift },
+  { name: 'Note Pads', icon: StickyNote },
+  { name: 'Other Items', icon: Package },
+]
+
 async function openArtwork(path: string) {
   const { url } = await signage.artworkUrl(path)
   if (url) window.open(url, '_blank', 'noopener')
@@ -35,6 +48,9 @@ function Inner({ locationId }: { locationId: string }) {
   const [library, setLibrary] = useState<ArtworkItem[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  // Category chosen from a catalog tile, preselected in the order form.
+  const [presetCategory, setPresetCategory] = useState<string | null>(null)
+  const startOrder = (category: string | null) => { setPresetCategory(category); setCreating(true) }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -51,17 +67,37 @@ function Inner({ locationId }: { locationId: string }) {
       <PageHeader
         title="Signage"
         subtitle="Order signage and printed products for your site."
-        actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> New Order</Button>}
+        actions={<Button variant="secondary" onClick={() => startOrder(null)}><Plus className="size-4" /> Custom order</Button>}
       />
 
+      {/* Catalog: pick a category to start an order. */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-ink">Choose a category</h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {SIGNAGE_CATALOG.map((c) => (
+            <button
+              key={c.name}
+              type="button"
+              onClick={() => startOrder(c.name)}
+              className="group flex flex-col items-center gap-2.5"
+            >
+              <div className="grid aspect-square w-full place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
+                <c.icon className="size-12" strokeWidth={1.5} />
+              </div>
+              <span className="text-center text-sm font-semibold text-ink">{c.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <h2 className="text-sm font-semibold text-ink">Recent orders</h2>
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : rows.length === 0 ? (
         <EmptyState
           icon={Signpost}
           title="No signage orders"
-          description="Submit a signage order and it goes straight to the print team."
-          action={<Button onClick={() => setCreating(true)}>New Order</Button>}
+          description="Pick a category above to submit your first order. It goes straight to the print team."
         />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
@@ -138,8 +174,9 @@ function Inner({ locationId }: { locationId: string }) {
         <OrderModal
           locationId={locationId}
           library={library}
-          onClose={() => setCreating(false)}
-          onSaved={() => { setCreating(false); void load() }}
+          presetCategory={presetCategory}
+          onClose={() => { setCreating(false); setPresetCategory(null) }}
+          onSaved={() => { setCreating(false); setPresetCategory(null); void load() }}
         />
       )}
     </div>
@@ -293,10 +330,11 @@ function ArtworkLibrary({
 }
 
 function OrderModal({
-  locationId, library, onClose, onSaved,
+  locationId, library, presetCategory, onClose, onSaved,
 }: {
   locationId: string
   library: ArtworkItem[]
+  presetCategory?: string | null
   onClose: () => void
   onSaved: () => void
 }) {
@@ -305,12 +343,12 @@ function OrderModal({
   const [pf, ...pl] = (profile?.name ?? '').trim().split(' ')
   // 'all' targets every site (location_id null); otherwise a specific site id.
   const [siteId, setSiteId] = useState<string>(activeLocation?.id ?? locationId)
-  const [orderTitle, setOrderTitle] = useState('')
+  const initCategory = presetCategory ?? SIGN_CATEGORIES[0]
+  const [orderTitle, setOrderTitle] = useState(presetCategory ?? '')
   const [firstName, setFirstName] = useState(pf ?? '')
   const [lastName, setLastName] = useState(pl.join(' '))
-  const firstType = signTypeOptions(SIGN_CATEGORIES[0])[0] ?? ''
-  const [category, setCategory] = useState<string>(SIGN_CATEGORIES[0])
-  const [signType, setSignType] = useState<string>(firstType)
+  const [category, setCategory] = useState<string>(initCategory)
+  const [signType, setSignType] = useState<string>(signTypeOptions(initCategory)[0] ?? '')
   const [width, setWidth] = useState('')
   const [height, setHeight] = useState('')
   const [unit, setUnit] = useState<'in' | 'ft'>('in')
@@ -378,7 +416,7 @@ function OrderModal({
     setError(null)
     if (!orderTitle.trim()) return setError('Give the order a title')
     if (!firstName.trim() || !lastName.trim()) return setError('Enter your first and last name')
-    if (!signType) return setError('Choose a sign type')
+    if (typeOptions.length > 0 && !signType) return setError('Choose a sign type')
     setBusy(true)
 
     let artworkPath: string | null = null
@@ -401,7 +439,7 @@ function OrderModal({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       sign_category: category,
-      sign_type: signType,
+      sign_type: signType || null,
       width: spec ? null : width ? Number(width) : null,
       height: spec ? null : height ? Number(height) : null,
       size_unit: unit,
@@ -443,13 +481,15 @@ function OrderModal({
             </Select>
           )}
         </Field>
-        <Field label={signTypeLabel(category)} required>
-          {(id) => (
-            <Select id={id} value={signType} onChange={(e) => applyType(e.target.value)}>
-              {typeOptions.map((o) => <option key={o} value={o}>{o}</option>)}
-            </Select>
-          )}
-        </Field>
+        {typeOptions.length > 0 && (
+          <Field label={signTypeLabel(category)} required>
+            {(id) => (
+              <Select id={id} value={signType} onChange={(e) => applyType(e.target.value)}>
+                {typeOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+              </Select>
+            )}
+          </Field>
+        )}
         {spec ? (
           <>
             <Field label="Size" required>

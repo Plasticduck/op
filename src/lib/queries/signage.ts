@@ -13,8 +13,17 @@ export type ArtworkItem = {
   created_at: string
 }
 
-// Top-level categories on the order form.
-export const SIGN_CATEGORIES = ['General Site Signage', 'Banner', 'Flags', 'Magnets'] as const
+// Top-level product categories (the signage catalog tiles + order form).
+export const SIGN_CATEGORIES = [
+  'A-Frame Signs',
+  'Aluminum Signs',
+  'Safety Signs',
+  'Wind Signs',
+  'Business Card',
+  'Courtesy Cards',
+  'Note Pads',
+  'Other Items',
+] as const
 
 // Rigid substrates (used for General Site Signage's type list).
 const RIGID_SUBSTRATES = [
