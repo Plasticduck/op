@@ -116,6 +116,7 @@ function Inner({ locationId }: { locationId: string }) {
           category={galleryCat}
           items={library}
           accountId={profile?.account_id ?? ''}
+          canDelete={(profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'}
           onBack={() => setGalleryCat(null)}
           onChanged={load}
           onPick={setPickedSign}
@@ -477,11 +478,12 @@ function AddFromLibraryModal({
 
 // The gallery of signs in one category. Pick a sign to order it (quantity only).
 function SignGallery({
-  category, items, accountId, onBack, onChanged, onPick,
+  category, items, accountId, canDelete, onBack, onChanged, onPick,
 }: {
   category: string
   items: ArtworkItem[]
   accountId: string
+  canDelete: boolean
   onBack: () => void
   onChanged: () => void
   onPick: (sign: ArtworkItem) => void
@@ -521,6 +523,17 @@ function SignGallery({
     onChanged()
   }
 
+  const [removing, setRemoving] = useState<string | null>(null)
+  const removeSign = async (s: ArtworkItem) => {
+    if (!window.confirm(`Delete "${s.artwork_name ?? 'this sign'}"? This cannot be undone.`)) return
+    setError(null)
+    setRemoving(s.artwork_path)
+    const { error: err } = await signage.removeArtwork(s.artwork_path)
+    setRemoving(null)
+    if (err) return setError(err.message)
+    onChanged()
+  }
+
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -556,21 +569,32 @@ function SignGallery({
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {signs.map((s) => (
-            <button
+            <div
               key={s.artwork_path}
-              type="button"
-              onClick={() => onPick(s)}
-              className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-2 text-left transition hover:border-accent"
+              className="group relative flex flex-col gap-2 rounded-xl border border-border bg-card p-2 transition hover:border-accent"
             >
-              <div className="flex h-60 items-center justify-center overflow-hidden rounded-lg bg-content p-2">
-                {thumbs[s.artwork_path] ? (
-                  <img src={thumbs[s.artwork_path]} alt={s.artwork_name ?? 'Sign'} className="max-h-full max-w-full object-contain" />
-                ) : (
-                  <FileText className="size-8 text-ink-subtle" />
-                )}
-              </div>
-              <p className="truncate px-1 text-center text-sm font-medium text-ink group-hover:text-accent">{s.artwork_name ?? 'Sign.pdf'}</p>
-            </button>
+              <button type="button" onClick={() => onPick(s)} className="flex flex-col gap-2 text-left">
+                <div className="flex h-60 items-center justify-center overflow-hidden rounded-lg bg-content p-2">
+                  {thumbs[s.artwork_path] ? (
+                    <img src={thumbs[s.artwork_path]} alt={s.artwork_name ?? 'Sign'} className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <FileText className="size-8 text-ink-subtle" />
+                  )}
+                </div>
+                <p className="truncate px-1 text-center text-sm font-medium text-ink group-hover:text-accent">{s.artwork_name ?? 'Sign.pdf'}</p>
+              </button>
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => void removeSign(s)}
+                  disabled={removing === s.artwork_path}
+                  title="Delete sign"
+                  className="absolute right-2 top-2 z-10 rounded-md border border-border bg-card/90 p-1.5 text-ink-muted shadow-sm hover:border-danger hover:text-danger disabled:opacity-50"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}
