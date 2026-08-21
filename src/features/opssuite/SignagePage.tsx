@@ -453,7 +453,7 @@ function SignGallery({
           action={<Button onClick={() => fileRef.current?.click()}>Upload a sign</Button>}
         />
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {signs.map((s) => (
             <button
               key={s.artwork_path}
@@ -461,7 +461,7 @@ function SignGallery({
               onClick={() => onPick(s)}
               className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-2 text-left transition hover:border-accent"
             >
-              <div className="flex h-40 items-center justify-center overflow-hidden rounded-lg bg-content p-2">
+              <div className="flex h-60 items-center justify-center overflow-hidden rounded-lg bg-content p-2">
                 {thumbs[s.artwork_path] ? (
                   <img src={thumbs[s.artwork_path]} alt={s.artwork_name ?? 'Sign'} className="max-h-full max-w-full object-contain" />
                 ) : (
