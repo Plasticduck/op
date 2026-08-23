@@ -33,7 +33,7 @@ const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
   { name: 'Safety Signs', icon: ShieldAlert },
   { name: 'Wind Signs', icon: Wind },
   { name: 'Business Cards', icon: CreditCard },
-  { name: 'Courtesy Cards', icon: Gift },
+  { name: 'Rack Cards & Brochures', icon: Gift },
   { name: 'Note Pads', icon: StickyNote },
   { name: 'Other Items', icon: Package },
 ]
