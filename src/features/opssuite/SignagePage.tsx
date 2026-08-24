@@ -23,7 +23,7 @@ import {
   type SignageRequest,
 } from '@/lib/queries/signage'
 
-type Row = SignageRequest & { requested_by: { name: string } | null }
+type Row = SignageRequest & { requested_by: { name: string } | null; location: { name: string } | null }
 
 // Catalog tiles shown on the signage landing. Names must match SIGN_CATEGORIES so
 // a tile can preset the order form's category. Placeholder icons for now.
@@ -79,7 +79,7 @@ function Inner({ locationId }: { locationId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [orders, art] = await Promise.all([signage.list(locationId), signage.libraryList()])
+    const [orders, art] = await Promise.all([signage.list(), signage.libraryList()])
     setRows((orders.data as unknown as Row[]) ?? [])
     setLibrary(art)
     setLoading(false)
@@ -182,6 +182,7 @@ function Inner({ locationId }: { locationId: string }) {
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-3 py-2.5 font-medium">Order</th>
+                <th className="px-3 py-2.5 font-medium">Site</th>
                 <th className="px-3 py-2.5 font-medium">Size</th>
                 <th className="px-3 py-2.5 font-medium numeric">Qty</th>
                 <th className="px-3 py-2.5 font-medium">Ordered by</th>
@@ -202,6 +203,9 @@ function Inner({ locationId }: { locationId: string }) {
                     <div className="text-xs text-ink-muted">
                       {r.sign_category}{r.sign_type ? ` · ${r.sign_type}` : ''}
                     </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-ink-muted">
+                    {r.location_id === null ? 'All sites' : r.location?.name ?? '—'}
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">
                     {r.size_option

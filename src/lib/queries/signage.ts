@@ -96,12 +96,13 @@ export function flagSpec(signType: string): FlagSpec | undefined {
 }
 
 export const signage = {
-  // A site's orders, plus any ALL SITES orders (location_id null).
-  list: (loc: string) =>
+  // Every signage order the caller can see. RLS already scopes rows to their
+  // account and the sites they have access to, so Order History spans all of a
+  // user's sites (an order isn't hidden just because a different site is active).
+  list: () =>
     supabase
       .from('signage_requests')
-      .select('*, requested_by(name)')
-      .or(`location_id.eq.${loc},location_id.is.null`)
+      .select('*, requested_by(name), location:location_id(name)')
       .order('created_at', { ascending: false }),
   create: (row: T['signage_requests']['Insert']) =>
     supabase.from('signage_requests').insert(row).select().single(),
