@@ -63,25 +63,25 @@ import { Logo } from '@/components/ui/Logo'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { isBillingHidden } from '@/lib/accountFlags'
-import { pageAllowed } from '@/lib/permissions'
-import type { Role } from '@/lib/rbac'
+import { pageAllowed, permRoleInList } from '@/lib/permissions'
+import type { PermRole } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
 type NavItem = {
   to: string
   label: string
   icon: LucideIcon
-  roles: Role[]
+  roles: PermRole[]
   // Item only shows when the account has this feature flag enabled.
   flag?: 'gm_bonus'
   // Roles that can be granted this page but default to OFF (admin opts them in).
-  optIn?: Role[]
+  optIn?: PermRole[]
 }
 
 type NavGroup = {
   label: string
   items: NavItem[]
-  roles?: Role[]
+  roles?: PermRole[]
 }
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -170,8 +170,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/bonuses',
         label: 'Bonuses',
         icon: BadgeDollarSign,
-        roles: ['owner', 'manager'],
-        optIn: ['manager'],
+        roles: ['owner', 'regional_manager', 'executive'],
         flag: 'gm_bonus',
       },
       {
@@ -256,13 +255,14 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Finance',
-    roles: ['owner', 'manager', 'technician'],
+    roles: ['owner', 'regional_manager', 'executive', 'technician'],
     items: [
       {
         to: '/app/invoices',
         label: 'Invoice Approval',
         icon: Wallet,
-        roles: ['owner', 'manager', 'technician'],
+        roles: ['owner', 'regional_manager', 'executive', 'technician'],
+        optIn: ['technician'],
       },
     ],
   },
@@ -462,7 +462,7 @@ export function SidebarNav({
   onNavigate,
   collapsed,
 }: {
-  role: Role
+  role: PermRole
   onNavigate?: () => void
   collapsed?: boolean
 }) {
@@ -483,7 +483,7 @@ export function SidebarNav({
 
   // Only the groups + items this role (and account) can see.
   const baseGroups = NAV_GROUPS
-    .filter((g) => !g.roles || g.roles.includes(role))
+    .filter((g) => permRoleInList(role, g.roles))
     .map((g) => ({ ...g, items: g.items.filter(canSee) }))
     .filter((g) => g.items.length > 0)
 
@@ -660,7 +660,7 @@ export function SidebarNav({
 
 const COLLAPSE_KEY = 'tunnelsync.sidebarCollapsed'
 
-export function Sidebar({ role }: { role: Role }) {
+export function Sidebar({ role }: { role: PermRole }) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === '1'

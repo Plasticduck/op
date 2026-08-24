@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { SITE_URL } from '@/lib/siteUrl'
 import { fnErrorMessage } from '@/lib/fnError'
-import type { Role } from '@/lib/rbac'
+import type { Role, RoleCategory } from '@/lib/rbac'
 
 // Roles that can be handed out via an invite link. An owner (Admin) can invite
 // another owner; the invite UI only offers that option to owners.
@@ -12,6 +12,8 @@ export type AccountUser = {
   name: string
   email: string
   role: Role
+  // Regional Manager / Executive category (manager role + this). Null otherwise.
+  role_category: RoleCategory | null
   location_ids: string[]
   last_seen_at: string | null
   created_at: string
@@ -22,6 +24,7 @@ export type Invitation = {
   name: string | null
   email: string
   role: InvitableRole
+  role_category: RoleCategory | null
   location_ids: string[]
   token: string
   status: 'pending' | 'accepted' | 'expired'
@@ -51,16 +54,17 @@ export type LocationFull = {
 export async function listUsers() {
   return supabase
     .from('users')
-    .select('id, name, email, role, location_ids, last_seen_at, created_at')
+    .select('id, name, email, role, role_category, location_ids, last_seen_at, created_at')
     .order('created_at')
 }
 
 export async function updateUserRoleLocations(
   id: string,
   role: Role,
+  role_category: RoleCategory | null,
   location_ids: string[],
 ) {
-  return supabase.from('users').update({ role, location_ids }).eq('id', id)
+  return supabase.from('users').update({ role, role_category, location_ids }).eq('id', id)
 }
 
 export async function removeUser(id: string) {
@@ -70,7 +74,7 @@ export async function removeUser(id: string) {
 export async function listInvitations() {
   return supabase
     .from('invitations')
-    .select('id, name, email, role, location_ids, token, status, created_at, expires_at')
+    .select('id, name, email, role, role_category, location_ids, token, status, created_at, expires_at')
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
 }
@@ -81,6 +85,7 @@ export async function createInvitation(params: {
   name: string
   email: string
   role: InvitableRole
+  role_category?: RoleCategory | null
   location_ids: string[]
 }) {
   return supabase.from('invitations').insert(params).select().single()

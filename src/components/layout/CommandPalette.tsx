@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { CornerDownLeft, Search } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
-import { pageAllowed } from '@/lib/permissions'
+import { pageAllowed, permRoleInList } from '@/lib/permissions'
+import { permRole } from '@/lib/rbac'
 import { NAV_GROUPS } from '@/components/layout/Sidebar'
 import { cn } from '@/lib/utils'
 
@@ -22,10 +23,10 @@ export function CommandPalette() {
 
   const items = useMemo(() => {
     if (!profile) return []
-    const role = profile.role
+    const role = permRole(profile.role, profile.role_category)
     const flat: Array<{ to: string; label: string; group: string }> = []
     for (const g of NAV_GROUPS) {
-      if (g.roles && !g.roles.includes(role)) continue
+      if (!permRoleInList(role, g.roles)) continue
       for (const i of g.items) {
         if (
           !pageAllowed(role, i.to, i.roles, {

@@ -14,8 +14,8 @@ import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { updateCompany } from '@/lib/queries/companySettings'
 import { NAV_GROUPS } from '@/components/layout/Sidebar'
-import { SECTION_CATALOG } from '@/lib/permissions'
-import { ROLE_LABEL, type Role } from '@/lib/rbac'
+import { SECTION_CATALOG, permRoleInList } from '@/lib/permissions'
+import { CATEGORY_LABEL, ROLE_LABEL, displayRole, permRole, type PermRole, type Role, type RoleCategory } from '@/lib/rbac'
 import {
   createInvitation,
   listAllLocations,
@@ -42,16 +42,16 @@ const INVITE_TTL_MS = 72 * 3600 * 1000
 // Permission defaults. Some pages/sections are grantable but default to OFF for a
 // role (opt-in), so the editor must reflect the right unchecked/checked baseline.
 const NAV_ITEM_BY_TO = new Map(NAV_GROUPS.flatMap((g) => g.items).map((i) => [i.to, i]))
-function optInForKey(key: string): Role[] | undefined {
+function optInForKey(key: string): PermRole[] | undefined {
   const item = NAV_ITEM_BY_TO.get(key)
   if (item) return item.optIn
   return SECTION_CATALOG.find((s) => s.key === key)?.optIn
 }
-function pureDefault(role: Role, key: string): boolean {
+function pureDefault(role: PermRole, key: string): boolean {
   return !(optInForKey(key)?.includes(role))
 }
-function sectionsForRole(to: string, role: Role) {
-  return SECTION_CATALOG.filter((s) => s.page === to && s.roles.includes(role))
+function sectionsForRole(to: string, role: PermRole) {
+  return SECTION_CATALOG.filter((s) => s.page === to && permRoleInList(role, s.roles))
 }
 
 // Kevan Jowers must never be removable. Mirrors the database protect trigger so
@@ -177,7 +177,7 @@ export function TeamPage() {
                   </td>
                   <td className="px-3 py-2.5">
                     <Badge tone={u.role === 'owner' ? 'accent' : 'neutral'}>
-                      {ROLE_LABEL[u.role]}
+                      {displayRole(u.role, u.role_category)}
                     </Badge>
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">
@@ -255,7 +255,7 @@ export function TeamPage() {
                     <tr key={inv.id} className="border-t border-border hover:bg-content">
                       <td className="px-3 py-2.5 text-ink">{inv.email}</td>
                       <td className="px-3 py-2.5">
-                        <Badge tone="neutral">{ROLE_LABEL[inv.role]}</Badge>
+                        <Badge tone="neutral">{displayRole(inv.role, inv.role_category)}</Badge>
                       </td>
                       <td className="px-3 py-2.5 text-ink-muted" title={lastSent.toLocaleString()}>
                         {formatDistanceToNow(lastSent, { addSuffix: true })}
@@ -418,19 +418,19 @@ export function TeamPage() {
 function PermissionsEditor() {
   const { profile } = useAuth()
   const { settings, reload } = useCompany()
-  const [role, setRole] = useState<Role>('manager')
+  const [role, setRole] = useState<PermRole>('manager')
   const [allowed, setAllowed] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
 
   const groups = useMemo(
     () =>
-      NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
+      NAV_GROUPS.filter((g) => permRoleInList(role, g.roles))
         .map((g) => ({
           label: g.label,
           items: g.items.filter(
             (i) =>
-              i.roles.includes(role) &&
+              permRoleInList(role, i.roles) &&
               i.to !== '/app/dashboard' &&
               (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)),
           ),
@@ -497,8 +497,10 @@ function PermissionsEditor() {
       <div className="rounded-md border border-border bg-card p-4">
         <label className="mb-4 flex w-56 flex-col gap-1 text-xs font-medium text-ink-muted">
           Role
-          <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+          <Select value={role} onChange={(e) => setRole(e.target.value as PermRole)}>
             <option value="manager">{ROLE_LABEL.manager}</option>
+            <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
+            <option value="executive">{CATEGORY_LABEL.executive}</option>
             <option value="employee">{ROLE_LABEL.employee}</option>
             <option value="technician">{ROLE_LABEL.technician}</option>
           </Select>
@@ -578,15 +580,15 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
 }) {
   const { profile } = useAuth()
   const { settings, reload } = useCompany()
-  const role = user.role
+  const role = permRole(user.role, user.role_category)
   const groups = useMemo(
     () =>
-      NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
+      NAV_GROUPS.filter((g) => permRoleInList(role, g.roles))
         .map((g) => ({
           label: g.label,
           items: g.items.filter(
             (i) =>
-              i.roles.includes(role) &&
+              permRoleInList(role, i.roles) &&
               i.to !== '/app/dashboard' &&
               (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)),
           ),
@@ -602,7 +604,7 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
   const [allowed, setAllowed] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState(false)
 
-  const sectionsFor = (to: string) => SECTION_CATALOG.filter((s) => s.page === to && s.roles.includes(role))
+  const sectionsFor = (to: string) => SECTION_CATALOG.filter((s) => s.page === to && permRoleInList(role, s.roles))
 
   useEffect(() => {
     const userOv = settings.userPermissions?.[user.id] ?? {}
@@ -648,7 +650,7 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
     <Modal open onClose={onClose} title={`Permissions · ${user.name}`} size="lg">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-ink-muted">
-          {ROLE_LABEL[role]}. Choose which pages {user.name.split(' ')[0]} can use. This applies to this person only and
+          {displayRole(user.role, user.role_category)}. Choose which pages {user.name.split(' ')[0]} can use. This applies to this person only and
           overrides the role default.
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -715,11 +717,18 @@ function EditUserModal({
   onSaved: () => void
 }) {
   const [role, setRole] = useState<Role>(user.role)
+  const [category, setCategory] = useState<RoleCategory | null>(user.role_category)
   const [locIds, setLocIds] = useState<string[]>(user.location_ids)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Owners and technicians span every site, so per-site assignment doesn't apply.
   const allSites = role === 'owner' || role === 'technician'
+  // Categories (Regional Manager / Executive) are the manager role + a category.
+  const choice: PermRole = category ?? role
+  const setChoice = (v: PermRole) => {
+    if (v === 'regional_manager' || v === 'executive') { setRole('manager'); setCategory(v) }
+    else { setRole(v as Role); setCategory(null) }
+  }
 
   const save = async () => {
     setError(null)
@@ -730,6 +739,7 @@ function EditUserModal({
     const { error: err } = await updateUserRoleLocations(
       user.id,
       role,
+      category,
       role === 'technician' ? [] : locIds,
     )
     setBusy(false)
@@ -742,10 +752,12 @@ function EditUserModal({
       <div className="flex flex-col gap-4">
         <Field label="Role">
           {(id) => (
-            <Select id={id} value={role} onChange={(e) => setRole(e.target.value as Role)}>
+            <Select id={id} value={choice} onChange={(e) => setChoice(e.target.value as PermRole)}>
               <option value="employee">Employee</option>
               <option value="technician">Technician</option>
               <option value="manager">Manager</option>
+              <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
+              <option value="executive">{CATEGORY_LABEL.executive}</option>
               <option value="owner">Admin</option>
             </Select>
           )}
@@ -804,6 +816,12 @@ function ConvertToUserModal({
   const fullName = `${employee.first_name} ${employee.last_name}`.trim()
   const [email, setEmail] = useState(employee.email ?? '')
   const [role, setRole] = useState<InvitableRole>('employee')
+  const [category, setCategory] = useState<RoleCategory | null>(null)
+  const choice: PermRole = category ?? role
+  const setChoice = (v: PermRole) => {
+    if (v === 'regional_manager' || v === 'executive') { setRole('manager'); setCategory(v) }
+    else { setRole(v as InvitableRole); setCategory(null) }
+  }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -827,6 +845,7 @@ function ConvertToUserModal({
       name: fullName,
       email: clean,
       role,
+      role_category: category,
       location_ids: role === 'technician' ? [] : [employee.location_id],
     })
     if (invErr) {
@@ -864,10 +883,12 @@ function ConvertToUserModal({
         </Field>
         <Field label="Role" required>
           {(id) => (
-            <Select id={id} value={role} onChange={(e) => setRole(e.target.value as InvitableRole)}>
+            <Select id={id} value={choice} onChange={(e) => setChoice(e.target.value as PermRole)}>
               <option value="employee">Employee</option>
               <option value="technician">Technician</option>
               <option value="manager">Manager</option>
+              <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
+              <option value="executive">{CATEGORY_LABEL.executive}</option>
             </Select>
           )}
         </Field>

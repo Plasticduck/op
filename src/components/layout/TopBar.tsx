@@ -10,7 +10,7 @@ import { useCompany } from '@/lib/company'
 import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
 import { useNotifications, type Notification } from '@/lib/notifications'
 import { timeAgo } from '@/lib/format'
-import { ROLE_LABEL } from '@/lib/rbac'
+import { displayRole } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
 function renderNotification(n: Notification): { icon: typeof Bell; text: string; to: string } {
@@ -194,7 +194,7 @@ export function TopBar() {
             </div>
             <div className="hidden text-left text-xs leading-tight sm:block">
               <div className="font-medium text-ink">{profile.name}</div>
-              <div className="text-ink-muted">{ROLE_LABEL[profile.role]}</div>
+              <div className="text-ink-muted">{displayRole(profile.role, profile.role_category)}</div>
             </div>
             <ChevronDown className="hidden size-3.5 text-ink-muted sm:block" />
           </button>

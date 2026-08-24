@@ -2548,6 +2548,7 @@ export type Database = {
           location_ids: string[]
           name: string | null
           role: string
+          role_category: string | null
           status: string
           token: string
         }
@@ -2561,6 +2562,7 @@ export type Database = {
           location_ids?: string[]
           name?: string | null
           role: string
+          role_category?: string | null
           status?: string
           token?: string
         }
@@ -2574,6 +2576,7 @@ export type Database = {
           location_ids?: string[]
           name?: string | null
           role?: string
+          role_category?: string | null
           status?: string
           token?: string
         }
@@ -5396,6 +5399,7 @@ export type Database = {
           location_ids: string[]
           name: string
           role: string
+          role_category: string | null
         }
         Insert: {
           account_id: string
@@ -5407,6 +5411,7 @@ export type Database = {
           location_ids?: string[]
           name: string
           role: string
+          role_category?: string | null
         }
         Update: {
           account_id?: string
@@ -5418,6 +5423,7 @@ export type Database = {
           location_ids?: string[]
           name?: string
           role?: string
+          role_category?: string | null
         }
         Relationships: [
           {

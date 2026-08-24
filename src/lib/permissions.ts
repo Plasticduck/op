@@ -1,4 +1,4 @@
-import type { Role } from '@/lib/rbac'
+import type { PermRole } from '@/lib/rbac'
 
 // Per-account page access, edited by admins on the Team page. Keyed by role (or
 // user id), then by the nav item's `to` path, to a boolean. Everything is bounded
@@ -12,19 +12,26 @@ export type PagePermissions = Record<string, Record<string, boolean>>
 export type UserPermissions = Record<string, Record<string, boolean>>
 
 export function pageAllowed(
-  role: Role,
+  role: PermRole,
   to: string,
-  builtinRoles: Role[],
+  builtinRoles: PermRole[],
   opts?: {
     rolePerms?: PagePermissions | null
     userId?: string | null
     userPerms?: UserPermissions | null
     // Roles for which this page/section is grantable but defaults to OFF, so an
     // admin must explicitly enable it (per role or per person).
-    optInRoles?: Role[]
+    optInRoles?: PermRole[]
   },
 ): boolean {
-  if (!builtinRoles.includes(role)) return false
+  // Regional Manager / Executive mirror a manager: any page available to managers
+  // is available to them too. Pages that list the categories explicitly (and drop
+  // 'manager') are how Bonuses / Invoice Approval include the categories but not
+  // plain managers.
+  const builtins = builtinRoles.includes('manager')
+    ? [...builtinRoles, 'regional_manager' as const, 'executive' as const]
+    : builtinRoles
+  if (!builtins.includes(role)) return false
   if (role === 'owner') return true
   const u = opts?.userId ? opts.userPerms?.[opts.userId]?.[to] : undefined
   if (typeof u === 'boolean') return u
@@ -37,7 +44,7 @@ export function pageAllowed(
 // as pages (so it flows through role + user layering via pageAllowed). `page` is
 // the owning nav item's `to`; `roles` mirror that page's roles. To add a section:
 // add an entry here and call useSectionAllowed(key) where the section renders.
-export type SectionDef = { key: string; page: string; label: string; roles: Role[]; optIn?: Role[] }
+export type SectionDef = { key: string; page: string; label: string; roles: PermRole[]; optIn?: PermRole[] }
 
 export const SECTION_CATALOG: SectionDef[] = [
   { key: '/app/inventory#catalog', page: '/app/inventory', label: 'Catalog tab', roles: ['owner', 'manager', 'technician'] },
@@ -49,4 +56,12 @@ export const SECTION_CATALOG: SectionDef[] = [
 
 export function sectionsForPage(page: string): SectionDef[] {
   return SECTION_CATALOG.filter((s) => s.page === page)
+}
+
+// Coarse membership test for nav-group visibility. Categories mirror manager, so
+// a group open to managers is open to Regional Manager / Executive too.
+export function permRoleInList(role: PermRole, list?: PermRole[] | null): boolean {
+  if (!list) return true
+  if (list.includes(role)) return true
+  return (role === 'regional_manager' || role === 'executive') && list.includes('manager')
 }

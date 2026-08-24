@@ -14,6 +14,7 @@ import {
 } from '@/lib/queries/account'
 import { employees } from '@/lib/queries/people'
 import { useAuth } from '@/lib/auth'
+import { CATEGORY_LABEL, type PermRole, type RoleCategory } from '@/lib/rbac'
 
 export function InviteModal({
   open,
@@ -34,6 +35,12 @@ export function InviteModal({
   const [last, setLast] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<InvitableRole>('employee')
+  const [category, setCategory] = useState<RoleCategory | null>(null)
+  const choice: PermRole = category ?? role
+  const setChoice = (v: PermRole) => {
+    if (v === 'regional_manager' || v === 'executive') { setRole('manager'); setCategory(v) }
+    else { setRole(v as InvitableRole); setCategory(null) }
+  }
   const [locIds, setLocIds] = useState<string[]>([])
   // HR fields for the roster record.
   const [roleTitle, setRoleTitle] = useState('')
@@ -57,6 +64,7 @@ export function InviteModal({
     setLast('')
     setEmail('')
     setRole('employee')
+    setCategory(null)
     setLocIds([])
     setRoleTitle('')
     setPhone('')
@@ -125,6 +133,7 @@ export function InviteModal({
       name: `${first.trim()} ${last.trim()}`.trim(),
       email: cleanEmail,
       role,
+      role_category: category,
       location_ids: allSites ? [] : locIds,
     })
     if (err) {
@@ -211,12 +220,14 @@ export function InviteModal({
               {(id) => (
                 <Select
                   id={id}
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as InvitableRole)}
+                  value={choice}
+                  onChange={(e) => setChoice(e.target.value as PermRole)}
                 >
                   <option value="employee">Employee</option>
                   <option value="technician">Technician</option>
                   <option value="manager">Manager</option>
+                  <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
+                  <option value="executive">{CATEGORY_LABEL.executive}</option>
                   {/* Only an admin (owner) can invite another admin. */}
                   {profile?.role === 'owner' && <option value="owner">Admin</option>}
                 </Select>

@@ -14,7 +14,7 @@ import { SidebarNav } from '@/components/layout/Sidebar'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { pageAllowed } from '@/lib/permissions'
-import type { Role } from '@/lib/rbac'
+import type { PermRole, Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
 type Tab = { to: string; label: string; icon: LucideIcon; roles: Role[] }
@@ -30,7 +30,7 @@ const TABS: Tab[] = [
 
 // Native-app-style bottom tab bar for phones/tablets (hidden at lg+, where the
 // fixed sidebar takes over). "More" opens a bottom sheet with the full menu.
-export function BottomNav({ role }: { role: Role }) {
+export function BottomNav({ role }: { role: PermRole }) {
   const { profile } = useAuth()
   const { settings } = useCompany()
   const [open, setOpen] = useState(false)

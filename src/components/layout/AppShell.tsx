@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Sidebar, NAV_GROUPS } from '@/components/layout/Sidebar'
 import { useCompany } from '@/lib/company'
 import { pageAllowed } from '@/lib/permissions'
-import type { Role } from '@/lib/rbac'
+import { permRole, type PermRole } from '@/lib/rbac'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { CommandPalette } from '@/components/layout/CommandPalette'
 import PresentationMode from '@/components/layout/PresentationMode'
@@ -45,7 +45,7 @@ function PagePermissionGate({ children }: { children: ReactNode }) {
   const { settings } = useCompany()
   const location = useLocation()
   if (!profile) return <>{children}</>
-  let match: { to: string; roles: Role[]; optIn?: Role[] } | null = null
+  let match: { to: string; roles: PermRole[]; optIn?: PermRole[] } | null = null
   for (const g of NAV_GROUPS) {
     for (const i of g.items) {
       if (location.pathname === i.to || location.pathname.startsWith(i.to + '/')) {
@@ -56,7 +56,7 @@ function PagePermissionGate({ children }: { children: ReactNode }) {
   if (
     match &&
     match.to !== '/app/dashboard' &&
-    !pageAllowed(profile.role, match.to, match.roles, {
+    !pageAllowed(permRole(profile.role, profile.role_category), match.to, match.roles, {
       rolePerms: settings.pagePermissions,
       userId: profile.id,
       userPerms: settings.userPermissions,
@@ -85,7 +85,7 @@ export function AppShell() {
       <LocationProvider>
         <NotificationsProvider>
           <div className="flex h-dvh w-full bg-content text-ink">
-            <Sidebar role={profile.role} />
+            <Sidebar role={permRole(profile.role, profile.role_category)} />
             <div className="flex min-w-0 flex-1 flex-col">
               <TopBar />
               <DemoBanner />
@@ -108,7 +108,7 @@ export function AppShell() {
                 </PagePermissionGate>
               </main>
             </div>
-            <BottomNav role={profile.role} />
+            <BottomNav role={permRole(profile.role, profile.role_category)} />
             <CommandPalette />
             <MessageNotifier />
             <PresentationMode />

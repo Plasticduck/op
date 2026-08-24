@@ -7,13 +7,14 @@ import {
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import type { Role } from '@/lib/rbac'
+import type { Role, RoleCategory } from '@/lib/rbac'
 
 export type Profile = {
   id: string
   account_id: string
   location_ids: string[]
   role: Role
+  role_category: RoleCategory | null
   name: string
   email: string
   avatar_url: string | null
@@ -35,7 +36,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined)
 async function loadProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, account_id, location_ids, role, name, email, avatar_url, account:account_id(gm_bonus_enabled, site_performance_enabled, brand_logo_url)')
+    .select('id, account_id, location_ids, role, role_category, name, email, avatar_url, account:account_id(gm_bonus_enabled, site_performance_enabled, brand_logo_url)')
     .eq('id', userId)
     .maybeSingle()
   if (error) {
@@ -52,6 +53,7 @@ async function loadProfile(userId: string): Promise<Profile | null> {
     account_id: row.account_id as string,
     location_ids: (row.location_ids as string[] | null) ?? [],
     role: row.role as Role,
+    role_category: (row.role_category as RoleCategory | null) ?? null,
     name: row.name as string,
     email: row.email as string,
     avatar_url: (row.avatar_url as string | null) ?? null,

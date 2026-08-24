@@ -1,5 +1,6 @@
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
+import { permRole } from '@/lib/rbac'
 import { pageAllowed, SECTION_CATALOG } from '@/lib/permissions'
 
 // Whether the current user may see a page section. Sections layer the same way
@@ -10,7 +11,7 @@ export function useSectionAllowed(sectionKey: string): boolean {
   const { settings } = useCompany()
   const sec = SECTION_CATALOG.find((s) => s.key === sectionKey)
   if (!profile || !sec) return true
-  return pageAllowed(profile.role, sectionKey, sec.roles, {
+  return pageAllowed(permRole(profile.role, profile.role_category), sectionKey, sec.roles, {
     rolePerms: settings.pagePermissions,
     userId: profile.id,
     userPerms: settings.userPermissions,
