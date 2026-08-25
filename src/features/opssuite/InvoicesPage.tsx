@@ -615,6 +615,7 @@ export default function InvoicesPage() {
           currentUserName={profile?.name ?? ''}
           isOwner={profile?.role === 'owner'}
           canManage={canManage}
+          canDeleteExports={(profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'}
           busy={busy}
           onClose={() => setOpenId(null)}
           onFile={openFile}
@@ -647,7 +648,7 @@ export default function InvoicesPage() {
 // ---- Workflow modal --------------------------------------------------------
 
 function InvoiceModal({
-  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, busy, onClose, onFile, onDownload, act, onDelete,
+  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, canDeleteExports, busy, onClose, onFile, onDownload, act, onDelete,
 }: {
   invoice: OpsInvoice
   duplicateOfInvoice: OpsInvoice | null
@@ -659,6 +660,7 @@ function InvoiceModal({
   currentUserName: string
   isOwner: boolean
   canManage: boolean
+  canDeleteExports: boolean
   busy: boolean
   onClose: () => void
   onFile: (path: string) => void
@@ -1084,7 +1086,7 @@ function InvoiceModal({
                 <CornerUpLeft className="size-4" /> Back to unassigned
               </Button>
             )}
-            {canManage && status === 'needs_attention' && (
+            {((canManage && status === 'needs_attention') || (canDeleteExports && status === 'exported')) && (
               confirmDelete ? (
                 <>
                   <Button variant="danger" size="sm" disabled={busy} onClick={() => void onDelete(id, invoice.file_path)}>
@@ -1094,7 +1096,7 @@ function InvoiceModal({
                 </>
               ) : (
                 <Button variant="ghost" size="sm" className="text-danger" disabled={busy} onClick={() => setConfirmDelete(true)}>
-                  <Trash2 className="size-4" /> Delete Invoice
+                  <Trash2 className="size-4" /> {status === 'exported' ? 'Delete export' : 'Delete Invoice'}
                 </Button>
               )
             )}
