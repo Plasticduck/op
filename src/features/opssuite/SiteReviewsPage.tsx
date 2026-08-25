@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ClipboardList, Plus } from 'lucide-react'
+import { ClipboardList, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -71,6 +71,18 @@ export default function SiteReviewsPage() {
   const table = useOpsTable(rows, (r) => r.submitted_at)
 
   const canCustomize = profile?.role === 'owner' || profile?.role === 'manager'
+  // Only this admin account may delete monthly site reviews (enforced by RLS too).
+  const canDelete = (profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'
+  const [removing, setRemoving] = useState<string | null>(null)
+  const remove = async (row: Row) => {
+    if (!window.confirm(`Delete the ${row.location?.name ?? 'site'} review from ${shortDate(row.submitted_at)}? This cannot be undone.`)) return
+    setRemoving(row.id)
+    const { error } = await siteEvaluations.remove(row.id)
+    setRemoving(null)
+    if (error) { window.alert(`Could not delete: ${error.message}`); return }
+    if (open?.id === row.id) setOpen(null)
+    void load()
+  }
 
   const openReport = async (row: Row) => {
     const blob = await buildSiteReviewPdf({
@@ -146,7 +158,21 @@ export default function SiteReviewsPage() {
                   <td className="px-3 py-2.5 text-ink-muted">{e.submitted_by_name ?? '—'}</td>
                   <td className="px-3 py-2.5 text-ink-muted">{shortDate(e.submitted_at)}</td>
                   <td className="px-3 py-2.5 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setOpen(e)}>View</Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setOpen(e)}>View</Button>
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-ink-muted hover:text-danger"
+                          disabled={removing === e.id}
+                          title="Delete review"
+                          onClick={() => void remove(e)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -19,6 +19,8 @@ const withLoc = '*, location:location_id(name)'
 export const siteEvaluations = {
   list: () => supabase.from('site_evaluations').select(withLoc).order('submitted_at', { ascending: false }),
   create: (row: T['site_evaluations']['Insert']) => supabase.from('site_evaluations').insert(row).select().single(),
+  // Delete is locked by RLS to a single admin (kevan@washlyfe.com); others no-op.
+  remove: (id: string) => supabase.from('site_evaluations').delete().eq('id', id).select('id'),
 }
 export const siteAudits = {
   list: () => supabase.from('site_audits').select(withLoc).order('created_at', { ascending: false }),
