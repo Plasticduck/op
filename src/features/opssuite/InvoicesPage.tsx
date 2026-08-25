@@ -136,7 +136,7 @@ const TABS: TabDef[] = [
   {
     key: 'unassigned',
     label: 'Unassigned',
-    subtitle: `Invoices emailed to this wash's invoice inbox. Open one, set the site and approver, and send it straight to them for approval. The approver applies the GL code.`,
+    subtitle: `Invoices emailed to this wash's invoice inbox. Open one, choose the approver, and send it straight to them for approval. The approver applies the site and GL code.`,
     empty: 'No emailed-in invoices waiting. Forward vendor invoices to the address above.',
   },
   {
@@ -866,7 +866,18 @@ function InvoiceModal({
           </Field>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Approver(s)">
+          <CheckList
+            options={approverUsers.map((u) => ({ id: u.id, label: u.name ?? u.email ?? 'User' }))}
+            selected={approverIds}
+            onChange={setApproverIds}
+            disabled={!editable}
+            empty="No managers or owners"
+          />
+        </Field>
+
+        {/* Site(s): chosen by the approver (not by the manager during assignment). */}
+        {!editable && (
           <Field label="Site(s)" required={requireSiteGl}>
             <CheckList
               options={classes.map((c) => ({ id: c, label: c }))}
@@ -876,16 +887,7 @@ function InvoiceModal({
               empty="No classes available"
             />
           </Field>
-          <Field label="Approver(s)">
-            <CheckList
-              options={approverUsers.map((u) => ({ id: u.id, label: u.name ?? u.email ?? 'User' }))}
-              selected={approverIds}
-              onChange={setApproverIds}
-              disabled={!editable}
-              empty="No managers or owners"
-            />
-          </Field>
-        </div>
+        )}
 
         {/* GL code(s): applied by the approver, who can split across several codes. */}
         {!editable && (
