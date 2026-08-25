@@ -186,6 +186,9 @@ export const injuries = {
 export const uniforms = {
   list: (employeeIds: string[]) =>
     supabase.from('uniform_requests').select('*').in('employee_id', employeeIds).order('requested_at', { ascending: false }),
+  // Store Stock requests (no employee) for a site.
+  listStoreStock: (locationId: string) =>
+    supabase.from('uniform_requests').select('*').is('employee_id', null).eq('location_id', locationId).order('requested_at', { ascending: false }),
   forEmployee: (employeeId: string) =>
     supabase.from('uniform_requests').select('*').eq('employee_id', employeeId).order('requested_at', { ascending: false }),
   create: (row: T['uniform_requests']['Insert']) =>

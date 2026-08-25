@@ -74,18 +74,19 @@ Deno.serve(async (req) => {
 
   const { data: r } = await svc
     .from('uniform_requests')
-    .select('*, employees:employee_id(first_name, last_name, location_id, locations:location_id(name, account_id))')
+    .select('*, employees:employee_id(first_name, last_name), locations:location_id(name, account_id)')
     .eq('id', requestId)
     .maybeSingle()
   // deno-lint-ignore no-explicit-any
   const req0 = r as any
   const emp = req0?.employees
-  const loc = emp?.locations
+  const loc = req0?.locations
   if (!req0 || !loc || loc.account_id !== callerRow.account_id) {
     return json({ error: 'not_found' }, 404, origin)
   }
 
-  const employeeName = `${emp.first_name ?? ''} ${emp.last_name ?? ''}`.trim() || '—'
+  // No employee = a Store Stock (general inventory) order.
+  const employeeName = emp ? (`${emp.first_name ?? ''} ${emp.last_name ?? ''}`.trim() || '—') : 'Store Stock'
   const siteName = (loc.name ?? '').trim()
   const requester = (callerRow.name ?? '').trim() || '—'
 

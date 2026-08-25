@@ -5352,30 +5352,33 @@ export type Database = {
       }
       uniform_requests: {
         Row: {
-          employee_id: string
+          employee_id: string | null
           fulfilled_at: string | null
           id: string
           item: string
+          location_id: string | null
           quantity: number
           requested_at: string
           size: string | null
           status: string
         }
         Insert: {
-          employee_id: string
+          employee_id?: string | null
           fulfilled_at?: string | null
           id?: string
           item: string
+          location_id?: string | null
           quantity?: number
           requested_at?: string
           size?: string | null
           status?: string
         }
         Update: {
-          employee_id?: string
+          employee_id?: string | null
           fulfilled_at?: string | null
           id?: string
           item?: string
+          location_id?: string | null
           quantity?: number
           requested_at?: string
           size?: string | null
@@ -5387,6 +5390,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "uniform_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]

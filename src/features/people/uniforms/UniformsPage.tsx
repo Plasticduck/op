@@ -19,6 +19,9 @@ const STATUS_TONE = { pending: 'warn', ordered: 'accent', fulfilled: 'ok' } as c
 const priceLabel = (p: UniformProduct) =>
   p.priceMax && p.priceMax !== p.price ? `$${p.price}–$${p.priceMax}` : `$${p.price}`
 
+// Employee-dropdown sentinel for ordering general store stock (no employee).
+const STORE_STOCK = '__store_stock__'
+
 function Inner({ locationId }: { locationId: string }) {
   const [emps, setEmps] = useState<Employee[]>([])
   const [rows, setRows] = useState<UniformRequest[]>([])
@@ -29,7 +32,8 @@ function Inner({ locationId }: { locationId: string }) {
   const [requestFor, setRequestFor] = useState<UniformProduct | 'custom' | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
-  const empName = (eid: string) => {
+  const empName = (eid: string | null) => {
+    if (!eid) return 'Store Stock'
     const e = emps.find((x) => x.id === eid)
     return e ? `${e.first_name} ${e.last_name}` : '—'
   }
@@ -39,10 +43,16 @@ function Inner({ locationId }: { locationId: string }) {
     const { data: e } = await empQ.list(locationId)
     const list = (e as Employee[] | null) ?? []
     setEmps(list)
-    if (list.length) {
-      const { data } = await uniformsQ.list(list.map((x) => x.id))
-      setRows((data as UniformRequest[] | null) ?? [])
-    } else setRows([])
+    // Employee requests plus this site's Store Stock (no-employee) requests.
+    const [empReq, stockReq] = await Promise.all([
+      list.length ? uniformsQ.list(list.map((x) => x.id)) : Promise.resolve({ data: [] as UniformRequest[] }),
+      uniformsQ.listStoreStock(locationId),
+    ])
+    const merged = [
+      ...((empReq.data as UniformRequest[] | null) ?? []),
+      ...((stockReq.data as UniformRequest[] | null) ?? []),
+    ].sort((a, b) => (String(b.requested_at) > String(a.requested_at) ? 1 : -1))
+    setRows(merged)
     setSelected(new Set())
     setLoading(false)
   }, [locationId])
@@ -157,6 +167,7 @@ function Inner({ locationId }: { locationId: string }) {
       {requestFor && (
         <RequestModal
           employees={emps}
+          locationId={locationId}
           product={requestFor === 'custom' ? null : requestFor}
           onClose={() => setRequestFor(null)}
           onSaved={() => { setRequestFor(null); setTab('requests'); void load() }}
@@ -190,7 +201,7 @@ function CatalogCard({ product, onRequest }: { product: UniformProduct; onReques
           <p className="text-xs text-ink-muted">{product.sizes.join(', ')}</p>
         )}
         <div className="mt-auto flex items-center gap-2 pt-2">
-          <Button size="sm" onClick={onRequest}>Request</Button>
+          <Button size="sm" onClick={onRequest}>Order</Button>
           <a
             href={product.url}
             target="_blank"
@@ -206,9 +217,10 @@ function CatalogCard({ product, onRequest }: { product: UniformProduct; onReques
 }
 
 function RequestModal({
-  employees, product, onClose, onSaved,
+  employees, locationId, product, onClose, onSaved,
 }: {
   employees: Employee[]
+  locationId: string
   product: UniformProduct | null
   onClose: () => void
   onSaved: () => void
@@ -235,9 +247,11 @@ function RequestModal({
     setSize('')
   }, [selectedProduct])
 
+  const isStoreStock = employeeId === STORE_STOCK
+
   const save = async () => {
     setError(null)
-    if (!employeeId) return setError('Select an employee')
+    if (!employeeId) return setError('Select an employee or Store Stock')
     const item = isCustom ? customItem.trim() : productName
     if (!item) return setError('Choose an item')
     if (selectedProduct) {
@@ -249,7 +263,8 @@ function RequestModal({
     const parts = isCustom ? [customSize.trim()] : [size, color]
     const sizeValue = parts.filter(Boolean).join(' · ') || null
     const { data: created, error: err } = await uniformsQ.create({
-      employee_id: employeeId,
+      employee_id: isStoreStock ? null : employeeId,
+      location_id: locationId,
       item,
       size: sizeValue,
       quantity: Number(quantity) || 1,
@@ -267,23 +282,27 @@ function RequestModal({
           {(id) => (
             <Select id={id} value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
               <option value="">Select…</option>
+              <option value={STORE_STOCK}>Store Stock</option>
               {employees.map((e) => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
             </Select>
           )}
         </Field>
 
-        <Field label="Item" required>
-          {(id) => (
-            <Select id={id} value={productName} onChange={(e) => setProductName(e.target.value)}>
-              <option value="">Other (custom item)</option>
-              {UNIFORM_CATALOG.map((p) => <option key={p.url} value={p.name}>{p.name}</option>)}
-            </Select>
-          )}
-        </Field>
+        {/* Catalog requests pick an item; a custom request is always the free-text field. */}
+        {product !== null && (
+          <Field label="Item" required>
+            {(id) => (
+              <Select id={id} value={productName} onChange={(e) => setProductName(e.target.value)}>
+                <option value="">Other (custom item)</option>
+                {UNIFORM_CATALOG.map((p) => <option key={p.url} value={p.name}>{p.name}</option>)}
+              </Select>
+            )}
+          </Field>
+        )}
 
         {isCustom && (
-          <Field label="Custom item" required>
-            {(id) => <Input id={id} value={customItem} onChange={(e) => setCustomItem(e.target.value)} placeholder="Shirt, hat…" />}
+          <Field label="Item(s)" required>
+            {(id) => <Input id={id} value={customItem} onChange={(e) => setCustomItem(e.target.value)} placeholder="e.g. Shirt, hat, gloves" />}
           </Field>
         )}
 
