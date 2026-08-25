@@ -3400,6 +3400,7 @@ export type Database = {
           first_approved_at: string | null
           first_approved_by: string | null
           first_approved_by_name: string | null
+          gl_allocations: Json | null
           gl_code: string | null
           id: string
           invoice_date: string | null
@@ -3449,6 +3450,7 @@ export type Database = {
           first_approved_at?: string | null
           first_approved_by?: string | null
           first_approved_by_name?: string | null
+          gl_allocations?: Json | null
           gl_code?: string | null
           id?: string
           invoice_date?: string | null
@@ -3498,6 +3500,7 @@ export type Database = {
           first_approved_at?: string | null
           first_approved_by?: string | null
           first_approved_by_name?: string | null
+          gl_allocations?: Json | null
           gl_code?: string | null
           id?: string
           invoice_date?: string | null
@@ -6503,6 +6506,7 @@ export type Database = {
           first_approved_at: string | null
           first_approved_by: string | null
           first_approved_by_name: string | null
+          gl_allocations: Json | null
           gl_code: string | null
           id: string
           invoice_date: string | null
@@ -6561,6 +6565,7 @@ export type Database = {
           first_approved_at: string | null
           first_approved_by: string | null
           first_approved_by_name: string | null
+          gl_allocations: Json | null
           gl_code: string | null
           id: string
           invoice_date: string | null

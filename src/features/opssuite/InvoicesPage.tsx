@@ -136,7 +136,7 @@ const TABS: TabDef[] = [
   {
     key: 'unassigned',
     label: 'Unassigned',
-    subtitle: `Invoices emailed to this wash's invoice inbox. Open one, set the site, GL code, and approver, and send it straight to them for approval.`,
+    subtitle: `Invoices emailed to this wash's invoice inbox. Open one, set the site and approver, and send it straight to them for approval. The approver applies the GL code.`,
     empty: 'No emailed-in invoices waiting. Forward vendor invoices to the address above.',
   },
   {
@@ -682,7 +682,22 @@ function InvoiceModal({
   const [invoiceDate, setInvoiceDate] = useState(invoice.invoice_date ?? '')
   const [invoiceNumber, setInvoiceNumber] = useState(invoice.invoice_number ?? '')
   const [dueDate, setDueDate] = useState(invoice.due_date ?? '')
-  const [gl, setGl] = useState(invoice.gl_code ?? '')
+  // GL is applied by the approver, who can split across multiple GL codes.
+  const initGl = ((invoice.gl_allocations as GlAlloc[] | null) ?? [])
+  const [glList, setGlList] = useState<string[]>(
+    initGl.length ? initGl.map((g) => g.gl_code) : (invoice.gl_code ? [invoice.gl_code] : []),
+  )
+  const [glAlloc, setGlAlloc] = useState<Record<string, string>>(
+    Object.fromEntries(initGl.map((g) => [g.gl_code, String(g.amount)])),
+  )
+  const setGlSelection = (next: string[]) => {
+    setGlList(next)
+    setGlAlloc((p) => {
+      const m = { ...p }
+      for (const k of Object.keys(m)) if (!next.includes(k)) delete m[k]
+      return m
+    })
+  }
   const [siteClasses, setSiteClasses] = useState<string[]>(initClasses)
   const [approverIds, setApproverIds] = useState<string[]>(initApprovers)
   const [reason, setReason] = useState('')
@@ -706,10 +721,11 @@ function InvoiceModal({
   const hasSecondary = (invoice.secondary_approver_ids?.length ?? 0) > 0
   const atSecondaryStage = !!invoice.awaiting_secondary
   const forwardToSecondary = hasSecondary && !atSecondaryStage
-  // Sites + GL are editable during assignment and by the approver at review, but
-  // only REQUIRED at the approver stage. In Unassigned they're optional.
+  // Sites are editable during assignment and by the approver at review, required
+  // at the approver stage. GL is now approver-only (the manager no longer sets it).
   const siteGlEditable = editable || canApprove
   const requireSiteGl = canApprove
+  const glEditable = canApprove
   const multiSite = siteClasses.length > 1
   // When an invoice has a file, the approver has to open it before approving.
   const mustView = canApprove && !!invoice.file_path && !viewed
@@ -727,8 +743,14 @@ function InvoiceModal({
   const total = Number(amount) || 0
   const allocSum = siteClasses.reduce((s, cls) => s + (Number(alloc[cls]) || 0), 0)
   const balanced = Math.abs(allocSum - total) < 0.005
-  const missingRequired = siteClasses.length === 0 || !gl.trim()
-  const approveBlocked = missingRequired || (multiSite && !balanced)
+  // GL split: when more than one GL code is chosen, every code needs a positive
+  // amount and the amounts must sum to the invoice total before approving.
+  const multiGl = glList.length > 1
+  const glAllocSum = glList.reduce((s, c) => s + (Number(glAlloc[c]) || 0), 0)
+  const glAllEntered = glList.every((c) => (Number(glAlloc[c]) || 0) > 0)
+  const glBalanced = Math.abs(glAllocSum - total) < 0.005
+  const missingRequired = siteClasses.length === 0 || glList.length === 0
+  const approveBlocked = missingRequired || (multiSite && !balanced) || (multiGl && (!glAllEntered || !glBalanced))
 
   const nameOf = (uid: string) => users.find((u) => u.id === uid)?.name ?? null
   const namesOf = (ids: string[]) => ids.map(nameOf).filter((n): n is string => Boolean(n))
@@ -740,6 +762,9 @@ function InvoiceModal({
       name: cls,
       amount: multiSite ? (Number(alloc[cls]) || 0) : total,
     }))
+  // Same for GL: a single GL gets the whole amount; multiple carry their splits.
+  const glAllocations = (): GlAlloc[] =>
+    glList.map((c) => ({ gl_code: c, amount: multiGl ? (Number(glAlloc[c]) || 0) : total }))
 
   // Fields the manager sets when assigning (also saved via Save).
   const assignPatch = (): OpsInvoiceUpdate => ({
@@ -748,7 +773,6 @@ function InvoiceModal({
     invoice_date: invoiceDate || null,
     invoice_number: invoiceNumber.trim() || null,
     due_date: dueDate || null,
-    gl_code: gl.trim() || null,
     class_names: siteClasses,
     location_id: null,
     location_ids: [],
@@ -765,9 +789,10 @@ function InvoiceModal({
     first_approved_by_name: null,
     first_approved_at: null,
   })
-  // Fields the approver can touch at review (sites, GL, split).
+  // Fields the approver can touch at review (sites, GL codes + splits).
   const reviewPatch = (): OpsInvoiceUpdate => ({
-    gl_code: gl.trim() || null,
+    gl_code: glList.join(', ') || null,
+    gl_allocations: glAllocations() as unknown as OpsInvoiceUpdate['gl_allocations'],
     class_names: siteClasses,
     site_allocations: allocations() as unknown as OpsInvoiceUpdate['site_allocations'],
   })
@@ -820,16 +845,24 @@ function InvoiceModal({
             <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!editable} />
           </Field>
           <Field label="Invoice date">
-            <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} disabled={!editable} />
+            <Input
+              type="date"
+              value={invoiceDate}
+              onChange={(e) => {
+                const v = e.target.value
+                setInvoiceDate(v)
+                // Due date defaults to 30 days after the invoice date.
+                if (v) setDueDate(addDays(v, 30))
+              }}
+              disabled={!editable}
+            />
           </Field>
           <Field label="Invoice #">
             <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} disabled={!editable} placeholder="From the invoice" />
           </Field>
           <Field label="Due date">
             <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} disabled={!editable} />
-          </Field>
-          <Field label="GL code" required={requireSiteGl}>
-            <Combobox value={gl} onChange={setGl} options={glCodes} disabled={!siteGlEditable} placeholder={requireSiteGl ? 'Required — pick a GL code' : 'Pick a GL code'} invalid={requireSiteGl && !gl.trim()} />
+            {editable && <p className="mt-1 text-xs text-ink-subtle">Defaults to 30 days after the invoice date.</p>}
           </Field>
         </div>
 
@@ -853,6 +886,68 @@ function InvoiceModal({
             />
           </Field>
         </div>
+
+        {/* GL code(s): applied by the approver, who can split across several codes. */}
+        {!editable && (
+          <Field label="GL code(s)" required={glEditable}>
+            {glEditable ? (
+              <div className="flex flex-col gap-3">
+                <CheckList
+                  options={glCodes.map((c) => ({ id: c, label: c }))}
+                  selected={glList}
+                  onChange={setGlSelection}
+                  empty="No GL codes available"
+                />
+                {multiGl && (
+                  <div className="rounded-md border border-border bg-content p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-ink">Amount per GL code</span>
+                      <button type="button" onClick={() => setGlAlloc(evenSplit(total, glList))} className="text-xs font-medium text-accent hover:underline">
+                        Split evenly
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {glList.map((c) => (
+                        <div key={c} className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-sm text-ink">{c}</span>
+                          <div className="relative">
+                            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink-subtle">$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={glAlloc[c] ?? ''}
+                              onChange={(e) => setGlAlloc((p) => ({ ...p, [c]: e.target.value }))}
+                              className="h-9 w-32 rounded-md border border-border bg-card pl-5 pr-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className={cn('mt-2 flex items-center justify-between text-xs', glAllEntered && glBalanced ? 'text-ok' : 'text-danger')}>
+                      <span>Allocated {currency(glAllocSum)} of {currency(total)}</span>
+                      <span>{!glAllEntered ? 'Enter each amount' : glBalanced ? 'Balanced' : `${currency(Math.abs(total - glAllocSum))} ${glAllocSum > total ? 'over' : 'left'}`}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1 text-sm text-ink">
+                {initGl.length ? (
+                  initGl.map((g) => (
+                    <div key={g.gl_code} className="flex items-center justify-between">
+                      <span>{g.gl_code}</span>
+                      {initGl.length > 1 && <span className="text-ink-muted">{currency(g.amount)}</span>}
+                    </div>
+                  ))
+                ) : invoice.gl_code ? (
+                  <span>{invoice.gl_code}</span>
+                ) : (
+                  <span className="text-ink-subtle">Not set yet.</span>
+                )}
+              </div>
+            )}
+          </Field>
+        )}
 
         {editable && (
           <Field label="Second-level approver(s)">
@@ -963,10 +1058,13 @@ function InvoiceModal({
           <p className="text-xs text-danger">Add a Memo before sending for approval.</p>
         )}
         {requireSiteGl && missingRequired && (
-          <p className="text-xs text-danger">Set at least one site and the GL code before approving.</p>
+          <p className="text-xs text-danger">Set at least one site and at least one GL code before approving.</p>
         )}
         {canApprove && multiSite && !balanced && (
           <p className="text-xs text-danger">The per-site amounts must add up to {currency(total)} before approving.</p>
+        )}
+        {canApprove && multiGl && (!glAllEntered || !glBalanced) && (
+          <p className="text-xs text-danger">Enter a dollar amount for every GL code, adding up to {currency(total)}, before approving.</p>
         )}
         {mustView && (
           <p className="text-xs text-danger">Open and view the invoice file (button up top) before approving.</p>
@@ -1037,6 +1135,17 @@ function InvoiceModal({
 // A per-site allocation stored on ops_invoices.site_allocations. `name` is the
 // QuickBooks class (the Site); legacy rows may also carry location_id.
 type Alloc = { name: string; amount: number; location_id?: string | null }
+// Approver's GL split: one entry per chosen GL code with its dollar amount.
+type GlAlloc = { gl_code: string; amount: number }
+
+// A YYYY-MM-DD date shifted by n days (used to default a due date 30 days out).
+function addDays(iso: string, n: number): string {
+  if (!iso) return ''
+  const d = new Date(iso + 'T12:00:00')
+  if (Number.isNaN(d.getTime())) return ''
+  d.setDate(d.getDate() + n)
+  return d.toLocaleDateString('en-CA')
+}
 
 // Even split of a dollar total across ids, in whole cents, remainder to the
 // first sites so the parts always sum back to the total.
@@ -1224,14 +1333,24 @@ function quickbooksCsv(invs: OpsInvoice[]): string {
       'Bill No': billNoOf(inv),
       Vendor: inv.vendor_name ?? '',
       Date: mdY(inv.invoice_date) || mdY(inv.submitted_at),
-      'Expense Account': inv.gl_code ?? '',
       Memo: inv.memo ?? '',
       Currency: 'USD',
     }
-    const allocs = (inv.site_allocations as Alloc[] | null) ?? []
-    const lines: Record<string, string>[] = Array.isArray(allocs) && allocs.length
-      ? allocs.map((a) => ({ ...base, 'Expense Amount': String(Number(a.amount) || 0), 'Expense Class': String(a.name ?? '') }))
-      : [{ ...base, 'Expense Amount': String(Number(inv.amount) || 0) }]
+    const glAllocs = (inv.gl_allocations as GlAlloc[] | null) ?? []
+    const siteAllocs = (inv.site_allocations as Alloc[] | null) ?? []
+    let lines: Record<string, string>[]
+    if (Array.isArray(glAllocs) && glAllocs.length > 1) {
+      // Multiple GL codes: one line per code (its account + allocated amount). Use
+      // the site as the Class when there's exactly one; blank if it spans several.
+      const cls = inv.class_names?.length === 1 ? String(inv.class_names[0]) : ''
+      lines = glAllocs.map((g) => ({ ...base, 'Expense Account': String(g.gl_code ?? ''), 'Expense Amount': String(Number(g.amount) || 0), 'Expense Class': cls }))
+    } else {
+      const acct = glAllocs.length ? String(glAllocs[0].gl_code ?? '') : (inv.gl_code ?? '')
+      const b2 = { ...base, 'Expense Account': acct }
+      lines = Array.isArray(siteAllocs) && siteAllocs.length
+        ? siteAllocs.map((a) => ({ ...b2, 'Expense Amount': String(Number(a.amount) || 0), 'Expense Class': String(a.name ?? '') }))
+        : [{ ...b2, 'Expense Amount': String(Number(inv.amount) || 0) }]
+    }
     for (const cell of lines) rows.push(QB_HEADERS.map((h) => csvEsc(cell[h] ?? '')).join(','))
   }
   return [QB_HEADERS.map(csvEsc).join(','), ...rows].join('\r\n') + '\r\n'
