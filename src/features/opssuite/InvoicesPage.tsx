@@ -681,7 +681,11 @@ function InvoiceModal({
   const [amount, setAmount] = useState(String(invoice.amount ?? ''))
   const [invoiceDate, setInvoiceDate] = useState(invoice.invoice_date ?? '')
   const [invoiceNumber, setInvoiceNumber] = useState(invoice.invoice_number ?? '')
-  const [dueDate, setDueDate] = useState(invoice.due_date ?? '')
+  // Default the due date to 30 days after the invoice date (which is auto-filled),
+  // unless one was already set.
+  const [dueDate, setDueDate] = useState(
+    invoice.due_date ?? (invoice.invoice_date ? addDays(invoice.invoice_date, 30) : ''),
+  )
   // GL is applied by the approver, who can split across multiple GL codes.
   const initGl = ((invoice.gl_allocations as GlAlloc[] | null) ?? [])
   const [glList, setGlList] = useState<string[]>(

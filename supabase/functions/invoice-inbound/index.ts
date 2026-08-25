@@ -313,12 +313,20 @@ Deno.serve(async (req) => {
     if (upErr) { skipped.push({ file: name, reason: 'upload_failed' }); continue }
 
     const duplicateOf = await findDuplicate(invoiceNumber, vendorName)
+    // Due date defaults to 30 days after the invoice date.
+    const dueDate = (() => {
+      if (!invoiceDate) return null
+      const d = new Date(invoiceDate + 'T12:00:00Z')
+      d.setUTCDate(d.getUTCDate() + 30)
+      return d.toISOString().slice(0, 10)
+    })()
     const { error: insErr } = await svc.from('ops_invoices').insert({
       id: invoiceId,
       account_id: accountId,
       vendor_name: vendorName,
       amount,
       invoice_date: invoiceDate,
+      due_date: dueDate,
       invoice_number: invoiceNumber,
       status: 'unassigned',
       email_from: from.email || null,
