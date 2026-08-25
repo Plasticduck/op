@@ -192,6 +192,9 @@ export const uniforms = {
     supabase.from('uniform_requests').insert(row).select().single(),
   update: (id: string, patch: T['uniform_requests']['Update']) =>
     supabase.from('uniform_requests').update(patch).eq('id', id),
+  // Best-effort: email the request to info@washlyfe.com (same as signage orders).
+  emailRequest: (requestId: string) =>
+    supabase.functions.invoke('uniform-request-email', { body: { request_id: requestId } }),
 }
 
 export type TimeOffRequest = T['time_off_requests']['Row']

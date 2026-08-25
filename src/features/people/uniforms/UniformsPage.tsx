@@ -248,13 +248,15 @@ function RequestModal({
     // size field (e.g. "L · Black", or just the color for one-size items).
     const parts = isCustom ? [customSize.trim()] : [size, color]
     const sizeValue = parts.filter(Boolean).join(' · ') || null
-    const { error: err } = await uniformsQ.create({
+    const { data: created, error: err } = await uniformsQ.create({
       employee_id: employeeId,
       item,
       size: sizeValue,
       quantity: Number(quantity) || 1,
     })
     if (err) return setError(err.message)
+    // Email the request to info@washlyfe.com (same as signage). Best-effort.
+    if (created?.id) void uniformsQ.emailRequest(created.id)
     onSaved()
   }
 
