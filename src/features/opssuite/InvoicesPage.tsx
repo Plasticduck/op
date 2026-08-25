@@ -1086,7 +1086,7 @@ function InvoiceModal({
                 <CornerUpLeft className="size-4" /> Back to unassigned
               </Button>
             )}
-            {((canManage && status === 'needs_attention') || (isDeleteAdmin && (status === 'exported' || status === 'unassigned'))) && (
+            {((canManage && status === 'needs_attention') || isDeleteAdmin) && (
               confirmDelete ? (
                 <>
                   <Button variant="danger" size="sm" disabled={busy} onClick={() => void onDelete(id, invoice.file_path)}>
