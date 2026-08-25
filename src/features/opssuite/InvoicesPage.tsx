@@ -615,7 +615,7 @@ export default function InvoicesPage() {
           currentUserName={profile?.name ?? ''}
           isOwner={profile?.role === 'owner'}
           canManage={canManage}
-          canDeleteExports={(profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'}
+          isDeleteAdmin={(profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'}
           busy={busy}
           onClose={() => setOpenId(null)}
           onFile={openFile}
@@ -648,7 +648,7 @@ export default function InvoicesPage() {
 // ---- Workflow modal --------------------------------------------------------
 
 function InvoiceModal({
-  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, canDeleteExports, busy, onClose, onFile, onDownload, act, onDelete,
+  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, isDeleteAdmin, busy, onClose, onFile, onDownload, act, onDelete,
 }: {
   invoice: OpsInvoice
   duplicateOfInvoice: OpsInvoice | null
@@ -660,7 +660,7 @@ function InvoiceModal({
   currentUserName: string
   isOwner: boolean
   canManage: boolean
-  canDeleteExports: boolean
+  isDeleteAdmin: boolean
   busy: boolean
   onClose: () => void
   onFile: (path: string) => void
@@ -1086,7 +1086,7 @@ function InvoiceModal({
                 <CornerUpLeft className="size-4" /> Back to unassigned
               </Button>
             )}
-            {((canManage && status === 'needs_attention') || (canDeleteExports && status === 'exported')) && (
+            {((canManage && status === 'needs_attention') || (isDeleteAdmin && (status === 'exported' || status === 'unassigned'))) && (
               confirmDelete ? (
                 <>
                   <Button variant="danger" size="sm" disabled={busy} onClick={() => void onDelete(id, invoice.file_path)}>
