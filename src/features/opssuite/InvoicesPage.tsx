@@ -1291,14 +1291,11 @@ function StatusPill({ status }: { status: InvoiceStatus }) {
 
 // QuickBooks Desktop bill-import columns, in exact order (note the deliberate
 // double spaces in "Expense  Memo" and "Product/Service  Class").
+// Only the columns we actually populate; the empty QuickBooks template columns
+// (Terms, Email, addresses, Product/Service, etc.) are omitted.
 const QB_HEADERS = [
-  'Bill No', 'Vendor', 'Date', 'Due Date', 'Terms', 'Email', 'Phone', 'Address Line 1',
-  'Address Line 2', 'City', 'Country', 'State', 'Postal Code', 'AP Account', 'Memo',
-  'Expense Account', 'Expense Amount', 'Expense  Memo', 'Expense Customer', 'Expense Sales Rep',
-  'Expense Billable', 'Expense Class', 'Product/Service', 'Product/Service Quantity',
-  'Product/Service Rate', 'Product/Service Amount', 'Unit of Measure', 'Serial No', 'Lot No',
-  'Inventory Site', 'Inventory BIN', 'Product/Service Description', 'Product/Service Customer',
-  'Product/Service Billable', 'Product/Service Sales Rep', 'Product/Service  Class', 'Currency', 'Exchange Rate',
+  'Bill No', 'Vendor', 'Date', 'Due Date', 'Memo',
+  'Expense Account', 'Expense Amount', 'Expense Class', 'Currency',
 ]
 
 const csvEsc = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
@@ -1333,6 +1330,7 @@ function quickbooksCsv(invs: OpsInvoice[]): string {
       'Bill No': billNoOf(inv),
       Vendor: inv.vendor_name ?? '',
       Date: mdY(inv.invoice_date) || mdY(inv.submitted_at),
+      'Due Date': mdY(inv.due_date),
       Memo: inv.memo ?? '',
       Currency: 'USD',
     }
@@ -1365,7 +1363,9 @@ function qbFilename(): string {
 }
 
 function downloadCsv(filename: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
+  // Prepend a UTF-8 BOM so Excel reads the file as UTF-8 (otherwise the middle dot
+  // in GL accounts like "20002 · Inventory" shows up as "Â·").
+  const url = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' }))
   const a = document.createElement('a')
   a.href = url
   a.download = filename
