@@ -741,6 +741,7 @@ function BusinessCardOrderModal({
   const [siteId, setSiteId] = useState<string>(activeLocation?.id ?? locationId)
   const [firstName, setFirstName] = useState(pf ?? '')
   const [lastName, setLastName] = useState(pl.join(' '))
+  const [jobTitle, setJobTitle] = useState('')
   const [quantity, setQuantity] = useState('500')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -758,7 +759,7 @@ function BusinessCardOrderModal({
 
   const place = async () => {
     setError(null)
-    if (!firstName.trim() || !lastName.trim()) return setError('Enter the first and last name for the card.')
+    if (!firstName.trim() || !lastName.trim() || !jobTitle.trim()) return setError('Enter the first name, last name, and title for the card.')
     const qty = Number(quantity) || 0
     if (qty <= 0 || qty % 500 !== 0) return setError('Quantity must be in increments of 500.')
     setBusy(true)
@@ -768,7 +769,8 @@ function BusinessCardOrderModal({
       requested_by: profile?.id ?? null,
       first_name: firstName.trim(),
       last_name: lastName.trim(),
-      title: `Business Cards - ${firstName.trim()} ${lastName.trim()}`,
+      notes: `Title: ${jobTitle.trim()}`,
+      title: `Business Cards - ${firstName.trim()} ${lastName.trim()} - ${jobTitle.trim()}`,
       sign_category: 'Business Cards',
       quantity: qty,
       artwork_path: sign.artwork_path,
@@ -794,6 +796,9 @@ function BusinessCardOrderModal({
           <Field label="First name" required>{(id) => <Input id={id} value={firstName} onChange={(e) => setFirstName(e.target.value)} />}</Field>
           <Field label="Last name" required>{(id) => <Input id={id} value={lastName} onChange={(e) => setLastName(e.target.value)} />}</Field>
         </div>
+        <Field label="Title" required>
+          {(id) => <Input id={id} value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="e.g. General Manager" />}
+        </Field>
         <Field label="Quantity (cards)" required>
           {(id) => (
             <Select id={id} value={quantity} onChange={(e) => setQuantity(e.target.value)}>
