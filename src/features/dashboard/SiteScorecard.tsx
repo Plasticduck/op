@@ -42,9 +42,10 @@ export function SiteScorecard({
     setCard(null)
     const m = enabled && feed ? siteMetrics(feed, siteNumber(locationName)) : null
     const perf: SitePerformanceInput = {
+      // Month-to-date conversion + labor, to match the monthly churn window.
       carsPerHour: m?.carsPerHour ?? null,
-      laborPct: m?.laborPct ?? null,
-      conversion: m?.conversion ?? null,
+      laborPct: m?.laborPctMtd ?? null,
+      conversion: m?.conversionMtd ?? null,
       churn: m?.churn ?? null,
       googleRating: googleRating ?? null,
     }

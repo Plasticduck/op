@@ -65,9 +65,11 @@ function combine(feed: SitePerformanceFeed | null, locs: LocationRow[]): SiteMet
     rechargeMtd: agg(ms, 'rechargeMtd', 'sum'),
     carsPerHour: agg(ms, 'carsPerHour', 'avg'),
     conversion: agg(ms, 'conversion', 'avg'),
+    conversionMtd: agg(ms, 'conversionMtd', 'avg'),
     churn: agg(ms, 'churn', 'avg'),
     churnCc: agg(ms, 'churnCc', 'avg'),
     laborPct: agg(ms, 'laborPct', 'avg'),
+    laborPctMtd: agg(ms, 'laborPctMtd', 'avg'),
     plansSold: agg(ms, 'plansSold', 'sum'),
   }
 }
@@ -188,9 +190,10 @@ export default function PresentationMode() {
       for (const l of locations) {
         const sm = siteMetrics(feed, siteNumber(l.name))
         perfByLoc[l.id] = {
+          // Month-to-date conversion + labor for the scorecard (matches monthly churn).
           carsPerHour: sm.carsPerHour ?? undefined,
-          laborPct: sm.laborPct ?? undefined,
-          conversion: sm.conversion ?? undefined,
+          laborPct: sm.laborPctMtd ?? undefined,
+          conversion: sm.conversionMtd ?? undefined,
           churn: sm.churn ?? undefined,
           googleRating: r[l.id]?.rating ?? undefined,
         }

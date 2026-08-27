@@ -340,7 +340,9 @@ export type SiteMetrics = {
   sales: number | null
   carsPerHour: number | null
   laborPct: number | null
+  laborPctMtd: number | null // month-to-date labor %, used by the site scorecard
   conversion: number | null
+  conversionMtd: number | null // month-to-date conversion %, used by the site scorecard
   churn: number | null
   churnCc: number | null
   rechargeMtd: number | null
@@ -355,12 +357,20 @@ export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null):
   // Plans sold today = the sum of every plan tier's today count for the site.
   const plan = findByNumber<PlanSite>(feed?.plan_breakdown?.sites, n)
   const plansSold = plan?.today ? Object.values(plan.today).reduce((a, b) => a + (Number(b) || 0), 0) : null
+  // Month-to-date labor % = sum(labor cost) / sum(sales) over this month's days.
+  const monthPrefix = (day?.date ?? '').slice(0, 7)
+  const monthDays = monthPrefix ? (days ?? []).filter((d) => String(d.date ?? '').startsWith(monthPrefix)) : []
+  const laborSum = monthDays.reduce((a, d) => a + (Number(d.labor_cost) || 0), 0)
+  const salesSum = monthDays.reduce((a, d) => a + (Number(d.sales) || 0), 0)
+  const laborPctMtd = salesSum > 0 ? Math.round((laborSum / salesSum) * 1000) / 10 : null
   return {
     cars: day?.cars ?? null,
     sales: day?.sales ?? msaRow?.today_sales ?? null,
     carsPerHour: day?.cars_per_hour ?? null,
     laborPct: day?.labor_pct ?? null,
+    laborPctMtd,
     conversion: msaRow?.today_conversion_pct ?? null,
+    conversionMtd: msaRow?.mtd_conversion_pct ?? null,
     churn: churn?.voluntary_churn_pct ?? null,
     churnCc: churn?.cc_churn_pct ?? null,
     rechargeMtd: findByNumber<number>(feed?.recharge_revenue?.mtd_by_site, n) ?? null,

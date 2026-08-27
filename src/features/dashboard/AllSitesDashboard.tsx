@@ -78,9 +78,10 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
     for (const l of locations) {
       const m = perfEnabled && feed ? siteMetrics(feed, siteNumber(l.name)) : null
       out[l.id] = {
+        // The grade uses month-to-date conversion + labor to match monthly churn.
         carsPerHour: m?.carsPerHour ?? null,
-        laborPct: m?.laborPct ?? null,
-        conversion: m?.conversion ?? null,
+        laborPct: m?.laborPctMtd ?? null,
+        conversion: m?.conversionMtd ?? null,
         churn: m?.churn ?? null,
         googleRating: ratingsMap[l.id]?.rating ?? null,
       }
