@@ -174,12 +174,6 @@ export const NAV_GROUPS: NavGroup[] = [
         flag: 'gm_bonus',
       },
       {
-        to: '/app/contacts',
-        label: 'Contacts',
-        icon: BookUser,
-        roles: ['owner', 'manager', 'technician'],
-      },
-      {
         to: '/app/site-reviews',
         label: 'Site Reviews',
         icon: Stamp,
@@ -370,6 +364,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Employees',
         icon: UsersRound,
         roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/contacts',
+        label: 'Contacts',
+        icon: BookUser,
+        roles: ['owner', 'manager', 'technician'],
       },
       {
         to: '/app/schedule',
