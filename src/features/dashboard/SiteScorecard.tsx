@@ -81,7 +81,7 @@ export function SiteScorecard({
             <Gauge className="size-4 text-ink-muted" /> Site Scorecard
           </div>
           <p className="truncate text-xs text-ink-muted">
-            {locationName} scores <span className={cn('font-semibold', color.text)}>{card.total}/100</span> across {card.factors.length} weighted operations and performance factors.
+            {locationName} scores <span className={cn('font-semibold', color.text)}>{card.total}/100</span> across {card.factors.length} weighted performance {card.factors.length === 1 ? 'factor' : 'factors'}.
           </p>
         </div>
         <ChevronDown className={cn('size-4 shrink-0 text-ink-subtle transition', open && 'rotate-180')} />

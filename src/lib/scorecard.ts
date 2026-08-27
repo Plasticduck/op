@@ -2,21 +2,19 @@ import { supabase } from '@/lib/supabase'
 
 // Site Scorecard: a single letter grade per location, computed live. No stored
 // state, always recomputed. The grade is a weighted average over whatever
-// factors have data, renormalized to 100, so a site with sparse data (or an
-// account without the live performance feed) still gets a fair grade.
+// factors have data, renormalized to 100, so a site with sparse data still gets
+// a fair grade (and a dash instead of a grade when none of them have data).
 //
-// Operational factors (from the app's own tables):
-//   workOrders  penalty for open high-priority / overdue / stale WOs
-//   assets      % of non-retired assets online
-//   checklists  days in the last 7 with a completion
-//   parts       % of stocked parts at or above minimum
-//
-// Performance factors (from the live Site Performance feed, when available):
+// Grade factors (from the live Site Performance feed):
 //   conversion  membership conversion %, higher is better
 //   churn       voluntary churn %, lower is better
-//   throughput  cars per man-hour, higher is better (rewards volume, size-fair)
 //   labor       labor %, lower is better
 //   rating      Google rating, higher is better
+//
+// Additional performance/operational factors (throughput, work orders, asset
+// health, checklists, parts stock) are intentionally left OUT of the grade for
+// now and will be reintroduced later. Work-order / asset / parts counts are still
+// computed as dashboard `signals`, just not folded into the grade.
 
 export type ScorecardKey =
   | 'workOrders' | 'assets' | 'checklists' | 'parts'
@@ -101,51 +99,22 @@ type Candidate = ScorecardFactor & { rawWeight: number; include: boolean }
 export function scoreFrom(input: ScorecardInput): Scorecard {
   const now = input.now ?? new Date()
 
-  // -- Work orders: start from 100, deduct per problem ------------------------
+  // Operational signals surfaced on the dashboard (chips + counts). These are NOT
+  // part of the grade for now, but still shown alongside it.
   const wos = input.workOrders
   const openHigh = wos.filter((w) => w.priority === 'high').length
   const overdue = wos.filter((w) => w.due_at && new Date(w.due_at) < now).length
-  const stale = wos.filter((w) => new Date(w.created_at) < new Date(now.getTime() - 14 * 86400000)).length
-  const woScore = clamp(100 - openHigh * 15 - overdue * 10 - stale * 5)
-
-  // -- Assets: share of non-retired assets that are online --------------------
-  const assetsAll = input.equipment
-  const assets = assetsAll.filter((a) => a.status !== 'retired')
-  const online = assets.filter((a) => a.status === 'online').length
-  const equipmentDown = assetsAll.filter((a) => a.status === 'down').length
-  const assetScore = assets.length === 0 ? 100 : clamp((online / assets.length) * 100)
-
-  // -- Checklists: distinct days with a completion in the last 7 --------------
-  const checklistDays = new Set(input.checklistCompletions.map((c) => c.completed_at.slice(0, 10)))
-  const checklistScore = clamp((checklistDays.size / 7) * 100)
-
-  // -- Parts: share of stock rows at/above minimum ----------------------------
+  const equipmentDown = input.equipment.filter((a) => a.status === 'down').length
   const stock = input.parts
   const okStock = stock.filter((s) => Number(s.quantity_on_hand) >= Number(s.minimum_in_stock ?? 0)).length
   const lowStock = stock.length - okStock
-  const partsScore = stock.length === 0 ? 100 : clamp((okStock / stock.length) * 100)
 
   const p = input.performance ?? {}
   const has = (v: number | null | undefined): v is number => v != null && Number.isFinite(v)
 
+  // The grade is a weighted average of the performance metrics that have data:
+  // Conversion, Churn, Labor %, and Google Rating. (More factors to come later.)
   const candidates: Candidate[] = [
-    {
-      key: 'workOrders', label: 'Work Orders', score: woScore, rawWeight: 15, include: true, weight: 0,
-      detail: wos.length === 0 ? 'No open work orders'
-        : `${wos.length} open${openHigh ? `, ${openHigh} high-priority` : ''}${overdue ? `, ${overdue} overdue` : ''}`,
-    },
-    {
-      key: 'assets', label: 'Asset Health', score: assetScore, rawWeight: 13, include: assets.length > 0, weight: 0,
-      detail: assets.length === 0 ? 'No assets tracked yet' : `${online} of ${assets.length} assets online`,
-    },
-    {
-      key: 'checklists', label: 'Checklists', score: checklistScore, rawWeight: 10, include: true, weight: 0,
-      detail: `Completed on ${checklistDays.size} of the last 7 days`,
-    },
-    {
-      key: 'parts', label: 'Parts Stock', score: partsScore, rawWeight: 6, include: stock.length > 0, weight: 0,
-      detail: stock.length === 0 ? 'No parts tracked yet' : `${okStock} of ${stock.length} parts at or above minimum`,
-    },
     {
       key: 'conversion', label: 'Conversion', score: has(p.conversion) ? mapUp(p.conversion, BENCHMARKS.conversion.lo, BENCHMARKS.conversion.hi) : 0,
       rawWeight: 18, include: has(p.conversion), weight: 0,
@@ -155,11 +124,6 @@ export function scoreFrom(input: ScorecardInput): Scorecard {
       key: 'churn', label: 'Churn', score: has(p.churn) ? mapDown(p.churn, BENCHMARKS.churn.good, BENCHMARKS.churn.bad) : 0,
       rawWeight: 14, include: has(p.churn), weight: 0,
       detail: has(p.churn) ? `Churn ${p.churn}%` : 'No churn data',
-    },
-    {
-      key: 'throughput', label: 'Throughput', score: has(p.carsPerHour) ? mapUp(p.carsPerHour, BENCHMARKS.throughput.lo, BENCHMARKS.throughput.hi) : 0,
-      rawWeight: 12, include: has(p.carsPerHour), weight: 0,
-      detail: has(p.carsPerHour) ? `${p.carsPerHour} cars per man-hour` : 'No throughput data',
     },
     {
       key: 'labor', label: 'Labor Efficiency', score: has(p.laborPct) ? mapDown(p.laborPct, BENCHMARKS.labor.good, BENCHMARKS.labor.bad) : 0,
@@ -178,11 +142,12 @@ export function scoreFrom(input: ScorecardInput): Scorecard {
   const factors: ScorecardFactor[] = included.map((c) => ({
     key: c.key, label: c.label, score: c.score, detail: c.detail, weight: Math.round((c.rawWeight / wsum) * 100),
   }))
-  const total = Math.round(included.reduce((a, c) => a + c.score * (c.rawWeight / wsum), 0))
+  const total = included.length ? Math.round(included.reduce((a, c) => a + c.score * (c.rawWeight / wsum), 0)) : 0
 
   return {
     total,
-    letter: letterFor(total),
+    // No gradeable data yet -> a dash rather than a misleading F.
+    letter: included.length ? letterFor(total) : '—',
     factors,
     signals: { openWorkOrders: wos.length, highPriority: openHigh, overdue, equipmentDown, lowStock },
   }
