@@ -210,18 +210,6 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
-        to: '/app/market-research',
-        label: 'Market Research',
-        icon: Telescope,
-        roles: ['owner', 'manager'],
-      },
-      {
-        to: '/app/social-calendar',
-        label: 'Social Calendar',
-        icon: Megaphone,
-        roles: ['owner', 'manager'],
-      },
-      {
         to: '/app/documents',
         label: 'Documents',
         icon: Folders,
@@ -275,6 +263,24 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Issuetrak',
         icon: LifeBuoy,
         roles: ['owner', 'manager', 'technician'],
+      },
+    ],
+  },
+  {
+    label: 'Marketing',
+    roles: ['owner', 'manager'],
+    items: [
+      {
+        to: '/app/social-calendar',
+        label: 'Social Calendar',
+        icon: Megaphone,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/market-research',
+        label: 'Market Research',
+        icon: Telescope,
+        roles: ['owner', 'manager'],
       },
     ],
   },
