@@ -271,6 +271,12 @@ export const NAV_GROUPS: NavGroup[] = [
     roles: ['owner', 'manager'],
     items: [
       {
+        to: '/app/marketing-dashboard',
+        label: 'Marketing Dashboard',
+        icon: Gauge,
+        roles: ['owner', 'manager'],
+      },
+      {
         to: '/app/social-calendar',
         label: 'Social Calendar',
         icon: Megaphone,

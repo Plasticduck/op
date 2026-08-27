@@ -129,6 +129,7 @@ const PmPage = lz(() => import('@/features/ops/pm/PmPage'))
 const WorkRequestsPage = lz(() => import('@/features/ops/requests/WorkRequestsPage'))
 const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
+const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
 const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
 const TipPage = lz(() => import('@/features/tips/TipPage'))
 const TipThanksPage = lz(() => import('@/features/tips/TipPage').then((m) => ({ default: m.TipThanksPage })))
@@ -247,6 +248,7 @@ export const router = createBrowserRouter([
           { path: 'time-off', element: s(<TimeOffPage />) },
           { path: 'calendar', element: s(<CalendarPage />) },
           { path: 'social-calendar', element: mgr(<SocialCalendarPage />) },
+          { path: 'marketing-dashboard', element: mgr(<MarketingDashboardPage />) },
           { path: 'messages', element: s(<MessagesPage />) },
           { path: 'tips', element: mgr(<TipsAdminPage />) },
           { path: 'messages/:conversationId', element: s(<MessagesPage />) },
