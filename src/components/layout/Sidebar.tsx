@@ -282,6 +282,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Telescope,
         roles: ['owner', 'manager'],
       },
+      {
+        to: '/app/households',
+        label: 'Household Finder',
+        icon: UsersRound,
+        roles: ['owner'],
+      },
     ],
   },
   {

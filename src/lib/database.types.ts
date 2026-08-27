@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   graphql_public: {
     Tables: {
@@ -1701,6 +1701,119 @@ export type Database = {
             columns: ["reported_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      drb_household_members: {
+        Row: {
+          account_id: string
+          address: string | null
+          city: string | null
+          customer_objid: string | null
+          email: string | null
+          first_name: string | null
+          full_name: string | null
+          household_id: string
+          id: string
+          last_name: string | null
+          phone: string | null
+          state: string | null
+          zip: string | null
+        }
+        Insert: {
+          account_id: string
+          address?: string | null
+          city?: string | null
+          customer_objid?: string | null
+          email?: string | null
+          first_name?: string | null
+          full_name?: string | null
+          household_id: string
+          id?: string
+          last_name?: string | null
+          phone?: string | null
+          state?: string | null
+          zip?: string | null
+        }
+        Update: {
+          account_id?: string
+          address?: string | null
+          city?: string | null
+          customer_objid?: string | null
+          email?: string | null
+          first_name?: string | null
+          full_name?: string | null
+          household_id?: string
+          id?: string
+          last_name?: string | null
+          phone?: string | null
+          state?: string | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drb_household_members_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "drb_household_members_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "drb_households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      drb_households: {
+        Row: {
+          account_id: string
+          address: string | null
+          city: string | null
+          cluster_key: string
+          id: string
+          match_type: string
+          member_count: number
+          region: string | null
+          state: string | null
+          synced_at: string
+          zip: string | null
+        }
+        Insert: {
+          account_id: string
+          address?: string | null
+          city?: string | null
+          cluster_key: string
+          id?: string
+          match_type?: string
+          member_count?: number
+          region?: string | null
+          state?: string | null
+          synced_at?: string
+          zip?: string | null
+        }
+        Update: {
+          account_id?: string
+          address?: string | null
+          city?: string | null
+          cluster_key?: string
+          id?: string
+          match_type?: string
+          member_count?: number
+          region?: string | null
+          state?: string | null
+          synced_at?: string
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drb_households_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
