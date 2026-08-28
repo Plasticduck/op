@@ -1346,10 +1346,20 @@ function quickbooksCsv(invs: OpsInvoice[]): string {
     const siteAllocs = (inv.site_allocations as Alloc[] | null) ?? []
     let lines: Record<string, string>[]
     if (Array.isArray(glAllocs) && glAllocs.length > 1) {
-      // Multiple GL codes: one line per code (its account + allocated amount). Use
-      // the site as the Class when there's exactly one; blank if it spans several.
-      const cls = inv.class_names?.length === 1 ? String(inv.class_names[0]) : ''
-      lines = glAllocs.map((g) => ({ ...base, 'Expense Account': String(g.gl_code ?? ''), 'Expense Amount': String(Number(g.amount) || 0), 'Expense Class': cls }))
+      // Multiple GL codes: one line per code (its account + allocated amount). A
+      // single site is the Class for every line. When the site split lines up 1:1
+      // with the GL split (same count and matching amounts), each GL line takes
+      // its paired site's Class, so a multi-site invoice still carries the class.
+      const singleCls = inv.class_names?.length === 1 ? String(inv.class_names[0]) : ''
+      const paired =
+        Array.isArray(siteAllocs) && siteAllocs.length === glAllocs.length && siteAllocs.length > 1 &&
+        glAllocs.every((g, i) => Math.abs((Number(g.amount) || 0) - (Number(siteAllocs[i]?.amount) || 0)) < 0.005)
+      lines = glAllocs.map((g, i) => ({
+        ...base,
+        'Expense Account': String(g.gl_code ?? ''),
+        'Expense Amount': String(Number(g.amount) || 0),
+        'Expense Class': paired ? String(siteAllocs[i]?.name ?? '') : singleCls,
+      }))
     } else {
       const acct = glAllocs.length ? String(glAllocs[0].gl_code ?? '') : (inv.gl_code ?? '')
       const b2 = { ...base, 'Expense Account': acct }
