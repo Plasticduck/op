@@ -69,9 +69,24 @@ async function fetchGoogleReviews(clientId: string, privateKey: string, business
   return all
 }
 
+// Google Places (New) fallback for sites not in GatherUp but linked by place id.
+const PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places/'
+async function fetchPlaceRating(placeId: string, apiKey: string): Promise<{ rating: number; count: number | null } | null> {
+  try {
+    const res = await fetch(PLACES_ENDPOINT + encodeURIComponent(placeId), {
+      headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': 'rating,userRatingCount' },
+    })
+    if (!res.ok) return null
+    const body = await res.json().catch(() => null)
+    if (!body || typeof body.rating !== 'number') return null
+    return { rating: body.rating as number, count: (body.userRatingCount as number) ?? null }
+  } catch { return null }
+}
+
 type LocRow = {
   id: string
   gatherup_business_id: number | null
+  google_place_id: string | null
   google_rating: number | null
   google_rating_count: number | null
   google_rating_synced_at: string | null
@@ -86,6 +101,8 @@ Deno.serve(async (req) => {
   const clientId = Deno.env.get('GATHERUP_CLIENT_ID')
   const privateKey = Deno.env.get('GATHERUP_PRIVATE_KEY')
   if (!clientId || !privateKey) return json({ error: 'no_key', message: 'GATHERUP_CLIENT_ID / GATHERUP_PRIVATE_KEY are not configured.' }, 503)
+  // Optional Places fallback for sites not in GatherUp but linked by place id.
+  const placesKey = Deno.env.get('GOOGLE_MAPS_API_KEY')
 
   const url = Deno.env.get('SUPABASE_URL')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -110,7 +127,7 @@ Deno.serve(async (req) => {
 
   let query = svc
     .from('locations')
-    .select('id, gatherup_business_id, google_rating, google_rating_count, google_rating_synced_at')
+    .select('id, gatherup_business_id, google_place_id, google_rating, google_rating_count, google_rating_synced_at')
     .eq('account_id', accountId)
     .eq('archived', false)
   if (requestedIds && requestedIds.length > 0) query = query.in('id', requestedIds)
@@ -126,7 +143,7 @@ Deno.serve(async (req) => {
     let count = loc.google_rating_count
     let synced = loc.google_rating_synced_at
     const stale = !synced || now - new Date(synced).getTime() > TTL_MS
-    if (loc.gatherup_business_id && stale) {
+    if (stale && loc.gatherup_business_id) {
       const reviews = await fetchGoogleReviews(clientId, privateKey, loc.gatherup_business_id)
       if (reviews && reviews.length) {
         const rated = reviews.filter((r) => Number(r.reviewRating) > 0)
@@ -153,6 +170,17 @@ Deno.serve(async (req) => {
           }))
         await svc.from('gatherup_reviews').delete().eq('location_id', loc.id)
         if (recent.length) await svc.from('gatherup_reviews').insert(recent)
+      }
+    } else if (stale && loc.google_place_id && placesKey) {
+      // Not in GatherUp: fall back to the Google Places rating (no reviews feed).
+      const fresh = await fetchPlaceRating(loc.google_place_id, placesKey)
+      if (fresh) {
+        rating = fresh.rating
+        count = fresh.count
+        synced = new Date(now).toISOString()
+        await svc.from('locations')
+          .update({ google_rating: rating, google_rating_count: count, google_rating_synced_at: synced })
+          .eq('id', loc.id)
       }
     }
     results.push({ location_id: loc.id, rating, count, synced_at: synced })
