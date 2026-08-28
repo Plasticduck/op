@@ -8,6 +8,7 @@ import { Wos } from '@/components/ui/Wos'
 import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
+import { supabase } from '@/lib/supabase'
 import { useSitePerformanceFeed } from '@/lib/useSitePerformanceFeed'
 import { siteMetrics, siteNumber } from '@/lib/queries/sitePerformance'
 import { StatCardRow } from '@/components/data/StatCardRow'
@@ -48,6 +49,7 @@ type ScoredLocation = {
   longitude: number | null
   card: Scorecard | null
   googleRating: number | null
+  openWorkOrders: number
 }
 
 export default function AllSitesDashboard({ regionName }: { regionName?: string }) {
@@ -66,6 +68,7 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [loading, setLoading] = useState(true)
   const [ratingsMap, setRatingsMap] = useState<Record<string, SiteRating>>({})
+  const [woCounts, setWoCounts] = useState<Record<string, number>>({})
 
   const locIds = useMemo(() => locations.map((l) => l.id), [locations])
   const locIdsKey = locIds.join(',')
@@ -119,6 +122,27 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
     return () => {
       active = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locIdsKey])
+
+  // Live open work-order count per site (MaintainX-synced work orders).
+  useEffect(() => {
+    if (locIds.length === 0) return
+    let active = true
+    supabase
+      .from('work_orders')
+      .select('location_id')
+      .in('location_id', locIds)
+      .in('status', ['open', 'on_hold', 'in_progress'])
+      .then(({ data }) => {
+        if (!active) return
+        const map: Record<string, number> = {}
+        for (const r of (data as { location_id: string | null }[] | null) ?? []) {
+          if (r.location_id) map[r.location_id] = (map[r.location_id] ?? 0) + 1
+        }
+        setWoCounts(map)
+      })
+    return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locIdsKey])
 
@@ -188,6 +212,7 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
               longitude: l.longitude,
               card: cards[l.id] ?? null,
               googleRating: ratingsMap[l.id]?.rating ?? null,
+              openWorkOrders: woCounts[l.id] ?? 0,
             }))}
             loading={loading}
           />
@@ -210,6 +235,7 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
               longitude: l.longitude,
               card: cards[l.id] ?? null,
               googleRating: ratingsMap[l.id]?.rating ?? null,
+              openWorkOrders: woCounts[l.id] ?? 0,
             }))}
             loading={loading}
           />
@@ -339,6 +365,11 @@ function SiteCard({ loc, loading }: { loc: ScoredLocation; loading: boolean }) {
               {loading || !card ? 'Scoring…' : `${card.total}/100`}
             </p>
             <GoogleRatingBadge rating={loc.googleRating} />
+            {loc.openWorkOrders > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-content px-2 py-0.5 text-xs font-medium text-ink-muted">
+                {loc.openWorkOrders} open {loc.openWorkOrders === 1 ? 'WO' : 'WOs'}
+              </span>
+            )}
           </div>
         </div>
         <span
