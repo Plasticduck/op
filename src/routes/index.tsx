@@ -131,6 +131,7 @@ const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortal
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
 const HouseholdFinderPage = lz(() => import('@/features/opssuite/HouseholdFinderPage'))
+const LubeShopPage = lz(() => import('@/features/opssuite/LubeShopPage'))
 const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
 const TipPage = lz(() => import('@/features/tips/TipPage'))
 const TipThanksPage = lz(() => import('@/features/tips/TipPage').then((m) => ({ default: m.TipThanksPage })))
@@ -251,6 +252,7 @@ export const router = createBrowserRouter([
           { path: 'social-calendar', element: mgr(<SocialCalendarPage />) },
           { path: 'marketing-dashboard', element: mgr(<MarketingDashboardPage />) },
           { path: 'households', element: <RequireRole allow={['owner']}>{s(<HouseholdFinderPage />)}</RequireRole> },
+          { path: 'lube-shop', element: mgr(<LubeShopPage />) },
           { path: 'messages', element: s(<MessagesPage />) },
           { path: 'tips', element: mgr(<TipsAdminPage />) },
           { path: 'messages/:conversationId', element: s(<MessagesPage />) },

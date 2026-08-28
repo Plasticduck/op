@@ -291,6 +291,18 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: 'Lube Shop',
+    roles: ['owner', 'manager'],
+    items: [
+      {
+        to: '/app/lube-shop',
+        label: 'Overview',
+        icon: Wrench,
+        roles: ['owner', 'manager'],
+      },
+    ],
+  },
+  {
     label: 'Maintenance',
     roles: ['owner', 'manager', 'employee', 'technician'],
     items: [

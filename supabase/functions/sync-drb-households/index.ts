@@ -156,19 +156,20 @@ function phoneSql(cutoff: string, from: number, to: number): string {
 }
 
 function cardSql(cutoff: string, from: number, to: number): string {
-  // SALEPAYMENTS.SITE/SALEID are string columns (some empty) while SALE.SITE/OBJID
-  // are numeric. Drop the empty rows so the numeric join never has to convert ''
-  // (which errors), while keeping the index-friendly join for the rest.
-  return `SELECT MAX(sp.MASKEDPAN) AS K, COUNT(DISTINCT cc.CUSTOMER) AS N, LIST(${PACKED}, '${MEMBER_SEP}') AS M
+  // Shared physical card = same MASKEDPAN across accounts (SiteWatch gives each
+  // account its own numeric TOKEN, so tokens never match across customers). Join
+  // keys are all integers. No member-join here: it makes the payments join time
+  // out, and a card on file over the recharge window already implies an active
+  // card-paying customer.
+  return `SELECT MIN(sp.MASKEDPAN) AS K, COUNT(DISTINCT cc.CUSTOMER) AS N, LIST(${PACKED}, '${MEMBER_SEP}') AS M
     FROM SALEPAYMENTS sp
-    JOIN SALE s ON CAST(s.SITE AS VARCHAR(12)) = sp.SITE AND CAST(s.OBJID AS VARCHAR(24)) = sp.SALEID
+    JOIN SALE s ON s.SITE = sp.SITE AND s.OBJID = sp.SALEID
     JOIN CUSTOMERCODE cc ON cc.OBJID = s.CUSTOMERCODE
     JOIN CUSTOMER c ON c.OBJID = cc.CUSTOMER
-    ${memberJoin(cutoff)}
-    WHERE sp.SALEID <> '' AND sp.SITE <> '' AND sp.TOKEN IS NOT NULL AND sp.TOKEN <> '' AND s.LOGDATE >= '${cutoff}'
-    GROUP BY sp.TOKEN
+    WHERE sp.MASKEDPAN IS NOT NULL AND sp.MASKEDPAN <> '' AND s.LOGDATE >= '${cutoff}'
+    GROUP BY sp.MASKEDPAN
     HAVING COUNT(DISTINCT cc.CUSTOMER) BETWEEN 2 AND 8
-    ORDER BY sp.TOKEN
+    ORDER BY sp.MASKEDPAN
     ROWS ${from} TO ${to}`
 }
 
@@ -229,7 +230,7 @@ const last4 = (pan: string): string | null => {
 // join hits a Firebird type-conversion edge case still being worked out. Phone is
 // the high-value signal for members (91% have a phone); address is small (members
 // rarely give one). Re-add 'card' here once its query is validated.
-const TYPES: MatchType[] = ['phone', 'address']
+const TYPES: MatchType[] = ['phone', 'card', 'address']
 
 async function runPage(
   base: string, cookie: string, cutoff: string, accountId: string, type: MatchType, page: number,
@@ -239,7 +240,20 @@ async function runPage(
   const sql = type === 'phone' ? phoneSql(cutoff, from, to) : type === 'card' ? cardSql(cutoff, from, to) : addressSql(cutoff, from, to)
   const res = await runSql(base, cookie, sql)
   const rows = res.rows ?? []
-  const households: Household[] = []
+  // Key by cluster_key and merge, so two rows that resolve to the same key (e.g.
+  // the same phone entered in two formats) become one household instead of
+  // colliding on the unique (account_id, cluster_key) constraint.
+  const byKey = new Map<string, Household>()
+  const add = (key: string, h: Omit<Household, 'members'>, members: Member[]) => {
+    const existing = byKey.get(key)
+    if (existing) {
+      const seen = new Set(existing.members.map((m) => m.customer_objid))
+      for (const m of members) if (!seen.has(m.customer_objid)) { existing.members.push(m); seen.add(m.customer_objid) }
+      existing.member_count = existing.members.length
+    } else {
+      byKey.set(key, { ...h, members })
+    }
+  }
   for (const row of rows) {
     const packed = String(row[row.length - 1] ?? '')
     if (!packed) continue
@@ -248,33 +262,33 @@ async function runPage(
     if (type === 'phone') {
       const phone = String(row[0] ?? '').trim()
       if (isJunkPhone(phone)) continue
-      households.push({
-        id: crypto.randomUUID(), account_id: accountId, cluster_key: `phone:${digits(phone)}`,
+      const key = `phone:${phone}`
+      add(key, {
+        id: crypto.randomUUID(), account_id: accountId, cluster_key: key,
         match_type: 'phone', match_value: phone, card_last4: null,
-        region: regionFromMembers(members, null), address: null, zip: null,
-        member_count: members.length, members,
-      })
+        region: regionFromMembers(members, null), address: null, zip: null, member_count: members.length,
+      }, members)
     } else if (type === 'card') {
       const l4 = last4(String(row[0] ?? ''))
-      households.push({
-        id: crypto.randomUUID(), account_id: accountId,
-        cluster_key: `card:${l4 ?? ''}:${members.map((m) => m.customer_objid).sort().join(',')}`,
+      // Key on last-4 + the member set (never the full masked PAN).
+      const key = `card:${l4 ?? ''}:${members.map((m) => m.customer_objid).sort().join(',')}`
+      add(key, {
+        id: crypto.randomUUID(), account_id: accountId, cluster_key: key,
         match_type: 'card', match_value: l4 ? `•••• ${l4}` : null, card_last4: l4,
-        region: regionFromMembers(members, null), address: null, zip: null,
-        member_count: members.length, members,
-      })
+        region: regionFromMembers(members, null), address: null, zip: null, member_count: members.length,
+      }, members)
     } else {
       const addr = String(row[0] ?? '').trim()
       const zip = String(row[1] ?? '').trim()
-      households.push({
-        id: crypto.randomUUID(), account_id: accountId, cluster_key: `addr:${addr.toUpperCase()}|${zip}`,
-        match_type: 'address', match_value: nz(addr), card_last4: null,
-        region: regionForZip(zip), address: nz(addr), zip: nz(zip),
-        member_count: members.length, members,
-      })
+      const key = `addr:${addr.toUpperCase()}|${zip}`
+      add(key, {
+        id: crypto.randomUUID(), account_id: accountId, cluster_key: key,
+        match_type: 'address', match_value: nz(addr), card_last4: null, address: nz(addr),
+        region: regionForZip(zip), zip: nz(zip), member_count: members.length,
+      }, members)
     }
   }
-  return { households, full: rows.length >= 1000 }
+  return { households: [...byKey.values()], full: rows.length >= 1000 }
 }
 
 // deno-lint-ignore no-explicit-any
