@@ -114,6 +114,30 @@ export async function fetchWeather(lat: number, lon: number): Promise<DayForecas
   })
 }
 
+// Current conditions via Open-Meteo (free, no key). Used to auto-fill the weather
+// field on a site review from the site's coordinates.
+export async function fetchCurrentWeather(lat: number, lon: number): Promise<{ tempF: number; code: number } | null> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=auto`
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const j = (await res.json()) as { current?: { temperature_2m?: number; weather_code?: number } }
+    const t = j.current?.temperature_2m
+    const code = j.current?.weather_code
+    if (typeof t !== 'number' || typeof code !== 'number') return null
+    return { tempF: Math.round(t), code }
+  } catch {
+    return null
+  }
+}
+
+// A short "Sunny, 84°F"-style label for the current weather.
+export function currentWeatherLabel(w: { tempF: number; code: number }): string {
+  return `${weatherLabel(w.code).label}, ${w.tempF}°F`
+}
+
 // Historical daily weather via Open-Meteo (free, no key). `past_days` returns up
 // to ~92 days of recent history plus today, so previous days can be pulled to
 // explain how a day performed. Older than that would need the archive endpoint.

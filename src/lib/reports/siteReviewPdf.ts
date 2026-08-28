@@ -11,6 +11,8 @@ export type SiteReviewPdfInput = {
   answers: SiteReviewAnswers
   summaryText?: string | null
   submitterName?: string | null
+  // Resolved item photos, keyed by storage path, as JPEG data URLs with pixel size.
+  photoImages?: Record<string, { dataUrl: string; w: number; h: number }>
 }
 
 const fmt12 = (hhmm: string | null | undefined): string => {
@@ -112,6 +114,47 @@ export async function buildSiteReviewPdf(input: SiteReviewPdfInput): Promise<Blo
     })
 
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
+
+    // Photos attached to this section's items, embedded below the table.
+    if (input.photoImages) {
+      const imgH = 30 // mm
+      const gap = 3
+      for (const item of section.items) {
+        const ans = input.answers[item.id] as { photos?: string[] } | undefined
+        const paths = (ans?.photos ?? []).filter((p) => input.photoImages?.[p])
+        if (paths.length === 0) continue
+
+        ensureSpace(6 + imgH)
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(60, 66, 74)
+        doc.text('Photos — ' + item.label, marginX, y)
+        y += 4
+
+        let x = marginX
+        let rowStartY = y
+        for (const p of paths) {
+          const img = input.photoImages[p]
+          const ratio = img.w > 0 && img.h > 0 ? img.w / img.h : 1
+          const w = Math.max(10, Math.min(imgH * ratio, contentWidth))
+          if (x + w > pageWidth - marginX && x > marginX) {
+            x = marginX
+            rowStartY += imgH + gap
+            if (rowStartY + imgH > pageHeight - 20) {
+              doc.addPage()
+              rowStartY = topMargin
+            }
+          }
+          try {
+            doc.addImage(img.dataUrl, 'JPEG', x, rowStartY, w, imgH)
+          } catch {
+            // Skip an image jsPDF can't decode rather than fail the whole export.
+          }
+          x += w + gap
+        }
+        y = rowStartY + imgH + 6
+      }
+    }
   }
 
   const summary = (input.summaryText ?? '').trim()

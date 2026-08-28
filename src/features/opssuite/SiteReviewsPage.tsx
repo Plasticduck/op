@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ClipboardList, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
@@ -26,6 +26,63 @@ import {
   type SiteReviewAnswers,
 } from './siteReviewSchema'
 import { buildSiteReviewPdf, openPdfInNewTab, downloadBlob } from '@/lib/reports/siteReviewPdf'
+import { fetchCurrentWeather, currentWeatherLabel, geocodeAddress } from '@/lib/weather'
+
+// Weather + time-arrived captured on a review are stored under this reserved key
+// in the answers JSON (the table has no dedicated columns for them).
+type ReviewMeta = { weather?: string; timeArrived?: string }
+const reviewMeta = (answers: unknown): ReviewMeta =>
+  ((answers as { __meta?: ReviewMeta } | null | undefined)?.__meta ?? {})
+
+// Resolves a review's item photos (storage paths on the answers JSON) into JPEG
+// data URLs with pixel dimensions, for embedding in the PDF export. Photos are
+// fetched as blobs and redrawn through a canvas so the data URL is same-origin
+// (no canvas taint) and normalized to JPEG regardless of the source format.
+async function resolveReviewPhotos(
+  answers: SiteReviewAnswers,
+): Promise<Record<string, { dataUrl: string; w: number; h: number }>> {
+  const paths: string[] = []
+  for (const v of Object.values(answers)) {
+    const ph = (v as { photos?: unknown } | null | undefined)?.photos
+    if (Array.isArray(ph)) for (const p of ph) if (typeof p === 'string') paths.push(p)
+  }
+  const out: Record<string, { dataUrl: string; w: number; h: number }> = {}
+  await Promise.all(
+    paths.map(async (p) => {
+      try {
+        const url = await siteReviewPhotos.signedUrl(p)
+        if (!url) return
+        const resp = await fetch(url)
+        if (!resp.ok) return
+        const objUrl = URL.createObjectURL(await resp.blob())
+        try {
+          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const im = new Image()
+            im.onload = () => resolve(im)
+            im.onerror = reject
+            im.src = objUrl
+          })
+          const maxDim = 1200
+          const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
+          const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale))
+          const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale))
+          const canvas = document.createElement('canvas')
+          canvas.width = w
+          canvas.height = h
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return
+          ctx.drawImage(img, 0, 0, w, h)
+          out[p] = { dataUrl: canvas.toDataURL('image/jpeg', 0.82), w, h }
+        } finally {
+          URL.revokeObjectURL(objUrl)
+        }
+      } catch {
+        // Skip a single unreadable photo rather than failing the whole export.
+      }
+    }),
+  )
+  return out
+}
 
 // Thumbnails for a review item's attached photos (read-only, in the detail view).
 function ReviewItemPhotos({ photos }: { photos: string[] }) {
@@ -111,31 +168,39 @@ export default function SiteReviewsPage() {
   }
 
   const openReport = async (row: Row) => {
+    const answers = (row.answers ?? {}) as SiteReviewAnswers
+    const meta = reviewMeta(row.answers)
+    const photoImages = await resolveReviewPhotos(answers)
     const blob = await buildSiteReviewPdf({
       title: 'Monthly Site Review',
       siteName: row.location?.name ?? null,
       date: row.submitted_at,
-      weather: null,
-      timeArrived: null,
+      weather: meta.weather ?? null,
+      timeArrived: meta.timeArrived ?? null,
       schema,
-      answers: (row.answers ?? {}) as SiteReviewAnswers,
+      answers,
       summaryText: row.additional_notes,
       submitterName: row.submitted_by_name,
+      photoImages,
     })
     openPdfInNewTab(blob)
   }
 
   const downloadReport = async (row: Row) => {
+    const answers = (row.answers ?? {}) as SiteReviewAnswers
+    const meta = reviewMeta(row.answers)
+    const photoImages = await resolveReviewPhotos(answers)
     const blob = await buildSiteReviewPdf({
       title: 'Monthly Site Review',
       siteName: row.location?.name ?? null,
       date: row.submitted_at,
-      weather: null,
-      timeArrived: null,
+      weather: meta.weather ?? null,
+      timeArrived: meta.timeArrived ?? null,
       schema,
-      answers: (row.answers ?? {}) as SiteReviewAnswers,
+      answers,
       summaryText: row.additional_notes,
       submitterName: row.submitted_by_name,
+      photoImages,
     })
     downloadBlob(blob, `site-review-${filenameSafeDate(row.submitted_at)}.pdf`)
   }
@@ -355,6 +420,32 @@ function AddReview({ accountId, submitterId, submitterName, schema, onClose, onS
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Auto-fill the weather field with the selected site's current conditions.
+  // Only overwrites the field while it's empty or still holds a prior auto value,
+  // so a manually typed note is preserved.
+  const autoWeatherRef = useRef('')
+  useEffect(() => {
+    if (!locationId) return
+    const loc = locations.find((l) => l.id === locationId)
+    if (!loc) return
+    let active = true
+    void (async () => {
+      let lat = loc.latitude
+      let lon = loc.longitude
+      if ((lat == null || lon == null) && loc.address) {
+        const g = await geocodeAddress(loc.address)
+        if (g) { lat = g.lat; lon = g.lon }
+      }
+      if (lat == null || lon == null) return
+      const w = await fetchCurrentWeather(lat, lon)
+      if (!active || !w) return
+      const label = currentWeatherLabel(w)
+      setWeather((prev) => (prev === '' || prev === autoWeatherRef.current ? label : prev))
+      autoWeatherRef.current = label
+    })()
+    return () => { active = false }
+  }, [locationId, locations])
+
   const save = async (answers: SiteReviewAnswers) => {
     setError(null)
     if (!locationId) {
@@ -380,12 +471,19 @@ function AddReview({ accountId, submitterId, submitterName, schema, onClose, onS
     }
     const result = hasPassFail ? (hasFail ? 'Fail' : 'Pass') : null
 
+    // Weather + time arrived have no dedicated columns; keep them on the answers
+    // JSON under a reserved key so they surface in the report/PDF export.
+    const meta: ReviewMeta = {}
+    if (weather.trim()) meta.weather = weather.trim()
+    if (timeArrived) meta.timeArrived = timeArrived
+    const answersWithMeta = Object.keys(meta).length > 0 ? { ...answers, __meta: meta } : answers
+
     setBusy(true)
     const { error: err } = await siteEvaluations.create({
       account_id: accountId,
       location_id: locationId,
       result,
-      answers: answers as never,
+      answers: answersWithMeta as never,
       additional_notes: summaryText,
       submitted_by: submitterId,
       submitted_by_name: submitterName,
@@ -396,8 +494,6 @@ function AddReview({ accountId, submitterId, submitterName, schema, onClose, onS
       setError(err.message)
       return
     }
-    void weather
-    void timeArrived
     onSaved()
   }
 
