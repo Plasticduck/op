@@ -3,7 +3,7 @@ import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
-import { RequireAuth, RequireRole, RequireGmBonus, RedirectIfAuthed } from '@/routes/guards'
+import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RedirectIfAuthed } from '@/routes/guards'
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 
@@ -219,7 +219,7 @@ export const router = createBrowserRouter([
           { path: 'contacts', element: tech(<ContactsPage />) },
           { path: 'supplies', element: s(<SuppliesPage />) },
 
-          { path: 'site-reviews', element: mgr(<SiteReviewsPage />) },
+          { path: 'site-reviews', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive']}>{s(<SiteReviewsPage />)}</RequirePermRole> },
           { path: 'site-audits', element: mgr(<SiteAuditsPage />) },
           { path: 'invoices', element: tech(<InvoicesPage />) },
           { path: 'labor', element: mgr(<LaborDashboardPage />) },

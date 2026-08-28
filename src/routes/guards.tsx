@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/Button'
-import type { Role } from '@/lib/rbac'
+import { permRole, type Role, type PermRole } from '@/lib/rbac'
 
 function FullScreenLoader() {
   return (
@@ -60,6 +60,19 @@ export function RequireRole({ allow, children }: { allow: Role[]; children: Reac
   const { profile } = useAuth()
   if (!profile) return null
   if (!allow.includes(profile.role)) {
+    return <Navigate to="/app/dashboard" replace />
+  }
+  return <>{children}</>
+}
+
+// Gates on the effective permission role (a user's category wins over their base
+// role), so a page can be limited to Regional Manager / Executive (and Admin)
+// without opening it to every plain manager. Enforces at the route what the nav
+// already hides, closing the direct-URL gap.
+export function RequirePermRole({ allow, children }: { allow: PermRole[]; children: ReactNode }) {
+  const { profile } = useAuth()
+  if (!profile) return null
+  if (!allow.includes(permRole(profile.role, profile.role_category))) {
     return <Navigate to="/app/dashboard" replace />
   }
   return <>{children}</>

@@ -267,7 +267,7 @@ export default function SiteReviewsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Monthly Site Reviews"
+        title="RM Site Reviews"
         subtitle="Pass/fail site reviews across all sites."
         actions={<Button onClick={() => setAdding(true)}><Plus className="size-4" /> Submit review</Button>}
       />

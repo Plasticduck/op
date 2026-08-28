@@ -175,9 +175,9 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         to: '/app/site-reviews',
-        label: 'Site Reviews',
+        label: 'RM Site Reviews',
         icon: Stamp,
-        roles: ['owner', 'manager'],
+        roles: ['owner', 'regional_manager', 'executive'],
       },
       {
         to: '/app/site-audits',
