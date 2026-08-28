@@ -187,6 +187,9 @@ export default function InvoicesPage() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [warnOpen, setWarnOpen] = useState(false)
+  // Approved tab: invoices ticked for export. Cleared whenever the tab changes.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  useEffect(() => { setSelectedIds(new Set()) }, [activeKey])
 
   useEffect(() => {
     let active = true
@@ -352,14 +355,29 @@ export default function InvoicesPage() {
     .map((r) => invoices.find((i) => i.id === r.id))
     .filter((i): i is OpsInvoice => Boolean(i))
 
-  // Approved tab: download the QuickBooks CSV for the shown approved invoices,
-  // then mark them exported so they move to the Exported tab.
+  // Per-invoice export selection, shown on the Approved tab. Selecting none is
+  // treated as "all shown" so the button always exports something sensible.
+  const selectable = activeKeyEff === 'approved' && canManage
+  const allSelected = selectable && filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id))
+  const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(filtered.map((r) => r.id)))
+  const toggleOne = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+
+  // Approved tab: download the QuickBooks CSV for the chosen approved invoices
+  // (all shown when none are ticked), then mark them exported so they move to the
+  // Exported tab.
   const exportApproved = async () => {
     if (filteredInvoices.length === 0) return
+    const toExport = selectedIds.size ? filteredInvoices.filter((i) => selectedIds.has(i.id)) : filteredInvoices
+    if (toExport.length === 0) return
     // Memo is now captured while the invoice is unassigned (required before it can
     // be sent for approval), so approved invoices already carry one.
-    downloadCsv(qbFilename(), quickbooksCsv(filteredInvoices))
-    const ids = filteredInvoices.map((i) => i.id)
+    downloadCsv(qbFilename(), quickbooksCsv(toExport))
+    const ids = toExport.map((i) => i.id)
     const idSet = new Set(ids)
     const at = nowIso()
     setBusy(true)
@@ -371,6 +389,7 @@ export default function InvoicesPage() {
     setInvoices((prev) => prev.map((i) => idSet.has(i.id)
       ? { ...i, status: 'exported', exported_at: at, exported_by: profile?.id ?? null, exported_by_name: profile?.name ?? null }
       : i))
+    setSelectedIds(new Set())
     setBusy(false)
   }
 
@@ -494,7 +513,7 @@ export default function InvoicesPage() {
               disabled={filtered.length === 0 || busy}
               className="inline-flex h-10 items-center gap-1.5 rounded-md bg-accent px-4 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-50"
             >
-              <Download className="size-4" /> Export to CSV
+              <Download className="size-4" /> {selectedIds.size ? `Export ${selectedIds.size} to CSV` : 'Export to CSV'}
             </button>
           )}
           {activeKeyEff === 'exported' && (
@@ -515,6 +534,17 @@ export default function InvoicesPage() {
         <table className="w-full min-w-[860px] text-sm">
           <thead className="border-b border-border bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
             <tr>
+              {selectable && (
+                <th className="px-4 py-3 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    aria-label="Select all invoices"
+                    className="size-4 cursor-pointer accent-accent"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 font-medium">#</th>
               <th className="px-4 py-3 font-medium">Vendor</th>
               <th className="px-4 py-3 font-medium">Site(s)</th>
@@ -529,13 +559,24 @@ export default function InvoicesPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={activeKeyEff === 'unassigned' ? 9 : 8} className="px-4 py-8 text-center text-sm text-ink-muted">
+                <td colSpan={8 + (activeKeyEff === 'unassigned' ? 1 : 0) + (selectable ? 1 : 0)} className="px-4 py-8 text-center text-sm text-ink-muted">
                   {active.empty}
                 </td>
               </tr>
             ) : (
               filtered.map((r, i) => (
                 <tr key={r.id} onClick={() => setOpenId(r.id)} className="cursor-pointer border-t border-border hover:bg-content">
+                  {selectable && (
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(r.id)}
+                        onChange={() => toggleOne(r.id)}
+                        aria-label={`Select ${r.vendor ?? 'invoice'}`}
+                        className="size-4 cursor-pointer accent-accent"
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-ink-muted">{i + 1}</td>
                   <td className="px-4 py-3 font-medium text-ink">
                     <div className="flex items-center gap-2">
