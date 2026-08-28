@@ -22,6 +22,24 @@ export const siteEvaluations = {
   // Delete is locked by RLS to a single admin (kevan@washlyfe.com); others no-op.
   remove: (id: string) => supabase.from('site_evaluations').delete().eq('id', id).select('id'),
 }
+
+// Photos attached to individual site-review items. Stored in the private
+// site-review-photos bucket; the paths live on the review's answers JSON.
+export const siteReviewPhotos = {
+  upload: async (accountId: string, draftId: string, itemId: string, file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${accountId}/${draftId}/${itemId}/${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage
+      .from('site-review-photos')
+      .upload(path, file, { contentType: file.type, upsert: false })
+    return { error, path: error ? null : path }
+  },
+  remove: (path: string) => supabase.storage.from('site-review-photos').remove([path]),
+  signedUrl: async (path: string, expiresIn = 3600): Promise<string | null> => {
+    const { data } = await supabase.storage.from('site-review-photos').createSignedUrl(path, expiresIn)
+    return data?.signedUrl ?? null
+  },
+}
 export const siteAudits = {
   list: () => supabase.from('site_audits').select(withLoc).order('created_at', { ascending: false }),
   create: (row: T['site_audits']['Insert']) => supabase.from('site_audits').insert(row).select().single(),

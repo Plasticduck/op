@@ -14,7 +14,7 @@ import { AttachmentViewer } from '@/components/data/AttachmentViewer'
 import { shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
-import { siteEvaluations, customForms, type SiteEvaluation } from '@/lib/queries/opsSuite'
+import { siteEvaluations, customForms, siteReviewPhotos, type SiteEvaluation } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
@@ -26,6 +26,32 @@ import {
   type SiteReviewAnswers,
 } from './siteReviewSchema'
 import { buildSiteReviewPdf, openPdfInNewTab, downloadBlob } from '@/lib/reports/siteReviewPdf'
+
+// Thumbnails for a review item's attached photos (read-only, in the detail view).
+function ReviewItemPhotos({ photos }: { photos: string[] }) {
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let alive = true
+    for (const p of photos) {
+      siteReviewPhotos.signedUrl(p).then((u) => { if (alive && u) setUrls((prev) => ({ ...prev, [p]: u })) })
+    }
+    return () => { alive = false }
+  }, [photos])
+  if (!photos.length) return null
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {photos.map((p) => (
+        urls[p] ? (
+          <a key={p} href={urls[p]} target="_blank" rel="noreferrer" className="block size-16 overflow-hidden rounded-md border border-border">
+            <img src={urls[p]} alt="Review photo" className="size-full object-cover" />
+          </a>
+        ) : (
+          <div key={p} className="size-16 animate-pulse rounded-md border border-border bg-content" />
+        )
+      ))}
+    </div>
+  )
+}
 
 type Row = SiteEvaluation & { location: { name: string } | null }
 
@@ -258,7 +284,10 @@ function ReviewDetail({ row, schema, onView, onDownload }: {
                               : v === 'fail' ? <Badge tone="danger">Fail</Badge>
                                 : <span className="text-ink-subtle">-</span>}
                           </td>
-                          <td className="px-3 py-2 text-ink-muted whitespace-pre-wrap">{comments || <span className="text-ink-subtle">-</span>}</td>
+                          <td className="px-3 py-2 text-ink-muted whitespace-pre-wrap">
+                            {comments || <span className="text-ink-subtle">-</span>}
+                            <ReviewItemPhotos photos={(ans.photos as string[] | undefined) ?? []} />
+                          </td>
                         </tr>
                       )
                     }
@@ -268,7 +297,10 @@ function ReviewDetail({ row, schema, onView, onDownload }: {
                       <tr key={item.id} className="border-t border-border align-top">
                         <td className="px-3 py-2 text-ink">{item.label}</td>
                         <td className="px-3 py-2 text-ink-subtle">-</td>
-                        <td className="px-3 py-2 text-ink-muted whitespace-pre-wrap">{text || <span className="text-ink-subtle">-</span>}</td>
+                        <td className="px-3 py-2 text-ink-muted whitespace-pre-wrap">
+                          {text || <span className="text-ink-subtle">-</span>}
+                          <ReviewItemPhotos photos={(ans.photos as string[] | undefined) ?? []} />
+                        </td>
                       </tr>
                     )
                   })}
@@ -395,7 +427,7 @@ function AddReview({ accountId, submitterId, submitterName, schema, onClose, onS
 
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
-        <SiteReviewForm schema={schema} onSubmit={save} submitting={busy} />
+        <SiteReviewForm schema={schema} onSubmit={save} submitting={busy} accountId={accountId} />
 
         <div className="flex justify-end">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
