@@ -11,8 +11,24 @@ export type SiteReviewPdfInput = {
   answers: SiteReviewAnswers
   summaryText?: string | null
   submitterName?: string | null
-  // Resolved item photos, keyed by storage path, as JPEG data URLs with pixel size.
-  photoImages?: Record<string, { dataUrl: string; w: number; h: number }>
+  // Resolved item photos, keyed by storage path. `url` is a long-lived signed URL
+  // used for the clickable link; `dataUrl` (+ pixel size) is the embedded JPEG
+  // thumbnail, absent when the source couldn't be decoded (e.g. HEIC).
+  photoImages?: Record<string, { url: string; dataUrl?: string; w?: number; h?: number }>
+  // Optional brand logo drawn at the top-right (e.g. the account's wash logo).
+  logo?: { dataUrl: string; w: number; h: number } | null
+}
+
+function drawPhotoPlaceholder(
+  doc: { setDrawColor: (r: number, g: number, b: number) => void; setFillColor: (r: number, g: number, b: number) => void; rect: (x: number, y: number, w: number, h: number, style: string) => void; setFontSize: (n: number) => void; setTextColor: (r: number, g: number, b: number) => void; text: (t: string, x: number, y: number, o?: { align: 'center' }) => void },
+  x: number, y: number, w: number, h: number,
+): void {
+  doc.setDrawColor(210, 214, 220)
+  doc.setFillColor(240, 242, 245)
+  doc.rect(x, y, w, h, 'FD')
+  doc.setFontSize(7)
+  doc.setTextColor(140, 146, 154)
+  doc.text('Photo', x + w / 2, y + h / 2, { align: 'center' })
 }
 
 const fmt12 = (hhmm: string | null | undefined): string => {
@@ -63,6 +79,16 @@ export async function buildSiteReviewPdf(input: SiteReviewPdfInput): Promise<Blo
     'Time Arrived: ' + fmt12(input.timeArrived),
   ].join('  |  ')
   doc.text(meta, marginX, topMargin + 7)
+
+  if (input.logo?.dataUrl) {
+    const logoH = 18
+    const logoW = input.logo.w > 0 && input.logo.h > 0 ? logoH * (input.logo.w / input.logo.h) : logoH
+    try {
+      doc.addImage(input.logo.dataUrl, 'PNG', pageWidth - marginX - logoW, 6, logoW, logoH)
+    } catch {
+      // Skip a logo jsPDF can't decode.
+    }
+  }
 
   let y = topMargin + 14
 
@@ -115,16 +141,22 @@ export async function buildSiteReviewPdf(input: SiteReviewPdfInput): Promise<Blo
 
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
 
-    // Photos attached to this section's items, embedded below the table.
+    // Photos attached to this section's items: a thumbnail strip, each thumbnail
+    // a clickable link to the full image plus a visible "Open" link beneath it.
     if (input.photoImages) {
       const imgH = 30 // mm
+      const capH = 5
       const gap = 3
+      const linkDoc = doc as unknown as {
+        link: (x: number, y: number, w: number, h: number, o: { url: string }) => void
+        textWithLink: (t: string, x: number, y: number, o: { url: string }) => void
+      }
       for (const item of section.items) {
         const ans = input.answers[item.id] as { photos?: string[] } | undefined
         const paths = (ans?.photos ?? []).filter((p) => input.photoImages?.[p])
         if (paths.length === 0) continue
 
-        ensureSpace(6 + imgH)
+        ensureSpace(6 + imgH + capH)
         doc.setFontSize(9)
         doc.setFont('helvetica', 'bold')
         doc.setTextColor(60, 66, 74)
@@ -133,26 +165,36 @@ export async function buildSiteReviewPdf(input: SiteReviewPdfInput): Promise<Blo
 
         let x = marginX
         let rowStartY = y
-        for (const p of paths) {
-          const img = input.photoImages[p]
-          const ratio = img.w > 0 && img.h > 0 ? img.w / img.h : 1
-          const w = Math.max(10, Math.min(imgH * ratio, contentWidth))
+        paths.forEach((p, idx) => {
+          const img = input.photoImages![p]
+          const ratio = img.w && img.h ? img.w / img.h : 1
+          const w = Math.max(12, Math.min(imgH * ratio, contentWidth))
           if (x + w > pageWidth - marginX && x > marginX) {
             x = marginX
-            rowStartY += imgH + gap
-            if (rowStartY + imgH > pageHeight - 20) {
+            rowStartY += imgH + capH + gap
+            if (rowStartY + imgH + capH > pageHeight - 20) {
               doc.addPage()
               rowStartY = topMargin
             }
           }
-          try {
-            doc.addImage(img.dataUrl, 'JPEG', x, rowStartY, w, imgH)
-          } catch {
-            // Skip an image jsPDF can't decode rather than fail the whole export.
+          if (img.dataUrl) {
+            try {
+              doc.addImage(img.dataUrl, 'JPEG', x, rowStartY, w, imgH)
+            } catch {
+              drawPhotoPlaceholder(doc, x, rowStartY, w, imgH)
+            }
+          } else {
+            drawPhotoPlaceholder(doc, x, rowStartY, w, imgH)
           }
+          // Whole thumbnail is a link, with a visible caption link below it.
+          linkDoc.link(x, rowStartY, w, imgH, { url: img.url })
+          doc.setFontSize(7)
+          doc.setFont('helvetica', 'normal')
+          doc.setTextColor(37, 99, 235)
+          linkDoc.textWithLink('Open photo ' + (idx + 1) + ' ↗', x, rowStartY + imgH + 3.5, { url: img.url })
           x += w + gap
-        }
-        y = rowStartY + imgH + 6
+        })
+        y = rowStartY + imgH + capH + 6
       }
     }
   }

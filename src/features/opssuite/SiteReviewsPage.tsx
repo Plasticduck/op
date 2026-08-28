@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ClipboardList, Plus, Trash2 } from 'lucide-react'
+import { ClipboardList, FileText, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -34,24 +34,31 @@ type ReviewMeta = { weather?: string; timeArrived?: string }
 const reviewMeta = (answers: unknown): ReviewMeta =>
   ((answers as { __meta?: ReviewMeta } | null | undefined)?.__meta ?? {})
 
-// Resolves a review's item photos (storage paths on the answers JSON) into JPEG
-// data URLs with pixel dimensions, for embedding in the PDF export. Photos are
-// fetched as blobs and redrawn through a canvas so the data URL is same-origin
-// (no canvas taint) and normalized to JPEG regardless of the source format.
+// A long expiry (5 years) for the signed URLs embedded as clickable links in an
+// exported PDF, so the links keep working long after the file is saved.
+const PHOTO_LINK_TTL = 60 * 60 * 24 * 365 * 5
+
+// Resolves a review's item photos (storage paths on the answers JSON) into a
+// long-lived signed URL (for the clickable PDF link) plus a JPEG thumbnail with
+// pixel dimensions (for embedding). Photos are fetched as blobs and redrawn
+// through a canvas so the data URL is same-origin (no canvas taint) and JPEG
+// regardless of the source format; if a source can't be decoded (e.g. HEIC), the
+// link is still returned without a thumbnail.
 async function resolveReviewPhotos(
   answers: SiteReviewAnswers,
-): Promise<Record<string, { dataUrl: string; w: number; h: number }>> {
+): Promise<Record<string, { url: string; dataUrl?: string; w?: number; h?: number }>> {
   const paths: string[] = []
   for (const v of Object.values(answers)) {
     const ph = (v as { photos?: unknown } | null | undefined)?.photos
     if (Array.isArray(ph)) for (const p of ph) if (typeof p === 'string') paths.push(p)
   }
-  const out: Record<string, { dataUrl: string; w: number; h: number }> = {}
+  const out: Record<string, { url: string; dataUrl?: string; w?: number; h?: number }> = {}
   await Promise.all(
     paths.map(async (p) => {
       try {
-        const url = await siteReviewPhotos.signedUrl(p)
+        const url = await siteReviewPhotos.signedUrl(p, PHOTO_LINK_TTL)
         if (!url) return
+        out[p] = { url }
         const resp = await fetch(url)
         if (!resp.ok) return
         const objUrl = URL.createObjectURL(await resp.blob())
@@ -72,7 +79,7 @@ async function resolveReviewPhotos(
           const ctx = canvas.getContext('2d')
           if (!ctx) return
           ctx.drawImage(img, 0, 0, w, h)
-          out[p] = { dataUrl: canvas.toDataURL('image/jpeg', 0.82), w, h }
+          out[p] = { url, dataUrl: canvas.toDataURL('image/jpeg', 0.82), w, h }
         } finally {
           URL.revokeObjectURL(objUrl)
         }
@@ -82,6 +89,40 @@ async function resolveReviewPhotos(
     }),
   )
   return out
+}
+
+// The wash logo drawn top-right on the PDF export, loaded once from /mw-logo.png
+// and cached (with its natural dimensions so the aspect ratio is preserved).
+let logoPromise: Promise<{ dataUrl: string; w: number; h: number } | null> | null = null
+function loadReviewLogo(): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  if (logoPromise) return logoPromise
+  logoPromise = (async () => {
+    try {
+      const resp = await fetch('/mw-logo.png')
+      if (!resp.ok) return null
+      const objUrl = URL.createObjectURL(await resp.blob())
+      try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const im = new Image()
+          im.onload = () => resolve(im)
+          im.onerror = reject
+          im.src = objUrl
+        })
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth || 1
+        canvas.height = img.naturalHeight || 1
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return null
+        ctx.drawImage(img, 0, 0)
+        return { dataUrl: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height }
+      } finally {
+        URL.revokeObjectURL(objUrl)
+      }
+    } catch {
+      return null
+    }
+  })()
+  return logoPromise
 }
 
 // Thumbnails for a review item's attached photos (read-only, in the detail view).
@@ -167,11 +208,17 @@ export default function SiteReviewsPage() {
     void load()
   }
 
-  const openReport = async (row: Row) => {
+  // The Mighty Wash logo is theirs, so only brand their account's exports.
+  const isMightyWash = profile?.account_id === '54f3e299-1f61-4ed2-9921-3d02160b72e6'
+
+  const buildReportBlob = async (row: Row): Promise<Blob> => {
     const answers = (row.answers ?? {}) as SiteReviewAnswers
     const meta = reviewMeta(row.answers)
-    const photoImages = await resolveReviewPhotos(answers)
-    const blob = await buildSiteReviewPdf({
+    const [photoImages, logo] = await Promise.all([
+      resolveReviewPhotos(answers),
+      isMightyWash ? loadReviewLogo() : Promise.resolve(null),
+    ])
+    return buildSiteReviewPdf({
       title: 'Monthly Site Review',
       siteName: row.location?.name ?? null,
       date: row.submitted_at,
@@ -182,27 +229,39 @@ export default function SiteReviewsPage() {
       summaryText: row.additional_notes,
       submitterName: row.submitted_by_name,
       photoImages,
+      logo,
     })
-    openPdfInNewTab(blob)
   }
 
-  const downloadReport = async (row: Row) => {
-    const answers = (row.answers ?? {}) as SiteReviewAnswers
-    const meta = reviewMeta(row.answers)
-    const photoImages = await resolveReviewPhotos(answers)
-    const blob = await buildSiteReviewPdf({
-      title: 'Monthly Site Review',
-      siteName: row.location?.name ?? null,
-      date: row.submitted_at,
-      weather: meta.weather ?? null,
-      timeArrived: meta.timeArrived ?? null,
-      schema,
-      answers,
-      summaryText: row.additional_notes,
-      submitterName: row.submitted_by_name,
-      photoImages,
+  const reportName = (row: Row) =>
+    `site-review-${(row.location?.name ?? 'site').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${filenameSafeDate(row.submitted_at)}.pdf`
+
+  const openReport = async (row: Row) => openPdfInNewTab(await buildReportBlob(row))
+  const downloadReport = async (row: Row) => downloadBlob(await buildReportBlob(row), reportName(row))
+
+  // Selection + per-review export from the list. Each selected review downloads
+  // as its own PDF, so reviews can be exported one at a time.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [exporting, setExporting] = useState(false)
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
     })
-    downloadBlob(blob, `site-review-${filenameSafeDate(row.submitted_at)}.pdf`)
+  const visibleIds = table.rows.map((r) => r.id)
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id))
+  const toggleAll = () =>
+    setSelected(() => (allSelected ? new Set() : new Set(visibleIds)))
+  const exportSelected = async () => {
+    const chosen = table.rows.filter((r) => selected.has(r.id))
+    if (chosen.length === 0) return
+    setExporting(true)
+    for (const row of chosen) {
+      downloadBlob(await buildReportBlob(row), reportName(row))
+    }
+    setExporting(false)
   }
 
   return (
@@ -223,6 +282,15 @@ export default function SiteReviewsPage() {
         onExportPdf={() => exportPdf('Monthly Site Reviews', EXPORT_COLUMNS, table.rows)}
         onExportExcel={() => exportExcel('site-reviews', EXPORT_COLUMNS, table.rows)}
       />
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm">
+          <span className="font-medium text-accent">{selected.size} selected</span>
+          <Button size="sm" onClick={() => void exportSelected()} disabled={exporting}>
+            <FileText className="size-4" /> {exporting ? 'Exporting…' : `Export PDF${selected.size > 1 ? ' (one file each)' : ''}`}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : table.rows.length === 0 ? (
@@ -232,6 +300,15 @@ export default function SiteReviewsPage() {
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
+                <th className="w-10 px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all reviews"
+                    className="size-4 cursor-pointer accent-accent align-middle"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                  />
+                </th>
                 <th className="px-3 py-2.5 font-medium">Site</th>
                 <th className="px-3 py-2.5 font-medium">Result</th>
                 <th className="px-3 py-2.5 font-medium">Submitted by</th>
@@ -242,6 +319,15 @@ export default function SiteReviewsPage() {
             <tbody>
               {table.rows.map((e) => (
                 <tr key={e.id} className="border-t border-border hover:bg-content">
+                  <td className="px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${e.location?.name ?? 'review'}`}
+                      className="size-4 cursor-pointer accent-accent align-middle"
+                      checked={selected.has(e.id)}
+                      onChange={() => toggleOne(e.id)}
+                    />
+                  </td>
                   <td className="px-3 py-2.5 font-medium text-ink">{e.location?.name ?? '—'}</td>
                   <td className="px-3 py-2.5">
                     {e.result ? <Badge tone={/pass/i.test(e.result) ? 'ok' : 'danger'}>{e.result}</Badge> : <span className="text-ink-subtle">—</span>}
