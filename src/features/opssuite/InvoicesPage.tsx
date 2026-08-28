@@ -680,7 +680,7 @@ export default function InvoicesPage() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setWarnOpen(false)}>Cancel</Button>
-              <Button onClick={downloadExported}><Download className="size-4" /> Download anyway</Button>
+              <Button onClick={downloadExported}><Download className="size-4" /> Export anyway</Button>
             </div>
           </div>
         </Modal>
