@@ -26,6 +26,27 @@ import Anthropic from 'npm:@anthropic-ai/sdk'
 // deno-lint-ignore no-explicit-any
 type Any = any
 
+// Retry a Claude call through transient failures (rate limits, overloads, 5xx,
+// network blips). Without this a single hiccup silently drops all extracted
+// fields and the invoice files with only email-metadata guesses.
+async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastErr = e
+      // deno-lint-ignore no-explicit-any
+      const status = (e as any)?.status
+      const retriable = status == null || status === 429 || status >= 500
+      console.error(`[invoice-inbound] ${label} attempt ${attempt + 1} failed`, status ?? '', String((e as Any)?.message ?? e).slice(0, 200))
+      if (!retriable) break
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)))
+    }
+  }
+  throw lastErr
+}
+
 // Ask Claude to match an inbound invoice to a vendor in the account's list.
 // Returns the exact list name, or null when there's no confident match (we only
 // accept a verbatim list member, so a hallucinated name is rejected).
@@ -80,7 +101,7 @@ async function extractInvoice(
     const doc = isPdf
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file.b64 } }
       : { type: 'image', source: { type: 'base64', media_type: file.contentType, data: file.b64 } }
-    const msg = await anthropic.messages.create({
+    const msg = await withRetry('extractInvoice', () => anthropic.messages.create({
       model,
       max_tokens: 400,
       system:
@@ -97,7 +118,7 @@ async function extractInvoice(
         // deno-lint-ignore no-explicit-any
         content: [doc as any, { type: 'text', text: `Vendor list:\n${vendors.join('\n') || '(none)'}\n\nReturn the JSON now.` }],
       }],
-    })
+    }))
     const block = msg.content.find((b) => b.type === 'text')
     const raw = (block && 'text' in block ? block.text : '').trim()
     const m = raw.match(/\{[\s\S]*\}/)
@@ -116,7 +137,8 @@ async function extractInvoice(
       amount: Number.isFinite(amt) && amt > 0 ? amt : null,
       invoiceNumber: numStr || null,
     }
-  } catch {
+  } catch (e) {
+    console.error('[invoice-inbound] extractInvoice gave up', String((e as Any)?.message ?? e).slice(0, 200))
     return null
   }
 }
