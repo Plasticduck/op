@@ -98,7 +98,10 @@ function toRow(r: OpsInvoice, locName: Map<string, string>): InvoiceRow {
     sites: siteLabels,
     approvers: approverNames,
     amount: Number(r.amount) || 0,
-    detail: r.invoice_number || r.email_subject || r.file_name || null,
+    // A trailing '*' on the invoice number flags an "Ask My Accountant" GL code.
+    detail: r.invoice_number
+      ? r.invoice_number + (usesAskAccountant(r) ? '*' : '')
+      : (r.email_subject || r.file_name || null),
     dueDate: r.due_date,
     submitted_at: r.submitted_at,
     status,
@@ -1356,15 +1359,28 @@ function mdY(iso: string | null | undefined): string {
   return y && m && d ? `${m}/${d}/${y}` : ''
 }
 
+// True when any GL code chosen for this invoice is QuickBooks' "Ask My
+// Accountant" placeholder. Those invoices get a trailing '*' on the bill number,
+// in both the export and the tables, to flag them for accounting follow-up.
+function usesAskAccountant(inv: OpsInvoice): boolean {
+  const codes = ((inv.gl_allocations as GlAlloc[] | null) ?? []).map((g) => String(g.gl_code ?? ''))
+  if (inv.gl_code) codes.push(inv.gl_code)
+  return codes.some((c) => /ask\s*my\s*accountant/i.test(c))
+}
+
 // Bill number: the AI-extracted invoice number first, then the email subject
-// ("Invoice #INV-4821" -> INV-4821), then the attachment filename.
+// ("Invoice #INV-4821" -> INV-4821), then the attachment filename. Gets a
+// trailing '*' (no space) when the invoice uses the "Ask My Accountant" GL code.
 function billNoOf(inv: OpsInvoice): string {
-  if (inv.invoice_number?.trim()) return inv.invoice_number.trim()
-  const subj = inv.email_subject ?? ''
-  const m = subj.match(/#\s*([A-Za-z0-9][\w-]*)/) ?? subj.match(/\b(INV[-\s]?[A-Za-z0-9-]+)\b/i)
-  if (m) return m[1].replace(/\s+/g, '')
-  if (inv.file_name) return inv.file_name.replace(/\.[^.]+$/, '')
-  return ''
+  const base = (() => {
+    if (inv.invoice_number?.trim()) return inv.invoice_number.trim()
+    const subj = inv.email_subject ?? ''
+    const m = subj.match(/#\s*([A-Za-z0-9][\w-]*)/) ?? subj.match(/\b(INV[-\s]?[A-Za-z0-9-]+)\b/i)
+    if (m) return m[1].replace(/\s+/g, '')
+    if (inv.file_name) return inv.file_name.replace(/\.[^.]+$/, '')
+    return ''
+  })()
+  return base && usesAskAccountant(inv) ? base + '*' : base
 }
 
 // Build the QuickBooks CSV for a set of invoices. Fields we hold map to their QB
