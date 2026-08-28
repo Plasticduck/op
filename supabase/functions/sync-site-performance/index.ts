@@ -178,6 +178,10 @@ Deno.serve(async (req) => {
     for (const [name, days] of Object.entries(reportSites)) {
       const n = siteNum(name)
       if (n != null && flexNums.has(n)) continue
+      // Skip empty, numberless placeholder sites (e.g. a renamed-site "Hereford"
+      // stub duplicating MW034) that carry no sales or cars, so they never show
+      // up in reporting.
+      if (n == null && !days.some((d) => Number(d?.sales) || Number(d?.cars))) continue
       for (const d of days) {
         if (d?.date == null) continue
         rows.push({
