@@ -355,9 +355,10 @@ export default function InvoicesPage() {
     .map((r) => invoices.find((i) => i.id === r.id))
     .filter((i): i is OpsInvoice => Boolean(i))
 
-  // Per-invoice export selection, shown on the Approved tab. Selecting none is
-  // treated as "all shown" so the button always exports something sensible.
-  const selectable = activeKeyEff === 'approved' && canManage
+  // Per-invoice export selection, shown on the Exported tab so a user can
+  // re-download specific invoices (despite the duplicate-export warning).
+  // Selecting none is treated as "all shown" so the button always does something.
+  const selectable = activeKeyEff === 'exported'
   const allSelected = selectable && filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id))
   const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(filtered.map((r) => r.id)))
   const toggleOne = (id: string) =>
@@ -367,17 +368,14 @@ export default function InvoicesPage() {
       return next
     })
 
-  // Approved tab: download the QuickBooks CSV for the chosen approved invoices
-  // (all shown when none are ticked), then mark them exported so they move to the
-  // Exported tab.
+  // Approved tab: download the QuickBooks CSV for the shown approved invoices,
+  // then mark them exported so they move to the Exported tab.
   const exportApproved = async () => {
     if (filteredInvoices.length === 0) return
-    const toExport = selectedIds.size ? filteredInvoices.filter((i) => selectedIds.has(i.id)) : filteredInvoices
-    if (toExport.length === 0) return
     // Memo is now captured while the invoice is unassigned (required before it can
     // be sent for approval), so approved invoices already carry one.
-    downloadCsv(qbFilename(), quickbooksCsv(toExport))
-    const ids = toExport.map((i) => i.id)
+    downloadCsv(qbFilename(), quickbooksCsv(filteredInvoices))
+    const ids = filteredInvoices.map((i) => i.id)
     const idSet = new Set(ids)
     const at = nowIso()
     setBusy(true)
@@ -393,11 +391,13 @@ export default function InvoicesPage() {
     setBusy(false)
   }
 
-  // Exported tab: re-download the same CSV, after the double-entry warning.
+  // Exported tab: re-download the CSV for the ticked invoices (all shown when
+  // none are ticked), after the double-entry warning.
   const downloadExported = () => {
     setWarnOpen(false)
-    if (filteredInvoices.length === 0) return
-    downloadCsv(qbFilename(), quickbooksCsv(filteredInvoices))
+    const toExport = selectedIds.size ? filteredInvoices.filter((i) => selectedIds.has(i.id)) : filteredInvoices
+    if (toExport.length === 0) return
+    downloadCsv(qbFilename(), quickbooksCsv(toExport))
   }
 
   return (
@@ -523,7 +523,7 @@ export default function InvoicesPage() {
               disabled={filtered.length === 0}
               className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
             >
-              <Download className="size-4" /> Download CSV
+              <Download className="size-4" /> {selectedIds.size ? `Download ${selectedIds.size}` : 'Download CSV'}
             </button>
           )}
         </div>
@@ -672,7 +672,7 @@ export default function InvoicesPage() {
             <div className="flex items-start gap-3 rounded-md border border-warn/40 bg-warn-soft px-3 py-2.5 text-sm text-warn">
               <TriangleAlert className="mt-0.5 size-5 shrink-0" />
               <p>
-                These {filteredInvoices.length} invoice{filteredInvoices.length === 1 ? ' has' : 's have'} already been exported to accounting. Re-importing this file may create <span className="font-semibold">duplicate bill entries</span> in QuickBooks. Only download another copy if you are sure.
+                {(() => { const n = selectedIds.size || filteredInvoices.length; return `These ${n} invoice${n === 1 ? ' has' : 's have'}` })()} already been exported to accounting. Re-importing this file may create <span className="font-semibold">duplicate bill entries</span> in QuickBooks. Only download another copy if you are sure.
               </p>
             </div>
             <div className="flex justify-end gap-2">
