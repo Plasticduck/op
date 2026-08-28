@@ -523,7 +523,7 @@ export default function InvoicesPage() {
               disabled={filtered.length === 0}
               className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
             >
-              <Download className="size-4" /> {selectedIds.size ? `Download ${selectedIds.size}` : 'Download CSV'}
+              <Download className="size-4" /> {selectedIds.size ? `Export ${selectedIds.size}` : 'Export CSV'}
             </button>
           )}
         </div>
