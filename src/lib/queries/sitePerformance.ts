@@ -388,6 +388,9 @@ export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null):
 // DEFAULT_REGIONS otherwise, so sites always group even before regions are saved.
 
 export const OTHER_REGION = 'Other'
+// HQ is a central-billing/e-commerce sales line (no cars/labor, no site number).
+// It rolls into the company sales total but shows as its own standalone group.
+export const HQ_REGION = 'HQ'
 
 // First run of digits in a name: "MightyWash 001" -> 1, "Mighty Wash #24" -> 24.
 export function siteNumber(name: string): number | null {
@@ -427,6 +430,7 @@ export function buildRegionIndex(
       }
     }
   }
+  order.push(HQ_REGION)
   order.push(OTHER_REGION)
 
   return {
@@ -444,7 +448,8 @@ export function groupByRegion<T>(
 ): { region: string; items: T[] }[] {
   const buckets = new Map<string, T[]>()
   for (const item of items) {
-    const region = index.regionForNumber(siteNumber(nameOf(item)))
+    const name = nameOf(item)
+    const region = name === HQ_REGION ? HQ_REGION : index.regionForNumber(siteNumber(name))
     const list = buckets.get(region) ?? []
     list.push(item)
     buckets.set(region, list)
