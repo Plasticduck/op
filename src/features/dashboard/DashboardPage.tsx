@@ -20,8 +20,8 @@ import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { AccountBrandLogo } from '@/features/dashboard/AccountBrandLogo'
 import { SitePerformanceCard } from '@/features/dashboard/SitePerformanceCard'
 import { WeatherLog } from '@/features/dashboard/WeatherLog'
-import { GoogleRatingTile } from '@/components/data/GoogleRating'
-import { ratings, type SiteRating } from '@/lib/queries/ratings'
+import { GoogleRatingTile, RecentGoogleReviews } from '@/components/data/GoogleRating'
+import { ratings, type SiteRating, type SiteReview } from '@/lib/queries/ratings'
 import { cn } from '@/lib/utils'
 
 type WorkOrder = {
@@ -60,6 +60,7 @@ function ManagerDashboard() {
   const [recentCloseouts, setRecentCloseouts] = useState<RecentCloseout[]>([])
   const [loading, setLoading] = useState(true)
   const [googleRating, setGoogleRating] = useState<SiteRating | null>(null)
+  const [reviews, setReviews] = useState<SiteReview[]>([])
   const [ratingLoading, setRatingLoading] = useState(true)
 
   const isManagerPlus = profile?.role !== 'employee'
@@ -151,6 +152,8 @@ function ManagerDashboard() {
       if (!active) return
       setGoogleRating(rows[0] ?? null)
       setRatingLoading(false)
+      // Reviews are cached by the same refresh, so read them right after.
+      ratings.reviews(activeLocation.id).then((rvs) => { if (active) setReviews(rvs) })
     })
     return () => {
       active = false
@@ -215,6 +218,8 @@ function ManagerDashboard() {
           loading={ratingLoading}
         />
       )}
+
+      {isManagerPlus && <RecentGoogleReviews reviews={reviews} loading={ratingLoading} />}
 
       {isManagerPlus && (
         <StatCardRow

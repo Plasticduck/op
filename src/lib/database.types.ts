@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -1772,10 +1772,12 @@ export type Database = {
         Row: {
           account_id: string
           address: string | null
+          card_last4: string | null
           city: string | null
           cluster_key: string
           id: string
           match_type: string
+          match_value: string | null
           member_count: number
           region: string | null
           state: string | null
@@ -1785,10 +1787,12 @@ export type Database = {
         Insert: {
           account_id: string
           address?: string | null
+          card_last4?: string | null
           city?: string | null
           cluster_key: string
           id?: string
           match_type?: string
+          match_value?: string | null
           member_count?: number
           region?: string | null
           state?: string | null
@@ -1798,10 +1802,12 @@ export type Database = {
         Update: {
           account_id?: string
           address?: string | null
+          card_last4?: string | null
           city?: string | null
           cluster_key?: string
           id?: string
           match_type?: string
+          match_value?: string | null
           member_count?: number
           region?: string | null
           state?: string | null
@@ -2148,6 +2154,54 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gatherup_reviews: {
+        Row: {
+          account_id: string
+          author: string | null
+          content: string | null
+          location_id: string
+          rating: number | null
+          review_id: number
+          review_time: string | null
+          synced_at: string
+        }
+        Insert: {
+          account_id: string
+          author?: string | null
+          content?: string | null
+          location_id: string
+          rating?: number | null
+          review_id: number
+          review_time?: string | null
+          synced_at?: string
+        }
+        Update: {
+          account_id?: string
+          author?: string | null
+          content?: string | null
+          location_id?: string
+          rating?: number | null
+          review_id?: number
+          review_time?: string | null
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gatherup_reviews_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gatherup_reviews_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]
@@ -2897,6 +2951,7 @@ export type Database = {
           closeout_time: string
           created_at: string
           downtime_alert_hours: number
+          gatherup_business_id: number | null
           geofence_radius_m: number
           google_place_id: string | null
           google_rating: number | null
@@ -2922,6 +2977,7 @@ export type Database = {
           closeout_time?: string
           created_at?: string
           downtime_alert_hours?: number
+          gatherup_business_id?: number | null
           geofence_radius_m?: number
           google_place_id?: string | null
           google_rating?: number | null
@@ -2947,6 +3003,7 @@ export type Database = {
           closeout_time?: string
           created_at?: string
           downtime_alert_hours?: number
+          gatherup_business_id?: number | null
           geofence_radius_m?: number
           google_place_id?: string | null
           google_rating?: number | null
@@ -2968,6 +3025,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "locations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lube_stats_days: {
+        Row: {
+          account_id: string
+          date: string
+          net_sales: number
+          site_number: number
+          synced_at: string
+          tax: number
+          tickets: number
+        }
+        Insert: {
+          account_id: string
+          date: string
+          net_sales?: number
+          site_number?: number
+          synced_at?: string
+          tax?: number
+          tickets?: number
+        }
+        Update: {
+          account_id?: string
+          date?: string
+          net_sales?: number
+          site_number?: number
+          synced_at?: string
+          tax?: number
+          tickets?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lube_stats_days_account_id_fkey"
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"

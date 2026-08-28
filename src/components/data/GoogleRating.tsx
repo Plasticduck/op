@@ -1,5 +1,6 @@
 import { formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { type SiteReview } from '@/lib/queries/ratings'
 
 // A 5-star row with fractional fill. Gold overlay is clipped to the rating's
 // percentage over a muted base row, so a 4.7 shows 94% gold.
@@ -66,6 +67,34 @@ export function GoogleRatingTile({
           </div>
         </div>
       )}
+    </section>
+  )
+}
+
+// Recent Google reviews feed for a single site, sourced from GatherUp.
+export function RecentGoogleReviews({ reviews, loading }: { reviews: SiteReview[]; loading: boolean }) {
+  if (loading || !reviews.length) return null
+  return (
+    <section className="rounded-md border border-border bg-card p-4">
+      <h2 className="text-sm font-semibold text-ink">Recent Google reviews</h2>
+      <ul className="mt-2 flex flex-col divide-y divide-border">
+        {reviews.map((r) => (
+          <li key={r.review_id} className="flex flex-col gap-1 py-3 first:pt-1 last:pb-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate text-sm font-medium text-ink">{r.author || 'Anonymous'}</span>
+              <div className="flex shrink-0 items-center gap-2">
+                {r.rating != null && <StarRow rating={r.rating} className="text-sm" />}
+                {r.review_time && (
+                  <span className="text-xs text-ink-subtle">
+                    {formatDistanceToNow(new Date(r.review_time), { addSuffix: true })}
+                  </span>
+                )}
+              </div>
+            </div>
+            {r.content && <p className="text-sm text-ink-muted">{r.content}</p>}
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }

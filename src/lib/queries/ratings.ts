@@ -1,9 +1,10 @@
 import { supabase } from '@/lib/supabase'
 
-// Live Google star ratings per site. The google-place-rating edge function
-// returns cached values and refreshes them from the Places API at most about
-// once a day. It fails soft: if the function is missing its API key or is not
-// reachable, we return an empty list so the dashboard just omits the rating.
+// Google star ratings per site, sourced from GatherUp (the account's review
+// tool). The gatherup-rating edge function returns cached values and refreshes
+// them at most about once a day, and also caches recent reviews for the feed. It
+// fails soft: if the function is missing its keys or is unreachable, we return an
+// empty list so the dashboard just omits the rating.
 export type SiteRating = {
   location_id: string
   rating: number | null
@@ -11,12 +12,32 @@ export type SiteRating = {
   synced_at: string | null
 }
 
+export type SiteReview = {
+  review_id: number
+  author: string | null
+  rating: number | null
+  content: string | null
+  review_time: string | null
+}
+
 export const ratings = {
   fetch: async (locationIds?: string[]): Promise<SiteRating[]> => {
-    const { data, error } = await supabase.functions.invoke('google-place-rating', {
+    const { data, error } = await supabase.functions.invoke('gatherup-rating', {
       body: { location_ids: locationIds ?? null },
     })
     if (error) return []
     return (data as { ratings?: SiteRating[] } | null)?.ratings ?? []
+  },
+
+  // Recent cached Google reviews for one site, newest first, for the feed.
+  reviews: async (locationId: string, limit = 10): Promise<SiteReview[]> => {
+    const { data, error } = await supabase
+      .from('gatherup_reviews')
+      .select('review_id, author, rating, content, review_time')
+      .eq('location_id', locationId)
+      .order('review_time', { ascending: false })
+      .limit(limit)
+    if (error) return []
+    return (data as SiteReview[] | null) ?? []
   },
 }
