@@ -39,6 +39,12 @@ const json = (body: unknown, status: number, origin: string | null) =>
     headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
   })
 
+function jwtRole(auth: string): string | null {
+  const token = auth.replace(/^Bearer\s+/i, '').split('.')
+  if (token.length !== 3) return null
+  try { return JSON.parse(atob(token[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? null } catch { return null }
+}
+
 // Stable across every call — first in the prefix so it can be cached.
 const SYSTEM_PROMPT = `You are an operations analyst for car wash businesses using TunnelSync.
 You are given a JSON snapshot of one account's data for a single category over the last 30 days.
@@ -66,26 +72,32 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
 
-  // Identify the caller from their JWT.
-  const authHeader = req.headers.get('Authorization') ?? ''
-  const userClient = createClient(url, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  })
-  const { data: userData } = await userClient.auth.getUser()
-  const uid = userData.user?.id
-  if (!uid) return json({ error: 'unauthorized' }, 401, origin)
-
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
 
-  const { data: profile } = await svc
-    .from('users')
-    .select('account_id, role')
-    .eq('id', uid)
-    .single()
-  if (!profile || (profile.role !== 'owner' && profile.role !== 'manager')) {
-    return json({ error: 'forbidden' }, 403, origin)
+  // Parse the body once (used for auth on service-role calls and the optional
+  // single-category mode).
+  // deno-lint-ignore no-explicit-any
+  let body: any = {}
+  try { body = await req.json() } catch { body = {} }
+
+  // Auth: service role (cron / internal) with an explicit account_id, or an
+  // owner/manager identified from their JWT.
+  const authHeader = req.headers.get('Authorization') ?? ''
+  let accountId: string
+  if (jwtRole(authHeader) === 'service_role') {
+    if (!body?.account_id) return json({ error: 'account_required' }, 400, origin)
+    accountId = body.account_id as string
+  } else {
+    const userClient = createClient(url, anonKey, { global: { headers: { Authorization: authHeader } } })
+    const { data: userData } = await userClient.auth.getUser()
+    const uid = userData.user?.id
+    if (!uid) return json({ error: 'unauthorized' }, 401, origin)
+    const { data: profile } = await svc.from('users').select('account_id, role').eq('id', uid).single()
+    if (!profile || (profile.role !== 'owner' && profile.role !== 'manager')) {
+      return json({ error: 'forbidden' }, 403, origin)
+    }
+    accountId = profile.account_id as string
   }
-  const accountId = profile.account_id
 
   // Rate limit: one full refresh per account per hour. Use the insert itself as
   // the gate — a unique index on (account_id, date_trunc('hour', created_at))
@@ -113,14 +125,16 @@ Deno.serve(async (req) => {
   const since = new Date(Date.now() - 30 * 86400_000).toISOString()
 
   // Optional single-category mode; default to all three.
-  let only: Category | null = null
-  try {
-    const body = await req.json()
-    if (body?.category && CATEGORIES.includes(body.category)) only = body.category
-  } catch {
-    // no body — generate all categories
-  }
+  const only: Category | null = (body?.category && CATEGORIES.includes(body.category)) ? body.category : null
   const categories = only ? [only] : CATEGORIES
+
+  // A refresh replaces the current active set: archive the prior un-acknowledged
+  // insights (in the categories being regenerated) so only the latest show.
+  await svc.from('ai_insights').update({ archived: true })
+    .eq('account_id', accountId)
+    .eq('archived', false)
+    .eq('acknowledged', false)
+    .in('category', categories)
 
   const generated: { category: string; severity: string; text: string }[] = []
 
@@ -147,17 +161,45 @@ type DB = any
 
 async function buildSnapshot(svc: DB, category: Category, locs: string[], since: string) {
   if (category === 'ops') {
-    const [equip, wo, downtime, parts] = await Promise.all([
-      svc.from('equipment').select('name, status').in('location_id', locs),
-      svc.from('work_orders').select('title, status, priority, cost, created_at, closed_at').in('location_id', locs).gte('created_at', since),
-      svc.from('downtime_events').select('reason, started_at, ended_at, equipment(name)').in('location_id', locs).gte('started_at', since),
-      svc.from('parts_inventory').select('name, quantity_on_hand, reorder_threshold').in('location_id', locs),
+    // Based on LIVE MaintainX work orders (synced hourly), not the equipment
+    // status field, which is a stale one-time import MaintainX no longer feeds.
+    const [woRes, parts] = await Promise.all([
+      svc.from('work_orders')
+        .select('title, status, priority, work_type, created_at, due_at, location:location_id(name), equipment:equipment_id(name)')
+        .in('location_id', locs)
+        .in('status', ['open', 'on_hold', 'in_progress']),
+      svc.from('parts_inventory').select('name, quantity_on_hand, reorder_threshold, location:location_id(name)').in('location_id', locs),
     ])
+    const now = Date.now()
+    const wos = (woRes.data ?? []).map((w: DB) => ({
+      site: w.location?.name ?? null,
+      asset: w.equipment?.name ?? null,
+      title: w.title,
+      priority: w.priority,
+      type: w.work_type,
+      age_days: w.created_at ? Math.floor((now - new Date(w.created_at).getTime()) / 86400000) : null,
+      overdue: w.due_at ? new Date(w.due_at).getTime() < now : false,
+    }))
+    const bySite: Record<string, DB> = {}
+    for (const w of wos) {
+      const key = w.site ?? 'Unassigned'
+      const s = (bySite[key] ??= { site: key, active: 0, high_priority: 0, reactive: 0, overdue: 0, aging_over_7d: 0 })
+      s.active++
+      if (w.priority === 'high') s.high_priority++
+      if (w.type === 'reactive') s.reactive++
+      if (w.overdue) s.overdue++
+      if ((w.age_days ?? 0) > 7) s.aging_over_7d++
+    }
+    const notable = wos
+      .filter((w) => w.priority === 'high' || w.overdue || (w.age_days ?? 0) > 7)
+      .sort((a, b) => (b.age_days ?? 0) - (a.age_days ?? 0))
+      .slice(0, 30)
     return {
-      equipment: equip.data,
-      work_orders: wo.data,
-      downtime_events: downtime.data,
-      low_stock_parts: (parts.data ?? []).filter((p: DB) => p.quantity_on_hand <= p.reorder_threshold),
+      open_work_orders_by_site: Object.values(bySite),
+      notable_open_work_orders: notable,
+      low_stock_parts: (parts.data ?? [])
+        .filter((p: DB) => p.quantity_on_hand <= p.reorder_threshold)
+        .map((p: DB) => ({ name: p.name, site: p.location?.name ?? null, on_hand: p.quantity_on_hand, reorder_at: p.reorder_threshold })),
     }
   }
   if (category === 'people') {
