@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Boxes, ClipboardList, DollarSign, Sparkles, Wrench } from 'lucide-react'
+import { AlertTriangle, Boxes, ClipboardList, DollarSign, Wrench } from 'lucide-react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
@@ -21,7 +21,6 @@ import { SitePerformanceCard } from '@/features/dashboard/SitePerformanceCard'
 import { WeatherLog } from '@/features/dashboard/WeatherLog'
 import { GoogleRatingTile, RecentGoogleReviews } from '@/components/data/GoogleRating'
 import { ratings, type SiteRating, type SiteReview } from '@/lib/queries/ratings'
-import { insights as insightsQ, type Insight } from '@/lib/queries/insights'
 import { cn } from '@/lib/utils'
 
 type WorkOrder = {
@@ -56,7 +55,6 @@ function ManagerDashboard() {
   const { activeLocation, loading: locLoading } = useLocations()
   const [stats, setStats] = useState<Stats | null>(null)
   const [openOrders, setOpenOrders] = useState<WorkOrder[]>([])
-  const [topInsights, setTopInsights] = useState<Insight[]>([])
   const [recentCloseouts, setRecentCloseouts] = useState<RecentCloseout[]>([])
   const [loading, setLoading] = useState(true)
   const [googleRating, setGoogleRating] = useState<SiteRating | null>(null)
@@ -64,19 +62,6 @@ function ManagerDashboard() {
   const [ratingLoading, setRatingLoading] = useState(true)
 
   const isManagerPlus = profile?.role !== 'employee'
-
-  useEffect(() => {
-    if (!isManagerPlus) return
-    let active = true
-    insightsQ.active().then(({ data }) => {
-      if (!active) return
-      const rows = (data as Insight[] | null) ?? []
-      setTopInsights(
-        rows.filter((i) => i.severity === 'critical' || i.severity === 'warning').slice(0, 3),
-      )
-    })
-    return () => { active = false }
-  }, [isManagerPlus])
 
   useEffect(() => {
     if (!isManagerPlus) return
@@ -231,28 +216,6 @@ function ManagerDashboard() {
             { label: 'Checklists done today', value: stats?.completionsToday ?? '—' },
           ]}
         />
-      )}
-
-      {isManagerPlus && topInsights.length > 0 && (
-        <section className="rounded-md border border-border bg-card p-4">
-          <header className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
-              <Sparkles className="size-4 text-accent" />
-              AI Insights
-            </h2>
-            <Link to="/app/insights" className="text-xs font-medium text-accent hover:underline">
-              View all
-            </Link>
-          </header>
-          <ul className="space-y-2">
-            {topInsights.map((ins) => (
-              <li key={ins.id} className="flex items-start gap-2 text-sm">
-                <Badge tone={ins.severity === 'critical' ? 'danger' : 'warn'}>{ins.severity}</Badge>
-                <span className="text-ink">{ins.insight_text}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
       )}
 
       {isManagerPlus && <RecentSales rows={recentCloseouts} />}
