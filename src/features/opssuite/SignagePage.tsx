@@ -39,6 +39,13 @@ const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
 ]
 
 const CATALOG_NAMES = new Set<string>(SIGNAGE_CATALOG.map((c) => c.name))
+
+// Fixed cover images for specific catalog tiles, overriding the auto-generated
+// sample thumbnail. Mighty Wash only (the artwork is theirs).
+const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
+const MW_TILE_IMAGES: Record<string, string> = {
+  'Rack Cards & Brochures': '/signage-rack-cards.png',
+}
 // Library artwork that belongs in a category's gallery (deduped by path). Other
 // Items catches anything uncategorized or tagged to a name we no longer show.
 function signsInCategory(items: ArtworkItem[], category: string): ArtworkItem[] {
@@ -147,7 +154,10 @@ function Inner({ locationId }: { locationId: string }) {
         <section>
           <h2 className="mb-3 text-sm font-semibold text-ink">Choose a category</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {SIGNAGE_CATALOG.map((c) => (
+            {SIGNAGE_CATALOG.map((c) => {
+              const tileImg =
+                (profile?.account_id === MW_ACCOUNT_ID ? MW_TILE_IMAGES[c.name] : undefined) ?? catThumbs[c.name]
+              return (
               <button
                 key={c.name}
                 type="button"
@@ -155,15 +165,16 @@ function Inner({ locationId }: { locationId: string }) {
                 className="group flex flex-col items-center gap-2.5"
               >
                 <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 p-3 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
-                  {catThumbs[c.name] ? (
-                    <img src={catThumbs[c.name]} alt={c.name} className="max-h-full max-w-full object-contain" />
+                  {tileImg ? (
+                    <img src={tileImg} alt={c.name} className="max-h-full max-w-full object-contain" />
                   ) : (
                     <c.icon className="size-12" strokeWidth={1.5} />
                   )}
                 </div>
                 <span className="text-center text-sm font-semibold text-ink">{c.name}</span>
               </button>
-            ))}
+              )
+            })}
           </div>
         </section>
       ))}
