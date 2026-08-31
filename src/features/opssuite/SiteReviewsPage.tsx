@@ -91,6 +91,20 @@ async function resolveReviewPhotos(
   return out
 }
 
+// Strips the data-URL prefix from a blob so only raw base64 is sent to the email
+// function (Resend's attachment `content` expects base64).
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const res = typeof reader.result === 'string' ? reader.result : ''
+      resolve(res.slice(res.indexOf(',') + 1))
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
 // The wash logo drawn top-right on the PDF export, loaded once from /mw-logo.png
 // and cached (with its natural dimensions so the aspect ratio is preserved).
 let logoPromise: Promise<{ dataUrl: string; w: number; h: number } | null> | null = null
@@ -239,6 +253,25 @@ export default function SiteReviewsPage() {
   const openReport = async (row: Row) => openPdfInNewTab(await buildReportBlob(row))
   const downloadReport = async (row: Row) => downloadBlob(await buildReportBlob(row), reportName(row))
 
+  // On submission, email the exported PDF to the reviews recipient (MW only).
+  // Best-effort: a failed send is logged but never blocks the submission.
+  const emailReviewReport = async (row: Row) => {
+    if (!isMightyWash) return
+    try {
+      const pdfBase64 = await blobToBase64(await buildReportBlob(row))
+      await siteEvaluations.emailReport({
+        reviewId: row.id,
+        pdfBase64,
+        filename: reportName(row),
+        siteName: row.location?.name ?? null,
+        submittedBy: row.submitted_by_name ?? null,
+        date: row.submitted_at,
+      })
+    } catch (e) {
+      console.error('Failed to email site review', e)
+    }
+  }
+
   // Selection + per-review export from the list. Each selected review downloads
   // as its own PDF, so reviews can be exported one at a time.
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -371,6 +404,7 @@ export default function SiteReviewsPage() {
           schema={schema}
           onClose={() => setAdding(false)}
           onSaved={() => { setAdding(false); void load() }}
+          onSubmitted={emailReviewReport}
         />
       )}
       {builderOpen && (
@@ -491,13 +525,14 @@ function ReviewDetail({ row, schema, onView, onDownload }: {
   )
 }
 
-function AddReview({ accountId, submitterId, submitterName, schema, onClose, onSaved }: {
+function AddReview({ accountId, submitterId, submitterName, schema, onClose, onSaved, onSubmitted }: {
   accountId: string
   submitterId: string | null
   submitterName: string | null
   schema: SiteReviewSchema
   onClose: () => void
   onSaved: () => void
+  onSubmitted: (row: Row) => void | Promise<void>
 }) {
   const { locations } = useLocations()
   const [locationId, setLocationId] = useState('')
@@ -565,7 +600,7 @@ function AddReview({ accountId, submitterId, submitterName, schema, onClose, onS
     const answersWithMeta = Object.keys(meta).length > 0 ? { ...answers, __meta: meta } : answers
 
     setBusy(true)
-    const { error: err } = await siteEvaluations.create({
+    const { data: created, error: err } = await siteEvaluations.create({
       account_id: accountId,
       location_id: locationId,
       result,
@@ -579,6 +614,10 @@ function AddReview({ accountId, submitterId, submitterName, schema, onClose, onS
     if (err) {
       setError(err.message)
       return
+    }
+    if (created) {
+      const locName = locations.find((l) => l.id === locationId)?.name ?? null
+      void onSubmitted({ ...(created as SiteEvaluation), location: locName ? { name: locName } : null } as Row)
     }
     onSaved()
   }
