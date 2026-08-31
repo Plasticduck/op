@@ -15,7 +15,7 @@ import { shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { siteEvaluations, customForms, siteReviewPhotos, type SiteEvaluation } from '@/lib/queries/opsSuite'
-import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
+import { exportExcel, type ExportColumn } from '@/lib/opsExport'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
 import SiteReviewForm from './SiteReviewForm'
@@ -25,7 +25,7 @@ import {
   type SiteReviewSchema,
   type SiteReviewAnswers,
 } from './siteReviewSchema'
-import { buildSiteReviewPdf, openPdfInNewTab, downloadBlob } from '@/lib/reports/siteReviewPdf'
+import { buildSiteReviewPdf, buildSiteReviewsPdf, openPdfInNewTab, downloadBlob, type SiteReviewPdfInput } from '@/lib/reports/siteReviewPdf'
 import { fetchCurrentWeather, currentWeatherLabel, geocodeAddress } from '@/lib/weather'
 
 // Weather + time-arrived captured on a review are stored under this reserved key
@@ -225,14 +225,14 @@ export default function SiteReviewsPage() {
   // The Mighty Wash logo is theirs, so only brand their account's exports.
   const isMightyWash = profile?.account_id === '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 
-  const buildReportBlob = async (row: Row): Promise<Blob> => {
+  const buildReportInput = async (row: Row): Promise<SiteReviewPdfInput> => {
     const answers = (row.answers ?? {}) as SiteReviewAnswers
     const meta = reviewMeta(row.answers)
     const [photoImages, logo] = await Promise.all([
       resolveReviewPhotos(answers),
       isMightyWash ? loadReviewLogo() : Promise.resolve(null),
     ])
-    return buildSiteReviewPdf({
+    return {
       title: 'Monthly Site Review',
       siteName: row.location?.name ?? null,
       date: row.submitted_at,
@@ -244,7 +244,23 @@ export default function SiteReviewsPage() {
       submitterName: row.submitted_by_name,
       photoImages,
       logo,
-    })
+    }
+  }
+
+  const buildReportBlob = async (row: Row): Promise<Blob> => buildSiteReviewPdf(await buildReportInput(row))
+
+  // Toolbar "PDF" export: every visible review in one file, each on its own
+  // page(s), with the same clickable photo links as the single-review report.
+  const [exportingAll, setExportingAll] = useState(false)
+  const exportAllPdf = async () => {
+    if (table.rows.length === 0) return
+    setExportingAll(true)
+    try {
+      const inputs = await Promise.all(table.rows.map(buildReportInput))
+      downloadBlob(await buildSiteReviewsPdf(inputs), `rm-site-reviews-${new Date().toISOString().slice(0, 10)}.pdf`)
+    } finally {
+      setExportingAll(false)
+    }
   }
 
   const reportName = (row: Row) =>
@@ -312,8 +328,9 @@ export default function SiteReviewsPage() {
       </div>
       <OpsToolbar
         range={table.range} onRange={table.setRange} sort={table.sort} onSort={table.setSort} count={table.rows.length}
-        onExportPdf={() => exportPdf('Monthly Site Reviews', EXPORT_COLUMNS, table.rows)}
+        onExportPdf={() => void exportAllPdf()}
         onExportExcel={() => exportExcel('site-reviews', EXPORT_COLUMNS, table.rows)}
+        disableExport={exportingAll}
       />
       {selected.size > 0 && (
         <div className="flex items-center gap-3 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm">

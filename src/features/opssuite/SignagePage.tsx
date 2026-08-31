@@ -44,9 +44,6 @@ const CATALOG_NAMES = new Set<string>(SIGNAGE_CATALOG.map((c) => c.name))
 // sample thumbnail. Mighty Wash only (the artwork is theirs).
 const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const MW_TILE_IMAGES: Record<string, string> = {
-  'A-Frame Signs': '/signage-aframe.png',
-  'Aluminum Signs': '/signage-aluminum.png',
-  'Safety Signs': '/signage-safety.png',
   'Rack Cards & Brochures': '/signage-rack-cards.png',
 }
 // Library artwork that belongs in a category's gallery (deduped by path). Other

@@ -49,11 +49,12 @@ const fmtDate = (d: string | null | undefined): string => {
 
 const fmtDateTime = (d: Date): string => format(d, 'MMM d, yyyy h:mm a')
 
-export async function buildSiteReviewPdf(input: SiteReviewPdfInput): Promise<Blob> {
-  const { jsPDF } = await import('jspdf')
-  const autoTable = (await import('jspdf-autotable')).default
+type JsPdf = import('jspdf').jsPDF
+type AutoTableFn = (typeof import('jspdf-autotable'))['default']
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+// Renders one review onto the current page (and any overflow pages). Shared by
+// the single-review PDF and the multi-review list export.
+function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfInput): void {
   doc.setFont('helvetica', 'normal')
 
   const marginX = 14
@@ -225,8 +226,29 @@ export async function buildSiteReviewPdf(input: SiteReviewPdfInput): Promise<Blo
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(140, 146, 154)
   doc.text(footer, marginX, pageHeight - 8)
+}
 
+// Renders each review on its own page(s), preserving every review's answers and
+// clickable photo links (the same layout as the single-review PDF).
+export async function buildSiteReviewsPdf(inputs: SiteReviewPdfInput[]): Promise<Blob> {
+  const { jsPDF } = await import('jspdf')
+  const autoTable = (await import('jspdf-autotable')).default
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+  if (inputs.length === 0) {
+    doc.setFontSize(12)
+    doc.setTextColor(110, 116, 124)
+    doc.text('No reviews to export.', 14, 20)
+    return doc.output('blob')
+  }
+  inputs.forEach((input, i) => {
+    if (i > 0) doc.addPage()
+    renderReview(doc, autoTable, input)
+  })
   return doc.output('blob')
+}
+
+export async function buildSiteReviewPdf(input: SiteReviewPdfInput): Promise<Blob> {
+  return buildSiteReviewsPdf([input])
 }
 
 export function openPdfInNewTab(blob: Blob, _suggestedName?: string): void {
