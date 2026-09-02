@@ -42,6 +42,11 @@ import {
 
 // Hydrated detail shape returned by workOrders.byId — keeps inline so callers
 // (this file is the only one) don't have to import from queries.
+// Temporarily view-only: MaintainX is the source of truth for work-order status,
+// so changing status (Mark as Done / Reopen) from Operator is disabled. Flip to
+// re-enable. Mirrors CREATE_ENABLED on WorkOrdersPage.
+const STATUS_EDIT_ENABLED: boolean = false
+
 type Detail = {
   id: string
   account_id: string
@@ -162,15 +167,17 @@ export function WorkOrderDetail({
           </div>
           <h1 className="truncate text-[17px] font-semibold text-ink">{d.title}</h1>
         </div>
-        <Button
-          variant={d.status === 'done' ? 'secondary' : 'primary'}
-          onClick={() => void markDone()}
-          disabled={savingStatus}
-          size="sm"
-        >
-          {savingStatus ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-          {d.status === 'done' ? 'Reopen' : 'Mark as Done'}
-        </Button>
+        {STATUS_EDIT_ENABLED && (
+          <Button
+            variant={d.status === 'done' ? 'secondary' : 'primary'}
+            onClick={() => void markDone()}
+            disabled={savingStatus}
+            size="sm"
+          >
+            {savingStatus ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+            {d.status === 'done' ? 'Reopen' : 'Mark as Done'}
+          </Button>
+        )}
         <div className="relative">
           <button
             type="button"
