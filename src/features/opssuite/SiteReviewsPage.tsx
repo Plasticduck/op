@@ -15,7 +15,6 @@ import { shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { siteEvaluations, customForms, siteReviewPhotos, type SiteEvaluation } from '@/lib/queries/opsSuite'
-import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
 import SiteReviewForm from './SiteReviewForm'
 import { SiteReviewBuilder } from './SiteReviewBuilder'
@@ -24,7 +23,7 @@ import {
   type SiteReviewSchema,
   type SiteReviewAnswers,
 } from './siteReviewSchema'
-import { buildSiteReviewPdf, buildSiteReviewsPdf, openPdfInNewTab, downloadBlob, type SiteReviewPdfInput } from '@/lib/reports/siteReviewPdf'
+import { buildSiteReviewPdf, openPdfInNewTab, downloadBlob, type SiteReviewPdfInput } from '@/lib/reports/siteReviewPdf'
 import { fetchCurrentWeather, currentWeatherLabel, geocodeAddress } from '@/lib/weather'
 
 // Weather + time-arrived captured on a review are stored under this reserved key
@@ -239,20 +238,6 @@ export default function SiteReviewsPage() {
 
   const buildReportBlob = async (row: Row): Promise<Blob> => buildSiteReviewPdf(await buildReportInput(row))
 
-  // Toolbar "PDF" export: every visible review in one file, each on its own
-  // page(s), with the same clickable photo links as the single-review report.
-  const [exportingAll, setExportingAll] = useState(false)
-  const exportAllPdf = async () => {
-    if (table.rows.length === 0) return
-    setExportingAll(true)
-    try {
-      const inputs = await Promise.all(table.rows.map(buildReportInput))
-      downloadBlob(await buildSiteReviewsPdf(inputs), `rm-site-reviews-${new Date().toISOString().slice(0, 10)}.pdf`)
-    } finally {
-      setExportingAll(false)
-    }
-  }
-
   const reportName = (row: Row) =>
     `site-review-${(row.location?.name ?? 'site').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${filenameSafeDate(row.submitted_at)}.pdf`
 
@@ -278,29 +263,15 @@ export default function SiteReviewsPage() {
     }
   }
 
-  // Selection + per-review export from the list. Each selected review downloads
-  // as its own PDF, so reviews can be exported one at a time.
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [exporting, setExporting] = useState(false)
-  const toggleOne = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  const visibleIds = table.rows.map((r) => r.id)
-  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id))
-  const toggleAll = () =>
-    setSelected(() => (allSelected ? new Set() : new Set(visibleIds)))
-  const exportSelected = async () => {
-    const chosen = table.rows.filter((r) => selected.has(r.id))
-    if (chosen.length === 0) return
-    setExporting(true)
-    for (const row of chosen) {
-      downloadBlob(await buildReportBlob(row), reportName(row))
+  // Per-review PDF export straight from a list row.
+  const [exportingId, setExportingId] = useState<string | null>(null)
+  const exportRow = async (row: Row) => {
+    setExportingId(row.id)
+    try {
+      await downloadReport(row)
+    } finally {
+      setExportingId(null)
     }
-    setExporting(false)
   }
 
   return (
@@ -316,39 +287,15 @@ export default function SiteReviewsPage() {
           <Button variant="secondary" size="sm" onClick={() => setBuilderOpen(true)}>Customize</Button>
         )}
       </div>
-      <OpsToolbar
-        range={table.range} onRange={table.setRange} sort={table.sort} onSort={table.setSort} count={table.rows.length}
-        onExportPdf={() => void exportAllPdf()}
-        disableExport={exportingAll}
-        hideExcel
-      />
-      {selected.size > 0 && (
-        <div className="flex items-center gap-3 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm">
-          <span className="font-medium text-accent">{selected.size} selected</span>
-          <Button size="sm" onClick={() => void exportSelected()} disabled={exporting}>
-            <FileText className="size-4" /> {exporting ? 'Exporting…' : `Export PDF${selected.size > 1 ? ' (one file each)' : ''}`}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
-        </div>
-      )}
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : table.rows.length === 0 ? (
-        <EmptyState icon={ClipboardList} title="No site reviews" description="Monthly site reviews in this timeframe will appear here." />
+        <EmptyState icon={ClipboardList} title="No site reviews" description="Monthly site reviews will appear here." />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
-                <th className="w-10 px-3 py-2.5">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all reviews"
-                    className="size-4 cursor-pointer accent-accent align-middle"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                  />
-                </th>
                 <th className="px-3 py-2.5 font-medium">Site</th>
                 <th className="px-3 py-2.5 font-medium">Result</th>
                 <th className="px-3 py-2.5 font-medium">Submitted by</th>
@@ -359,15 +306,6 @@ export default function SiteReviewsPage() {
             <tbody>
               {table.rows.map((e) => (
                 <tr key={e.id} className="border-t border-border hover:bg-content">
-                  <td className="px-3 py-2.5">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${e.location?.name ?? 'review'}`}
-                      className="size-4 cursor-pointer accent-accent align-middle"
-                      checked={selected.has(e.id)}
-                      onChange={() => toggleOne(e.id)}
-                    />
-                  </td>
                   <td className="px-3 py-2.5 font-medium text-ink">{e.location?.name ?? '—'}</td>
                   <td className="px-3 py-2.5">
                     {e.result ? <Badge tone={/pass/i.test(e.result) ? 'ok' : 'danger'}>{e.result}</Badge> : <span className="text-ink-subtle">—</span>}
@@ -377,6 +315,9 @@ export default function SiteReviewsPage() {
                   <td className="px-3 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="sm" onClick={() => setOpen(e)}>View</Button>
+                      <Button variant="ghost" size="sm" disabled={exportingId === e.id} onClick={() => void exportRow(e)}>
+                        <FileText className="size-4" /> {exportingId === e.id ? 'Exporting…' : 'Export PDF'}
+                      </Button>
                       {canDelete && (
                         <Button
                           variant="ghost"
