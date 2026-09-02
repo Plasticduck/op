@@ -66,15 +66,13 @@ export const assets = {
     return q
   },
 
-  // "Equipment down" count per location, derived entirely from MaintainX. Since
-  // MaintainX has no live asset status field (and most work orders aren't linked
-  // to a specific asset), this is the count of open REACTIVE work orders (the
-  // repair backlog) per site from the MaintainX-synced work_orders table.
+  // Open work-order count per location, from the MaintainX-synced work_orders
+  // table (status open / on hold / in progress). Powers the "Open Work Orders"
+  // metric in Display Mode.
   downCounts: async (): Promise<Record<string, number>> => {
     const { data } = await supabase
       .from('work_orders')
       .select('location_id')
-      .eq('work_type', 'reactive')
       .in('status', ['open', 'on_hold', 'in_progress'])
     const out: Record<string, number> = {}
     for (const r of (data ?? []) as { location_id: string | null }[]) {

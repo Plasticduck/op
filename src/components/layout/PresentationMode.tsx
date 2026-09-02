@@ -98,7 +98,7 @@ export default function PresentationMode() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const [now, setNow] = useState('')
-  // Per-location scorecards, Google ratings, and equipment-down counts.
+  // Per-location scorecards, Google ratings, and open work-order counts.
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [rmap, setRmap] = useState<Record<string, SiteRating>>({})
   const [dmap, setDmap] = useState<Record<string, number>>({})
@@ -171,7 +171,7 @@ export default function PresentationMode() {
     setNow(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
   }, [active, feed])
 
-  // Load scorecards + Google ratings + equipment-down counts for every site.
+  // Load scorecards + Google ratings + open work-order counts for every site.
   useEffect(() => {
     if (!active || !locations.length) return
     let cancel = false
@@ -234,20 +234,19 @@ export default function PresentationMode() {
   // Google Rating: the site's rating, or the average across the selection.
   const rVals = selLocs.map((l) => rmap[l.id]?.rating).filter((v): v is number => v != null)
   const ratingVal = rVals.length ? rVals.reduce((a, b) => a + b, 0) / rVals.length : null
-  // Equipment Down: open reactive work orders (MaintainX repair backlog) across
-  // the selection.
+  // Open Work Orders: open work orders (MaintainX-synced) across the selection.
   const downVal = selLocs.reduce((a, l) => a + (dmap[l.id] ?? 0), 0)
   // Churn = voluntary + credit-card churn combined (null only when both are).
   const churnCombined = m.churn == null && m.churnCc == null ? null : (m.churn ?? 0) + (m.churnCc ?? 0)
 
   // Feed-based tiles show a skeleton until the (slow) live feed arrives.
   const feedLoading = !feed && !error
-  // Metric tiles. For a roll-up, cars/sales/recharge/equipment-down are totals and
+  // Metric tiles. For a roll-up, cars/sales/recharge/open-WOs are totals and
   // cars-per-hour/conversion/churn/rating are averages. `dot` is an app status color.
   const tiles: { label: string; value: string; dot: string; tone?: string; feed?: boolean }[] = [
     { label: 'Score Card', value: scoreLetter ?? '—', dot: 'bg-accent', tone: scoreTone },
     { label: 'Google Rating', value: ratingVal != null ? `${ratingVal.toFixed(1)} ★` : '—', dot: 'bg-warn' },
-    { label: isRoll ? 'Equipment Down (total)' : 'Equipment Down', value: String(downVal), dot: downVal > 0 ? 'bg-danger' : 'bg-ok', tone: downVal > 0 ? 'text-danger' : '' },
+    { label: isRoll ? 'Open Work Orders (total)' : 'Open Work Orders', value: String(downVal), dot: 'bg-accent' },
     { label: isRoll ? 'Cars today (total)' : 'Cars today', value: num(m.cars), dot: 'bg-accent', feed: true },
     { label: isRoll ? 'Sales today (total)' : 'Sales today', value: money(m.sales), dot: 'bg-ok', feed: true },
     { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent', feed: true },
