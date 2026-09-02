@@ -91,13 +91,21 @@ Deno.serve(async (req) => {
   // The review must exist and belong to the caller's account.
   const { data: review } = await svc
     .from('site_evaluations')
-    .select('id, account_id')
+    .select('id, account_id, submitted_by')
     .eq('id', reviewId)
     .maybeSingle()
   // deno-lint-ignore no-explicit-any
   const reviewRow = review as any
   if (!reviewRow || reviewRow.account_id !== callerRow.account_id) {
     return json({ error: 'not_found' }, 404, origin)
+  }
+
+  // The person who filled out the review also gets a copy.
+  let submitterEmail: string | null = null
+  if (reviewRow.submitted_by) {
+    const { data: sub } = await svc.from('users').select('email').eq('id', reviewRow.submitted_by).maybeSingle()
+    // deno-lint-ignore no-explicit-any
+    submitterEmail = ((sub as any)?.email ?? '').trim() || null
   }
 
   const site = (body.site_name ?? '').trim()
@@ -108,7 +116,9 @@ Deno.serve(async (req) => {
   // Each site also gets a copy at its own address, e.g. "MW01" -> mw01@mighty-wash.com.
   const siteLocal = site.toLowerCase().replace(/[^a-z0-9]/g, '')
   const siteEmail = siteLocal ? `${siteLocal}@mighty-wash.com` : null
-  const recipients = Array.from(new Set([...baseTo, ...(siteEmail ? [siteEmail] : [])]))
+  const recipients = Array.from(
+    new Set([...baseTo, ...(siteEmail ? [siteEmail] : []), ...(submitterEmail ? [submitterEmail] : [])]),
+  )
 
   const rows: [string, string][] = [
     ['Site', site || '—'],
