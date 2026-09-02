@@ -4,7 +4,9 @@
 // written client-side first, so a missing key just returns 503 { error: 'no_key' }.
 //
 // Required secret: RESEND_API_KEY. Optional: RESEND_FROM, SITE_REVIEW_EMAIL_TO
-// (falls back to lkeith@mighty-wash.com).
+// (comma-separated fixed recipients; falls back to lkeith + kjowers). Each site
+// also gets a copy at its own address, derived from the site name (MW01 ->
+// mw01@mighty-wash.com).
 // Auto-provided: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -51,7 +53,10 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const fromAddr = Deno.env.get('RESEND_FROM') ?? 'WashLyfe Operator <notifications@washlyfe.com>'
-  const toAddr = Deno.env.get('SITE_REVIEW_EMAIL_TO') ?? 'lkeith@mighty-wash.com'
+  const baseTo = (Deno.env.get('SITE_REVIEW_EMAIL_TO') ?? 'lkeith@mighty-wash.com,kjowers@mighty-wash.com')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
 
   const auth = req.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) return json({ error: 'unauthorized' }, 401, origin)
@@ -100,6 +105,11 @@ Deno.serve(async (req) => {
   const when = (body.date ?? '').trim()
   const filename = (body.filename ?? 'site-review.pdf').replace(/[^a-zA-Z0-9._-]/g, '-')
 
+  // Each site also gets a copy at its own address, e.g. "MW01" -> mw01@mighty-wash.com.
+  const siteLocal = site.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const siteEmail = siteLocal ? `${siteLocal}@mighty-wash.com` : null
+  const recipients = Array.from(new Set([...baseTo, ...(siteEmail ? [siteEmail] : [])]))
+
   const rows: [string, string][] = [
     ['Site', site || '—'],
     ['Submitted by', submittedBy || '—'],
@@ -125,7 +135,7 @@ Deno.serve(async (req) => {
   try {
     const { error } = await resend.emails.send({
       from: fromAddr,
-      to: [toAddr],
+      to: recipients,
       subject: `RM Site Review${site ? ' — ' + site : ''}`,
       html,
       attachments: [{ filename, content: pdfB64 }],
