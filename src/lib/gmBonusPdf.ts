@@ -124,6 +124,7 @@ export type AllSitesRow = {
   agmName?: string
   gmOverride?: number | null
   agmOverride?: number | null
+  underConstruction?: boolean
   result: GmBonusResult | null
 }
 
@@ -143,11 +144,12 @@ export async function exportAllSitesBonusPdf(
   doc.text(`${monthLabel} · Generated ${format(new Date(), 'PP')}`, 14, 22)
   doc.setTextColor(0)
 
-  // Empty GM/AGM name -> $0. Independent overrides replace their own total.
+  // Under construction -> $0. Otherwise empty GM/AGM name -> $0, and independent
+  // overrides replace their own total.
   const gmVal = (r: AllSitesRow) =>
-    r.gmOverride != null ? r.gmOverride : r.gmName?.trim() && r.result ? r.result.gmTotal : 0
+    r.underConstruction ? 0 : r.gmOverride != null ? r.gmOverride : r.gmName?.trim() && r.result ? r.result.gmTotal : 0
   const agmVal = (r: AllSitesRow) =>
-    r.agmOverride != null ? r.agmOverride : r.agmName?.trim() && r.result ? r.result.agmTotal : 0
+    r.underConstruction ? 0 : r.agmOverride != null ? r.agmOverride : r.agmName?.trim() && r.result ? r.result.agmTotal : 0
   const gmSum = rows.reduce((a, r) => a + gmVal(r), 0)
   const agmSum = rows.reduce((a, r) => a + agmVal(r), 0)
 

@@ -91,6 +91,7 @@ function computeSiteMonth(
       : null,
     avgBase: aRow ? Number(aRow.avg_mos) : null,
     avgMonthsGoal,
+    underConstruction: monthRow.under_construction,
   })
 }
 
@@ -107,6 +108,7 @@ function effectiveGmAmount(
   avgMonthsGoal: number | null = null,
 ): number {
   const row = allMonths.find((x) => x.location_id === sid && x.period === period)
+  if (row?.under_construction) return 0
   if (row?.gm_override != null) return Number(row.gm_override)
   const res = computeSiteMonth(allMonths, allBaselines, sid, period, avgMonthsGoal)
   const gmName = effectiveManager(siteManagers[sid]?.gm, period)
@@ -209,6 +211,7 @@ export default function BonusesPage() {
   const [allMonths, setAllMonths] = useState<GmBonusMonth[]>([])
   const [allBaselines, setAllBaselines] = useState<GmBonusBase[]>([])
   const [form, setForm] = useState<Form>(emptyForm)
+  const [underConstruction, setUnderConstruction] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -252,11 +255,30 @@ export default function BonusesPage() {
         churn: String(monthRow.churn_pct),
         conversion: String(monthRow.conversion_pct),
       })
+      setUnderConstruction(monthRow.under_construction)
     } else {
       setForm(emptyForm)
+      setUnderConstruction(false)
     }
     setNotice(null)
   }, [monthRow, locationId, period])
+
+  // Marking a month under construction carries the prior month's numbers forward
+  // (the site isn't operating, so there are no new numbers), and unmarking leaves
+  // them for editing.
+  const toggleUnderConstruction = (checked: boolean) => {
+    setUnderConstruction(checked)
+    if (checked && prevRow) {
+      setForm({
+        mighty: String(prevRow.mighty_count),
+        super: String(prevRow.super_count),
+        wonder: String(prevRow.wonder_count),
+        avgMos: String(prevRow.avg_mos),
+        churn: String(prevRow.churn_pct),
+        conversion: String(prevRow.conversion_pct),
+      })
+    }
+  }
 
   const current: MonthInputs = {
     mighty_count: num(form.mighty),
@@ -285,7 +307,7 @@ export default function BonusesPage() {
   const avgBase: AvgBase = avgRow ? Number(avgRow.avg_mos) : null
 
   const currentSiteName = sortedLocations.find((l) => l.id === locationId)?.name ?? null
-  const result = computeGmBonus({ current, previous, membershipBase, avgBase, avgMonthsGoal: lifetimeAvgGoal(currentSiteName) })
+  const result = computeGmBonus({ current, previous, membershipBase, avgBase, avgMonthsGoal: lifetimeAvgGoal(currentSiteName), underConstruction })
 
   // GM/AGM manager names per site, effective-dated by month. Edited names for the
   // viewed month live in nameEdits and reset when the month (or saved data) changes.
@@ -330,6 +352,7 @@ export default function BonusesPage() {
           agmName: effectiveManager(siteManagers[loc.id]?.agm, period),
           gmOverride: row?.gm_override != null ? Number(row.gm_override) : null,
           agmOverride: row?.agm_override != null ? Number(row.agm_override) : null,
+          underConstruction: row?.under_construction ?? false,
           result: computeSiteMonth(allMonths, allBaselines, loc.id, period, lifetimeAvgGoal(loc.name)),
         }
       }),
@@ -342,12 +365,12 @@ export default function BonusesPage() {
   // overrides are independent: each, when set, replaces its own total. A GM
   // override does NOT feed the AGM. AGM only auto-calculates (half of the
   // calculated GM) when its own override is unset.
-  const gmAmount = (name: string | null | undefined, r: GmBonusResult | null, override: number | null) =>
-    override != null ? override : name && name.trim() && r ? r.gmTotal : 0
-  const agmAmount = (name: string | null | undefined, r: GmBonusResult | null, override: number | null) =>
-    override != null ? override : name && name.trim() && r ? r.agmTotal : 0
-  const allGmSum = allRows.reduce((a, r) => a + gmAmount(r.gmName, r.result, r.gmOverride ?? null), 0)
-  const allAgmSum = allRows.reduce((a, r) => a + agmAmount(r.agmName, r.result, r.agmOverride ?? null), 0)
+  const gmAmount = (name: string | null | undefined, r: GmBonusResult | null, override: number | null, uc = false) =>
+    uc ? 0 : override != null ? override : name && name.trim() && r ? r.gmTotal : 0
+  const agmAmount = (name: string | null | undefined, r: GmBonusResult | null, override: number | null, uc = false) =>
+    uc ? 0 : override != null ? override : name && name.trim() && r ? r.agmTotal : 0
+  const allGmSum = allRows.reduce((a, r) => a + gmAmount(r.gmName, r.result, r.gmOverride ?? null, r.underConstruction), 0)
+  const allAgmSum = allRows.reduce((a, r) => a + agmAmount(r.agmName, r.result, r.agmOverride ?? null, r.underConstruction), 0)
   const anyAllData = allRows.some((r) => r.result)
 
   const exportToPdf = async () => {
@@ -363,10 +386,12 @@ export default function BonusesPage() {
           result,
           profile?.brand_logo_url,
           { gm: nameFor(locationId, 'gm'), agm: nameFor(locationId, 'agm') },
-          {
-            gm: monthRow?.gm_override != null ? Number(monthRow.gm_override) : null,
-            agm: monthRow?.agm_override != null ? Number(monthRow.agm_override) : null,
-          },
+          underConstruction
+            ? { gm: null, agm: null }
+            : {
+                gm: monthRow?.gm_override != null ? Number(monthRow.gm_override) : null,
+                agm: monthRow?.agm_override != null ? Number(monthRow.agm_override) : null,
+              },
         )
       }
     } finally {
@@ -403,6 +428,7 @@ export default function BonusesPage() {
       avg_mos: current.avg_mos,
       churn_pct: current.churn_pct,
       conversion_pct: current.conversion_pct,
+      under_construction: underConstruction,
       source: 'manual',
       submitted_by: profile.id,
     })
@@ -571,10 +597,23 @@ export default function BonusesPage() {
             </Button>
           </div>
         </label>
+        {!isAll && (
+          <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm font-medium text-ink">
+            <input
+              type="checkbox"
+              className="size-4 cursor-pointer accent-accent"
+              checked={underConstruction}
+              onChange={(e) => toggleUnderConstruction(e.target.checked)}
+            />
+            Under construction
+          </label>
+        )}
         <span className="pb-2 text-xs text-ink-subtle">
           {isAll
             ? `${allRows.filter((r) => r.result).length} of ${sortedLocations.length} sites have data`
-            : `${monthRow ? 'Saved' : 'Not yet saved'} · prior month ${prevRow ? 'on file' : 'missing'}`}
+            : underConstruction
+              ? 'No bonus paid · prior month numbers carry forward'
+              : `${monthRow ? 'Saved' : 'Not yet saved'} · prior month ${prevRow ? 'on file' : 'missing'}`}
         </span>
       </div>
 
@@ -634,8 +673,8 @@ export default function BonusesPage() {
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.oneTimeTotal)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.churn.amount)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{currency(r.result.conversion.amount)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(gmAmount(r.gmName, r.result, r.gmOverride ?? null))}{r.gmOverride != null && <span className="ml-1 text-[10px] font-normal text-warn">ovr</span>}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(agmAmount(r.agmName, r.result, r.agmOverride ?? null))}{r.agmOverride != null && <span className="ml-1 text-[10px] font-normal text-warn">ovr</span>}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-accent">{currency(gmAmount(r.gmName, r.result, r.gmOverride ?? null, r.underConstruction))}{r.underConstruction ? <span className="ml-1 text-[10px] font-normal text-warn">UC</span> : r.gmOverride != null && <span className="ml-1 text-[10px] font-normal text-warn">ovr</span>}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">{currency(agmAmount(r.agmName, r.result, r.agmOverride ?? null, r.underConstruction))}{r.agmOverride != null && !r.underConstruction && <span className="ml-1 text-[10px] font-normal text-warn">ovr</span>}</td>
                       </>
                     ) : (
                       <td colSpan={5} className="px-3 py-2.5 text-right text-xs text-ink-subtle">No data</td>
@@ -660,14 +699,15 @@ export default function BonusesPage() {
           <section className="rounded-md border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold text-ink">This month's numbers</h2>
             <div className="grid grid-cols-2 gap-3">
-              <NumField label="Mighty Protector" value={form.mighty} onChange={set('mighty')} />
-              <NumField label="Super Shine" value={form.super} onChange={set('super')} />
-              <NumField label="Wonder Clean" value={form.wonder} onChange={set('wonder')} />
+              <NumField label="Mighty Protector" value={form.mighty} onChange={set('mighty')} readOnly={underConstruction} />
+              <NumField label="Super Shine" value={form.super} onChange={set('super')} readOnly={underConstruction} />
+              <NumField label="Wonder Clean" value={form.wonder} onChange={set('wonder')} readOnly={underConstruction} />
               <NumField label="Total members" value={String(result.currentTotal)} readOnly />
               <NumField
                 label="Avg months active"
                 value={form.avgMos}
                 onChange={set('avgMos')}
+                readOnly={underConstruction}
                 step="0.1"
                 sub={`${prevShort}: ${prevRow ? Number(prevRow.avg_mos) : '—'}`}
               />
@@ -676,6 +716,7 @@ export default function BonusesPage() {
                 label="Churn %"
                 value={form.churn}
                 onChange={set('churn')}
+                readOnly={underConstruction}
                 step="0.1"
                 sub={`${prevShort}: ${prevRow ? `${Number(prevRow.churn_pct)}%` : '—'}`}
               />
@@ -683,6 +724,7 @@ export default function BonusesPage() {
                 label="Conversion %"
                 value={form.conversion}
                 onChange={set('conversion')}
+                readOnly={underConstruction}
                 step="0.1"
                 sub={`${prevShort}: ${prevRow ? `${Number(prevRow.conversion_pct)}%` : '—'}`}
               />
@@ -817,7 +859,7 @@ export default function BonusesPage() {
                 {monthRow?.gm_override != null && <span className="ml-1 text-xs font-normal text-warn">(override)</span>}
               </span>
               <span className="text-lg font-bold tabular-nums text-accent">
-                {currency(gmAmount(nameFor(locationId, 'gm'), result, monthRow?.gm_override != null ? Number(monthRow.gm_override) : null))}
+                {currency(gmAmount(nameFor(locationId, 'gm'), result, monthRow?.gm_override != null ? Number(monthRow.gm_override) : null, underConstruction))}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between rounded-md border border-border px-3 py-2">
@@ -826,7 +868,7 @@ export default function BonusesPage() {
                 {monthRow?.agm_override != null && <span className="ml-1 text-xs font-normal text-warn">(override)</span>}
               </span>
               <span className="text-lg font-bold tabular-nums text-ink">
-                {currency(agmAmount(nameFor(locationId, 'agm'), result, monthRow?.agm_override != null ? Number(monthRow.agm_override) : null))}
+                {currency(agmAmount(nameFor(locationId, 'agm'), result, monthRow?.agm_override != null ? Number(monthRow.agm_override) : null, underConstruction))}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between">
@@ -873,8 +915,8 @@ export default function BonusesPage() {
           monthLabel={monthLabel}
           currentGm={monthRow?.gm_override != null ? Number(monthRow.gm_override) : null}
           currentAgm={monthRow?.agm_override != null ? Number(monthRow.agm_override) : null}
-          computedGm={gmAmount(nameFor(locationId, 'gm'), result, null)}
-          computedAgm={agmAmount(nameFor(locationId, 'agm'), result, null)}
+          computedGm={gmAmount(nameFor(locationId, 'gm'), result, null, underConstruction)}
+          computedAgm={agmAmount(nameFor(locationId, 'agm'), result, null, underConstruction)}
           onSave={saveOverride}
           onClose={() => setOverrideOpen(false)}
         />

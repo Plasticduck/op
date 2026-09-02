@@ -104,6 +104,7 @@ export type GmBonusResult = {
   agmTotal: number
   hasMembershipBase: boolean
   hasAvgBase: boolean
+  underConstruction: boolean
 }
 
 export function computeGmBonus(args: {
@@ -114,9 +115,12 @@ export function computeGmBonus(args: {
   // When set, the Lifetime Value bonus uses this absolute avg-months milestone
   // instead of the default "+1 vs base" growth rule.
   avgMonthsGoal?: number | null
+  // When true, the site is under construction this month: no bonus is paid.
+  underConstruction?: boolean
 }): GmBonusResult {
   const { current, previous, membershipBase, avgBase } = args
   const avgMonthsGoal = args.avgMonthsGoal ?? null
+  const underConstruction = args.underConstruction ?? false
 
   const counts: Record<LevelKey, number> = {
     mighty: current.mighty_count,
@@ -189,7 +193,7 @@ export function computeGmBonus(args: {
   const gmTotal = oneTimeTotal + churnAmt + convAmt
   const agmTotal = gmTotal / 2
 
-  return {
+  const res: GmBonusResult = {
     currentTotal,
     previousTotal,
     levels,
@@ -204,5 +208,20 @@ export function computeGmBonus(args: {
     agmTotal,
     hasMembershipBase: membershipBase !== null,
     hasAvgBase: avgBase !== null,
+    underConstruction,
   }
+
+  // While a site is under construction, no bonus is paid: zero every amount while
+  // keeping the membership numbers (which carry from the prior month) for display.
+  if (underConstruction) {
+    res.lifetimeValue = { earned: false, amount: 0, goalReached: false }
+    res.membership = { ...res.membership, earned: false, amount: 0, goalReached: false }
+    res.oneTimeTotal = 0
+    res.churn = { ...res.churn, amount: 0 }
+    res.conversion = { ...res.conversion, amount: 0 }
+    res.gmTotal = 0
+    res.agmTotal = 0
+  }
+
+  return res
 }
