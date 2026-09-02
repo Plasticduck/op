@@ -29,6 +29,16 @@ export type AvgBase = number | null
 export const LIFETIME_VALUE_BONUS = 1500
 export const MEMBERSHIP_BONUS = 1500
 
+// Some sites earn the Lifetime Value bonus on an absolute average-months
+// milestone (paid once when avg months of active membership reaches the goal)
+// instead of the default "+1 month vs base" growth rule. Keyed by site name.
+export const LIFETIME_AVG_GOALS: Record<string, number> = { MW31: 9 }
+
+export function lifetimeAvgGoal(siteName: string | null | undefined): number | null {
+  const n = siteName?.trim()
+  return n && n in LIFETIME_AVG_GOALS ? LIFETIME_AVG_GOALS[n] : null
+}
+
 // Churn reward: first matching bracket wins. <7 -> 600, <=8 -> 520, <=9 -> 440,
 // <=10 -> 360, <=11 -> 240, <=12 -> 120, >12 -> 0.
 export const CHURN_BRACKETS: { test: (c: number) => boolean; amount: number; label: string }[] = [
@@ -84,6 +94,7 @@ export type GmBonusResult = {
   previousTotal: number | null
   levels: LevelRow[]
   avgMos: { base: number | null; current: number; delta: number | null }
+  avgMonthsGoal: number | null // absolute milestone in effect for this site, or null
   lifetimeValue: { earned: boolean | null; amount: number; goalReached: boolean }
   membership: { earned: boolean | null; amount: number; combinedChangeSinceBase: number | null; goalReached: boolean }
   oneTimeTotal: number
@@ -100,8 +111,12 @@ export function computeGmBonus(args: {
   previous: PrevCounts
   membershipBase: MembershipBase
   avgBase: AvgBase
+  // When set, the Lifetime Value bonus uses this absolute avg-months milestone
+  // instead of the default "+1 vs base" growth rule.
+  avgMonthsGoal?: number | null
 }): GmBonusResult {
   const { current, previous, membershipBase, avgBase } = args
+  const avgMonthsGoal = args.avgMonthsGoal ?? null
 
   const counts: Record<LevelKey, number> = {
     mighty: current.mighty_count,
@@ -136,9 +151,16 @@ export function computeGmBonus(args: {
     }
   })
 
-  // Lifetime value: current avg months of active membership up at least 1 vs base.
+  // Lifetime value. Default: avg months of active membership up at least 1 vs
+  // base. With an absolute milestone: paid once when avg months reaches the goal,
+  // guarded by base < goal so a baseline reset locks it in and it isn't repaid.
   const avgDelta = avgBase === null ? null : current.avg_mos - avgBase
-  const lifeEarned = avgDelta === null ? null : avgDelta >= 1
+  const lifeEarned =
+    avgMonthsGoal !== null
+      ? current.avg_mos >= avgMonthsGoal && (avgBase === null || avgBase < avgMonthsGoal)
+      : avgDelta === null
+        ? null
+        : avgDelta >= 1
   const lifetimeValue = {
     earned: lifeEarned,
     amount: lifeEarned ? LIFETIME_VALUE_BONUS : 0,
@@ -172,6 +194,7 @@ export function computeGmBonus(args: {
     previousTotal,
     levels,
     avgMos: { base: avgBase, current: current.avg_mos, delta: avgDelta },
+    avgMonthsGoal,
     lifetimeValue,
     membership,
     oneTimeTotal,

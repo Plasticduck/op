@@ -65,8 +65,12 @@ export async function exportSiteBonusPdf(
     head: [['One-time Bonus', 'Detail', 'Earned', 'Amount']],
     body: [
       [
-        'Lifetime Value (avg months +1 vs base)',
-        `base ${r.avgMos.base ?? '—'} to ${r.avgMos.current} (${r.avgMos.delta === null ? '—' : `${r.avgMos.delta >= 0 ? '+' : ''}${r.avgMos.delta.toFixed(1)}`} mo)`,
+        r.avgMonthsGoal !== null
+          ? `Lifetime Value (avg months >= ${r.avgMonthsGoal})`
+          : 'Lifetime Value (avg months +1 vs base)',
+        r.avgMonthsGoal !== null
+          ? `now ${r.avgMos.current} mo, goal ${r.avgMonthsGoal}${r.avgMos.base === null ? '' : ` (base ${r.avgMos.base})`}`
+          : `base ${r.avgMos.base ?? '—'} to ${r.avgMos.current} (${r.avgMos.delta === null ? '—' : `${r.avgMos.delta >= 0 ? '+' : ''}${r.avgMos.delta.toFixed(1)}`} mo)`,
         yesNo(r.lifetimeValue.earned),
         currency(r.lifetimeValue.amount),
       ],
