@@ -100,11 +100,43 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
     }
   }
 
+  const linkDoc = doc as unknown as {
+    link: (x: number, y: number, w: number, h: number, o: { url: string }) => void
+  }
+  // Photo thumbnails are drawn into space reserved at the bottom of each item's
+  // table row, so each item's photos sit directly beneath its line. imgH is the
+  // thumbnail height; topPad/botPad frame the reserved block.
+  const imgH = 28
+  const gap = 3
+  const topPad = 2
+  const botPad = 2
+  type PhotoImg = { url: string; dataUrl?: string; w?: number; h?: number }
+  type PhotoPos = { x: number; row: number; w: number; img: PhotoImg }
+  const layoutPhotos = (imgs: PhotoImg[]): { positions: PhotoPos[]; blockH: number } => {
+    const positions: PhotoPos[] = []
+    let x = 0
+    let row = 0
+    for (const img of imgs) {
+      const ratio = img.w && img.h ? img.w / img.h : 1
+      const w = Math.max(12, Math.min(imgH * ratio, contentWidth))
+      if (x > 0 && x + w > contentWidth) {
+        x = 0
+        row += 1
+      }
+      positions.push({ x, row, w, img })
+      x += w + gap
+    }
+    const nRows = row + 1
+    return { positions, blockH: topPad + nRows * imgH + (nRows - 1) * gap + botPad }
+  }
+
   for (const section of input.schema.sections) {
     const rows: Array<[string, string, string]> = []
+    // Per body-row photo layout, parallel to `rows`, or null when the item has none.
+    const rowPhotos: ({ positions: PhotoPos[]; blockH: number } | null)[] = []
     for (const item of section.items) {
       if (item.type === 'attachment') continue
-      const ans = input.answers[item.id] as { value?: unknown; comments?: unknown } | undefined
+      const ans = input.answers[item.id] as { value?: unknown; comments?: unknown; photos?: string[] } | undefined
       if (item.type === 'pass_fail') {
         const v = ans?.value
         const pf = v === 'pass' ? 'Pass' : v === 'fail' ? 'Fail' : '-'
@@ -116,6 +148,10 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
         const text = raw == null || raw === '' ? '-' : String(raw)
         rows.push([item.label, '-', text])
       }
+      const imgs = (ans?.photos ?? [])
+        .map((p) => input.photoImages?.[p])
+        .filter((im): im is PhotoImg => !!im)
+      rowPhotos.push(imgs.length ? layoutPhotos(imgs) : null)
     }
 
     ensureSpace(14)
@@ -130,6 +166,8 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
       head: [['Item', 'Pass/Fail', 'Comments']],
       body: rows.length > 0 ? rows : [['-', '-', '-']],
       margin: { left: marginX, right: marginX },
+      // Keep a row and the photos reserved beneath it on the same page.
+      rowPageBreak: 'avoid',
       styles: { font: 'helvetica', fontSize: 9, cellPadding: 3 },
       headStyles: { fillColor: [11, 15, 20], textColor: [255, 255, 255] },
       alternateRowStyles: { fillColor: [247, 248, 250] },
@@ -138,66 +176,37 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
         1: { cellWidth: contentWidth * 0.18 },
         2: { cellWidth: contentWidth * 0.40 },
       },
+      // Reserve space at the bottom of a row for its photos...
+      didParseCell: (data) => {
+        if (data.section !== 'body') return
+        const layout = rowPhotos[data.row.index]
+        if (!layout) return
+        data.cell.styles.cellPadding = { top: 3, right: 3, bottom: 3 + layout.blockH, left: 3 }
+      },
+      // ...then draw the photos into that reserved band, spanning the table width.
+      didDrawCell: (data) => {
+        if (data.section !== 'body' || data.column.index !== 0) return
+        const layout = rowPhotos[data.row.index]
+        if (!layout) return
+        const blockTop = data.cell.y + data.cell.height - layout.blockH + topPad
+        for (const pos of layout.positions) {
+          const xx = marginX + pos.x
+          const yy = blockTop + pos.row * (imgH + gap)
+          if (pos.img.dataUrl) {
+            try {
+              doc.addImage(pos.img.dataUrl, 'JPEG', xx, yy, pos.w, imgH)
+            } catch {
+              drawPhotoPlaceholder(doc, xx, yy, pos.w, imgH)
+            }
+          } else {
+            drawPhotoPlaceholder(doc, xx, yy, pos.w, imgH)
+          }
+          linkDoc.link(xx, yy, pos.w, imgH, { url: pos.img.url })
+        }
+      },
     })
 
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
-
-    // Photos attached to this section's items: a thumbnail strip, each thumbnail
-    // a clickable link to the full image plus a visible "Open" link beneath it.
-    if (input.photoImages) {
-      const imgH = 30 // mm
-      const capH = 5
-      const gap = 3
-      const linkDoc = doc as unknown as {
-        link: (x: number, y: number, w: number, h: number, o: { url: string }) => void
-        textWithLink: (t: string, x: number, y: number, o: { url: string }) => void
-      }
-      for (const item of section.items) {
-        const ans = input.answers[item.id] as { photos?: string[] } | undefined
-        const paths = (ans?.photos ?? []).filter((p) => input.photoImages?.[p])
-        if (paths.length === 0) continue
-
-        ensureSpace(6 + imgH + capH)
-        doc.setFontSize(9)
-        doc.setFont('helvetica', 'bold')
-        doc.setTextColor(60, 66, 74)
-        doc.text('Photos — ' + item.label, marginX, y)
-        y += 4
-
-        let x = marginX
-        let rowStartY = y
-        paths.forEach((p, idx) => {
-          const img = input.photoImages![p]
-          const ratio = img.w && img.h ? img.w / img.h : 1
-          const w = Math.max(12, Math.min(imgH * ratio, contentWidth))
-          if (x + w > pageWidth - marginX && x > marginX) {
-            x = marginX
-            rowStartY += imgH + capH + gap
-            if (rowStartY + imgH + capH > pageHeight - 20) {
-              doc.addPage()
-              rowStartY = topMargin
-            }
-          }
-          if (img.dataUrl) {
-            try {
-              doc.addImage(img.dataUrl, 'JPEG', x, rowStartY, w, imgH)
-            } catch {
-              drawPhotoPlaceholder(doc, x, rowStartY, w, imgH)
-            }
-          } else {
-            drawPhotoPlaceholder(doc, x, rowStartY, w, imgH)
-          }
-          // Whole thumbnail is a link, with a visible caption link below it.
-          linkDoc.link(x, rowStartY, w, imgH, { url: img.url })
-          doc.setFontSize(7)
-          doc.setFont('helvetica', 'normal')
-          doc.setTextColor(37, 99, 235)
-          linkDoc.textWithLink('Open photo ' + (idx + 1) + ' ↗', x, rowStartY + imgH + 3.5, { url: img.url })
-          x += w + gap
-        })
-        y = rowStartY + imgH + capH + 6
-      }
-    }
   }
 
   const summary = (input.summaryText ?? '').trim()
