@@ -245,17 +245,23 @@ export default function BonusesPage() {
   )
 
   // Prefill the form from a saved month whenever the site/month/data changes.
+  // An under-construction month shows blank, locked cells (its saved numbers are
+  // the carried prior-month figures, kept only for the background calc chain).
   useEffect(() => {
     if (monthRow) {
-      setForm({
-        mighty: String(monthRow.mighty_count),
-        super: String(monthRow.super_count),
-        wonder: String(monthRow.wonder_count),
-        avgMos: String(monthRow.avg_mos),
-        churn: String(monthRow.churn_pct),
-        conversion: String(monthRow.conversion_pct),
-      })
       setUnderConstruction(monthRow.under_construction)
+      setForm(
+        monthRow.under_construction
+          ? emptyForm
+          : {
+              mighty: String(monthRow.mighty_count),
+              super: String(monthRow.super_count),
+              wonder: String(monthRow.wonder_count),
+              avgMos: String(monthRow.avg_mos),
+              churn: String(monthRow.churn_pct),
+              conversion: String(monthRow.conversion_pct),
+            },
+      )
     } else {
       setForm(emptyForm)
       setUnderConstruction(false)
@@ -263,21 +269,12 @@ export default function BonusesPage() {
     setNotice(null)
   }, [monthRow, locationId, period])
 
-  // Marking a month under construction carries the prior month's numbers forward
-  // (the site isn't operating, so there are no new numbers), and unmarking leaves
-  // them for editing.
+  // Marking a month under construction blanks and locks the input cells (the
+  // site isn't operating, so no numbers are shown). The prior month's numbers are
+  // carried forward in the background at save time, not displayed.
   const toggleUnderConstruction = (checked: boolean) => {
     setUnderConstruction(checked)
-    if (checked && prevRow) {
-      setForm({
-        mighty: String(prevRow.mighty_count),
-        super: String(prevRow.super_count),
-        wonder: String(prevRow.wonder_count),
-        avgMos: String(prevRow.avg_mos),
-        churn: String(prevRow.churn_pct),
-        conversion: String(prevRow.conversion_pct),
-      })
-    }
+    if (checked) setForm(emptyForm)
   }
 
   const current: MonthInputs = {
@@ -418,16 +415,31 @@ export default function BonusesPage() {
     if (!profile || !locationId) return
     setSaving(true)
     setError(null)
+    // Under construction: the cells are blank, so carry the prior month's numbers
+    // into the saved row (kept in the background for the next month's carry and
+    // the membership comparison when construction ends). Otherwise save the form.
+    const nums = underConstruction && prevRow
+      ? {
+          mighty_count: prevRow.mighty_count,
+          super_count: prevRow.super_count,
+          wonder_count: prevRow.wonder_count,
+          avg_mos: Number(prevRow.avg_mos),
+          churn_pct: Number(prevRow.churn_pct),
+          conversion_pct: Number(prevRow.conversion_pct),
+        }
+      : {
+          mighty_count: current.mighty_count,
+          super_count: current.super_count,
+          wonder_count: current.wonder_count,
+          avg_mos: current.avg_mos,
+          churn_pct: current.churn_pct,
+          conversion_pct: current.conversion_pct,
+        }
     const { error: err } = await gmBonus.upsertMonth({
       account_id: profile.account_id,
       location_id: locationId,
       period,
-      mighty_count: current.mighty_count,
-      super_count: current.super_count,
-      wonder_count: current.wonder_count,
-      avg_mos: current.avg_mos,
-      churn_pct: current.churn_pct,
-      conversion_pct: current.conversion_pct,
+      ...nums,
       under_construction: underConstruction,
       source: 'manual',
       submitted_by: profile.id,
