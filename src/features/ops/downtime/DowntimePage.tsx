@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Plus } from 'lucide-react'
+import { AlertTriangle, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { StatCardRow } from '@/components/data/StatCardRow'
@@ -17,9 +17,15 @@ import { downtime, equipment as equipQ, type DowntimeEvent, type Equipment } fro
 type Row = DowntimeEvent & { equipment: { name: string } | null }
 
 function Inner({ locationId }: { locationId: string }) {
+  const { profile } = useAuth()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [logging, setLogging] = useState(false)
+  const [removing, setRemoving] = useState<string | null>(null)
+
+  // Deleting downtime entries is restricted (RLS) to the owner and kjowers.
+  const canDelete =
+    profile?.role === 'owner' || (profile?.email ?? '').toLowerCase() === 'kjowers@mighty-wash.com'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -29,6 +35,15 @@ function Inner({ locationId }: { locationId: string }) {
   }, [locationId])
 
   useEffect(() => { void load() }, [load])
+
+  const remove = async (r: Row) => {
+    if (!window.confirm(`Delete the ${r.equipment?.name ?? 'equipment'} downtime entry from ${dateTime(r.started_at)}? This cannot be undone.`)) return
+    setRemoving(r.id)
+    const { error } = await downtime.remove(r.id)
+    setRemoving(null)
+    if (error) { window.alert(`Could not delete: ${error.message}`); return }
+    void load()
+  }
 
   const since30 = Date.now() - 30 * 24 * 3600 * 1000
   const recent = rows.filter((r) => new Date(r.started_at).getTime() >= since30)
@@ -91,11 +106,25 @@ function Inner({ locationId }: { locationId: string }) {
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    {!r.ended_at && (
-                      <Button variant="secondary" size="sm" onClick={async () => { await downtime.end(r.id); void load() }}>
-                        Mark resolved
-                      </Button>
-                    )}
+                    <div className="flex items-center justify-end gap-1">
+                      {!r.ended_at && (
+                        <Button variant="secondary" size="sm" onClick={async () => { await downtime.end(r.id); void load() }}>
+                          Mark resolved
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-ink-muted hover:text-danger"
+                          disabled={removing === r.id}
+                          title="Delete entry"
+                          onClick={() => void remove(r)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

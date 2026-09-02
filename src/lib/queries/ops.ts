@@ -90,6 +90,8 @@ export const downtime = {
       .from('downtime_events')
       .update({ ended_at: new Date().toISOString() })
       .eq('id', id),
+  // Delete is restricted by RLS to the owner and kjowers@mighty-wash.com; others no-op.
+  remove: (id: string) => supabase.from('downtime_events').delete().eq('id', id).select('id'),
 }
 
 // ---- Checklists ------------------------------------------------------------
