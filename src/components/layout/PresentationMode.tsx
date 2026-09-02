@@ -234,7 +234,8 @@ export default function PresentationMode() {
   // Google Rating: the site's rating, or the average across the selection.
   const rVals = selLocs.map((l) => rmap[l.id]?.rating).filter((v): v is number => v != null)
   const ratingVal = rVals.length ? rVals.reduce((a, b) => a + b, 0) / rVals.length : null
-  // Equipment Down: total units in an unplanned-offline state across the selection.
+  // Equipment Down: open reactive work orders (MaintainX repair backlog) across
+  // the selection.
   const downVal = selLocs.reduce((a, l) => a + (dmap[l.id] ?? 0), 0)
   // Churn = voluntary + credit-card churn combined (null only when both are).
   const churnCombined = m.churn == null && m.churnCc == null ? null : (m.churn ?? 0) + (m.churnCc ?? 0)
