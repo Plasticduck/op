@@ -19,6 +19,11 @@ import { WorkOrderDetail } from './WorkOrderDetail'
 
 type Tab = 'todo' | 'done'
 
+// Temporarily view-only: creating work orders in Operator is disabled while
+// MaintainX remains the source of truth (work orders sync in from there). Flip
+// this to true to restore the create flow.
+const CREATE_ENABLED: boolean = false
+
 const PRIORITY_RANK: Record<WorkOrderPriority, number> = { high: 0, medium: 1, low: 2, none: 3 }
 const STATUS_TONE: Record<WorkOrderStatus, string> = {
   open: 'bg-accent-soft text-accent border-accent/30',
@@ -52,6 +57,7 @@ export default function WorkOrdersPage() {
   // sessionStorage and navigate here. Auto-open the modal with those defaults
   // the first time we mount with one waiting.
   useEffect(() => {
+    if (!CREATE_ENABLED) return
     const raw = sessionStorage.getItem('newWO.prefill')
     if (!raw) return
     sessionStorage.removeItem('newWO.prefill')
@@ -116,7 +122,7 @@ export default function WorkOrdersPage() {
           title="Work Orders"
           subtitle="Create, assign, and track every job."
           actions={
-            <Button onClick={() => setCreating(true)}><Plus className="size-4" /> New Work Order</Button>
+            CREATE_ENABLED ? <Button onClick={() => setCreating(true)}><Plus className="size-4" /> New Work Order</Button> : undefined
           }
         />
       </div>
@@ -129,13 +135,15 @@ export default function WorkOrdersPage() {
         )}>
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5 lg:hidden">
             <h1 className="text-lg font-semibold text-ink">Work Orders</h1>
-            <button
-              onClick={() => setCreating(true)}
-              className="grid size-9 place-items-center rounded-full bg-accent text-white hover:bg-accent-hover"
-              aria-label="New work order"
-            >
-              <Plus className="size-4" />
-            </button>
+            {CREATE_ENABLED && (
+              <button
+                onClick={() => setCreating(true)}
+                className="grid size-9 place-items-center rounded-full bg-accent text-white hover:bg-accent-hover"
+                aria-label="New work order"
+              >
+                <Plus className="size-4" />
+              </button>
+            )}
           </div>
 
           <div className="flex border-b border-border">
