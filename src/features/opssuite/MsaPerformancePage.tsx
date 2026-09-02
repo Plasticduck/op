@@ -101,6 +101,7 @@ export default function MsaPerformancePage() {
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>('today')
+  const [region, setRegion] = useState<string>('all')
   const [site, setSite] = useState<string>('all')
 
   useEffect(() => {
@@ -130,17 +131,33 @@ export default function MsaPerformancePage() {
   const washKey = period === 'today' ? 'today_eligible_washes' : 'mtd_eligible_washes'
   const salesKey = period === 'today' ? 'today_sales' : 'mtd_sales'
 
+  // Regions present in the report (in the dashboard's order), for the region filter.
+  const regionOptions = useMemo(() => {
+    const seen = new Set<string>()
+    for (const r of report?.rows ?? []) {
+      const reg = regionForSite(r.site)
+      if (reg !== null) seen.add(reg)
+    }
+    return REGION_ORDER.filter((r) => seen.has(r))
+  }, [report])
+
   // Every site that appears in the report (Dalhart dropped), in numerical order,
-  // for the "by site" dropdown.
+  // for the "by site" dropdown. Narrowed to the chosen region when one is set.
   const siteOptions = useMemo(() => {
     const seen = new Set<string>()
     for (const r of report?.rows ?? []) {
-      if (regionForSite(r.site) !== null) seen.add(r.site)
+      const reg = regionForSite(r.site)
+      if (reg === null) continue
+      if (region !== 'all' && reg !== region) continue
+      seen.add(r.site)
     }
     return [...seen].sort((a, b) => (siteNumber(a) ?? 1e9) - (siteNumber(b) ?? 1e9))
-  }, [report])
+  }, [report, region])
 
-  // Reset a stale site selection if the report no longer carries it.
+  // Reset stale selections when the report (or region filter) no longer carries them.
+  useEffect(() => {
+    if (region !== 'all' && !regionOptions.includes(region)) setRegion('all')
+  }, [region, regionOptions])
   useEffect(() => {
     if (site !== 'all' && !siteOptions.includes(site)) setSite('all')
   }, [site, siteOptions])
@@ -152,20 +169,21 @@ export default function MsaPerformancePage() {
     const buckets = new Map<string, MsaRow[]>()
     for (const r of report?.rows ?? []) {
       if (site !== 'all' && r.site !== site) continue
-      const region = regionForSite(r.site)
-      if (region === null) continue
-      const list = buckets.get(region) ?? []
+      const reg = regionForSite(r.site)
+      if (reg === null) continue
+      if (region !== 'all' && reg !== region) continue
+      const list = buckets.get(reg) ?? []
       list.push(r)
-      buckets.set(region, list)
+      buckets.set(reg, list)
     }
-    return REGION_ORDER.filter((r) => buckets.has(r)).map((region) => ({
-      region,
+    return REGION_ORDER.filter((r) => buckets.has(r)).map((reg) => ({
+      region: reg,
       rows: buckets
-        .get(region)!
+        .get(reg)!
         .slice()
         .sort((a, b) => ((b[convKey] as number | null) ?? -1) - ((a[convKey] as number | null) ?? -1)),
     }))
-  }, [report, convKey, site])
+  }, [report, convKey, site, region])
 
   return (
     <div className="flex flex-col gap-5">
@@ -181,19 +199,35 @@ export default function MsaPerformancePage() {
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <label htmlFor="msa-site" className="text-xs font-medium text-ink-muted">Site</label>
-          <Select
-            id="msa-site"
-            value={site}
-            onChange={(e) => setSite(e.target.value)}
-            className="h-9 w-48"
-          >
-            <option value="all">All sites</option>
-            {siteOptions.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </Select>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label htmlFor="msa-region" className="text-xs font-medium text-ink-muted">Region</label>
+            <Select
+              id="msa-region"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              className="h-9 w-44"
+            >
+              <option value="all">All regions</option>
+              {regionOptions.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="msa-site" className="text-xs font-medium text-ink-muted">Site</label>
+            <Select
+              id="msa-site"
+              value={site}
+              onChange={(e) => setSite(e.target.value)}
+              className="h-9 w-48"
+            >
+              <option value="all">All sites</option>
+              {siteOptions.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </Select>
+          </div>
         </div>
         <Seg value={period} onChange={setPeriod} />
       </div>
