@@ -16,7 +16,7 @@ const REGION_BY_SITE: Record<number, string> = {
   2: 'Permian Basin', 8: 'Permian Basin', 15: 'Permian Basin', 22: 'Permian Basin', 25: 'Permian Basin',
   3: 'Permian Basin', 12: 'Permian Basin', 13: 'Permian Basin', 24: 'Permian Basin', 31: 'Permian Basin',
   6: 'Permian Basin', 4: 'Permian Basin',
-  27: 'Central Texas', 28: 'Central Texas', 29: 'Central Texas',
+  27: 'Central Texas', 28: 'Central Texas', 29: 'Central Texas', 30: 'Central Texas',
   16: 'New Mexico', 23: 'New Mexico', 26: 'New Mexico', 21: 'New Mexico', 17: 'New Mexico', 18: 'New Mexico',
 }
 // Sites deliberately left out of the region breakdown (Dalhart, per request).
