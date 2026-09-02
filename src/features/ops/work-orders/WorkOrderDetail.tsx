@@ -178,50 +178,59 @@ export function WorkOrderDetail({
             {d.status === 'done' ? 'Reopen' : 'Mark as Done'}
           </Button>
         )}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            className="grid size-9 place-items-center rounded-full text-ink-muted hover:bg-content"
-            aria-label="More"
-          >
-            <MoreVertical className="size-4" />
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-border bg-card py-1 shadow-md">
-              <button
-                onClick={() => { setMenuOpen(false); void removeWO() }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-danger hover:bg-content"
-              >
-                <Trash2 className="size-4" /> Delete work order
-              </button>
-            </div>
-          )}
-        </div>
+        {STATUS_EDIT_ENABLED && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="grid size-9 place-items-center rounded-full text-ink-muted hover:bg-content"
+              aria-label="More"
+            >
+              <MoreVertical className="size-4" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-border bg-card py-1 shadow-md">
+                <button
+                  onClick={() => { setMenuOpen(false); void removeWO() }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-danger hover:bg-content"
+                >
+                  <Trash2 className="size-4" /> Delete work order
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Body */}
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4">
-        {/* Status pipeline */}
+        {/* Status. Read-only while MaintainX is the source of truth: the status is
+            shown but cannot be changed from Operator. */}
         <section className="mb-4">
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">Status</div>
-          <div className="flex flex-wrap gap-1.5">
-            {STATUS_OPTIONS.filter((s) => s.value !== 'skipped').map((s) => (
+          {STATUS_EDIT_ENABLED ? (
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_OPTIONS.filter((s) => s.value !== 'skipped').map((s) => (
+                <StatusButton
+                  key={s.value}
+                  active={d.status === s.value}
+                  onClick={() => void setStatus(s.value)}
+                  label={s.label}
+                  value={s.value}
+                />
+              ))}
               <StatusButton
-                key={s.value}
-                active={d.status === s.value}
-                onClick={() => void setStatus(s.value)}
-                label={s.label}
-                value={s.value}
+                active={d.status === 'skipped'}
+                onClick={() => void setStatus('skipped')}
+                label="Skipped"
+                value="skipped"
               />
-            ))}
-            <StatusButton
-              active={d.status === 'skipped'}
-              onClick={() => void setStatus('skipped')}
-              label="Skipped"
-              value="skipped"
-            />
-          </div>
+            </div>
+          ) : (
+            <Badge tone={d.status === 'done' ? 'ok' : d.status === 'on_hold' ? 'warn' : d.status === 'skipped' ? 'danger' : 'accent'}>
+              {STATUS_OPTIONS.find((s) => s.value === d.status)?.label ?? d.status.replace('_', ' ')}
+            </Badge>
+          )}
         </section>
 
         {/* Photos */}
