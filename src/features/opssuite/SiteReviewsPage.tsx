@@ -15,7 +15,6 @@ import { shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { siteEvaluations, customForms, siteReviewPhotos, type SiteEvaluation } from '@/lib/queries/opsSuite'
-import { exportExcel, type ExportColumn } from '@/lib/opsExport'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
 import SiteReviewForm from './SiteReviewForm'
@@ -166,15 +165,6 @@ function ReviewItemPhotos({ photos }: { photos: string[] }) {
 }
 
 type Row = SiteEvaluation & { location: { name: string } | null }
-
-const EXPORT_COLUMNS: ExportColumn<Row>[] = [
-  { header: 'Site', value: (r) => r.location?.name },
-  { header: 'Result', value: (r) => r.result },
-  { header: 'Notes', value: (r) => r.additional_notes },
-  { header: 'Follow-up', value: (r) => r.follow_up_instructions },
-  { header: 'Submitted by', value: (r) => r.submitted_by_name },
-  { header: 'Date', value: (r) => shortDate(r.submitted_at) },
-]
 
 function filenameSafeDate(iso: string | null | undefined): string {
   if (!iso) return 'review'
@@ -329,8 +319,8 @@ export default function SiteReviewsPage() {
       <OpsToolbar
         range={table.range} onRange={table.setRange} sort={table.sort} onSort={table.setSort} count={table.rows.length}
         onExportPdf={() => void exportAllPdf()}
-        onExportExcel={() => exportExcel('site-reviews', EXPORT_COLUMNS, table.rows)}
         disableExport={exportingAll}
+        hideExcel
       />
       {selected.size > 0 && (
         <div className="flex items-center gap-3 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm">

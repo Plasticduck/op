@@ -7,16 +7,17 @@ import type { SortKey } from './useOpsTable'
 // Toolbar shared by all Ops Suite pages: Quick Reports timeframe, sort order,
 // and Export to PDF / Excel of the currently-shown rows.
 export function OpsToolbar({
-  range, onRange, sort, onSort, onExportPdf, onExportExcel, count, disableExport,
+  range, onRange, sort, onSort, onExportPdf, onExportExcel, count, disableExport, hideExcel,
 }: {
   range: RangeKey
   onRange: (r: RangeKey) => void
   sort: SortKey
   onSort: (s: SortKey) => void
   onExportPdf: () => void
-  onExportExcel: () => void
+  onExportExcel?: () => void
   count: number
   disableExport?: boolean
+  hideExcel?: boolean
 }) {
   return (
     <div className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-card px-3 py-3">
@@ -38,9 +39,11 @@ export function OpsToolbar({
         <Button variant="secondary" size="sm" onClick={onExportPdf} disabled={disableExport || count === 0}>
           <FileText className="size-4" /> PDF
         </Button>
-        <Button variant="secondary" size="sm" onClick={onExportExcel} disabled={disableExport || count === 0}>
-          <FileSpreadsheet className="size-4" /> Excel
-        </Button>
+        {!hideExcel && (
+          <Button variant="secondary" size="sm" onClick={onExportExcel} disabled={disableExport || count === 0}>
+            <FileSpreadsheet className="size-4" /> Excel
+          </Button>
+        )}
       </div>
     </div>
   )
