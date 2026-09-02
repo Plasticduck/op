@@ -71,7 +71,7 @@ export function WorkOrdersTab({ range }: { range: DateRange }) {
     <div className="flex flex-col gap-4">
       {/* Created vs Completed */}
       <Card title="Created vs. Completed">
-        <div className="mb-3 grid grid-cols-3 gap-3">
+        <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <BigNum value={totalCreated} label="Created" tone="accent" />
           <BigNum value={totalCompleted} label="Completed" tone="ok" />
           <BigNum value={completionPct + '%'} label="Percent Completed" />
@@ -82,7 +82,7 @@ export function WorkOrdersTab({ range }: { range: DateRange }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Work Orders by Type */}
         <Card title="Work Orders by Type">
-          <div className="mb-3 grid grid-cols-3 gap-2">
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             <BigNum value={preventive} label="Preventive" tone="ok" />
             <BigNum value={reactive} label="Reactive" tone="warn" />
             <BigNum value={inspection + project + other} label="Other" />
@@ -105,7 +105,7 @@ export function WorkOrdersTab({ range }: { range: DateRange }) {
 
         {/* Status */}
         <Card title="Status">
-          <div className="mb-3 grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+          <div className="mb-3 grid grid-cols-2 gap-1.5 min-[420px]:grid-cols-3 sm:grid-cols-5">
             <BigNum value={status.open} label="Open" tone="accent" size="sm" />
             <BigNum value={status.on_hold} label="On Hold" tone="warn" size="sm" />
             <BigNum value={status.in_progress} label="In Progress" tone="accent" size="sm" />
@@ -130,7 +130,7 @@ export function WorkOrdersTab({ range }: { range: DateRange }) {
 
       {/* Non-Repeating vs. Repeating */}
       <Card title="Non-Repeating vs. Repeating">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <BigNum value={repeating.nonRepeating} label="Non-Repeating" tone="accent" />
           <BigNum value={repeating.repeating} label="Repeating" tone="accent" />
           <BigNum value={repeatingRatio + '%'} label="Repeating Ratio" />

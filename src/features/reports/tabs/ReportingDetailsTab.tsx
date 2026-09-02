@@ -70,7 +70,7 @@ export function ReportingDetailsTab({ range }: { range: DateRange }) {
           </div>
           <div className="rounded-md border border-border p-3">
             <div className="mb-2 text-sm font-semibold text-ink">Time to Complete</div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <StatTile value={Math.round(totalHours).toLocaleString()} label="Total Hours" sublabel="Logged in range" />
               <StatTile value={avgHours > 0 ? avgHours.toFixed(1) : '—'} label="AVG Hours" tone="ok" />
               <StatTile value={mttr > 0 ? mttr.toFixed(1) : '—'} label="MTTR AVG Hours" tone="accent" sublabel="Only on non-repeating" />
