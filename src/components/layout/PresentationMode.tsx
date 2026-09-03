@@ -80,7 +80,7 @@ export default function PresentationMode() {
   const dark = resolved === 'dark'
   const { locations, activeLocation } = useLocations()
   const { settings } = useCompany()
-  const { feed, error } = useSitePerformanceFeed(active)
+  const { feed, error, refresh } = useSitePerformanceFeed(active)
 
   // Region groups when the account has regions configured; otherwise sites are
   // offered flat (no redundant "Other" bucket).
@@ -92,7 +92,7 @@ export default function PresentationMode() {
   const [sel, setSel] = useState<Selection>({ kind: 'all' })
   const [autoplay, setAutoplay] = useState(true)
   const [scope, setScope] = useState<Scope>('sites')
-  const [intervalSec, setIntervalSec] = useState(60)
+  const [intervalSec, setIntervalSec] = useState(15)
   const [progress, setProgress] = useState(0)
   const startRef = useRef(0)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -171,21 +171,29 @@ export default function PresentationMode() {
     setNow(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
   }, [active, feed])
 
-  // Load scorecards + Google ratings + open work-order counts for every site.
+  // Google ratings: loaded once per session. The GatherUp sync behind this is an
+  // external call and ratings barely move intraday, so it is NOT refreshed on the
+  // fast rotation cadence.
+  useEffect(() => {
+    if (!active || !locations.length) return
+    let cancel = false
+    ratings.fetch(locations.map((l) => l.id))
+      .then((rats) => {
+        if (cancel) return
+        const r: Record<string, SiteRating> = {}
+        for (const x of rats) r[x.location_id] = x
+        setRmap(r)
+      })
+      .catch(() => {})
+    return () => { cancel = true }
+  }, [active, locations])
+
+  // Scorecards: recomputed whenever the feed refreshes (or ratings arrive), so the
+  // grades track the live numbers.
   useEffect(() => {
     if (!active || !locations.length) return
     let cancel = false
     void (async () => {
-      const locIds = locations.map((l) => l.id)
-      const [rats, downs] = await Promise.all([
-        ratings.fetch(locIds).catch(() => [] as SiteRating[]),
-        assets.downCounts().catch(() => ({} as Record<string, number>)),
-      ])
-      if (cancel) return
-      const r: Record<string, SiteRating> = {}
-      for (const x of rats) r[x.location_id] = x
-      setRmap(r)
-      setDmap(downs)
       const perfByLoc: Record<string, SitePerformanceInput> = {}
       for (const l of locations) {
         const sm = siteMetrics(feed, siteNumber(l.name))
@@ -195,14 +203,24 @@ export default function PresentationMode() {
           laborPct: sm.laborPctMtd ?? undefined,
           conversion: sm.conversionMtd ?? undefined,
           churn: sm.churn ?? undefined,
-          googleRating: r[l.id]?.rating ?? undefined,
+          googleRating: rmap[l.id]?.rating ?? undefined,
         }
       }
-      const sc = await computeScorecards(locIds, perfByLoc).catch(() => ({} as Record<string, Scorecard>))
+      const sc = await computeScorecards(locations.map((l) => l.id), perfByLoc).catch(() => ({} as Record<string, Scorecard>))
       if (!cancel) setCards(sc)
     })()
     return () => { cancel = true }
-  }, [active, feed, locations])
+  }, [active, feed, locations, rmap])
+
+  // Whenever a site is selected or rotates back in, pull the latest live numbers:
+  // re-pull the feed (TTL-gated, so it refetches at most ~once a minute) and
+  // refresh the cheap open work-order counts. The scorecard effect above then
+  // recomputes as fresh feed data lands.
+  useEffect(() => {
+    if (!active) return
+    refresh()
+    assets.downCounts().then(setDmap).catch(() => {})
+  }, [sel, active, refresh])
 
   const byId = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
 

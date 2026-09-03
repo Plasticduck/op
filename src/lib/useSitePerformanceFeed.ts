@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fetchSitePerformance, type SitePerformanceFeed } from '@/lib/queries/sitePerformance'
 
 // Shared, cached access to the Site Performance feed. Several dashboard sections
@@ -35,5 +35,13 @@ export function useSitePerformanceFeed(enabled: boolean) {
     return () => { active = false }
   }, [enabled])
 
-  return { feed, loading, error }
+  // Re-pull the feed. TTL-gated: returns the cached feed if it's still fresh
+  // (< 60s), otherwise refetches. Lets a caller poll for live numbers without
+  // hammering the (slow) feed endpoint. Keeps the last feed on screen meanwhile.
+  const refresh = useCallback(() => {
+    if (!enabled) return
+    load().then((f) => setFeed(f)).catch(() => setError(true))
+  }, [enabled])
+
+  return { feed, loading, error, refresh }
 }
