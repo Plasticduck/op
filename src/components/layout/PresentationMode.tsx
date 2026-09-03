@@ -11,6 +11,7 @@ import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
 import { computeScorecards, letterFor, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { assets } from '@/lib/queries/assets'
+import { fetchLubeStats, type LubeTotals } from '@/lib/queries/lube'
 import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -102,6 +103,9 @@ export default function PresentationMode() {
   const [cards, setCards] = useState<Record<string, Scorecard>>({})
   const [rmap, setRmap] = useState<Record<string, SiteRating>>({})
   const [dmap, setDmap] = useState<Record<string, number>>({})
+  // Site 19 (MW19) is the DRB lube shop: its cars/sales/average-ticket come from
+  // the lube-stats source, not the car-wash feed.
+  const [lube, setLube] = useState<LubeTotals | null>(null)
 
   // All sites in number order, and the rotation the auto-scroll steps through.
   const orderedSites = useMemo(
@@ -222,6 +226,17 @@ export default function PresentationMode() {
     assets.downCounts().then(setDmap).catch(() => {})
   }, [sel, active, refresh])
 
+  // Lube shop (MW19): pull today's DRB totals whenever the lube site is shown.
+  useEffect(() => {
+    if (!active || sel.kind !== 'site') return
+    const loc = locations.find((l) => l.id === sel.id)
+    if (!loc || siteNumber(loc.name) !== 19) return
+    const today = new Date().toISOString().slice(0, 10)
+    let cancel = false
+    fetchLubeStats(today, today).then((s) => { if (!cancel) setLube(s.totals) }).catch(() => {})
+    return () => { cancel = true }
+  }, [active, sel, locations])
+
   const byId = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
 
   // Resolve the current selection into a title, subtitle, and metric set.
@@ -259,15 +274,21 @@ export default function PresentationMode() {
 
   // Feed-based tiles show a skeleton until the (slow) live feed arrives.
   const feedLoading = !feed && !error
+  // Site 19 (lube shop) is single-site only: its cars = tickets, sales = net
+  // sales, and the Recharge tile becomes Average Ticket, all from the lube feed.
+  const isLubeSite = view.count === 1 && siteNumber(selLocs[0]?.name ?? '') === 19
+  const avgTicket = lube && lube.tickets > 0 ? lube.net_sales / lube.tickets : null
   // Metric tiles. For a roll-up, cars/sales/recharge/open-WOs are totals and
   // cars-per-hour/conversion/churn/rating are averages. `dot` is an app status color.
   const tiles: { label: string; value: string; dot: string; tone?: string; feed?: boolean }[] = [
     { label: 'Score Card', value: scoreLetter ?? '—', dot: 'bg-accent', tone: scoreTone },
     { label: 'Google Rating', value: ratingVal != null ? `${ratingVal.toFixed(1)} ★` : '—', dot: 'bg-warn' },
     { label: isRoll ? 'Open Work Orders (total)' : 'Open Work Orders', value: String(downVal), dot: 'bg-accent' },
-    { label: isRoll ? 'Cars today (total)' : 'Cars today', value: num(m.cars), dot: 'bg-accent', feed: true },
-    { label: isRoll ? 'Sales today (total)' : 'Sales today', value: money(m.sales), dot: 'bg-ok', feed: true },
-    { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent', feed: true },
+    { label: isRoll ? 'Cars today (total)' : 'Cars today', value: isLubeSite ? num(lube?.tickets ?? null) : num(m.cars), dot: 'bg-accent', feed: !isLubeSite },
+    { label: isRoll ? 'Sales today (total)' : 'Sales today', value: isLubeSite ? money(lube?.net_sales ?? null) : money(m.sales), dot: 'bg-ok', feed: !isLubeSite },
+    isLubeSite
+      ? { label: 'Average Ticket', value: money(avgTicket), dot: 'bg-accent' }
+      : { label: isRoll ? 'Recharge MTD (total)' : 'Recharge MTD', value: money(m.rechargeMtd), dot: 'bg-accent', feed: true },
     { label: isRoll ? 'Conversion (avg)' : 'Conversion', value: pct(m.conversion), dot: 'bg-warn', feed: true },
     { label: isRoll ? 'Churn (avg)' : 'Churn', value: pct(churnCombined), dot: 'bg-danger', feed: true },
     { label: isRoll ? 'Plans Sold (total)' : 'Plans Sold', value: num(m.plansSold), dot: 'bg-ok', feed: true },
