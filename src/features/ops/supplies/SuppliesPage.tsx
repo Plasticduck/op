@@ -57,15 +57,26 @@ function Inner({ locationId }: { locationId: string }) {
         actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> New request</Button>}
       />
 
-      <a
-        href="https://shop.officewiseco.solutions/Authentication/Login"
-        target="_blank"
-        rel="noreferrer"
-        className="flex flex-col items-start gap-2 self-start rounded-md border border-border bg-card p-4 transition hover:border-accent hover:shadow-sm"
-      >
-        <span className="text-sm font-semibold text-ink">Office Supplies &amp; Furniture</span>
-        <img src="/officewise.jpg" alt="Officewise" className="h-auto w-60 max-w-full" />
-      </a>
+      <div className="flex flex-wrap gap-4">
+        <a
+          href="https://shop.officewiseco.solutions/Authentication/Login"
+          target="_blank"
+          rel="noreferrer"
+          className="flex flex-col items-start gap-2 rounded-md border border-border bg-card p-4 transition hover:border-accent hover:shadow-sm"
+        >
+          <span className="text-sm font-semibold text-ink">Office Supplies &amp; Furniture</span>
+          <img src="/officewise.jpg" alt="Officewise" className="h-auto w-60 max-w-full" />
+        </a>
+        <a
+          href="https://www.carwashsuperstore.com/apps/auth/login"
+          target="_blank"
+          rel="noreferrer"
+          className="flex flex-col items-start gap-2 rounded-md border border-border bg-card p-4 transition hover:border-accent hover:shadow-sm"
+        >
+          <span className="text-sm font-semibold text-ink">Car Wash Parts and Supplies</span>
+          <img src="/CWS.png" alt="Car Wash Superstore" className="h-auto w-60 max-w-full" />
+        </a>
+      </div>
 
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
