@@ -353,6 +353,9 @@ export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null):
   const days = findByNumber<SiteDay[]>(feed?.report?.sites, n)
   const day = days && days.length ? days[days.length - 1] : undefined
   const msaRow = feed?.msa?.rows?.find((r) => siteNumber(r.site) === n)
+  // Site-level conversion (Rinsed) is the site's own rate, independent of which
+  // salespeople are on the roster; the MSA feed is only a per-rep fallback.
+  const rinsed = findByNumber<RinsedSite>(feed?.rinsed?.sites, n)
   const churn = findByNumber(feed?.churn?.sites, n)
   // Plans sold today = the sum of every plan tier's today count for the site.
   const plan = findByNumber<PlanSite>(feed?.plan_breakdown?.sites, n)
@@ -369,8 +372,8 @@ export function siteMetrics(feed: SitePerformanceFeed | null, n: number | null):
     carsPerHour: day?.cars_per_hour ?? null,
     laborPct: day?.labor_pct ?? null,
     laborPctMtd,
-    conversion: msaRow?.today_conversion_pct ?? null,
-    conversionMtd: msaRow?.mtd_conversion_pct ?? null,
+    conversion: rinsed?.live_conversion_pct ?? msaRow?.today_conversion_pct ?? null,
+    conversionMtd: rinsed?.avg_to_date ?? msaRow?.mtd_conversion_pct ?? null,
     churn: churn?.voluntary_churn_pct ?? null,
     churnCc: churn?.cc_churn_pct ?? null,
     rechargeMtd: findByNumber<number>(feed?.recharge_revenue?.mtd_by_site, n) ?? null,
