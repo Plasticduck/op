@@ -67,7 +67,7 @@ export async function exportSiteBonusPdf(
       [
         r.avgMonthsGoal !== null
           ? `Lifetime Value (avg months >= ${r.avgMonthsGoal})`
-          : 'Lifetime Value (avg months +1 vs base)',
+          : `Lifetime Value (avg months +${r.avgMonthsDelta} vs base)`,
         r.avgMonthsGoal !== null
           ? `now ${r.avgMos.current} mo, goal ${r.avgMonthsGoal}${r.avgMos.base === null ? '' : ` (base ${r.avgMos.base})`}`
           : `base ${r.avgMos.base ?? '—'} to ${r.avgMos.current} (${r.avgMos.delta === null ? '—' : `${r.avgMos.delta >= 0 ? '+' : ''}${r.avgMos.delta.toFixed(1)}`} mo)`,

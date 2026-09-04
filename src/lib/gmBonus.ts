@@ -39,6 +39,18 @@ export function lifetimeAvgGoal(siteName: string | null | undefined): number | n
   return n && n in LIFETIME_AVG_GOALS ? LIFETIME_AVG_GOALS[n] : null
 }
 
+// The default Lifetime Value growth rule pays when avg months rises at least 1
+// vs base. Some sites use a smaller threshold (keyed by site name); everything
+// else uses DEFAULT_LIFETIME_AVG_DELTA. Ignored when a site has an absolute
+// LIFETIME_AVG_GOALS milestone.
+export const DEFAULT_LIFETIME_AVG_DELTA = 1
+export const LIFETIME_AVG_DELTAS: Record<string, number> = { MW06: 0.5, MW14: 0.5 }
+
+export function lifetimeAvgDelta(siteName: string | null | undefined): number {
+  const n = siteName?.trim()
+  return n && n in LIFETIME_AVG_DELTAS ? LIFETIME_AVG_DELTAS[n] : DEFAULT_LIFETIME_AVG_DELTA
+}
+
 // Churn reward: first matching bracket wins. <7 -> 600, <=8 -> 520, <=9 -> 440,
 // <=10 -> 360, <=11 -> 240, <=12 -> 120, >12 -> 0.
 export const CHURN_BRACKETS: { test: (c: number) => boolean; amount: number; label: string }[] = [
@@ -95,6 +107,7 @@ export type GmBonusResult = {
   levels: LevelRow[]
   avgMos: { base: number | null; current: number; delta: number | null }
   avgMonthsGoal: number | null // absolute milestone in effect for this site, or null
+  avgMonthsDelta: number // growth threshold (vs base) in effect when not on a milestone
   lifetimeValue: { earned: boolean | null; amount: number; goalReached: boolean }
   membership: { earned: boolean | null; amount: number; combinedChangeSinceBase: number | null; goalReached: boolean }
   oneTimeTotal: number
@@ -115,11 +128,15 @@ export function computeGmBonus(args: {
   // When set, the Lifetime Value bonus uses this absolute avg-months milestone
   // instead of the default "+1 vs base" growth rule.
   avgMonthsGoal?: number | null
+  // Growth threshold (avg months vs base) for the Lifetime Value bonus when not
+  // on an absolute milestone. Defaults to 1.
+  avgMonthsDelta?: number
   // When true, the site is under construction this month: no bonus is paid.
   underConstruction?: boolean
 }): GmBonusResult {
   const { current, previous, membershipBase, avgBase } = args
   const avgMonthsGoal = args.avgMonthsGoal ?? null
+  const avgMonthsDelta = args.avgMonthsDelta ?? 1
   const underConstruction = args.underConstruction ?? false
 
   const counts: Record<LevelKey, number> = {
@@ -155,16 +172,17 @@ export function computeGmBonus(args: {
     }
   })
 
-  // Lifetime value. Default: avg months of active membership up at least 1 vs
-  // base. With an absolute milestone: paid once when avg months reaches the goal,
-  // guarded by base < goal so a baseline reset locks it in and it isn't repaid.
+  // Lifetime value. Default: avg months of active membership up at least
+  // `avgMonthsDelta` (usually 1) vs base. With an absolute milestone: paid once
+  // when avg months reaches the goal, guarded by base < goal so a baseline reset
+  // locks it in and it isn't repaid.
   const avgDelta = avgBase === null ? null : current.avg_mos - avgBase
   const lifeEarned =
     avgMonthsGoal !== null
       ? current.avg_mos >= avgMonthsGoal && (avgBase === null || avgBase < avgMonthsGoal)
       : avgDelta === null
         ? null
-        : avgDelta >= 1
+        : avgDelta >= avgMonthsDelta
   const lifetimeValue = {
     earned: lifeEarned,
     amount: lifeEarned ? LIFETIME_VALUE_BONUS : 0,
@@ -199,6 +217,7 @@ export function computeGmBonus(args: {
     levels,
     avgMos: { base: avgBase, current: current.avg_mos, delta: avgDelta },
     avgMonthsGoal,
+    avgMonthsDelta,
     lifetimeValue,
     membership,
     oneTimeTotal,

@@ -18,7 +18,7 @@ import { updateCompany, setSiteManagers } from '@/lib/queries/companySettings'
 import { useSectionAllowed } from '@/lib/usePermissions'
 import type { RegionDef } from '@/lib/regions'
 import { gmBonus, type GmBonusBase, type GmBonusMonth } from '@/lib/queries/gmBonus'
-import { computeGmBonus, lifetimeAvgGoal, type AvgBase, type GmBonusResult, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
+import { computeGmBonus, lifetimeAvgGoal, lifetimeAvgDelta, type AvgBase, type GmBonusResult, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
 import { exportSiteBonusPdf, exportAllSitesBonusPdf, exportRegionalBonusPdf, type AllSitesRow, type RegionalRow } from '@/lib/gmBonusPdf'
 
 const ALL = '__all__'
@@ -67,6 +67,7 @@ function computeSiteMonth(
   siteId: string,
   period: string,
   avgMonthsGoal: number | null = null,
+  avgMonthsDelta = 1,
 ): GmBonusResult | null {
   const monthRow = allMonths.find((m) => m.location_id === siteId && m.period === period)
   if (!monthRow) return null
@@ -91,6 +92,7 @@ function computeSiteMonth(
       : null,
     avgBase: aRow ? Number(aRow.avg_mos) : null,
     avgMonthsGoal,
+    avgMonthsDelta,
     underConstruction: monthRow.under_construction,
   })
 }
@@ -106,11 +108,12 @@ function effectiveGmAmount(
   sid: string,
   period: string,
   avgMonthsGoal: number | null = null,
+  avgMonthsDelta = 1,
 ): number {
   const row = allMonths.find((x) => x.location_id === sid && x.period === period)
   if (row?.under_construction) return 0
   if (row?.gm_override != null) return Number(row.gm_override)
-  const res = computeSiteMonth(allMonths, allBaselines, sid, period, avgMonthsGoal)
+  const res = computeSiteMonth(allMonths, allBaselines, sid, period, avgMonthsGoal, avgMonthsDelta)
   const gmName = effectiveManager(siteManagers[sid]?.gm, period)
   return res && gmName.trim() ? res.gmTotal : 0
 }
@@ -197,6 +200,13 @@ export default function BonusesPage() {
       const g = lifetimeAvgGoal(loc.name)
       if (g !== null) m[loc.id] = g
     }
+    return m
+  }, [sortedLocations])
+  // Per-site Lifetime Value growth threshold (default 1), keyed by id, so the
+  // aggregates apply the same rule as the site view.
+  const avgDeltaById = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const loc of sortedLocations) m[loc.id] = lifetimeAvgDelta(loc.name)
     return m
   }, [sortedLocations])
 
@@ -304,7 +314,7 @@ export default function BonusesPage() {
   const avgBase: AvgBase = avgRow ? Number(avgRow.avg_mos) : null
 
   const currentSiteName = sortedLocations.find((l) => l.id === locationId)?.name ?? null
-  const result = computeGmBonus({ current, previous, membershipBase, avgBase, avgMonthsGoal: lifetimeAvgGoal(currentSiteName), underConstruction })
+  const result = computeGmBonus({ current, previous, membershipBase, avgBase, avgMonthsGoal: lifetimeAvgGoal(currentSiteName), avgMonthsDelta: lifetimeAvgDelta(currentSiteName), underConstruction })
 
   // GM/AGM manager names per site, effective-dated by month. Edited names for the
   // viewed month live in nameEdits and reset when the month (or saved data) changes.
@@ -350,7 +360,7 @@ export default function BonusesPage() {
           gmOverride: row?.gm_override != null ? Number(row.gm_override) : null,
           agmOverride: row?.agm_override != null ? Number(row.agm_override) : null,
           underConstruction: row?.under_construction ?? false,
-          result: computeSiteMonth(allMonths, allBaselines, loc.id, period, lifetimeAvgGoal(loc.name)),
+          result: computeSiteMonth(allMonths, allBaselines, loc.id, period, lifetimeAvgGoal(loc.name), lifetimeAvgDelta(loc.name)),
         }
       }),
     [sortedLocations, allMonths, allBaselines, period, siteManagers],
@@ -569,6 +579,7 @@ export default function BonusesPage() {
           logoUrl={profile?.brand_logo_url}
           loading={loading}
           avgGoalById={avgGoalById}
+          avgDeltaById={avgDeltaById}
         />
       ) : (
       <>
@@ -828,7 +839,7 @@ export default function BonusesPage() {
             <BonusRow
               label={result.avgMonthsGoal !== null
                 ? `Lifetime Value (Avg months ≥ ${result.avgMonthsGoal})`
-                : 'Lifetime Value (Avg months +1 vs base)'}
+                : `Lifetime Value (Avg months +${result.avgMonthsDelta} vs base)`}
               detail={result.avgMonthsGoal !== null
                 ? `now ${result.avgMos.current} mo · goal ${result.avgMonthsGoal}${result.avgMos.base === null ? '' : ` (base ${result.avgMos.base})`}`
                 : `base ${result.avgMos.base ?? '—'} → now ${result.avgMos.current} (${result.avgMos.delta === null ? '—' : `${result.avgMos.delta >= 0 ? '+' : ''}${result.avgMos.delta.toFixed(1)}`} mo)`}
@@ -1016,7 +1027,7 @@ function OverrideModal({ site, monthLabel, currentGm, currentAgm, computedGm, co
   )
 }
 
-function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawManagers, onSaveManagers, logoUrl, loading, avgGoalById }: {
+function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawManagers, onSaveManagers, logoUrl, loading, avgGoalById, avgDeltaById }: {
   allMonths: GmBonusMonth[]
   allBaselines: GmBonusBase[]
   regions: RegionDef[]
@@ -1026,6 +1037,7 @@ function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawMa
   logoUrl?: string | null
   loading: boolean
   avgGoalById: Record<string, number>
+  avgDeltaById: Record<string, number>
 }) {
   const [qStart, setQStart] = useState(() => quarterStartOf(new Date()))
   const [exporting, setExporting] = useState(false)
@@ -1048,12 +1060,12 @@ function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawMa
         let combined = 0
         for (const sid of siteIds) {
           for (const m of months) {
-            combined += effectiveGmAmount(allMonths, allBaselines, siteManagers, sid, m, avgGoalById[sid] ?? null)
+            combined += effectiveGmAmount(allMonths, allBaselines, siteManagers, sid, m, avgGoalById[sid] ?? null, avgDeltaById[sid] ?? 1)
           }
         }
         return { region: rb.name, pct: rb.pct, sites: siteIds.length, combined, bonus: combined * rb.pct }
       }),
-    [regions, months, allMonths, allBaselines, siteManagers, avgGoalById],
+    [regions, months, allMonths, allBaselines, siteManagers, avgGoalById, avgDeltaById],
   )
   const totalCombined = rows.reduce((a, r) => a + r.combined, 0)
   const totalBonus = rows.reduce((a, r) => a + r.bonus, 0)
