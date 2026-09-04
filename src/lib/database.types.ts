@@ -2212,6 +2212,7 @@ export type Database = {
           avg_mos: number
           created_at: string
           effective_from: string
+          fourth_count: number
           id: string
           kind: string
           location_id: string
@@ -2225,6 +2226,7 @@ export type Database = {
           avg_mos?: number
           created_at?: string
           effective_from: string
+          fourth_count?: number
           id?: string
           kind: string
           location_id: string
@@ -2238,6 +2240,7 @@ export type Database = {
           avg_mos?: number
           created_at?: string
           effective_from?: string
+          fourth_count?: number
           id?: string
           kind?: string
           location_id?: string
@@ -2271,6 +2274,7 @@ export type Database = {
           churn_pct: number
           conversion_pct: number
           created_at: string
+          fourth_count: number
           gm_override: number | null
           id: string
           location_id: string
@@ -2290,6 +2294,7 @@ export type Database = {
           churn_pct?: number
           conversion_pct?: number
           created_at?: string
+          fourth_count?: number
           gm_override?: number | null
           id?: string
           location_id: string
@@ -2309,6 +2314,7 @@ export type Database = {
           churn_pct?: number
           conversion_pct?: number
           created_at?: string
+          fourth_count?: number
           gm_override?: number | null
           id?: string
           location_id?: string

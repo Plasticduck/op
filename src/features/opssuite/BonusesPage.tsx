@@ -18,7 +18,7 @@ import { updateCompany, setSiteManagers } from '@/lib/queries/companySettings'
 import { useSectionAllowed } from '@/lib/usePermissions'
 import type { RegionDef } from '@/lib/regions'
 import { gmBonus, type GmBonusBase, type GmBonusMonth } from '@/lib/queries/gmBonus'
-import { computeGmBonus, lifetimeAvgGoal, lifetimeAvgDelta, type AvgBase, type GmBonusResult, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
+import { computeGmBonus, lifetimeAvgGoal, lifetimeAvgDelta, membershipLevels, type AvgBase, type GmBonusResult, type LevelDef, type MembershipBase, type MonthInputs, type PrevCounts } from '@/lib/gmBonus'
 import { exportSiteBonusPdf, exportAllSitesBonusPdf, exportRegionalBonusPdf, type AllSitesRow, type RegionalRow } from '@/lib/gmBonusPdf'
 
 const ALL = '__all__'
@@ -42,8 +42,18 @@ const pct = (frac: number) => `${(frac * 100).toFixed(1)}%`
 const pts = (frac: number | null) =>
   frac === null ? '—' : `${frac >= 0 ? '+' : ''}${(frac * 100).toFixed(1)} pts`
 
-const emptyForm = { mighty: '', super: '', wonder: '', avgMos: '', churn: '', conversion: '' }
+const emptyForm = { mighty: '', super: '', wonder: '', fourth: '', avgMos: '', churn: '', conversion: '' }
 type Form = typeof emptyForm
+
+// Membership count for a given tier key on a baseline/month row.
+const levelCount = (
+  row: { mighty_count: number; super_count: number; wonder_count: number; fourth_count: number },
+  key: LevelDef['key'],
+): number =>
+  key === 'mighty' ? row.mighty_count
+    : key === 'super' ? row.super_count
+      : key === 'wonder' ? row.wonder_count
+        : row.fourth_count
 
 const monthOf = (period: string) => format(parseISO(period), 'MMMM yyyy')
 const toPeriod = (monthInput: string) => `${monthInput}-01`
@@ -68,6 +78,7 @@ function computeSiteMonth(
   period: string,
   avgMonthsGoal: number | null = null,
   avgMonthsDelta = 1,
+  levels?: LevelDef[],
 ): GmBonusResult | null {
   const monthRow = allMonths.find((m) => m.location_id === siteId && m.period === period)
   if (!monthRow) return null
@@ -80,19 +91,21 @@ function computeSiteMonth(
       mighty_count: monthRow.mighty_count,
       super_count: monthRow.super_count,
       wonder_count: monthRow.wonder_count,
+      fourth_count: monthRow.fourth_count,
       avg_mos: Number(monthRow.avg_mos),
       churn_pct: Number(monthRow.churn_pct),
       conversion_pct: Number(monthRow.conversion_pct),
     },
     previous: prevRow
-      ? { mighty_count: prevRow.mighty_count, super_count: prevRow.super_count, wonder_count: prevRow.wonder_count }
+      ? { mighty_count: prevRow.mighty_count, super_count: prevRow.super_count, wonder_count: prevRow.wonder_count, fourth_count: prevRow.fourth_count }
       : null,
     membershipBase: memRow
-      ? { mighty_count: memRow.mighty_count, super_count: memRow.super_count, wonder_count: memRow.wonder_count }
+      ? { mighty_count: memRow.mighty_count, super_count: memRow.super_count, wonder_count: memRow.wonder_count, fourth_count: memRow.fourth_count }
       : null,
     avgBase: aRow ? Number(aRow.avg_mos) : null,
     avgMonthsGoal,
     avgMonthsDelta,
+    levels,
     underConstruction: monthRow.under_construction,
   })
 }
@@ -109,11 +122,12 @@ function effectiveGmAmount(
   period: string,
   avgMonthsGoal: number | null = null,
   avgMonthsDelta = 1,
+  levels?: LevelDef[],
 ): number {
   const row = allMonths.find((x) => x.location_id === sid && x.period === period)
   if (row?.under_construction) return 0
   if (row?.gm_override != null) return Number(row.gm_override)
-  const res = computeSiteMonth(allMonths, allBaselines, sid, period, avgMonthsGoal, avgMonthsDelta)
+  const res = computeSiteMonth(allMonths, allBaselines, sid, period, avgMonthsGoal, avgMonthsDelta, levels)
   const gmName = effectiveManager(siteManagers[sid]?.gm, period)
   return res && gmName.trim() ? res.gmTotal : 0
 }
@@ -209,6 +223,12 @@ export default function BonusesPage() {
     for (const loc of sortedLocations) m[loc.id] = lifetimeAvgDelta(loc.name)
     return m
   }, [sortedLocations])
+  // Per-site membership tiers (labels + count), keyed by id, for the aggregates.
+  const levelsById = useMemo(() => {
+    const m: Record<string, LevelDef[]> = {}
+    for (const loc of sortedLocations) m[loc.id] = membershipLevels(loc.name)
+    return m
+  }, [sortedLocations])
 
   const [mode, setMode] = useState<'gm' | 'regional'>('gm')
   // Regional is owner-only; managers granted Bonuses see GM/AGM only.
@@ -267,6 +287,7 @@ export default function BonusesPage() {
               mighty: String(monthRow.mighty_count),
               super: String(monthRow.super_count),
               wonder: String(monthRow.wonder_count),
+              fourth: String(monthRow.fourth_count),
               avgMos: String(monthRow.avg_mos),
               churn: String(monthRow.churn_pct),
               conversion: String(monthRow.conversion_pct),
@@ -291,12 +312,13 @@ export default function BonusesPage() {
     mighty_count: num(form.mighty),
     super_count: num(form.super),
     wonder_count: num(form.wonder),
+    fourth_count: num(form.fourth),
     avg_mos: num(form.avgMos),
     churn_pct: num(form.churn),
     conversion_pct: num(form.conversion),
   }
   const previous: PrevCounts = prevRow
-    ? { mighty_count: prevRow.mighty_count, super_count: prevRow.super_count, wonder_count: prevRow.wonder_count }
+    ? { mighty_count: prevRow.mighty_count, super_count: prevRow.super_count, wonder_count: prevRow.wonder_count, fourth_count: prevRow.fourth_count }
     : null
   const membershipRow = effectiveBaseline(baselines, 'membership', period)
   const avgRow = effectiveBaseline(baselines, 'avg', period)
@@ -309,12 +331,14 @@ export default function BonusesPage() {
         mighty_count: membershipRow.mighty_count,
         super_count: membershipRow.super_count,
         wonder_count: membershipRow.wonder_count,
+        fourth_count: membershipRow.fourth_count,
       }
     : null
   const avgBase: AvgBase = avgRow ? Number(avgRow.avg_mos) : null
 
   const currentSiteName = sortedLocations.find((l) => l.id === locationId)?.name ?? null
-  const result = computeGmBonus({ current, previous, membershipBase, avgBase, avgMonthsGoal: lifetimeAvgGoal(currentSiteName), avgMonthsDelta: lifetimeAvgDelta(currentSiteName), underConstruction })
+  const siteLevels = membershipLevels(currentSiteName)
+  const result = computeGmBonus({ current, previous, membershipBase, avgBase, avgMonthsGoal: lifetimeAvgGoal(currentSiteName), avgMonthsDelta: lifetimeAvgDelta(currentSiteName), levels: siteLevels, underConstruction })
 
   // GM/AGM manager names per site, effective-dated by month. Edited names for the
   // viewed month live in nameEdits and reset when the month (or saved data) changes.
@@ -360,7 +384,7 @@ export default function BonusesPage() {
           gmOverride: row?.gm_override != null ? Number(row.gm_override) : null,
           agmOverride: row?.agm_override != null ? Number(row.agm_override) : null,
           underConstruction: row?.under_construction ?? false,
-          result: computeSiteMonth(allMonths, allBaselines, loc.id, period, lifetimeAvgGoal(loc.name), lifetimeAvgDelta(loc.name)),
+          result: computeSiteMonth(allMonths, allBaselines, loc.id, period, lifetimeAvgGoal(loc.name), lifetimeAvgDelta(loc.name), membershipLevels(loc.name)),
         }
       }),
     [sortedLocations, allMonths, allBaselines, period, siteManagers],
@@ -433,6 +457,7 @@ export default function BonusesPage() {
           mighty_count: prevRow.mighty_count,
           super_count: prevRow.super_count,
           wonder_count: prevRow.wonder_count,
+          fourth_count: prevRow.fourth_count,
           avg_mos: Number(prevRow.avg_mos),
           churn_pct: Number(prevRow.churn_pct),
           conversion_pct: Number(prevRow.conversion_pct),
@@ -441,6 +466,7 @@ export default function BonusesPage() {
           mighty_count: current.mighty_count,
           super_count: current.super_count,
           wonder_count: current.wonder_count,
+          fourth_count: current.fourth_count ?? 0,
           avg_mos: current.avg_mos,
           churn_pct: current.churn_pct,
           conversion_pct: current.conversion_pct,
@@ -499,6 +525,7 @@ export default function BonusesPage() {
       mighty_count: which === 'membership' ? current.mighty_count : 0,
       super_count: which === 'membership' ? current.super_count : 0,
       wonder_count: which === 'membership' ? current.wonder_count : 0,
+      fourth_count: which === 'membership' ? (current.fourth_count ?? 0) : 0,
       avg_mos: which === 'avg' ? current.avg_mos : 0,
     })
     setSaving(false)
@@ -580,6 +607,7 @@ export default function BonusesPage() {
           loading={loading}
           avgGoalById={avgGoalById}
           avgDeltaById={avgDeltaById}
+          levelsById={levelsById}
         />
       ) : (
       <>
@@ -722,9 +750,9 @@ export default function BonusesPage() {
           <section className="rounded-md border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold text-ink">This month's numbers</h2>
             <div className="grid grid-cols-2 gap-3">
-              <NumField label="Mighty Protector" value={form.mighty} onChange={set('mighty')} readOnly={underConstruction} />
-              <NumField label="Super Shine" value={form.super} onChange={set('super')} readOnly={underConstruction} />
-              <NumField label="Wonder Clean" value={form.wonder} onChange={set('wonder')} readOnly={underConstruction} />
+              {siteLevels.map((lv) => (
+                <NumField key={lv.key} label={lv.label} value={form[lv.key]} onChange={set(lv.key)} readOnly={underConstruction} />
+              ))}
               <NumField label="Total members" value={String(result.currentTotal)} readOnly />
               <NumField
                 label="Avg months active"
@@ -769,8 +797,7 @@ export default function BonusesPage() {
               </div>
               <p className="mt-2 text-xs text-ink-muted">
                 {membershipRow ? (
-                  <>Membership (since {monthOf(membershipRow.effective_from)}): Mighty {membershipRow.mighty_count},
-                    Super {membershipRow.super_count}, Wonder {membershipRow.wonder_count}</>
+                  <>Membership (since {monthOf(membershipRow.effective_from)}): {siteLevels.map((lv) => `${lv.label} ${levelCount(membershipRow, lv.key)}`).join(', ')}</>
                 ) : (
                   <span className="text-warn">Membership baseline not set for this month.</span>
                 )}
@@ -786,7 +813,7 @@ export default function BonusesPage() {
                 <p className="mt-1 text-xs text-accent">
                   Reset saved, takes effect {monthOf(nextEff)}:
                   {nextMembershipReset
-                    ? ` membership Mighty ${nextMembershipReset.mighty_count}, Super ${nextMembershipReset.super_count}, Wonder ${nextMembershipReset.wonder_count}.`
+                    ? ` membership ${siteLevels.map((lv) => `${lv.label} ${levelCount(nextMembershipReset, lv.key)}`).join(', ')}.`
                     : ''}
                   {nextAvgReset ? ` avg months ${Number(nextAvgReset.avg_mos)}.` : ''}
                 </p>
@@ -847,7 +874,7 @@ export default function BonusesPage() {
               amount={result.lifetimeValue.amount}
             />
             <BonusRow
-              label="Membership (Mighty + Super +10 pts vs base)"
+              label={`Membership (${siteLevels[0]?.label ?? 'Mighty'} + ${siteLevels[1]?.label ?? 'Super'} +10 pts vs base)`}
               detail={`combined change ${pts(result.membership.combinedChangeSinceBase)}`}
               earned={result.membership.earned}
               amount={result.membership.amount}
@@ -1027,7 +1054,7 @@ function OverrideModal({ site, monthLabel, currentGm, currentAgm, computedGm, co
   )
 }
 
-function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawManagers, onSaveManagers, logoUrl, loading, avgGoalById, avgDeltaById }: {
+function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawManagers, onSaveManagers, logoUrl, loading, avgGoalById, avgDeltaById, levelsById }: {
   allMonths: GmBonusMonth[]
   allBaselines: GmBonusBase[]
   regions: RegionDef[]
@@ -1038,6 +1065,7 @@ function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawMa
   loading: boolean
   avgGoalById: Record<string, number>
   avgDeltaById: Record<string, number>
+  levelsById: Record<string, LevelDef[]>
 }) {
   const [qStart, setQStart] = useState(() => quarterStartOf(new Date()))
   const [exporting, setExporting] = useState(false)
@@ -1060,12 +1088,12 @@ function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawMa
         let combined = 0
         for (const sid of siteIds) {
           for (const m of months) {
-            combined += effectiveGmAmount(allMonths, allBaselines, siteManagers, sid, m, avgGoalById[sid] ?? null, avgDeltaById[sid] ?? 1)
+            combined += effectiveGmAmount(allMonths, allBaselines, siteManagers, sid, m, avgGoalById[sid] ?? null, avgDeltaById[sid] ?? 1, levelsById[sid])
           }
         }
         return { region: rb.name, pct: rb.pct, sites: siteIds.length, combined, bonus: combined * rb.pct }
       }),
-    [regions, months, allMonths, allBaselines, siteManagers, avgGoalById, avgDeltaById],
+    [regions, months, allMonths, allBaselines, siteManagers, avgGoalById, avgDeltaById, levelsById],
   )
   const totalCombined = rows.reduce((a, r) => a + r.combined, 0)
   const totalBonus = rows.reduce((a, r) => a + r.bonus, 0)

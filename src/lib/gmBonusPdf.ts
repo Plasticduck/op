@@ -75,7 +75,7 @@ export async function exportSiteBonusPdf(
         currency(r.lifetimeValue.amount),
       ],
       [
-        'Membership (Mighty + Super +10 pts vs base)',
+        `Membership (${r.levels[0]?.label ?? 'Mighty'} + ${r.levels[1]?.label ?? 'Super'} +10 pts vs base)`,
         `combined ${pts(r.membership.combinedChangeSinceBase)}`,
         yesNo(r.membership.earned),
         currency(r.membership.amount),

@@ -7,6 +7,7 @@ export type MonthInputs = {
   mighty_count: number
   super_count: number
   wonder_count: number
+  fourth_count?: number // 4th membership tier, for sites that run four (else 0)
   avg_mos: number
   churn_pct: number
   conversion_pct: number
@@ -16,6 +17,7 @@ export type LevelCounts = {
   mighty_count: number
   super_count: number
   wonder_count: number
+  fourth_count?: number
 }
 
 export type PrevCounts = LevelCounts | null
@@ -88,7 +90,7 @@ export function conversionReward(conversionPct: number, churnPct: number): numbe
   return churnPct >= 15 ? Math.min(x, 150) : x
 }
 
-export type LevelKey = 'mighty' | 'super' | 'wonder'
+export type LevelKey = 'mighty' | 'super' | 'wonder' | 'fourth'
 
 export type LevelRow = {
   key: LevelKey
@@ -99,11 +101,30 @@ export type LevelRow = {
   pctChangeSinceBase: number | null // vs base snapshot, null when no base
 }
 
-const LEVELS: { key: LevelKey; label: string }[] = [
+export type LevelDef = { key: LevelKey; label: string }
+
+// Default 3-tier membership. Some sites run four tiers with their own names; the
+// Membership one-time bonus always keys off the first two (premium) tiers, which
+// map to the mighty_count / super_count columns whatever they're labeled.
+export const DEFAULT_MEMBERSHIP_LEVELS: LevelDef[] = [
   { key: 'mighty', label: 'Mighty Protector' },
   { key: 'super', label: 'Super Shine' },
   { key: 'wonder', label: 'Wonder Clean' },
 ]
+
+export const MEMBERSHIP_LEVELS_BY_SITE: Record<string, LevelDef[]> = {
+  Spotless: [
+    { key: 'mighty', label: 'Ultra' },
+    { key: 'super', label: 'Extreme' },
+    { key: 'wonder', label: 'Signature' },
+    { key: 'fourth', label: 'Turbo' },
+  ],
+}
+
+export function membershipLevels(siteName: string | null | undefined): LevelDef[] {
+  const n = siteName?.trim()
+  return (n && MEMBERSHIP_LEVELS_BY_SITE[n]) || DEFAULT_MEMBERSHIP_LEVELS
+}
 
 const share = (n: number, total: number) => (total > 0 ? n / total : 0)
 
@@ -137,34 +158,36 @@ export function computeGmBonus(args: {
   // Growth threshold (avg months vs base) for the Lifetime Value bonus when not
   // on an absolute milestone. Defaults to 1.
   avgMonthsDelta?: number
+  // Membership tiers for this site (labels + how many). Defaults to the 3-tier set.
+  levels?: LevelDef[]
   // When true, the site is under construction this month: no bonus is paid.
   underConstruction?: boolean
 }): GmBonusResult {
   const { current, previous, membershipBase, avgBase } = args
   const avgMonthsGoal = args.avgMonthsGoal ?? null
   const avgMonthsDelta = args.avgMonthsDelta ?? 1
+  const levelDefs = args.levels ?? DEFAULT_MEMBERSHIP_LEVELS
   const underConstruction = args.underConstruction ?? false
 
   const counts: Record<LevelKey, number> = {
     mighty: current.mighty_count,
     super: current.super_count,
     wonder: current.wonder_count,
+    fourth: current.fourth_count ?? 0,
   }
-  const currentTotal = counts.mighty + counts.super + counts.wonder
+  const currentTotal = levelDefs.reduce((a, l) => a + counts[l.key], 0)
 
   const prevCounts: Record<LevelKey, number> | null = previous
-    ? { mighty: previous.mighty_count, super: previous.super_count, wonder: previous.wonder_count }
+    ? { mighty: previous.mighty_count, super: previous.super_count, wonder: previous.wonder_count, fourth: previous.fourth_count ?? 0 }
     : null
-  const previousTotal = prevCounts
-    ? prevCounts.mighty + prevCounts.super + prevCounts.wonder
-    : null
+  const previousTotal = prevCounts ? levelDefs.reduce((a, l) => a + prevCounts[l.key], 0) : null
 
   const baseCounts: Record<LevelKey, number> | null = membershipBase
-    ? { mighty: membershipBase.mighty_count, super: membershipBase.super_count, wonder: membershipBase.wonder_count }
+    ? { mighty: membershipBase.mighty_count, super: membershipBase.super_count, wonder: membershipBase.wonder_count, fourth: membershipBase.fourth_count ?? 0 }
     : null
-  const baseTotal = baseCounts ? baseCounts.mighty + baseCounts.super + baseCounts.wonder : null
+  const baseTotal = baseCounts ? levelDefs.reduce((a, l) => a + baseCounts[l.key], 0) : null
 
-  const levels: LevelRow[] = LEVELS.map(({ key, label }) => {
+  const levels: LevelRow[] = levelDefs.map(({ key, label }) => {
     const pct = share(counts[key], currentTotal)
     const prevPct = prevCounts && previousTotal ? share(prevCounts[key], previousTotal) : null
     const basePct = baseCounts && baseTotal ? share(baseCounts[key], baseTotal) : null
