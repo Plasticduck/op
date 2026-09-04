@@ -181,13 +181,17 @@ export function computeGmBonus(args: {
   // `avgMonthsDelta` (usually 1) vs base. With an absolute milestone: paid once
   // when avg months reaches the goal, guarded by base < goal so a baseline reset
   // locks it in and it isn't repaid.
+  // Tolerance for the "earned" comparisons: inputs are entered to one decimal, so
+  // a difference like 16.4 - 15.9 lands at 0.499999... in floating point and would
+  // wrongly miss a +0.5 threshold without this epsilon.
+  const EARN_EPS = 1e-9
   const avgDelta = avgBase === null ? null : current.avg_mos - avgBase
   const lifeEarned =
     avgMonthsGoal !== null
-      ? current.avg_mos >= avgMonthsGoal && (avgBase === null || avgBase < avgMonthsGoal)
+      ? current.avg_mos >= avgMonthsGoal - EARN_EPS && (avgBase === null || avgBase < avgMonthsGoal)
       : avgDelta === null
         ? null
-        : avgDelta >= avgMonthsDelta
+        : avgDelta >= avgMonthsDelta - EARN_EPS
   const lifetimeValue = {
     earned: lifeEarned,
     amount: lifeEarned ? LIFETIME_VALUE_BONUS : 0,
@@ -198,7 +202,7 @@ export function computeGmBonus(args: {
   const mightyChg = levels[0].pctChangeSinceBase
   const superChg = levels[1].pctChangeSinceBase
   const combined = mightyChg === null || superChg === null ? null : mightyChg + superChg
-  const memEarned = combined === null ? null : combined >= 0.1
+  const memEarned = combined === null ? null : combined >= 0.1 - EARN_EPS
   const membership = {
     earned: memEarned,
     amount: memEarned ? MEMBERSHIP_BONUS : 0,
