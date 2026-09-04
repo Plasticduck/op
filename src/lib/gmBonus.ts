@@ -46,7 +46,10 @@ export function lifetimeAvgGoal(siteName: string | null | undefined): number | n
 // else uses DEFAULT_LIFETIME_AVG_DELTA. Ignored when a site has an absolute
 // LIFETIME_AVG_GOALS milestone.
 export const DEFAULT_LIFETIME_AVG_DELTA = 1
-export const LIFETIME_AVG_DELTAS: Record<string, number> = { MW06: 0.5, MW14: 0.5 }
+export const LIFETIME_AVG_DELTAS: Record<string, number> = {
+  MW06: 0.5, MW14: 0.5,
+  MW22: 2, MW23: 2, MW24: 2, MW25: 2, MW26: 2,
+}
 
 export function lifetimeAvgDelta(siteName: string | null | undefined): number {
   const n = siteName?.trim()
