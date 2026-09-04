@@ -56,10 +56,11 @@ export function lifetimeAvgDelta(siteName: string | null | undefined): number {
   return n && n in LIFETIME_AVG_DELTAS ? LIFETIME_AVG_DELTAS[n] : DEFAULT_LIFETIME_AVG_DELTA
 }
 
-// Churn reward: first matching bracket wins. <7 -> 600, <=8 -> 520, <=9 -> 440,
-// <=10 -> 360, <=11 -> 240, <=12 -> 120, >12 -> 0.
+// Churn reward: first matching bracket wins. Each whole-percent boundary belongs
+// to the better (higher-paying) bracket, so 7% pays $600, 8% pays $520, etc.
+// <=7 -> 600, <=8 -> 520, <=9 -> 440, <=10 -> 360, <=11 -> 240, <=12 -> 120, >12 -> 0.
 export const CHURN_BRACKETS: { test: (c: number) => boolean; amount: number; label: string }[] = [
-  { test: (c) => c < 7, amount: 600, label: '< 7%' },
+  { test: (c) => c <= 7, amount: 600, label: '<= 7%' },
   { test: (c) => c <= 8, amount: 520, label: '<= 8%' },
   { test: (c) => c <= 9, amount: 440, label: '<= 9%' },
   { test: (c) => c <= 10, amount: 360, label: '<= 10%' },
