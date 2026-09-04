@@ -32,7 +32,9 @@ export const MEMBERSHIP_BONUS = 1500
 // Some sites earn the Lifetime Value bonus on an absolute average-months
 // milestone (paid once when avg months of active membership reaches the goal)
 // instead of the default "+1 month vs base" growth rule. Keyed by site name.
-export const LIFETIME_AVG_GOALS: Record<string, number> = { MW31: 9 }
+export const LIFETIME_AVG_GOALS: Record<string, number> = {
+  MW27: 9, MW28: 9, MW29: 9, MW31: 9, Spotless: 9,
+}
 
 export function lifetimeAvgGoal(siteName: string | null | undefined): number | null {
   const n = siteName?.trim()
