@@ -174,8 +174,16 @@ export async function exportAllSitesBonusPdf(
           ]
         : [r.site, r.gmName ?? '', r.agmName ?? '', 'No data', '', '', '', ''],
     ),
-    foot: [['Total', '', '', '', '', '', currency(gmSum), currency(agmSum)]],
-    columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' } },
+    foot: [[
+      'Total', '', '', '', '', '',
+      { content: currency(gmSum), styles: { halign: 'right' } },
+      { content: currency(agmSum), styles: { halign: 'right' } },
+    ]],
+    // Right-align every money column so the values (and the totals row) line up.
+    columnStyles: {
+      3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' },
+      6: { halign: 'right' }, 7: { halign: 'right' },
+    },
   })
 
   doc.save(`gm-bonus-all-sites-${fileSafe(monthLabel)}-${stamp()}.pdf`)
