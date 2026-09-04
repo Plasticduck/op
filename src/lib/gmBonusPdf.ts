@@ -179,6 +179,8 @@ export async function exportAllSitesBonusPdf(
       { content: currency(gmSum), styles: { halign: 'right' } },
       { content: currency(agmSum), styles: { halign: 'right' } },
     ]],
+    // Only show the totals once, after the last site (not repeated per page).
+    showFoot: 'lastPage',
     // Right-align every money column so the values (and the totals row) line up.
     columnStyles: {
       3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' },
