@@ -21,27 +21,12 @@ export const siteEvaluations = {
   create: (row: T['site_evaluations']['Insert']) => supabase.from('site_evaluations').insert(row).select().single(),
   // Delete is locked by RLS to a single admin (kevan@washlyfe.com); others no-op.
   remove: (id: string) => supabase.from('site_evaluations').delete().eq('id', id).select('id'),
-  // Emails the exported PDF (built client-side so its photo links resolve) to the
-  // reviews recipient. Best-effort: caller ignores failures so a bad email
-  // delivery never blocks the submission.
-  emailReport: (payload: {
-    reviewId: string
-    pdfBase64: string
-    filename: string
-    siteName: string | null
-    submittedBy: string | null
-    date: string | null
-  }) =>
-    supabase.functions.invoke('email-site-review', {
-      body: {
-        review_id: payload.reviewId,
-        pdf_base64: payload.pdfBase64,
-        filename: payload.filename,
-        site_name: payload.siteName,
-        submitted_by: payload.submittedBy,
-        date: payload.date,
-      },
-    }),
+  // Triggers the review email. The PDF is built SERVER-SIDE from the review id
+  // (the function has service-role access to the review + photos), so delivery
+  // does not depend on the submitter's device. Returns the invoke result so the
+  // caller can surface failures.
+  emailReport: (reviewId: string) =>
+    supabase.functions.invoke('email-site-review', { body: { review_id: reviewId } }),
 }
 
 // Photos attached to individual site-review items. Stored in the private
