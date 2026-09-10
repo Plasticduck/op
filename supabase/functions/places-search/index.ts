@@ -37,7 +37,10 @@ Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) })
 
-  const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY')
+  // Reuses the same key as the Google ratings functions (google-place-rating,
+  // gatherup-rating). It already has Places API (New) enabled, which is the same
+  // API these search endpoints use, so no separate key is needed.
+  const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY')
   if (!apiKey) return json({ error: 'no_key', message: 'Google Places is not configured.' }, 503, origin)
 
   const url = Deno.env.get('SUPABASE_URL')!
