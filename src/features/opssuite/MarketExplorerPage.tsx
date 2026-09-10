@@ -194,10 +194,12 @@ export default function MarketExplorerPage() {
   useEffect(() => {
     if (!wrapRef.current || mapRef.current) return
     const map = L.map(wrapRef.current, { center: START.center, zoom: START.zoom, zoomControl: true, tap: true })
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    // Standard OpenStreetMap tiles: keyless and watermark-free (CARTO's free
+    // basemap started serving an "API key required" watermark tile).
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      crossOrigin: true,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map)
     map.zoomControl.setPosition('bottomright')
     pinsRef.current = L.layerGroup().addTo(map)
