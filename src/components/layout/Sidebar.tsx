@@ -34,6 +34,7 @@ import {
   FileClock,
   Folders,
   Gauge,
+  Globe,
   ListChecks,
   Building2,
   Map,
@@ -122,6 +123,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/site-performance',
         label: 'Site Performance',
         icon: Activity,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/market-explorer',
+        label: 'Market Explorer',
+        icon: Globe,
         roles: ['owner', 'manager'],
       },
       {

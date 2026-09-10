@@ -27,6 +27,7 @@ import { BillingGate } from '@/components/layout/BillingGate'
 // content is normal scrolling charts, not a chat thread.
 const FULL_BLEED_PATTERNS = [
   /^\/app\/ask($|\/)/,
+  /^\/app\/market-explorer($|\/)/,
   /^\/app\/messages($|\/)/,
   /^\/app\/work-orders($|\/)/,
   /^\/app\/assets($|\/)/,

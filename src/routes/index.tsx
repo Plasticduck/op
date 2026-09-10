@@ -130,6 +130,7 @@ const WorkRequestsPage = lz(() => import('@/features/ops/requests/WorkRequestsPa
 const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
+const MarketExplorerPage = lz(() => import('@/features/opssuite/MarketExplorerPage'))
 const HouseholdFinderPage = lz(() => import('@/features/opssuite/HouseholdFinderPage'))
 const LubeShopPage = lz(() => import('@/features/opssuite/LubeShopPage'))
 const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
@@ -230,6 +231,7 @@ export const router = createBrowserRouter([
           { path: 'signage', element: emp(<SignagePage />) },
           { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
+          { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
           { path: 'details', element: mgr(<InteriorDetailsPage />) },
           { path: 'msa-performance', element: mgr(<MsaPerformancePage />) },
           { path: 'flexwash-sales', element: mgr(<FlexwashSalesPage />) },
