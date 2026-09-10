@@ -105,6 +105,20 @@ const mwSiteIcon = L.divIcon({
     '<img src="/mw-logo.png" alt="Mighty Wash" style="width:32px;height:32px;object-fit:contain"/></div>',
 })
 
+// Replace a layer's markers with a gold business pin per item (name + address
+// popup). Shared by the category search and the trade-area tool.
+function addBusinessMarkers(layer: L.LayerGroup, items: Array<{ lat: number; lon: number; name: string; addr: string }>): void {
+  layer.clearLayers()
+  for (const it of items) {
+    L.marker([it.lat, it.lon], { icon: businessIcon })
+      .bindPopup(
+        `<div style="font-size:15px;font-weight:700;margin-bottom:2px">${escapeHtml(it.name)}</div>` +
+          (it.addr ? `<div style="font-size:13px;color:#555">${escapeHtml(it.addr)}</div>` : ''),
+      )
+      .addTo(layer)
+  }
+}
+
 async function fetchJson(url: string, ms = 15000): Promise<unknown> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), ms)
@@ -346,13 +360,17 @@ export default function MarketExplorerPage() {
 
         // Car washes inside the circle, excluding our own sites (matched by
         // proximity so it works regardless of how Google names them).
-        const competitors = (placesOut.ok ? placesOut.hits : [])
+        const compFull = (placesOut.ok ? placesOut.hits : [])
           .map((h) => ({ name: h.name, addr: h.address, miles: haversineMeters(lat, lon, h.lat, h.lon) * MILES_PER_M, lat: h.lat, lon: h.lon }))
           .filter((h) => h.miles <= miles + 0.01)
           .filter((h) => !locations.some((s) => s.latitude != null && s.longitude != null && haversineMeters(h.lat, h.lon, s.latitude, s.longitude) <= 200))
           .sort((a, b) => a.miles - b.miles)
-          .map(({ name, addr, miles }) => ({ name, addr, miles }))
 
+        // Drop a pin on the map for each competitor car wash in the circle. (Our
+        // own MW sites already show their logo pins.)
+        if (pinsRef.current) addBusinessMarkers(pinsRef.current, compFull.map((c) => ({ lat: c.lat, lon: c.lon, name: c.name, addr: c.addr })))
+
+        const competitors = compFull.map(({ name, addr, miles }) => ({ name, addr, miles }))
         setTrade({ center: toDemo(censusRes.data)?.name ?? 'this point', miles, demo: toDemo(censusRes.data), ourSites, competitors })
       } catch {
         setStatus('Could not analyze that area. Please try again.')
@@ -367,6 +385,7 @@ export default function MarketExplorerPage() {
   const clearTradeArea = useCallback(() => {
     setTrade(null)
     setTradeLoading(false)
+    pinsRef.current?.clearLayers()
     if (circleRef.current && mapRef.current) {
       mapRef.current.removeLayer(circleRef.current)
       circleRef.current = null
@@ -377,15 +396,7 @@ export default function MarketExplorerPage() {
     const layer = pinsRef.current
     const map = mapRef.current
     if (!layer || !map) return
-    layer.clearLayers()
-    for (const it of items) {
-      L.marker([it.lat, it.lon], { icon: businessIcon })
-        .bindPopup(
-          `<div style="font-size:15px;font-weight:700;margin-bottom:2px">${escapeHtml(it.name)}</div>` +
-            (it.addr ? `<div style="font-size:13px;color:#555">${escapeHtml(it.addr)}</div>` : ''),
-        )
-        .addTo(layer)
-    }
+    addBusinessMarkers(layer, items)
   }, [])
 
   // Free OpenStreetMap category search. Used as the fallback when Google Places
