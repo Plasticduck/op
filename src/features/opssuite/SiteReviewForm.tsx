@@ -46,6 +46,14 @@ export default function SiteReviewForm({
         e.preventDefault()
         void onSubmit(answers)
       }}
+      // Pressing Enter/Go in a single-line field must not submit the review (a
+      // common accidental submit on phones). Only the Submit button submits.
+      // Textareas keep Enter for newlines.
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+          e.preventDefault()
+        }
+      }}
       className="flex flex-col gap-4"
     >
       {schema.sections.map((section: SiteReviewSection) => (
