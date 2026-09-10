@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Search, X, Loader2, MapPin, Maximize2, Users, Building2 } from 'lucide-react'
+import { searchPlaces } from '@/lib/queries/places'
 
 // Market Explorer — a touchscreen kiosk map for scoping trade areas on a large
 // screen. Two capabilities, both on free/no-key public data so there is nothing
@@ -36,19 +37,20 @@ const OVERPASS_MIRRORS = [
 ]
 let preferredMirror = 0
 
-// Business categories: a label, the synonyms that select it, and the OSM tag
-// filters (applied to both nodes and ways). Car washes lead, for obvious reasons.
-type Category = { key: string; label: string; synonyms: string[]; filters: string[] }
+// Business categories: a label, the synonyms that select it, the Google Places
+// type(s) for the primary search, and the OSM tag filters for the free fallback
+// (applied to both nodes and ways). Car washes lead, for obvious reasons.
+type Category = { key: string; label: string; synonyms: string[]; google: string[]; filters: string[] }
 const CATEGORIES: Category[] = [
-  { key: 'car_wash', label: 'Car washes', synonyms: ['car wash', 'carwash', 'car washes', 'wash'], filters: ['amenity=car_wash'] },
-  { key: 'fuel', label: 'Gas stations', synonyms: ['gas', 'gas station', 'fuel', 'petrol', 'gas stations'], filters: ['amenity=fuel'] },
-  { key: 'restaurant', label: 'Restaurants', synonyms: ['restaurant', 'restaurants', 'food', 'dining'], filters: ['amenity=restaurant', 'amenity=fast_food'] },
-  { key: 'grocery', label: 'Grocery', synonyms: ['grocery', 'groceries', 'supermarket', 'market'], filters: ['shop=supermarket', 'shop=convenience'] },
-  { key: 'bank', label: 'Banks', synonyms: ['bank', 'banks', 'atm'], filters: ['amenity=bank'] },
-  { key: 'hotel', label: 'Hotels', synonyms: ['hotel', 'hotels', 'motel', 'lodging'], filters: ['tourism=hotel', 'tourism=motel'] },
-  { key: 'auto_repair', label: 'Auto repair', synonyms: ['auto repair', 'mechanic', 'repair', 'car repair'], filters: ['shop=car_repair'] },
-  { key: 'dealership', label: 'Dealerships', synonyms: ['dealer', 'dealership', 'dealerships', 'car dealer'], filters: ['shop=car'] },
-  { key: 'coffee', label: 'Coffee', synonyms: ['coffee', 'cafe', 'coffee shop'], filters: ['amenity=cafe', 'shop=coffee'] },
+  { key: 'car_wash', label: 'Car washes', synonyms: ['car wash', 'carwash', 'car washes', 'wash'], google: ['car_wash'], filters: ['amenity=car_wash'] },
+  { key: 'fuel', label: 'Gas stations', synonyms: ['gas', 'gas station', 'fuel', 'petrol', 'gas stations'], google: ['gas_station'], filters: ['amenity=fuel'] },
+  { key: 'restaurant', label: 'Restaurants', synonyms: ['restaurant', 'restaurants', 'food', 'dining'], google: ['restaurant'], filters: ['amenity=restaurant', 'amenity=fast_food'] },
+  { key: 'grocery', label: 'Grocery', synonyms: ['grocery', 'groceries', 'supermarket', 'market'], google: ['supermarket', 'grocery_store'], filters: ['shop=supermarket', 'shop=convenience'] },
+  { key: 'bank', label: 'Banks', synonyms: ['bank', 'banks', 'atm'], google: ['bank'], filters: ['amenity=bank'] },
+  { key: 'hotel', label: 'Hotels', synonyms: ['hotel', 'hotels', 'motel', 'lodging'], google: ['hotel', 'motel'], filters: ['tourism=hotel', 'tourism=motel'] },
+  { key: 'auto_repair', label: 'Auto repair', synonyms: ['auto repair', 'mechanic', 'repair', 'car repair'], google: ['car_repair'], filters: ['shop=car_repair'] },
+  { key: 'dealership', label: 'Dealerships', synonyms: ['dealer', 'dealership', 'dealerships', 'car dealer'], google: ['car_dealer'], filters: ['shop=car'] },
+  { key: 'coffee', label: 'Coffee', synonyms: ['coffee', 'cafe', 'coffee shop'], google: ['coffee_shop', 'cafe'], filters: ['amenity=cafe', 'shop=coffee'] },
 ]
 // Which categories get a quick-tap button, in order.
 const QUICK = ['car_wash', 'fuel', 'restaurant', 'grocery', 'bank', 'hotel']
@@ -128,6 +130,13 @@ function matchCategory(q: string): Category | null {
   const n = q.trim().toLowerCase()
   for (const c of CATEGORIES) if (c.synonyms.some((s) => n === s || n.includes(s))) return c
   return null
+}
+
+// Distance from the map center to a corner, in meters, capped at the Google
+// Places maximum search radius.
+function boundsRadius(map: L.Map): number {
+  const b = map.getBounds()
+  return Math.min(map.distance(b.getCenter(), b.getNorthEast()), 50000)
 }
 
 function addressOf(tags: Record<string, unknown>): string {
@@ -249,7 +258,9 @@ export default function MarketExplorerPage() {
     }
   }, [])
 
-  const runCategory = useCallback(
+  // Free OpenStreetMap category search. Used as the fallback when Google Places
+  // isn't configured, so the page still works with no key.
+  const runCategoryOsm = useCallback(
     async (cat: Category) => {
       const map = mapRef.current
       if (!map) return
@@ -280,6 +291,29 @@ export default function MarketExplorerPage() {
       )
     },
     [dropPins],
+  )
+
+  // Category search: Google Places first (richer listings), OpenStreetMap when
+  // Google isn't configured.
+  const runCategory = useCallback(
+    async (cat: Category) => {
+      const map = mapRef.current
+      if (!map) return
+      const c = map.getBounds().getCenter()
+      const out = await searchPlaces({ includedTypes: cat.google, lat: c.lat, lon: c.lng, radius: boundsRadius(map) })
+      if (!out.ok) {
+        if (out.reason === 'nokey') return runCategoryOsm(cat)
+        throw new Error(out.message ?? 'Places error')
+      }
+      const items = out.hits.map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, addr: h.address }))
+      dropPins(items)
+      setStatus(
+        items.length
+          ? `Found ${items.length} ${cat.label.toLowerCase()} nearby. Tap a pin for details.`
+          : `No ${cat.label.toLowerCase()} found here. Zoom out or pan, then search again.`,
+      )
+    },
+    [dropPins, runCategoryOsm],
   )
 
   const runSearch = useCallback(
@@ -318,7 +352,20 @@ export default function MarketExplorerPage() {
           if (pinsRef.current) pinsRef.current.clearLayers()
           map.flyTo([Number(top.lat), Number(top.lon)], 12, { duration: 0.8 })
           setStatus(`Moved to ${top.display_name.split(',').slice(0, 2).join(',')}. Tap the map for demographics.`)
-        } else {
+          return
+        }
+        // A business name: Google Places first, OpenStreetMap (the Nominatim
+        // matches we already have) when Google isn't configured.
+        const c = map.getCenter()
+        const out = await searchPlaces({ textQuery: q, lat: c.lat, lon: c.lng, radius: boundsRadius(map) })
+        if (out.ok) {
+          if (!out.hits.length) {
+            setStatus(`Nothing found for "${q}". Try a category like "car washes" or a city name.`)
+            return
+          }
+          dropPins(out.hits.map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, addr: h.address })))
+          setStatus(`Found ${out.hits.length} match${out.hits.length === 1 ? '' : 'es'} for "${q}". Tap a pin for details.`)
+        } else if (out.reason === 'nokey') {
           dropPins(
             results.map((r) => ({
               lat: Number(r.lat),
@@ -328,6 +375,8 @@ export default function MarketExplorerPage() {
             })),
           )
           setStatus(`Found ${results.length} match${results.length === 1 ? '' : 'es'} for "${q}". Tap a pin for details.`)
+        } else {
+          throw new Error(out.message ?? 'Places error')
         }
       } catch {
         setStatus('Search service is busy right now. Give it a moment and try again.')
