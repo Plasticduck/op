@@ -56,8 +56,6 @@ const CATEGORIES: Category[] = [
   { key: 'dealership', label: 'Dealerships', synonyms: ['dealer', 'dealership', 'dealerships', 'car dealer'], google: ['car_dealer'], filters: ['shop=car'] },
   { key: 'coffee', label: 'Coffee', synonyms: ['coffee', 'cafe', 'coffee shop'], google: ['coffee_shop', 'cafe'], filters: ['amenity=cafe', 'shop=coffee'] },
 ]
-// Which categories get a quick-tap button, in order.
-const QUICK = ['car_wash', 'fuel', 'restaurant', 'grocery', 'bank', 'hotel']
 
 type Demo = {
   name: string
@@ -574,29 +572,6 @@ export default function MarketExplorerPage() {
           </button>
         </div>
 
-        <div className="pointer-events-auto flex max-w-3xl flex-wrap justify-center gap-2">
-          {QUICK.map((key) => {
-            const cat = CATEGORIES.find((c) => c.key === key)!
-            return (
-              <button
-                key={key}
-                onClick={() => {
-                  setQuery(cat.label)
-                  setBusy(true)
-                  setStatus(null)
-                  setDemo(null)
-                  runCategory(cat)
-                    .catch(() => setStatus('Search service is busy right now. Give it a moment and try again.'))
-                    .finally(() => setBusy(false))
-                }}
-                disabled={busy}
-                className="rounded-full bg-card px-5 py-3 text-base font-medium text-ink shadow-lg ring-1 ring-border hover:bg-accent-soft disabled:opacity-60"
-              >
-                {cat.label}
-              </button>
-            )
-          })}
-        </div>
       </div>
 
       {/* Fullscreen toggle for kiosk mode. */}
@@ -625,7 +600,7 @@ export default function MarketExplorerPage() {
           <Circle className="h-5 w-5" /> Trade Area
         </button>
         {radiusMode && (
-          <div className="rounded-xl bg-card p-2 shadow-lg ring-1 ring-border">
+          <div className="w-64 rounded-xl bg-card p-3 shadow-lg ring-1 ring-border">
             <div className="px-1 pb-1 text-xs font-medium text-ink-subtle">Radius</div>
             <div className="flex gap-1">
               {[1, 3, 5, 10].map((mi) => (
@@ -635,13 +610,31 @@ export default function MarketExplorerPage() {
                     setRadiusMiles(mi)
                     setStatus(`Tap the map to analyze a ${mi} mile trade area.`)
                   }}
-                  className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                  className={`flex-1 rounded-lg px-2 py-2 text-sm font-semibold ${
                     mi === radiusMiles ? 'bg-accent text-white' : 'bg-content text-ink hover:bg-accent-soft'
                   }`}
                 >
-                  {mi} mi
+                  {mi}
                 </button>
               ))}
+            </div>
+            {/* Custom radius: drag for any value (touch-friendly for the kiosk). */}
+            <div className="mt-3 flex items-center gap-3">
+              <input
+                type="range"
+                min={0.5}
+                max={25}
+                step={0.5}
+                value={radiusMiles}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setRadiusMiles(v)
+                  setStatus(`Tap the map to analyze a ${v} mile trade area.`)
+                }}
+                aria-label="Custom radius"
+                className="h-2 flex-1 cursor-pointer accent-[#2563eb]"
+              />
+              <span className="w-14 shrink-0 text-right text-sm font-semibold text-ink">{radiusMiles} mi</span>
             </div>
           </div>
         )}
