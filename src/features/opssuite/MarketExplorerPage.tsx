@@ -3,6 +3,10 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Search, X, Loader2, MapPin, Maximize2, Users, Building2 } from 'lucide-react'
 import { searchPlaces, censusDemographics } from '@/lib/queries/places'
+import { useLocations } from '@/lib/locations'
+import { useAuth } from '@/lib/auth'
+
+const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 
 // Market Explorer — a touchscreen kiosk map for scoping trade areas on a large
 // screen. Two capabilities, both on free/no-key public data so there is nothing
@@ -87,6 +91,20 @@ const businessIcon = L.divIcon({
   </svg>`,
 })
 
+// Mighty Wash site marker: the MW logo in a white circular badge, centered on
+// the point so it reads as "our site here". Drawn as a divIcon so there's no
+// Leaflet image-asset bundling to worry about.
+const mwSiteIcon = L.divIcon({
+  className: '',
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
+  popupAnchor: [0, -22],
+  html:
+    '<div style="width:40px;height:40px;border-radius:50%;background:#fff;border:2px solid #2563eb;' +
+    'box-shadow:0 1px 5px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;overflow:hidden">' +
+    '<img src="/mw-logo.png" alt="Mighty Wash" style="width:32px;height:32px;object-fit:contain"/></div>',
+})
+
 async function fetchJson(url: string, ms = 15000): Promise<unknown> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), ms)
@@ -151,7 +169,12 @@ export default function MarketExplorerPage() {
   const wrapRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const pinsRef = useRef<L.LayerGroup | null>(null)
+  const sitesRef = useRef<L.LayerGroup | null>(null)
   const tapRef = useRef<L.Marker | null>(null)
+
+  const { locations } = useLocations()
+  const { profile } = useAuth()
+  const isMightyWash = profile?.account_id === MW_ACCOUNT_ID
 
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -203,6 +226,7 @@ export default function MarketExplorerPage() {
     }).addTo(map)
     map.zoomControl.setPosition('bottomright')
     pinsRef.current = L.layerGroup().addTo(map)
+    sitesRef.current = L.layerGroup().addTo(map)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng
@@ -220,6 +244,24 @@ export default function MarketExplorerPage() {
       mapRef.current = null
     }
   }, [loadDemographics])
+
+  // Drop the Mighty Wash logo at each current MW site. Kept in its own layer so a
+  // business search never clears it. MW-gated so other tenants aren't branded.
+  useEffect(() => {
+    const layer = sitesRef.current
+    if (!layer || !mapRef.current) return
+    layer.clearLayers()
+    if (!isMightyWash) return
+    for (const s of locations) {
+      if (s.latitude == null || s.longitude == null) continue
+      L.marker([s.latitude, s.longitude], { icon: mwSiteIcon, zIndexOffset: 1000, title: s.name })
+        .bindPopup(
+          `<div style="font-size:15px;font-weight:700;margin-bottom:2px">${escapeHtml(s.name)}</div>` +
+            '<div style="font-size:12px;color:#2563eb;font-weight:600">Mighty Wash site</div>',
+        )
+        .addTo(layer)
+    }
+  }, [locations, isMightyWash])
 
   const dropPins = useCallback((items: Array<{ lat: number; lon: number; name: string; addr: string }>) => {
     const layer = pinsRef.current
