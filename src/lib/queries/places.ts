@@ -23,6 +23,19 @@ export type PlacesOutcome =
   | { ok: true; hits: PlaceHit[] }
   | { ok: false; reason: 'nokey' | 'error'; message?: string }
 
+// Census demographics for a tapped point, proxied server-side (the Census
+// geocoder sends no CORS headers, so the browser can't call it directly).
+// Returns raw ACS values keyed by variable code; the caller formats them.
+export type CensusResponse = {
+  name?: string
+  scope?: 'place' | 'county'
+  values?: Record<string, string>
+  error?: string
+  message?: string
+}
+export const censusDemographics = (lat: number, lon: number) =>
+  supabase.functions.invoke<CensusResponse>('census-demographics', { body: { lat, lon } })
+
 export async function searchPlaces(body: Parameters<typeof placesSearch>[0]): Promise<PlacesOutcome> {
   const { data, error } = await placesSearch(body)
   if (error) {

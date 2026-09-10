@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Search, X, Loader2, MapPin, Maximize2, Users, Building2 } from 'lucide-react'
-import { searchPlaces } from '@/lib/queries/places'
+import { searchPlaces, censusDemographics } from '@/lib/queries/places'
 
 // Market Explorer — a touchscreen kiosk map for scoping trade areas on a large
 // screen. Two capabilities, both on free/no-key public data so there is nothing
@@ -159,53 +159,29 @@ export default function MarketExplorerPage() {
   const [demo, setDemo] = useState<Demo | null>(null)
   const [demoLoading, setDemoLoading] = useState(false)
 
-  // Resolve a tapped point to Census demographics: geocode lat/lon to FIPS, then
-  // pull ACS for the place (or county if the point is unincorporated).
+  // Resolve a tapped point to Census demographics. The lookup runs in an edge
+  // function (the Census geocoder sends no CORS headers, so a direct browser
+  // fetch is blocked); it returns raw ACS values that we format here.
   const loadDemographics = useCallback(async (lat: number, lon: number) => {
     setDemo(null)
     setDemoLoading(true)
     setStatus(null)
     try {
-      const geo = (await fetchJson(
-        `https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=${lon}&y=${lat}` +
-          `&benchmark=Public_AR_Current&vintage=Current_Current&layers=all&format=json`,
-      )) as { result?: { geographies?: Record<string, Array<Record<string, string>>> } }
-      const g = geo.result?.geographies ?? {}
-      const place = g['Incorporated Places']?.[0] ?? g['Census Designated Places']?.[0]
-      const county = g['Counties']?.[0]
-
-      let scope: 'place' | 'county'
-      let where: string
-      let name: string
-      if (place?.STATE && place.PLACE) {
-        scope = 'place'
-        where = `for=place:${place.PLACE}&in=state:${place.STATE}`
-        name = place.NAME ?? 'Selected place'
-      } else if (county?.STATE && county.COUNTY) {
-        scope = 'county'
-        where = `for=county:${county.COUNTY}&in=state:${county.STATE}`
-        name = county.NAME ?? 'Selected county'
-      } else {
+      const { data, error } = await censusDemographics(lat, lon)
+      if (error) throw error
+      if (data?.error === 'no_area') {
         setStatus('No Census area found for that spot. Try tapping a town or city.')
         return
       }
-
-      const get = CENSUS_VARS.map((v) => v.code).join(',')
-      const rows = (await fetchJson(
-        `https://api.census.gov/data/${ACS}/acs/acs5?get=NAME,${get}&${where}`,
-      )) as string[][]
-      const header = rows[0]
-      const values = rows[1]
-      if (!values) {
+      if (!data || data.error || !data.values || !data.name) {
         setStatus('Census has no data for that area yet.')
         return
       }
-      const byCode: Record<string, string> = {}
-      header.forEach((h, i) => (byCode[h] = values[i]))
+      const values = data.values
       setDemo({
-        name,
-        scope,
-        stats: CENSUS_VARS.map((v) => ({ label: v.label, value: fmtCensus(byCode[v.code] ?? null, v.fmt) })),
+        name: data.name,
+        scope: data.scope ?? 'place',
+        stats: CENSUS_VARS.map((v) => ({ label: v.label, value: fmtCensus(values[v.code] ?? null, v.fmt) })),
       })
     } catch {
       setStatus('Could not reach the Census service. Check the connection and try again.')
