@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Search, X, Loader2, MapPin, Maximize2, Users, Building2 } from 'lucide-react'
+import { Search, X, Loader2, MapPin, Maximize2, Users, Building2, Circle, Car } from 'lucide-react'
 import { searchPlaces, censusDemographics } from '@/lib/queries/places'
 import { useLocations } from '@/lib/locations'
 import { useAuth } from '@/lib/auth'
@@ -165,6 +165,36 @@ function addressOf(tags: Record<string, unknown>): string {
   return parts.join(', ')
 }
 
+const MILES_PER_M = 1 / 1609.34
+function haversineMeters(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const R = 6371000
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(bLat - aLat)
+  const dLon = toRad(bLon - aLon)
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(s))
+}
+
+// Build the demographics panel model from a raw Census response (shared by the
+// tap lookup and the trade-area tool).
+function toDemo(data: { name?: string; scope?: 'place' | 'county'; values?: Record<string, string>; error?: string } | null | undefined): Demo | null {
+  if (!data || data.error || !data.values || !data.name) return null
+  const values = data.values
+  return {
+    name: data.name,
+    scope: data.scope ?? 'place',
+    stats: CENSUS_VARS.map((v) => ({ label: v.label, value: fmtCensus(values[v.code] ?? null, v.fmt) })),
+  }
+}
+
+type Trade = {
+  center: string
+  miles: number
+  demo: Demo | null
+  ourSites: { name: string; miles: number }[]
+  competitors: { name: string; addr: string; miles: number }[]
+}
+
 export default function MarketExplorerPage() {
   const wrapRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -182,11 +212,25 @@ export default function MarketExplorerPage() {
   const [demo, setDemo] = useState<Demo | null>(null)
   const [demoLoading, setDemoLoading] = useState(false)
 
+  const circleRef = useRef<L.Circle | null>(null)
+  const [radiusMode, setRadiusMode] = useState(false)
+  const [radiusMiles, setRadiusMiles] = useState(3)
+  const [trade, setTrade] = useState<Trade | null>(null)
+  const [tradeLoading, setTradeLoading] = useState(false)
+  // Refs so the map's one-time click handler always reads the latest values.
+  const radiusModeRef = useRef(radiusMode)
+  const radiusMilesRef = useRef(radiusMiles)
+  const runTradeAreaRef = useRef<(lat: number, lon: number) => void>(() => {})
+  const loadDemographicsRef = useRef<(lat: number, lon: number) => void>(() => {})
+  useEffect(() => { radiusModeRef.current = radiusMode }, [radiusMode])
+  useEffect(() => { radiusMilesRef.current = radiusMiles }, [radiusMiles])
+
   // Resolve a tapped point to Census demographics. The lookup runs in an edge
   // function (the Census geocoder sends no CORS headers, so a direct browser
   // fetch is blocked); it returns raw ACS values that we format here.
   const loadDemographics = useCallback(async (lat: number, lon: number) => {
     setDemo(null)
+    setTrade(null)
     setDemoLoading(true)
     setStatus(null)
     try {
@@ -200,18 +244,19 @@ export default function MarketExplorerPage() {
         setStatus('Census has no data for that area yet.')
         return
       }
-      const values = data.values
-      setDemo({
-        name: data.name,
-        scope: data.scope ?? 'place',
-        stats: CENSUS_VARS.map((v) => ({ label: v.label, value: fmtCensus(values[v.code] ?? null, v.fmt) })),
-      })
+      const built = toDemo(data)
+      if (!built) {
+        setStatus('Census has no data for that area yet.')
+        return
+      }
+      setDemo(built)
     } catch {
       setStatus('Could not reach the Census service. Check the connection and try again.')
     } finally {
       setDemoLoading(false)
     }
   }, [])
+  useEffect(() => { loadDemographicsRef.current = loadDemographics }, [loadDemographics])
 
   // Init the map once.
   useEffect(() => {
@@ -230,9 +275,13 @@ export default function MarketExplorerPage() {
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng
+      if (radiusModeRef.current) {
+        runTradeAreaRef.current(lat, lng)
+        return
+      }
       if (tapRef.current) tapRef.current.setLatLng(e.latlng)
       else tapRef.current = L.marker(e.latlng).addTo(map)
-      void loadDemographics(lat, lng)
+      loadDemographicsRef.current(lat, lng)
     })
 
     mapRef.current = map
@@ -243,7 +292,7 @@ export default function MarketExplorerPage() {
       map.remove()
       mapRef.current = null
     }
-  }, [loadDemographics])
+  }, [])
 
   // Drop the Mighty Wash logo at each current MW site. Kept in its own layer so a
   // business search never clears it. MW-gated so other tenants aren't branded.
@@ -262,6 +311,67 @@ export default function MarketExplorerPage() {
         .addTo(layer)
     }
   }, [locations, isMightyWash])
+
+  // Trade-area analysis: draw a circle of the chosen radius at the tapped point
+  // and summarize what's inside (center demographics, our sites, competitor car
+  // washes). Runs on tap while radius mode is on.
+  const runTradeArea = useCallback(
+    async (lat: number, lon: number) => {
+      const map = mapRef.current
+      if (!map) return
+      const miles = radiusMilesRef.current
+      const meters = miles * 1609.34
+      setDemo(null)
+      setStatus(null)
+      setTrade(null)
+      setTradeLoading(true)
+
+      if (circleRef.current) circleRef.current.setLatLng([lat, lon]).setRadius(meters)
+      else
+        circleRef.current = L.circle([lat, lon], {
+          radius: meters, color: '#2563eb', weight: 2, fillColor: '#2563eb', fillOpacity: 0.08,
+        }).addTo(map)
+      map.fitBounds(circleRef.current.getBounds(), { padding: [40, 40] })
+
+      try {
+        const [censusRes, placesOut] = await Promise.all([
+          censusDemographics(lat, lon),
+          searchPlaces({ includedTypes: ['car_wash'], lat, lon, radius: Math.min(meters, 50000) }),
+        ])
+
+        const ourSites = locations
+          .filter((s) => s.latitude != null && s.longitude != null && haversineMeters(lat, lon, s.latitude, s.longitude) <= meters)
+          .map((s) => ({ name: s.name, miles: haversineMeters(lat, lon, s.latitude as number, s.longitude as number) * MILES_PER_M }))
+          .sort((a, b) => a.miles - b.miles)
+
+        // Car washes inside the circle, excluding our own sites (matched by
+        // proximity so it works regardless of how Google names them).
+        const competitors = (placesOut.ok ? placesOut.hits : [])
+          .map((h) => ({ name: h.name, addr: h.address, miles: haversineMeters(lat, lon, h.lat, h.lon) * MILES_PER_M, lat: h.lat, lon: h.lon }))
+          .filter((h) => h.miles <= miles + 0.01)
+          .filter((h) => !locations.some((s) => s.latitude != null && s.longitude != null && haversineMeters(h.lat, h.lon, s.latitude, s.longitude) <= 200))
+          .sort((a, b) => a.miles - b.miles)
+          .map(({ name, addr, miles }) => ({ name, addr, miles }))
+
+        setTrade({ center: toDemo(censusRes.data)?.name ?? 'this point', miles, demo: toDemo(censusRes.data), ourSites, competitors })
+      } catch {
+        setStatus('Could not analyze that area. Please try again.')
+      } finally {
+        setTradeLoading(false)
+      }
+    },
+    [locations],
+  )
+  useEffect(() => { runTradeAreaRef.current = runTradeArea }, [runTradeArea])
+
+  const clearTradeArea = useCallback(() => {
+    setTrade(null)
+    setTradeLoading(false)
+    if (circleRef.current && mapRef.current) {
+      mapRef.current.removeLayer(circleRef.current)
+      circleRef.current = null
+    }
+  }, [])
 
   const dropPins = useCallback((items: Array<{ lat: number; lon: number; name: string; addr: string }>) => {
     const layer = pinsRef.current
@@ -487,6 +597,45 @@ export default function MarketExplorerPage() {
         <Maximize2 className="h-6 w-6" />
       </button>
 
+      {/* Trade-area (radius) tool, top-left. */}
+      <div className="absolute left-4 top-28 z-[500] flex flex-col items-start gap-2">
+        <button
+          onClick={() =>
+            setRadiusMode((m) => {
+              const next = !m
+              setStatus(next ? `Tap the map to analyze a ${radiusMiles} mile trade area.` : null)
+              return next
+            })
+          }
+          className={`flex h-14 items-center gap-2 rounded-xl px-4 text-base font-semibold shadow-lg ring-1 ring-border ${
+            radiusMode ? 'bg-accent text-white' : 'bg-card text-ink hover:bg-content'
+          }`}
+        >
+          <Circle className="h-5 w-5" /> Trade Area
+        </button>
+        {radiusMode && (
+          <div className="rounded-xl bg-card p-2 shadow-lg ring-1 ring-border">
+            <div className="px-1 pb-1 text-xs font-medium text-ink-subtle">Radius</div>
+            <div className="flex gap-1">
+              {[1, 3, 5, 10].map((mi) => (
+                <button
+                  key={mi}
+                  onClick={() => {
+                    setRadiusMiles(mi)
+                    setStatus(`Tap the map to analyze a ${mi} mile trade area.`)
+                  }}
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                    mi === radiusMiles ? 'bg-accent text-white' : 'bg-content text-ink hover:bg-accent-soft'
+                  }`}
+                >
+                  {mi} mi
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Status toast. */}
       {status && (
         <div className="pointer-events-none absolute inset-x-0 bottom-6 z-[500] flex justify-center px-4">
@@ -548,6 +697,114 @@ export default function MarketExplorerPage() {
                   {demo?.scope === 'county' ? ' Shown at county level (unincorporated area).' : ''}
                 </span>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Trade-area (radius) results panel. */}
+      {(trade || tradeLoading) && (
+        <div className="absolute inset-y-0 right-0 z-[600] flex w-full max-w-md flex-col bg-card shadow-2xl ring-1 ring-border">
+          <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+            <div className="flex items-center gap-3">
+              <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent">
+                <Circle className="h-6 w-6" />
+              </span>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+                  {tradeLoading ? 'Analyzing' : `${trade?.miles} mile trade area`}
+                </div>
+                <div className="text-lg font-bold leading-tight text-ink">{trade?.center ?? 'Analyzing area'}</div>
+              </div>
+            </div>
+            <button
+              onClick={clearTradeArea}
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-ink-subtle hover:bg-content"
+              aria-label="Close"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+
+          {tradeLoading ? (
+            <div className="flex flex-1 items-center justify-center text-ink-subtle">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-5">
+              {/* Car-wash competition inside the circle. */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-accent-soft p-4">
+                  <div className="text-sm text-accent">Your sites in area</div>
+                  <div className="mt-1 text-3xl font-bold text-ink">{trade?.ourSites.length ?? 0}</div>
+                </div>
+                <div className="rounded-xl bg-content p-4">
+                  <div className="text-sm text-ink-subtle">Competitor washes</div>
+                  <div className="mt-1 text-3xl font-bold text-ink">{trade?.competitors.length ?? 0}</div>
+                </div>
+              </div>
+
+              {trade && trade.ourSites.length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">Your sites</div>
+                  <ul className="space-y-1">
+                    {trade.ourSites.map((s) => (
+                      <li key={s.name} className="flex items-center justify-between gap-2 rounded-lg bg-accent-soft px-3 py-2 text-sm">
+                        <span className="flex items-center gap-2 font-medium text-ink"><MapPin className="h-4 w-4 text-accent" />{s.name}</span>
+                        <span className="shrink-0 text-ink-subtle">{s.miles.toFixed(1)} mi</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="mt-4">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+                  <Car className="h-4 w-4" /> Competitor car washes
+                </div>
+                {trade && trade.competitors.length > 0 ? (
+                  <ul className="space-y-1">
+                    {trade.competitors.slice(0, 15).map((c, i) => (
+                      <li key={c.name + i} className="flex items-start justify-between gap-2 rounded-lg bg-content px-3 py-2 text-sm">
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-ink">{c.name}</span>
+                          {c.addr && <span className="block truncate text-xs text-ink-subtle">{c.addr}</span>}
+                        </span>
+                        <span className="shrink-0 text-ink-subtle">{c.miles.toFixed(1)} mi</span>
+                      </li>
+                    ))}
+                    {trade.competitors.length > 15 && (
+                      <li className="px-3 py-1 text-xs text-ink-subtle">+ {trade.competitors.length - 15} more</li>
+                    )}
+                  </ul>
+                ) : (
+                  <div className="rounded-lg bg-content px-3 py-2 text-sm text-ink-subtle">No competitor car washes in this radius.</div>
+                )}
+              </div>
+
+              {/* Area demographics (the city/county containing the center point). */}
+              {trade?.demo && (
+                <div className="mt-5">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+                    Demographics · {trade.demo.name}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {trade.demo.stats.map((s) => (
+                      <div key={s.label} className="rounded-xl bg-content p-4">
+                        <div className="text-sm text-ink-subtle">{s.label}</div>
+                        <div className="mt-1 text-2xl font-bold text-ink">{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-start gap-2 text-xs text-ink-subtle">
+                    <Users className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      Census ACS {ACS} 5-year for {trade.demo.name}
+                      {trade.demo.scope === 'county' ? ' (county)' : ''}, the area containing the center point.
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
