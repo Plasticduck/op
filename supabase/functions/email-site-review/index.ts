@@ -82,6 +82,21 @@ const DEFAULT_SCHEMA = {
 function pngSize(b: Uint8Array): { w: number; h: number } {
   return { w: (b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19], h: (b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23] }
 }
+// Read a JPEG's pixel dimensions from its SOF marker without decoding the image,
+// so we can lay the thumbnail out at the right aspect ratio cheaply.
+function jpegSize(b: Uint8Array): { w: number; h: number } | null {
+  if (b[0] !== 0xff || b[1] !== 0xd8) return null
+  let i = 2
+  while (i < b.length - 8) {
+    if (b[i] !== 0xff) { i++; continue }
+    const m = b[i + 1]
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+      return { h: (b[i + 5] << 8) | b[i + 6], w: (b[i + 7] << 8) | b[i + 8] }
+    }
+    i += 2 + ((b[i + 2] << 8) | b[i + 3])
+  }
+  return null
+}
 function drawPhotoPlaceholder(doc: Any, x: number, y: number, w: number, h: number): void {
   doc.setDrawColor(210, 214, 220); doc.setFillColor(240, 242, 245); doc.rect(x, y, w, h, 'FD')
   doc.setFontSize(7); doc.setTextColor(140, 146, 154); doc.text('Photo', x + w / 2, y + h / 2, { align: 'center' })
@@ -210,14 +225,35 @@ function renderReview(doc: Any, input: Any): void {
   doc.text(footer, marginX, pageHeight - 8)
 }
 
-// Long-lived signed link for a photo. The server does NOT download/decode the
-// image (full-size phone photos would exceed the edge worker's memory), so the
-// PDF shows a placeholder with a clickable link to the full photo. Thumbnails
-// stay a portrait-size default (portrait phone photos).
+// A photo for the PDF: a small inline thumbnail plus a clickable link to the
+// full image. The thumbnail is resized by Supabase Storage's image transformer
+// (width 480, JPEG) so the server never downloads or decodes the full-size phone
+// photo, staying well under the edge worker's memory limit. If the thumbnail
+// can't be fetched, we fall back to a link-only placeholder.
 async function resolvePhoto(svc: Any, path: string): Promise<Any | null> {
-  const { data: signed } = await svc.storage.from(BUCKET).createSignedUrl(path, 60 * 60 * 24 * 365 * 5)
-  const url = signed?.signedUrl ?? ''
-  return url ? { url, w: 3, h: 4 } : null
+  const { data: full } = await svc.storage.from(BUCKET).createSignedUrl(path, 60 * 60 * 24 * 365 * 5)
+  const url = full?.signedUrl ?? ''
+
+  let dataUrl: string | null = null
+  let w = 3, h = 4 // portrait default until we know the real aspect ratio
+  try {
+    const { data: thumb } = await svc.storage
+      .from(BUCKET)
+      .createSignedUrl(path, 60 * 60, { transform: { width: 512, height: 512, resize: 'contain', quality: 55 } })
+    if (thumb?.signedUrl) {
+      const r = await fetch(thumb.signedUrl, { headers: { Accept: 'image/jpeg' } })
+      if (r.ok) {
+        const bytes = new Uint8Array(await r.arrayBuffer())
+        if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+          const dim = jpegSize(bytes)
+          if (dim && dim.w > 0 && dim.h > 0) { w = dim.w; h = dim.h }
+          dataUrl = 'data:image/jpeg;base64,' + encodeBase64(bytes)
+        }
+      }
+    }
+  } catch (_) { /* fall back to link-only placeholder */ }
+
+  return url || dataUrl ? { url, dataUrl, w, h } : null
 }
 
 async function buildPdfBase64(svc: Any, reviewRow: Any, siteName: string): Promise<string> {
@@ -248,7 +284,7 @@ async function buildPdfBase64(svc: Any, reviewRow: Any, siteName: string): Promi
     if (lr.ok) { const lb = new Uint8Array(await lr.arrayBuffer()); const d = pngSize(lb); logo = { dataUrl: 'data:image/png;base64,' + encodeBase64(lb), w: d.w, h: d.h } }
   } catch (_) { /* skip logo */ }
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter', compress: true })
   renderReview(doc, {
     title: 'Monthly Site Review',
     siteName,
@@ -341,7 +377,7 @@ Deno.serve(async (req) => {
       <table style="border-collapse:collapse;width:100%;font-size:14px;">
         ${rows.map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#666;white-space:nowrap;vertical-align:top;">${esc(k)}</td><td style="padding:6px 0;font-weight:600;">${esc(v)}</td></tr>`).join('')}
       </table>
-      <p style="margin:20px 0 0;font-size:14px;">The full review is attached as a PDF. Photos are included as clickable links.</p>
+      <p style="margin:20px 0 0;font-size:14px;">The full review is attached as a PDF. Each photo appears as a thumbnail you can tap to open full size.</p>
       <p style="margin:20px 0 0;color:#888;font-size:12px;">Submitted from WashLyfe Operator.</p>
     </div>`
 
@@ -350,7 +386,7 @@ Deno.serve(async (req) => {
     const { error } = await resend.emails.send({
       from: fromAddr,
       to: recipients,
-      subject: `RM Site Review${site ? ' — ' + site : ''}`,
+      subject: `RM Site Review${site ? ': ' + site : ''}`,
       html,
       attachments: [{ filename, content: pdfB64 }],
     })
