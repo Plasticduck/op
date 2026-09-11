@@ -105,6 +105,21 @@ const mwSiteIcon = L.divIcon({
 
 type BizItem = { lat: number; lon: number; name: string; addr: string; placeId?: string | null }
 
+// Draggable handle that sits on the trade-area circle's edge; drag it to resize.
+const handleIcon = L.divIcon({
+  className: '',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+  html:
+    '<div style="width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid #2563eb;' +
+    'box-shadow:0 1px 5px rgba(0,0,0,.45);cursor:ew-resize"></div>',
+})
+// A point `meters` due east of (lat, lon) — where the resize handle starts.
+function eastPoint(lat: number, lon: number, meters: number): [number, number] {
+  const dLon = meters / (111320 * Math.cos((lat * Math.PI) / 180))
+  return [lat, lon + dLon]
+}
+
 function basePopupHtml(name: string, addr: string, loading = false): string {
   return (
     `<div style="font-size:15px;font-weight:700;margin-bottom:2px">${escapeHtml(name)}</div>` +
@@ -269,6 +284,8 @@ export default function MarketExplorerPage() {
   const [demoLoading, setDemoLoading] = useState(false)
 
   const circleRef = useRef<L.Circle | null>(null)
+  const handleRef = useRef<L.Marker | null>(null)
+  const analyzeAreaRef = useRef<(clat: number, clon: number, meters: number) => void>(() => {})
   const [radiusMode, setRadiusMode] = useState(false)
   const [radiusMiles, setRadiusMiles] = useState(3)
   const [trade, setTrade] = useState<Trade | null>(null)
@@ -379,54 +396,45 @@ export default function MarketExplorerPage() {
     }
   }, [])
 
-  // Trade-area analysis: draw a circle of the chosen radius at the tapped point
-  // and summarize what's inside (center demographics, our sites, competitor car
-  // washes). Runs on tap while radius mode is on.
-  const runTradeArea = useCallback(
-    async (lat: number, lon: number) => {
+  // Analyze whatever is inside a circle of `meters` around a center: center
+  // demographics, our sites, and competitor car washes (pinned). Re-runnable, so
+  // it also refreshes after the circle is dragged to a new size.
+  const analyzeArea = useCallback(
+    async (clat: number, clon: number, meters: number) => {
       const map = mapRef.current
       if (!map) return
-      const miles = radiusMilesRef.current
-      const meters = miles * 1609.34
-      setDemo(null)
-      setStatus(null)
-      setTrade(null)
+      const milesR = meters * MILES_PER_M
       setTradeLoading(true)
-
-      if (circleRef.current) circleRef.current.setLatLng([lat, lon]).setRadius(meters)
-      else
-        circleRef.current = L.circle([lat, lon], {
-          radius: meters, color: '#2563eb', weight: 2, fillColor: '#2563eb', fillOpacity: 0.08,
-        }).addTo(map)
-      map.fitBounds(circleRef.current.getBounds(), { padding: [40, 40] })
-
       try {
         const [censusRes, placesOut] = await Promise.all([
-          censusDemographics(lat, lon),
-          searchPlaces({ includedTypes: ['car_wash'], lat, lon, radius: Math.min(meters, 50000) }),
+          censusDemographics(clat, clon),
+          searchPlaces({ includedTypes: ['car_wash'], lat: clat, lon: clon, radius: Math.min(meters, 50000) }),
         ])
 
         const ourSites = locations
-          .filter((s) => s.latitude != null && s.longitude != null && haversineMeters(lat, lon, s.latitude, s.longitude) <= meters)
-          .map((s) => ({ name: s.name, miles: haversineMeters(lat, lon, s.latitude as number, s.longitude as number) * MILES_PER_M }))
+          .filter((s) => s.latitude != null && s.longitude != null && haversineMeters(clat, clon, s.latitude, s.longitude) <= meters)
+          .map((s) => ({ name: s.name, miles: haversineMeters(clat, clon, s.latitude as number, s.longitude as number) * MILES_PER_M }))
           .sort((a, b) => a.miles - b.miles)
 
         // Car washes inside the circle, excluding our own sites (matched by
         // proximity so it works regardless of how Google names them).
         const compFull = (placesOut.ok ? placesOut.hits : [])
-          .map((h) => ({ id: h.id, name: h.name, addr: h.address, miles: haversineMeters(lat, lon, h.lat, h.lon) * MILES_PER_M, lat: h.lat, lon: h.lon }))
-          .filter((h) => h.miles <= miles + 0.01)
+          .map((h) => ({ id: h.id, name: h.name, addr: h.address, miles: haversineMeters(clat, clon, h.lat, h.lon) * MILES_PER_M, lat: h.lat, lon: h.lon }))
+          .filter((h) => h.miles <= milesR + 0.01)
           .filter((h) => !locations.some((s) => s.latitude != null && s.longitude != null && haversineMeters(h.lat, h.lon, s.latitude, s.longitude) <= 200))
           .sort((a, b) => a.miles - b.miles)
 
-        // Drop a pin on the map for each competitor car wash in the circle, each
-        // clickable for its Google listing. (Our own MW sites already show their
-        // logo pins.)
         if (pinsRef.current)
           addBusinessMarkers(pinsRef.current, compFull.map((c) => ({ lat: c.lat, lon: c.lon, name: c.name, addr: c.addr, placeId: c.id })), enrichPopup)
 
         const competitors = compFull.map(({ name, addr, miles }) => ({ name, addr, miles }))
-        setTrade({ center: toDemo(censusRes.data)?.name ?? 'this point', miles, demo: toDemo(censusRes.data), ourSites, competitors })
+        setTrade({
+          center: toDemo(censusRes.data)?.name ?? 'this point',
+          miles: Math.round(milesR * 10) / 10,
+          demo: toDemo(censusRes.data),
+          ourSites,
+          competitors,
+        })
       } catch {
         setStatus('Could not analyze that area. Please try again.')
       } finally {
@@ -435,15 +443,64 @@ export default function MarketExplorerPage() {
     },
     [locations, enrichPopup],
   )
+  useEffect(() => { analyzeAreaRef.current = analyzeArea }, [analyzeArea])
+
+  // Draw (or move) the trade-area circle at the tapped point, attach a draggable
+  // edge handle to resize it, frame it, then analyze. Runs on tap in radius mode.
+  const runTradeArea = useCallback((lat: number, lon: number) => {
+    const map = mapRef.current
+    if (!map) return
+    const meters = radiusMilesRef.current * 1609.34
+    setDemo(null)
+    setStatus(null)
+    setTrade(null)
+
+    if (circleRef.current) circleRef.current.setLatLng([lat, lon]).setRadius(meters)
+    else
+      circleRef.current = L.circle([lat, lon], {
+        radius: meters, color: '#2563eb', weight: 2, fillColor: '#2563eb', fillOpacity: 0.08,
+      }).addTo(map)
+
+    const hp = eastPoint(lat, lon, meters)
+    if (handleRef.current) {
+      handleRef.current.setLatLng(hp)
+    } else {
+      const h = L.marker(hp, { icon: handleIcon, draggable: true, zIndexOffset: 2000, keyboard: false })
+      h.bindTooltip('', { direction: 'top', offset: [0, -8] })
+      h.on('drag', () => {
+        const c = circleRef.current?.getLatLng()
+        if (!c) return
+        const r = map.distance(c, h.getLatLng())
+        circleRef.current?.setRadius(r)
+        h.setTooltipContent(`${(r * MILES_PER_M).toFixed(1)} mi`)
+        if (!h.isTooltipOpen()) h.openTooltip()
+      })
+      h.on('dragend', () => {
+        const c = circleRef.current?.getLatLng()
+        if (!c) return
+        const r = map.distance(c, h.getLatLng())
+        const mi = Math.round(r * MILES_PER_M * 10) / 10
+        radiusMilesRef.current = mi
+        setRadiusMiles(mi)
+        h.closeTooltip()
+        analyzeAreaRef.current(c.lat, c.lng, r)
+      })
+      h.addTo(map)
+      handleRef.current = h
+    }
+
+    map.fitBounds(circleRef.current.getBounds(), { padding: [40, 40] })
+    analyzeAreaRef.current(lat, lon, meters)
+  }, [])
   useEffect(() => { runTradeAreaRef.current = runTradeArea }, [runTradeArea])
 
   const clearTradeArea = useCallback(() => {
     setTrade(null)
     setTradeLoading(false)
     pinsRef.current?.clearLayers()
-    if (circleRef.current && mapRef.current) {
-      mapRef.current.removeLayer(circleRef.current)
-      circleRef.current = null
+    if (mapRef.current) {
+      if (circleRef.current) { mapRef.current.removeLayer(circleRef.current); circleRef.current = null }
+      if (handleRef.current) { mapRef.current.removeLayer(handleRef.current); handleRef.current = null }
     }
   }, [])
 
@@ -680,7 +737,7 @@ export default function MarketExplorerPage() {
               <input
                 type="range"
                 min={0.5}
-                max={25}
+                max={50}
                 step={0.5}
                 value={radiusMiles}
                 onChange={(e) => {
