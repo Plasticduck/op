@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Search, X, Loader2, MapPin, Maximize2, Users, Building2, Circle, Car } from 'lucide-react'
-import { searchPlaces, censusDemographics } from '@/lib/queries/places'
+import { searchPlaces, censusDemographics, placeDetails } from '@/lib/queries/places'
 import { useLocations } from '@/lib/locations'
 import { useAuth } from '@/lib/auth'
 
@@ -103,17 +103,61 @@ const mwSiteIcon = L.divIcon({
     '<img src="/mw-logo.png" alt="Mighty Wash" style="width:32px;height:32px;object-fit:contain"/></div>',
 })
 
-// Replace a layer's markers with a gold business pin per item (name + address
-// popup). Shared by the category search and the trade-area tool.
-function addBusinessMarkers(layer: L.LayerGroup, items: Array<{ lat: number; lon: number; name: string; addr: string }>): void {
+type BizItem = { lat: number; lon: number; name: string; addr: string; placeId?: string | null }
+
+function basePopupHtml(name: string, addr: string, loading = false): string {
+  return (
+    `<div style="font-size:15px;font-weight:700;margin-bottom:2px">${escapeHtml(name)}</div>` +
+    (addr ? `<div style="font-size:13px;color:#555">${escapeHtml(addr)}</div>` : '') +
+    (loading ? `<div style="font-size:12px;color:#999;margin-top:6px">Loading Google listing…</div>` : '')
+  )
+}
+
+// The Google listing card shown in a pin's popup: rating, hours, phone, and
+// buttons out to the full Google Maps listing and the business website.
+function detailPopupHtml(d: {
+  name: string; address: string; rating: number | null; ratingCount: number | null
+  phone: string | null; website: string | null; googleUrl: string | null; openNow: boolean | null; hoursToday: string | null
+}): string {
+  const rating = d.rating != null ? `★ ${d.rating.toFixed(1)}${d.ratingCount != null ? ` (${d.ratingCount.toLocaleString()})` : ''}` : ''
+  const open = d.openNow == null ? '' : d.openNow ? 'Open now' : 'Closed'
+  const hours = d.hoursToday ? d.hoursToday.replace(/^[A-Za-z]+:\s*/, '') : ''
+  const btn = (href: string, label: string, primary: boolean) =>
+    `<a href="${escapeHtml(href)}" target="_blank" rel="noopener" style="display:inline-block;${primary ? 'background:#2563eb;color:#fff' : 'background:#eef2ff;color:#2563eb'};font-size:12px;font-weight:600;padding:6px 10px;border-radius:6px;text-decoration:none">${label}</a>`
+  return (
+    `<div style="min-width:210px;max-width:260px">` +
+    `<div style="font-size:15px;font-weight:700">${escapeHtml(d.name)}</div>` +
+    (d.address ? `<div style="font-size:12px;color:#555;margin:2px 0 6px">${escapeHtml(d.address)}</div>` : '') +
+    (rating ? `<div style="font-size:13px;color:#b8860b;font-weight:700">${rating}</div>` : '') +
+    (open || hours
+      ? `<div style="font-size:12px;margin-top:3px">${open ? `<span style="color:${d.openNow ? '#0a7d33' : '#b00020'};font-weight:600">${open}</span>` : ''}${open && hours ? ' · ' : ''}${escapeHtml(hours)}</div>`
+      : '') +
+    (d.phone ? `<div style="font-size:12px;margin-top:3px"><a href="tel:${escapeHtml(d.phone)}" style="color:#2563eb;text-decoration:none">${escapeHtml(d.phone)}</a></div>` : '') +
+    (d.googleUrl || d.website
+      ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${d.googleUrl ? btn(d.googleUrl, 'View on Google', true) : ''}${d.website ? btn(d.website, 'Website', false) : ''}</div>`
+      : '') +
+    `</div>`
+  )
+}
+
+// Replace a layer's markers with a gold business pin per item. The popup shows
+// name + address immediately; when the item has a Google place id, `enrich`
+// fills in the full Google listing the first time the popup opens.
+function addBusinessMarkers(layer: L.LayerGroup, items: BizItem[], enrich?: (placeId: string, marker: L.Marker, base: { name: string; addr: string }) => void): void {
   layer.clearLayers()
   for (const it of items) {
-    L.marker([it.lat, it.lon], { icon: businessIcon })
-      .bindPopup(
-        `<div style="font-size:15px;font-weight:700;margin-bottom:2px">${escapeHtml(it.name)}</div>` +
-          (it.addr ? `<div style="font-size:13px;color:#555">${escapeHtml(it.addr)}</div>` : ''),
-      )
-      .addTo(layer)
+    const marker = L.marker([it.lat, it.lon], { icon: businessIcon }).bindPopup(
+      basePopupHtml(it.name, it.addr, Boolean(it.placeId && enrich)),
+    )
+    if (it.placeId && enrich) {
+      let done = false
+      marker.on('popupopen', () => {
+        if (done) return
+        done = true
+        enrich(it.placeId as string, marker, { name: it.name, addr: it.addr })
+      })
+    }
+    marker.addTo(layer)
   }
 }
 
@@ -324,6 +368,17 @@ export default function MarketExplorerPage() {
     }
   }, [locations, isMightyWash])
 
+  // Fill a pin's popup with the full Google listing on first open.
+  const enrichPopup = useCallback(async (placeId: string, marker: L.Marker, base: { name: string; addr: string }) => {
+    try {
+      const { data, error } = await placeDetails(placeId)
+      if (!error && data?.detail) marker.setPopupContent(detailPopupHtml(data.detail))
+      else marker.setPopupContent(basePopupHtml(base.name, base.addr))
+    } catch {
+      marker.setPopupContent(basePopupHtml(base.name, base.addr))
+    }
+  }, [])
+
   // Trade-area analysis: draw a circle of the chosen radius at the tapped point
   // and summarize what's inside (center demographics, our sites, competitor car
   // washes). Runs on tap while radius mode is on.
@@ -359,14 +414,16 @@ export default function MarketExplorerPage() {
         // Car washes inside the circle, excluding our own sites (matched by
         // proximity so it works regardless of how Google names them).
         const compFull = (placesOut.ok ? placesOut.hits : [])
-          .map((h) => ({ name: h.name, addr: h.address, miles: haversineMeters(lat, lon, h.lat, h.lon) * MILES_PER_M, lat: h.lat, lon: h.lon }))
+          .map((h) => ({ id: h.id, name: h.name, addr: h.address, miles: haversineMeters(lat, lon, h.lat, h.lon) * MILES_PER_M, lat: h.lat, lon: h.lon }))
           .filter((h) => h.miles <= miles + 0.01)
           .filter((h) => !locations.some((s) => s.latitude != null && s.longitude != null && haversineMeters(h.lat, h.lon, s.latitude, s.longitude) <= 200))
           .sort((a, b) => a.miles - b.miles)
 
-        // Drop a pin on the map for each competitor car wash in the circle. (Our
-        // own MW sites already show their logo pins.)
-        if (pinsRef.current) addBusinessMarkers(pinsRef.current, compFull.map((c) => ({ lat: c.lat, lon: c.lon, name: c.name, addr: c.addr })))
+        // Drop a pin on the map for each competitor car wash in the circle, each
+        // clickable for its Google listing. (Our own MW sites already show their
+        // logo pins.)
+        if (pinsRef.current)
+          addBusinessMarkers(pinsRef.current, compFull.map((c) => ({ lat: c.lat, lon: c.lon, name: c.name, addr: c.addr, placeId: c.id })), enrichPopup)
 
         const competitors = compFull.map(({ name, addr, miles }) => ({ name, addr, miles }))
         setTrade({ center: toDemo(censusRes.data)?.name ?? 'this point', miles, demo: toDemo(censusRes.data), ourSites, competitors })
@@ -376,7 +433,7 @@ export default function MarketExplorerPage() {
         setTradeLoading(false)
       }
     },
-    [locations],
+    [locations, enrichPopup],
   )
   useEffect(() => { runTradeAreaRef.current = runTradeArea }, [runTradeArea])
 
@@ -390,12 +447,12 @@ export default function MarketExplorerPage() {
     }
   }, [])
 
-  const dropPins = useCallback((items: Array<{ lat: number; lon: number; name: string; addr: string }>) => {
+  const dropPins = useCallback((items: BizItem[]) => {
     const layer = pinsRef.current
     const map = mapRef.current
     if (!layer || !map) return
-    addBusinessMarkers(layer, items)
-  }, [])
+    addBusinessMarkers(layer, items, enrichPopup)
+  }, [enrichPopup])
 
   // Free OpenStreetMap category search. Used as the fallback when Google Places
   // isn't configured, so the page still works with no key.
@@ -444,7 +501,7 @@ export default function MarketExplorerPage() {
         if (out.reason === 'nokey') return runCategoryOsm(cat)
         throw new Error(out.message ?? 'Places error')
       }
-      const items = out.hits.map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, addr: h.address }))
+      const items = out.hits.map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, addr: h.address, placeId: h.id }))
       dropPins(items)
       setStatus(
         items.length
@@ -502,7 +559,7 @@ export default function MarketExplorerPage() {
             setStatus(`Nothing found for "${q}". Try a category like "car washes" or a city name.`)
             return
           }
-          dropPins(out.hits.map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, addr: h.address })))
+          dropPins(out.hits.map((h) => ({ lat: h.lat, lon: h.lon, name: h.name, addr: h.address, placeId: h.id })))
           setStatus(`Found ${out.hits.length} match${out.hits.length === 1 ? '' : 'es'} for "${q}". Tap a pin for details.`)
         } else if (out.reason === 'nokey') {
           dropPins(

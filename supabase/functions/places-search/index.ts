@@ -31,7 +31,11 @@ function corsHeaders(origin: string | null): Record<string, string> {
 const json = (body: unknown, status: number, origin: string | null) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } })
 
-const FIELD_MASK = 'places.displayName,places.formattedAddress,places.location'
+const FIELD_MASK = 'places.id,places.displayName,places.formattedAddress,places.location'
+// Richer fields for one listing (a clicked pin). Details is a pricier SKU, so
+// it's only fetched on demand.
+const DETAIL_MASK =
+  'id,displayName,formattedAddress,rating,userRatingCount,nationalPhoneNumber,websiteUri,googleMapsUri,regularOpeningHours,currentOpeningHours'
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
@@ -67,12 +71,46 @@ Deno.serve(async (req) => {
     lat?: number
     lon?: number
     radius?: number
+    placeId?: string
   } = {}
   try {
     body = await req.json()
   } catch {
     /* empty */
   }
+
+  // Details for one listing (a clicked pin). No lat/lon needed.
+  if (typeof body.placeId === 'string' && body.placeId.trim()) {
+    try {
+      const dRes = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(body.placeId.trim())}`, {
+        headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': DETAIL_MASK },
+      })
+      const d = (await dRes.json()) as Any
+      if (!dRes.ok) return json({ error: 'places_error', message: d?.error?.message ?? `Places ${dRes.status}` }, 502, origin)
+      const desc: string[] = d.regularOpeningHours?.weekdayDescriptions ?? []
+      const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' })
+      return json(
+        {
+          detail: {
+            name: d.displayName?.text ?? '',
+            address: d.formattedAddress ?? '',
+            rating: typeof d.rating === 'number' ? d.rating : null,
+            ratingCount: typeof d.userRatingCount === 'number' ? d.userRatingCount : null,
+            phone: d.nationalPhoneNumber ?? null,
+            website: d.websiteUri ?? null,
+            googleUrl: d.googleMapsUri ?? null,
+            openNow: (d.currentOpeningHours?.openNow ?? d.regularOpeningHours?.openNow) ?? null,
+            hoursToday: desc.find((s) => s.startsWith(dayName)) ?? null,
+          },
+        },
+        200,
+        origin,
+      )
+    } catch (e) {
+      return json({ error: 'places_error', message: e instanceof Error ? e.message : String(e) }, 502, origin)
+    }
+  }
+
   const lat = Number(body.lat)
   const lon = Number(body.lon)
   const radius = Math.min(Math.max(Number(body.radius) || 5000, 100), 50000)
@@ -114,6 +152,7 @@ Deno.serve(async (req) => {
     }
     const results = ((data.places ?? []) as Any[])
       .map((p) => ({
+        id: p.id ?? null,
         name: p.displayName?.text ?? 'Business',
         address: p.formattedAddress ?? '',
         lat: p.location?.latitude,

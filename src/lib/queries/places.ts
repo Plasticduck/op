@@ -4,8 +4,25 @@ import { supabase } from '@/lib/supabase'
 // function so the API key stays server-side. Used by Market Explorer. The
 // function returns { error: 'no_key' } when Google isn't configured, so callers
 // fall back to the free OpenStreetMap search.
-export type PlaceHit = { name: string; address: string; lat: number; lon: number }
+export type PlaceHit = { id?: string | null; name: string; address: string; lat: number; lon: number }
 export type PlacesResponse = { results?: PlaceHit[]; error?: string; message?: string }
+
+// Richer Google listing for one place (fetched when a pin is clicked).
+export type PlaceDetail = {
+  name: string
+  address: string
+  rating: number | null
+  ratingCount: number | null
+  phone: string | null
+  website: string | null
+  googleUrl: string | null
+  openNow: boolean | null
+  hoursToday: string | null
+}
+export const placeDetails = (placeId: string) =>
+  supabase.functions.invoke<{ detail?: PlaceDetail; error?: string; message?: string }>('places-search', {
+    body: { placeId },
+  })
 
 export const placesSearch = (body: {
   includedTypes?: string[]
