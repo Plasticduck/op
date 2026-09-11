@@ -120,6 +120,31 @@ function eastPoint(lat: number, lon: number, meters: number): [number, number] {
   return [lat, lon + dLon]
 }
 
+// Tracked competitor chains, per market. `keyword` filters Google text-search
+// results to the actual brand. Distinct colors stand in for the brands' logos
+// (their trademarks are not bundled); a legend in the panel maps color -> brand.
+type Brand = { name: string; keyword: RegExp; color: string; label: string }
+const COMPETITION: Record<string, Brand[]> = {
+  Lubbock: [
+    { name: 'Lonestar Suds', keyword: /lone\s?star/i, color: '#dc2626', label: 'LS' },
+    { name: 'Grime Scene', keyword: /grime/i, color: '#16a34a', label: 'GS' },
+    { name: 'Mister Car Wash', keyword: /mister/i, color: '#7c3aed', label: 'M' },
+  ],
+}
+const COMPETITION_REGION = 'Lubbock'
+function brandIcon(color: string, label: string): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    iconSize: [30, 40],
+    iconAnchor: [15, 40],
+    popupAnchor: [0, -36],
+    html:
+      `<svg width="30" height="40" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg">` +
+      `<path d="M15 0C6.7 0 0 6.7 0 15c0 10.5 15 25 15 25s15-14.5 15-25C30 6.7 23.3 0 15 0z" fill="${color}" stroke="#fff" stroke-width="1.5"/>` +
+      `<text x="15" y="19" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="system-ui,Arial">${label}</text></svg>`,
+  })
+}
+
 function basePopupHtml(name: string, addr: string, loading = false): string {
   return (
     `<div style="font-size:15px;font-weight:700;margin-bottom:2px">${escapeHtml(name)}</div>` +
@@ -264,6 +289,7 @@ type Trade = {
   demo: Demo | null
   ourSites: { name: string; miles: number }[]
   competitors: { name: string; addr: string; miles: number }[]
+  tracked?: { brand: string; color: string; count: number; nearest: number | null }[]
 }
 
 export default function MarketExplorerPage() {
@@ -285,7 +311,10 @@ export default function MarketExplorerPage() {
 
   const circleRef = useRef<L.Circle | null>(null)
   const handleRef = useRef<L.Marker | null>(null)
+  const competitionRef = useRef<L.LayerGroup | null>(null)
   const analyzeAreaRef = useRef<(clat: number, clon: number, meters: number) => void>(() => {})
+  const [competitionOn, setCompetitionOn] = useState(false)
+  const competitionOnRef = useRef(competitionOn)
   const [radiusMode, setRadiusMode] = useState(false)
   const [radiusMiles, setRadiusMiles] = useState(3)
   const [trade, setTrade] = useState<Trade | null>(null)
@@ -345,6 +374,7 @@ export default function MarketExplorerPage() {
     map.zoomControl.setPosition('bottomright')
     pinsRef.current = L.layerGroup().addTo(map)
     sitesRef.current = L.layerGroup().addTo(map)
+    competitionRef.current = L.layerGroup().addTo(map)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng
@@ -396,6 +426,42 @@ export default function MarketExplorerPage() {
     }
   }, [])
 
+  // Pin the tracked-competitor chains (per region) that fall inside the circle,
+  // with brand-colored markers, and summarize counts for the panel.
+  const loadCompetition = useCallback(
+    async (clat: number, clon: number, meters: number) => {
+      const layer = competitionRef.current
+      if (!layer) return
+      layer.clearLayers()
+      const milesR = meters * MILES_PER_M
+      const tracked: { brand: string; color: string; count: number; nearest: number | null }[] = []
+      for (const b of COMPETITION[COMPETITION_REGION] ?? []) {
+        const out = await searchPlaces({ textQuery: `${b.name} car wash`, lat: clat, lon: clon, radius: Math.min(meters, 50000) })
+        const sites = (out.ok ? out.hits : [])
+          .map((h) => ({ ...h, miles: haversineMeters(clat, clon, h.lat, h.lon) * MILES_PER_M }))
+          .filter((h) => h.miles <= milesR + 0.01 && b.keyword.test(h.name))
+          .sort((a, z) => a.miles - z.miles)
+        const icon = brandIcon(b.color, b.label)
+        for (const s of sites) {
+          const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: 1500 }).bindPopup(basePopupHtml(s.name, s.address, Boolean(s.id)))
+          if (s.id) {
+            let done = false
+            const pid = s.id
+            m.on('popupopen', () => {
+              if (done) return
+              done = true
+              enrichPopup(pid, m, { name: s.name, addr: s.address })
+            })
+          }
+          m.addTo(layer)
+        }
+        tracked.push({ brand: b.name, color: b.color, count: sites.length, nearest: sites[0]?.miles ?? null })
+      }
+      setTrade((prev) => (prev ? { ...prev, tracked } : prev))
+    },
+    [enrichPopup],
+  )
+
   // Analyze whatever is inside a circle of `meters` around a center: center
   // demographics, our sites, and competitor car washes (pinned). Re-runnable, so
   // it also refreshes after the circle is dragged to a new size.
@@ -435,15 +501,31 @@ export default function MarketExplorerPage() {
           ourSites,
           competitors,
         })
+        if (competitionOnRef.current) void loadCompetition(clat, clon, meters)
+        else competitionRef.current?.clearLayers()
       } catch {
         setStatus('Could not analyze that area. Please try again.')
       } finally {
         setTradeLoading(false)
       }
     },
-    [locations, enrichPopup],
+    [locations, enrichPopup, loadCompetition],
   )
   useEffect(() => { analyzeAreaRef.current = analyzeArea }, [analyzeArea])
+
+  // Toggling competition refreshes the current circle: on -> load brand pins,
+  // off -> clear them and drop the panel summary.
+  useEffect(() => {
+    competitionOnRef.current = competitionOn
+    const c = circleRef.current?.getLatLng()
+    if (!c) return
+    const r = circleRef.current?.getRadius() ?? 0
+    if (competitionOn) void loadCompetition(c.lat, c.lng, r)
+    else {
+      competitionRef.current?.clearLayers()
+      setTrade((prev) => (prev ? { ...prev, tracked: undefined } : prev))
+    }
+  }, [competitionOn, loadCompetition])
 
   // Draw (or move) the trade-area circle at the tapped point, attach a draggable
   // edge handle to resize it, frame it, then analyze. Runs on tap in radius mode.
@@ -498,6 +580,7 @@ export default function MarketExplorerPage() {
     setTrade(null)
     setTradeLoading(false)
     pinsRef.current?.clearLayers()
+    competitionRef.current?.clearLayers()
     if (mapRef.current) {
       if (circleRef.current) { mapRef.current.removeLayer(circleRef.current); circleRef.current = null }
       if (handleRef.current) { mapRef.current.removeLayer(handleRef.current); handleRef.current = null }
@@ -750,6 +833,26 @@ export default function MarketExplorerPage() {
               />
               <span className="w-14 shrink-0 text-right text-sm font-semibold text-ink">{radiusMiles} mi</span>
             </div>
+            {/* Competition overlay (per region). */}
+            <button
+              onClick={() => setCompetitionOn((v) => !v)}
+              className={`mt-3 flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-semibold ${
+                competitionOn ? 'bg-accent text-white' : 'bg-content text-ink hover:bg-accent-soft'
+              }`}
+            >
+              <span>Competition · {COMPETITION_REGION}</span>
+              <span className={`text-xs ${competitionOn ? 'text-white/80' : 'text-ink-subtle'}`}>{competitionOn ? 'On' : 'Off'}</span>
+            </button>
+            {competitionOn && (
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1">
+                {(COMPETITION[COMPETITION_REGION] ?? []).map((b) => (
+                  <span key={b.name} className="flex items-center gap-1 text-xs text-ink-subtle">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: b.color }} />
+                    {b.name}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -899,6 +1002,28 @@ export default function MarketExplorerPage() {
                   <div className="rounded-lg bg-content px-3 py-2 text-sm text-ink-subtle">No competitor car washes in this radius.</div>
                 )}
               </div>
+
+              {/* Tracked competitor chains (per region). */}
+              {trade?.tracked && trade.tracked.length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+                    Tracked competitors · {COMPETITION_REGION}
+                  </div>
+                  <ul className="space-y-1">
+                    {trade.tracked.map((t) => (
+                      <li key={t.brand} className="flex items-center justify-between gap-2 rounded-lg bg-content px-3 py-2 text-sm">
+                        <span className="flex items-center gap-2 font-medium text-ink">
+                          <span className="inline-block h-3 w-3 rounded-full" style={{ background: t.color }} />
+                          {t.brand}
+                        </span>
+                        <span className="shrink-0 text-ink-subtle">
+                          {t.count === 0 ? 'None' : `${t.count} · nearest ${t.nearest?.toFixed(1)} mi`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Area demographics (the city/county containing the center point). */}
               {trade?.demo && (
