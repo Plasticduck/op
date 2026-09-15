@@ -732,12 +732,12 @@ export default function MarketExplorerPage() {
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-content">
-      <div ref={wrapRef} className="absolute inset-0 z-0" />
+      <div ref={wrapRef} className="absolute inset-x-0 top-0 bottom-[calc(3.25rem+env(safe-area-inset-bottom))] z-0 lg:bottom-0" />
 
       {/* Search + quick categories, floating top-center. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex flex-col items-center gap-3 p-4">
-        <div className="pointer-events-auto flex w-full max-w-3xl items-center gap-2 rounded-2xl bg-card p-2 shadow-2xl ring-1 ring-border">
-          <Search className="ml-2 h-6 w-6 shrink-0 text-ink-subtle" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex flex-col items-center gap-2 p-3 sm:gap-3 sm:p-4">
+        <div className="pointer-events-auto flex w-full max-w-3xl items-center gap-1.5 rounded-2xl bg-card p-2 shadow-2xl ring-1 ring-border sm:gap-2">
+          <Search className="ml-1 h-5 w-5 shrink-0 text-ink-subtle sm:ml-2 sm:h-6 sm:w-6" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -745,7 +745,7 @@ export default function MarketExplorerPage() {
               if (e.key === 'Enter') void runSearch(query)
             }}
             placeholder='Search "car washes", a business, or a city'
-            className="h-16 flex-1 bg-transparent text-xl text-ink outline-none placeholder:text-ink-subtle"
+            className="h-12 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-subtle sm:h-16 sm:text-xl"
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
@@ -753,7 +753,7 @@ export default function MarketExplorerPage() {
           {query && (
             <button
               onClick={() => setQuery('')}
-              className="grid h-12 w-12 place-items-center rounded-xl text-ink-subtle hover:bg-content"
+              className="grid h-10 w-10 place-items-center rounded-xl text-ink-subtle hover:bg-content sm:h-12 sm:w-12"
               aria-label="Clear"
             >
               <X className="h-6 w-6" />
@@ -762,10 +762,10 @@ export default function MarketExplorerPage() {
           <button
             onClick={() => void runSearch(query)}
             disabled={busy}
-            className="flex h-14 items-center gap-2 rounded-xl bg-accent px-6 text-lg font-semibold text-white disabled:opacity-60"
+            className="flex h-11 shrink-0 items-center gap-2 rounded-xl bg-accent px-4 text-base font-semibold text-white disabled:opacity-60 sm:h-14 sm:px-6 sm:text-lg"
           >
             {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
-            Search
+            <span className="hidden sm:inline">Search</span>
           </button>
         </div>
 
@@ -774,7 +774,7 @@ export default function MarketExplorerPage() {
       {/* Fullscreen toggle for kiosk mode. */}
       <button
         onClick={goFullscreen}
-        className="absolute right-4 top-28 z-[500] grid h-14 w-14 place-items-center rounded-xl bg-card text-ink shadow-lg ring-1 ring-border hover:bg-content"
+        className="absolute right-4 top-28 z-[500] hidden h-14 w-14 place-items-center rounded-xl bg-card text-ink shadow-lg ring-1 ring-border hover:bg-content lg:grid"
         aria-label="Toggle fullscreen"
       >
         <Maximize2 className="h-6 w-6" />
@@ -797,7 +797,7 @@ export default function MarketExplorerPage() {
           <Circle className="h-5 w-5" /> Trade Area
         </button>
         {radiusMode && (
-          <div className="w-64 rounded-xl bg-card p-3 shadow-lg ring-1 ring-border">
+          <div className="w-[15rem] max-w-[calc(100vw-2rem)] rounded-xl bg-card p-3 shadow-lg ring-1 ring-border sm:w-64">
             <div className="px-1 pb-1 text-xs font-medium text-ink-subtle">Radius</div>
             <div className="flex gap-1">
               {[1, 3, 5, 10].map((mi) => (
@@ -859,7 +859,7 @@ export default function MarketExplorerPage() {
 
       {/* Status toast. */}
       {status && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-6 z-[500] flex justify-center px-4">
+        <div className="pointer-events-none absolute inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-[500] flex justify-center px-4 lg:bottom-6">
           <div className="pointer-events-auto max-w-2xl rounded-xl bg-shell px-5 py-3 text-center text-base text-ink-invert shadow-2xl">
             {status}
           </div>
@@ -868,8 +868,9 @@ export default function MarketExplorerPage() {
 
       {/* Demographics slide-in panel. */}
       {(demo || demoLoading) && (
-        <div className="absolute inset-y-0 right-0 z-[600] flex w-full max-w-md flex-col bg-card shadow-2xl ring-1 ring-border">
-          <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+        <div className="absolute bottom-0 left-0 right-0 z-[600] flex max-h-[85dvh] flex-col rounded-t-2xl bg-card pb-[env(safe-area-inset-bottom)] shadow-2xl ring-1 ring-border lg:inset-y-0 lg:left-auto lg:max-h-none lg:w-full lg:max-w-md lg:rounded-none lg:pb-0">
+          <div className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-border lg:hidden" />
+          <div className="flex items-start justify-between gap-3 border-b border-border p-4 sm:p-5">
             <div className="flex items-center gap-3">
               <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent">
                 {demo?.scope === 'county' ? <Building2 className="h-6 w-6" /> : <MapPin className="h-6 w-6" />}
@@ -902,7 +903,7 @@ export default function MarketExplorerPage() {
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
               <div className="grid grid-cols-2 gap-3">
                 {demo?.stats.map((s) => (
                   <div key={s.label} className="rounded-xl bg-content p-4">
@@ -925,8 +926,9 @@ export default function MarketExplorerPage() {
 
       {/* Trade-area (radius) results panel. */}
       {(trade || tradeLoading) && (
-        <div className="absolute inset-y-0 right-0 z-[600] flex w-full max-w-md flex-col bg-card shadow-2xl ring-1 ring-border">
-          <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+        <div className="absolute bottom-0 left-0 right-0 z-[600] flex max-h-[85dvh] flex-col rounded-t-2xl bg-card pb-[env(safe-area-inset-bottom)] shadow-2xl ring-1 ring-border lg:inset-y-0 lg:left-auto lg:max-h-none lg:w-full lg:max-w-md lg:rounded-none lg:pb-0">
+          <div className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-border lg:hidden" />
+          <div className="flex items-start justify-between gap-3 border-b border-border p-4 sm:p-5">
             <div className="flex items-center gap-3">
               <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent">
                 <Circle className="h-6 w-6" />
@@ -952,7 +954,7 @@ export default function MarketExplorerPage() {
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
               {/* Car-wash competition inside the circle. */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl bg-accent-soft p-4">
