@@ -312,9 +312,9 @@ export default function PresentationMode() {
   return (
     <div className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-content text-ink">
       {/* top bar (highest z so its dropdown overlays the content below) */}
-      <div className="relative z-30 flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4 sm:px-10 sm:py-5">
-        <Logo size="lg" className="w-32 sm:w-40" />
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+      <div className="relative z-30 flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:gap-4 sm:px-10 sm:py-5">
+        <Logo size="lg" className="w-24 sm:w-40" />
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-3">
           {/* auto-scroll scope: what the rotation steps through */}
           {scopes.length > 1 && (
             <button
@@ -326,7 +326,7 @@ export default function PresentationMode() {
                 setAutoplay(true)
               }}
               title="Auto-scroll through"
-              className="rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-medium text-ink-muted hover:border-accent hover:text-ink"
+              className="rounded-lg border border-border bg-card px-2.5 py-2 text-sm font-medium text-ink-muted hover:border-accent hover:text-ink sm:px-3 sm:py-2.5"
             >
               {SCOPE_LABEL[scope]}
             </button>
@@ -336,7 +336,7 @@ export default function PresentationMode() {
             type="button"
             onClick={() => setIntervalSec((s) => INTERVALS[(INTERVALS.indexOf(s as typeof INTERVALS[number]) + 1) % INTERVALS.length])}
             title="Auto-scroll interval"
-            className="rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-medium tabular-nums text-ink-muted hover:border-accent hover:text-ink"
+            className="rounded-lg border border-border bg-card px-2.5 py-2 text-sm font-medium tabular-nums text-ink-muted hover:border-accent hover:text-ink sm:px-3 sm:py-2.5"
           >
             {fmtInterval(intervalSec)}
           </button>
@@ -346,7 +346,7 @@ export default function PresentationMode() {
             onClick={() => setAutoplay((v) => !v)}
             title={autoplay ? 'Pause auto-scroll' : 'Resume auto-scroll'}
             aria-label={autoplay ? 'Pause auto-scroll' : 'Resume auto-scroll'}
-            className="rounded-lg border border-border bg-card p-2.5 text-ink-muted hover:border-accent hover:text-ink"
+            className="rounded-lg border border-border bg-card p-2 text-ink-muted hover:border-accent hover:text-ink sm:p-2.5"
           >
             {autoplay ? <Pause className="size-5" /> : <Play className="size-5" />}
           </button>
@@ -355,7 +355,7 @@ export default function PresentationMode() {
             <button
               type="button"
               onClick={() => setPickerOpen((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-ink hover:border-accent"
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-ink hover:border-accent sm:px-4 sm:py-2.5"
             >
               <span className="max-w-[40vw] truncate">{view.title}</span>
               <ChevronDown className="size-4 shrink-0 text-ink-muted" />
@@ -379,7 +379,7 @@ export default function PresentationMode() {
             onClick={() => setTheme(dark ? 'light' : 'dark')}
             title={dark ? 'Light mode' : 'Dark mode'}
             aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="rounded-lg border border-border bg-card p-2.5 text-ink-muted hover:border-accent hover:text-ink"
+            className="rounded-lg border border-border bg-card p-2 text-ink-muted hover:border-accent hover:text-ink sm:p-2.5"
           >
             {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
           </button>
@@ -388,7 +388,7 @@ export default function PresentationMode() {
             onClick={exit}
             title="Exit presentation (Esc)"
             aria-label="Exit presentation"
-            className="rounded-lg border border-border bg-card p-2.5 text-ink-muted hover:border-accent hover:text-ink"
+            className="rounded-lg border border-border bg-card p-2 text-ink-muted hover:border-accent hover:text-ink sm:p-2.5"
           >
             <X className="size-5" />
           </button>
@@ -397,15 +397,15 @@ export default function PresentationMode() {
 
 
       {/* headline (Mighty Wash logo centered, 30% larger than the dashboard logo) */}
-      <div className="relative z-10 px-6 pt-6 sm:px-10 sm:pt-8">
+      <div className="relative z-10 px-4 pt-4 sm:px-10 sm:pt-8">
         <img
           src="/mighty-max-in-flight.png"
           alt="Mighty Wash"
-          className="pointer-events-none absolute left-1/2 top-0 h-auto w-[374px] max-w-[70vw] -translate-x-1/2 sm:top-1"
+          className="pointer-events-none absolute left-1/2 top-0 hidden h-auto w-[374px] max-w-[70vw] -translate-x-1/2 sm:block sm:top-1"
         />
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight text-ink sm:text-6xl">{view.title}</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-ink sm:text-6xl">{view.title}</h1>
             <p className="mt-1 text-base text-ink-muted sm:text-lg">{view.subtitle}</p>
           </div>
           <div className="flex items-center gap-2 text-sm text-ink-muted">
@@ -420,10 +420,10 @@ export default function PresentationMode() {
 
       {/* metric tiles — the grid fills the remaining height; rows split evenly and
           the numbers scale with the viewport so it always fits without scrolling. */}
-      <div className="relative z-0 min-h-0 flex-1 px-6 py-3 sm:px-10 sm:py-4">
+      <div className="relative z-0 min-h-0 flex-1 px-4 py-2 sm:px-10 sm:py-4">
         <div className="grid h-full min-h-0 auto-rows-fr grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
           {tiles.map((t) => (
-            <div key={t.label} className="flex min-h-0 flex-col justify-center overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-6">
+            <div key={t.label} className="flex min-h-0 flex-col justify-center overflow-hidden rounded-xl border border-border bg-card p-3 sm:p-6">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted sm:text-sm">
                 <span className={cn('size-2 shrink-0 rounded-full', t.dot)} />
                 <span className="truncate">{t.label}</span>
@@ -431,7 +431,7 @@ export default function PresentationMode() {
               {t.feed && feedLoading ? (
                 <div className="mt-2 h-[6vh] w-32 max-w-[60%] animate-pulse rounded-md bg-ink/10" />
               ) : (
-                <div className={cn('mt-1 font-bold tabular-nums leading-none text-[clamp(1.5rem,7vh,4.5rem)]', t.tone || 'text-ink')}>{t.value}</div>
+                <div className={cn('mt-1 font-bold tabular-nums leading-none text-[clamp(1.25rem,5.5vh,2.75rem)] sm:text-[clamp(1.5rem,7vh,4.5rem)]', t.tone || 'text-ink')}>{t.value}</div>
               )}
             </div>
           ))}
