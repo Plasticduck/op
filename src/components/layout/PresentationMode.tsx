@@ -431,7 +431,7 @@ export default function PresentationMode() {
               {t.feed && feedLoading ? (
                 <div className="mt-2 h-[6vh] w-32 max-w-[60%] animate-pulse rounded-md bg-ink/10" />
               ) : (
-                <div className={cn('mt-1 font-bold tabular-nums leading-none text-[clamp(1.25rem,5.5vh,2.75rem)] sm:text-[clamp(1.5rem,7vh,4.5rem)]', t.tone || 'text-ink')}>{t.value}</div>
+                <div className={cn('mt-1 font-bold tabular-nums leading-none text-[clamp(1rem,4.5vh,2rem)] sm:text-[clamp(1.5rem,7vh,4.5rem)]', t.tone || 'text-ink')}>{t.value}</div>
               )}
             </div>
           ))}
