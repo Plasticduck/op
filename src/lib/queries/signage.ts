@@ -144,6 +144,14 @@ export const signage = {
   emailRequest: (requestId: string) =>
     supabase.functions.invoke('signage-request-email', { body: { request_id: requestId } }),
 
+  // Update an order's status (and tracking number). Admin tracker only.
+  updateStatus: (id: string, patch: { status?: string; tracking_number?: string | null; status_updated_at?: string }) =>
+    supabase.from('signage_requests').update(patch).eq('id', id),
+
+  // Email the order's requester that its status changed (kevan-only server side).
+  statusEmail: (requestId: string) =>
+    supabase.functions.invoke('signage-status-email', { body: { request_id: requestId } }),
+
   // Remove an artwork from the library (file + rows + order refs). Server-side
   // this is locked to a single admin; everyone else gets 403.
   removeArtwork: (path: string) =>

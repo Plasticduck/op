@@ -25,6 +25,14 @@ import {
 
 type Row = SignageRequest & { requested_by: { name: string } | null; location: { name: string } | null }
 
+// Order tracker status -> label + badge classes. Steps: Ordered, Shipped, Completed.
+function statusBadge(status: string | null | undefined): { label: string; cls: string } {
+  const s = (status ?? 'ordered').toLowerCase()
+  if (s === 'completed') return { label: 'Completed', cls: 'bg-ok-soft text-ok' }
+  if (s === 'shipped') return { label: 'Shipped', cls: 'bg-accent-soft text-accent' }
+  return { label: 'Ordered', cls: 'bg-warn-soft text-warn' }
+}
+
 // Catalog tiles shown on the signage landing. Names must match SIGN_CATEGORIES so
 // a tile can preset the order form's category. Placeholder icons for now.
 const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
@@ -93,6 +101,23 @@ function Inner({ locationId }: { locationId: string }) {
   }, [locationId])
 
   useEffect(() => { void load() }, [load])
+
+  // The order tracker (status editing) is limited to a single admin; requesters
+  // see the current status read-only. Changing status or tracking emails the
+  // requester.
+  const isAdmin = (profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'
+  const changeStatus = async (r: Row, status: string) => {
+    await signage.updateStatus(r.id, { status, status_updated_at: new Date().toISOString() })
+    await load()
+    void signage.statusEmail(r.id)
+  }
+  const saveTracking = async (r: Row, value: string) => {
+    const t = value.trim()
+    if (t === (r.tracking_number ?? '')) return
+    await signage.updateStatus(r.id, { tracking_number: t || null })
+    await load()
+    void signage.statusEmail(r.id)
+  }
 
   // Render one sample thumbnail per category (the first sign in it) for the tiles.
   useEffect(() => {
@@ -189,7 +214,7 @@ function Inner({ locationId }: { locationId: string }) {
         />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-3 py-2.5 font-medium">Order</th>
@@ -198,6 +223,7 @@ function Inner({ locationId }: { locationId: string }) {
                 <th className="px-3 py-2.5 font-medium numeric">Qty</th>
                 <th className="px-3 py-2.5 font-medium">Ordered by</th>
                 <th className="px-3 py-2.5 font-medium">When</th>
+                <th className="px-3 py-2.5 font-medium">Status</th>
                 <th className="px-3 py-2.5 font-medium text-center">Artwork</th>
               </tr>
             </thead>
@@ -232,6 +258,38 @@ function Inner({ locationId }: { locationId: string }) {
                       : r.requested_by?.name ?? '—'}
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">{timeAgo(r.created_at)}</td>
+                  <td className="px-3 py-2.5">
+                    {isAdmin ? (
+                      <div className="flex flex-col gap-1">
+                        <select
+                          value={(r.status ?? 'ordered').toLowerCase()}
+                          onChange={(e) => void changeStatus(r, e.target.value)}
+                          className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
+                        >
+                          <option value="ordered">Ordered</option>
+                          <option value="shipped">Shipped</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                        {(r.status ?? '').toLowerCase() === 'shipped' && (
+                          <input
+                            type="text"
+                            defaultValue={r.tracking_number ?? ''}
+                            placeholder="Tracking #"
+                            onBlur={(e) => void saveTracking(r, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                            className="w-32 rounded-md border border-border bg-card px-2 py-1 text-xs text-ink"
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        <span className={cn('inline-block w-fit rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadge(r.status).cls)}>{statusBadge(r.status).label}</span>
+                        {(r.status ?? '').toLowerCase() === 'shipped' && r.tracking_number && (
+                          <span className="text-xs text-ink-muted">Tracking: {r.tracking_number}</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 text-center">
                     {r.artwork_path ? (
                       <button
