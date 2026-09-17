@@ -3,6 +3,7 @@ import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, Cor
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
+import { useSearchParams } from 'react-router-dom'
 import { billing, type Account } from '@/lib/queries/billing'
 import { listUsers, type AccountUser } from '@/lib/queries/account'
 import type { CompanySettings } from '@/lib/queries/companySettings'
@@ -188,6 +189,7 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<OpsInvoice[]>([])
   const [users, setUsers] = useState<AccountUser[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [busy, setBusy] = useState(false)
   const [warnOpen, setWarnOpen] = useState(false)
   // Approved tab: invoices ticked for export. Cleared whenever the tab changes.
@@ -300,6 +302,25 @@ export default function InvoicesPage() {
     setBusy(false)
     setOpenId(null)
   }
+
+  // Non-admins request deletion (RLS locks the actual delete to kevan@washlyfe.com);
+  // this emails the admin a link to the invoice.
+  const reqDelete = async (invId: string) => {
+    const { error } = await opsInvoices.requestDelete(invId)
+    if (error) throw error
+  }
+
+  // Open an invoice directly from a deep link (?invoice=<id>), e.g. from the
+  // deletion-request email. Clears the param so it does not re-open on close.
+  useEffect(() => {
+    const inv = searchParams.get('invoice')
+    if (inv && invoices.some((i) => i.id === inv)) {
+      setOpenId(inv)
+      const next = new URLSearchParams(searchParams)
+      next.delete('invoice')
+      setSearchParams(next, { replace: true })
+    }
+  }, [invoices, searchParams, setSearchParams])
 
   // This wash's unique inbound invoice address.
   const [account, setAccount] = useState<Account | null>(null)
@@ -666,6 +687,7 @@ export default function InvoicesPage() {
           onDownload={downloadFile}
           act={act}
           onDelete={del}
+          onRequestDelete={reqDelete}
         />
       )}
 
@@ -692,7 +714,7 @@ export default function InvoicesPage() {
 // ---- Workflow modal --------------------------------------------------------
 
 function InvoiceModal({
-  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, isDeleteAdmin, busy, onClose, onFile, onDownload, act, onDelete,
+  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, isDeleteAdmin, busy, onClose, onFile, onDownload, act, onDelete, onRequestDelete,
 }: {
   invoice: OpsInvoice
   duplicateOfInvoice: OpsInvoice | null
@@ -711,6 +733,7 @@ function InvoiceModal({
   onDownload: (path: string) => void
   act: (id: string, patch: OpsInvoiceUpdate, opts?: { keepOpen?: boolean }) => Promise<void>
   onDelete: (id: string, filePath: string | null) => Promise<void>
+  onRequestDelete: (id: string) => Promise<void>
 }) {
   const status = (KNOWN_STATUSES.has(invoice.status as InvoiceStatus) ? invoice.status : 'unassigned') as InvoiceStatus
   const editable = canManage && (status === 'unassigned' || status === 'needs_attention')
@@ -757,6 +780,7 @@ function InvoiceModal({
   // a two-step guard for the hard delete.
   const [resubmitNote, setResubmitNote] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [reqState, setReqState] = useState<'idle' | 'confirm' | 'sending' | 'done' | 'error'>('idle')
   // Mandatory memo, entered while the invoice is still unassigned and required
   // before it can be sent for approval. Flows into the QuickBooks Memo column.
   const [memo, setMemo] = useState(invoice.memo ?? '')
@@ -1130,7 +1154,7 @@ function InvoiceModal({
                 <CornerUpLeft className="size-4" /> Back to unassigned
               </Button>
             )}
-            {((canManage && status === 'needs_attention') || isDeleteAdmin) && (
+            {isDeleteAdmin ? (
               confirmDelete ? (
                 <>
                   <Button variant="danger" size="sm" disabled={busy} onClick={() => void onDelete(id, invoice.file_path)}>
@@ -1143,7 +1167,34 @@ function InvoiceModal({
                   <Trash2 className="size-4" /> {status === 'exported' ? 'Delete export' : 'Delete Invoice'}
                 </Button>
               )
+            ) : reqState === 'done' ? (
+              <span className="inline-flex items-center gap-1 text-sm font-medium text-ok"><CheckCircle2 className="size-4" /> Deletion requested. Admin notified.</span>
+            ) : reqState === 'confirm' || reqState === 'sending' ? (
+              <>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={reqState === 'sending'}
+                  onClick={async () => {
+                    setReqState('sending')
+                    try {
+                      await onRequestDelete(id)
+                      setReqState('done')
+                    } catch {
+                      setReqState('error')
+                    }
+                  }}
+                >
+                  <Trash2 className="size-4" /> {reqState === 'sending' ? 'Sending...' : 'Confirm request'}
+                </Button>
+                <Button variant="ghost" size="sm" disabled={reqState === 'sending'} onClick={() => setReqState('idle')}>Cancel</Button>
+              </>
+            ) : (
+              <Button variant="ghost" size="sm" className="text-danger" onClick={() => setReqState('confirm')}>
+                <Trash2 className="size-4" /> Request delete
+              </Button>
             )}
+            {reqState === 'error' && <span className="text-sm text-danger">Could not send the request. Please try again.</span>}
           </div>
 
           <div className="flex flex-wrap gap-2">

@@ -19,6 +19,11 @@ export const opsInvoices = {
 
   // Hard-delete an invoice (Needs Attention > Delete Invoice). Best-effort
   // removes the stored file first so it isn't orphaned.
+  // Non-admins can't delete (RLS locks it to kevan@washlyfe.com); they request
+  // deletion, which emails the admin a link to the invoice.
+  requestDelete: (invoiceId: string, reason?: string) =>
+    supabase.functions.invoke('invoice-delete-request', { body: { invoice_id: invoiceId, reason } }),
+
   remove: async (id: string, filePath?: string | null) => {
     if (filePath) await supabase.storage.from('ops-invoices').remove([filePath])
     return supabase.from('ops_invoices').delete().eq('id', id)
