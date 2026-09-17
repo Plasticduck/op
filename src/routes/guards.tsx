@@ -87,6 +87,14 @@ export function RequireGmBonus({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+// Payroll labor is limited to a single admin (kevan@washlyfe.com) for now.
+export function RequireSuperAdmin({ children }: { children: ReactNode }) {
+  const { profile } = useAuth()
+  if (!profile) return null
+  if ((profile.email ?? '').toLowerCase() !== 'kevan@washlyfe.com') return <Navigate to="/app/dashboard" replace />
+  return <>{children}</>
+}
+
 // Public auth pages bounce already-onboarded users into the app. We require a
 // *profile*, not just a session — during signup the session flips to
 // authenticated before the account row exists, and redirecting on session alone

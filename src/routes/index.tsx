@@ -3,7 +3,7 @@ import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
-import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RedirectIfAuthed } from '@/routes/guards'
+import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSuperAdmin, RedirectIfAuthed } from '@/routes/guards'
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 
@@ -131,6 +131,7 @@ const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortal
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
 const MarketExplorerPage = lz(() => import('@/features/opssuite/MarketExplorerPage'))
+const PayrollLaborPage = lz(() => import('@/features/hr/PayrollLaborPage'))
 const HouseholdFinderPage = lz(() => import('@/features/opssuite/HouseholdFinderPage'))
 const LubeShopPage = lz(() => import('@/features/opssuite/LubeShopPage'))
 const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
@@ -232,6 +233,7 @@ export const router = createBrowserRouter([
           { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
+          { path: 'hr/payroll-labor', element: <RequireSuperAdmin>{s(<PayrollLaborPage />)}</RequireSuperAdmin> },
           { path: 'details', element: mgr(<InteriorDetailsPage />) },
           { path: 'msa-performance', element: mgr(<MsaPerformancePage />) },
           { path: 'flexwash-sales', element: mgr(<FlexwashSalesPage />) },
