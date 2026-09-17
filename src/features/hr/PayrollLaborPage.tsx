@@ -6,6 +6,8 @@ import { fnErrorMessage } from '@/lib/fnError'
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd')
 const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+const usd2 = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 type Preset = { label: string; range: () => { start: string; end: string } }
 const PRESETS: Preset[] = [
@@ -75,15 +77,15 @@ export default function PayrollLaborPage() {
 
   const exportSites = () => {
     if (!data) return
-    const header = ['Site', ...payTypes, 'Total hours', 'Employees']
-    const rows = data.sites.map((s) => [s.site, ...payTypes.map((p) => s.byPayType[p] ?? 0), s.totalHours, s.employees])
-    const totalRow = ['Total', ...payTypes.map((p) => data.totals.byPayType[p] ?? 0), data.totals.totalHours, data.totals.employees]
+    const header = ['Site', ...payTypes, 'Total hours', 'Est. cost', 'Employees']
+    const rows = data.sites.map((s) => [s.site, ...payTypes.map((p) => s.byPayType[p] ?? 0), s.totalHours, s.cost, s.employees])
+    const totalRow = ['Total', ...payTypes.map((p) => data.totals.byPayType[p] ?? 0), data.totals.totalHours, data.totals.totalCost, data.totals.employees]
     downloadCsv(`payroll-labor-by-site-${start}-to-${end}.csv`, [header, ...rows, totalRow])
   }
   const exportEmployees = () => {
     if (!data) return
-    const header = ['Employee', 'Emp #', 'Sites', ...payTypes, 'Total hours']
-    const rows = data.employees.map((e) => [e.name, e.employeeNumber, e.sites.join(' / '), ...payTypes.map((p) => e.byPayType[p] ?? 0), e.totalHours])
+    const header = ['Employee', 'Emp #', 'Type', 'Rate', 'Sites', ...payTypes, 'Total hours', 'Est. cost']
+    const rows = data.employees.map((e) => [e.name, e.employeeNumber, e.payType, e.rate, e.sites.join(' / '), ...payTypes.map((p) => e.byPayType[p] ?? 0), e.totalHours, e.cost])
     downloadCsv(`payroll-labor-by-employee-${start}-to-${end}.csv`, [header, ...rows])
   }
 
@@ -94,8 +96,11 @@ export default function PayrollLaborPage() {
           <h1 className="flex items-center gap-2 text-2xl font-bold text-ink">
             <Clock className="size-6 text-accent" /> Payroll Labor
           </h1>
-          <p className="mt-1 text-sm text-ink-muted">Timecard hours from iSolved, by site and pay type.</p>
+          <p className="mt-1 text-sm text-ink-muted">Timecard hours and estimated labor cost from iSolved, by site and employee.</p>
         </div>
+      </div>
+      <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-ink-muted">
+        <strong className="text-ink">Estimate.</strong> Dollar figures are each employee&apos;s base pay rate times hours (overtime at 1.5x, salaried at annual salary / 2080). This is not the payroll gross: it excludes employer taxes and benefits, shift differentials, bonuses, and mid-period rate changes.
       </div>
 
       {/* Controls */}
@@ -146,11 +151,13 @@ export default function PayrollLaborPage() {
         <>
           {/* Totals */}
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <Stat label="Total hours" value={num(data.totals.totalHours)} tone="accent" />
+            <Stat label="Est. labor cost" value={usd(data.totals.totalCost)} tone="accent" />
+            <Stat label="Total hours" value={num(data.totals.totalHours)} />
+            <Stat label="Blended rate" value={data.totals.totalHours ? `${usd2(data.totals.totalCost / data.totals.totalHours)}/hr` : "—"} />
             <Stat label="Employees" value={String(data.totals.employees)} />
             <Stat label="Sites" value={String(data.totals.sites)} />
             {payTypes.map((p) => (
-              <Stat key={p} label={p} value={num(data.totals.byPayType[p] ?? 0)} />
+              <Stat key={p} label={`${p} hrs`} value={num(data.totals.byPayType[p] ?? 0)} />
             ))}
           </div>
 
@@ -170,12 +177,14 @@ export default function PayrollLaborPage() {
 
           {tab === 'sites' ? (
             <div className="mt-3 overflow-x-auto rounded-xl border border-border">
-              <table className="w-full min-w-[560px] text-sm">
+              <table className="w-full min-w-[760px] text-sm">
                 <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-subtle">
                   <tr>
                     <th className="px-4 py-2.5 font-semibold">Site</th>
                     {payTypes.map((p) => <th key={p} className="px-4 py-2.5 text-right font-semibold">{p}</th>)}
-                    <th className="px-4 py-2.5 text-right font-semibold">Total</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">Total hrs</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">Est. cost</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">$/hr</th>
                     <th className="px-4 py-2.5 text-right font-semibold">Emps</th>
                   </tr>
                 </thead>
@@ -185,6 +194,8 @@ export default function PayrollLaborPage() {
                       <td className="px-4 py-2.5 font-medium text-ink">{s.site}</td>
                       {payTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.byPayType[p] ? num(s.byPayType[p]) : '—'}</td>)}
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{num(s.totalHours)}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{usd(s.cost)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.totalHours ? usd2(s.cost / s.totalHours) : "—"}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.employees}</td>
                     </tr>
                   ))}
@@ -194,6 +205,8 @@ export default function PayrollLaborPage() {
                     <td className="px-4 py-2.5 text-ink">Total</td>
                     {payTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.byPayType[p] ?? 0)}</td>)}
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.totalHours)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-ink">{usd(data.totals.totalCost)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.totalHours ? usd2(data.totals.totalCost / data.totals.totalHours) : "—"}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.employees}</td>
                   </tr>
                 </tfoot>
@@ -215,9 +228,11 @@ export default function PayrollLaborPage() {
                   <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-subtle">
                     <tr>
                       <th className="px-4 py-2.5 font-semibold">Employee</th>
+                      <th className="px-4 py-2.5 font-semibold">Type</th>
+                      <th className="px-4 py-2.5 text-right font-semibold">Rate</th>
                       <th className="px-4 py-2.5 font-semibold">Sites</th>
-                      {payTypes.map((p) => <th key={p} className="px-4 py-2.5 text-right font-semibold">{p}</th>)}
-                      <th className="px-4 py-2.5 text-right font-semibold">Total</th>
+                      <th className="px-4 py-2.5 text-right font-semibold">Total hrs</th>
+                      <th className="px-4 py-2.5 text-right font-semibold">Est. cost</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -227,13 +242,15 @@ export default function PayrollLaborPage() {
                           <div className="font-medium text-ink">{e.name}</div>
                           <div className="text-xs text-ink-subtle">#{e.employeeNumber}</div>
                         </td>
+                        <td className="px-4 py-2.5 text-ink-muted">{e.payType || "—"}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{e.rate ? usd2(e.rate) : "—"}</td>
                         <td className="px-4 py-2.5 text-ink-muted">{e.sites.join(', ')}</td>
-                        {payTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{e.byPayType[p] ? num(e.byPayType[p]) : '—'}</td>)}
-                        <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{num(e.totalHours)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{num(e.totalHours)}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{usd(e.cost)}</td>
                       </tr>
                     ))}
                     {filteredEmployees.length === 0 && (
-                      <tr><td colSpan={payTypes.length + 3} className="px-4 py-6 text-center text-ink-subtle">No employees match "{empSearch}".</td></tr>
+                      <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-subtle">No employees match "{empSearch}".</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -242,7 +259,8 @@ export default function PayrollLaborPage() {
           )}
 
           <p className="mt-4 text-xs text-ink-subtle">
-            Source: iSolved timecard data for {data.range.startDate} to {data.range.endDate}. Hours only (pay rates are not included in this feed).
+            Source: iSolved timecard + employee rates for {data.range.startDate} to {data.range.endDate}. Costs are estimated from each employee&apos;s base rate (overtime at {data.assumptions?.otMultiplier ?? 1.5}x, salaried at annual salary / 2080) and are not the payroll gross.
+            {data.totals.unratedEmployees > 0 ? ` ${data.totals.unratedEmployees} employee(s) had no rate on file (${num(data.totals.unratedHours)} hrs at $0).` : ''}
           </p>
         </>
       )}
