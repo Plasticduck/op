@@ -80,6 +80,7 @@ function Inner({ locationId }: { locationId: string }) {
   const [rows, setRows] = useState<Row[]>([])
   const [library, setLibrary] = useState<ArtworkItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   // Category chosen from a catalog tile, preselected in the order form.
   const [presetCategory, setPresetCategory] = useState<string | null>(null)
@@ -117,6 +118,11 @@ function Inner({ locationId }: { locationId: string }) {
     await signage.updateStatus(r.id, { tracking_number: t || null })
     await load()
     void signage.statusEmail(r.id)
+  }
+  const deleteOrder = async (r: Row) => {
+    await signage.remove(r.id)
+    setConfirmDeleteId(null)
+    await load()
   }
 
   // Render one sample thumbnail per category (the first sign in it) for the tiles.
@@ -225,6 +231,7 @@ function Inner({ locationId }: { locationId: string }) {
                 <th className="px-3 py-2.5 font-medium">When</th>
                 <th className="px-3 py-2.5 font-medium">Status</th>
                 <th className="px-3 py-2.5 font-medium text-center">Artwork</th>
+                {isAdmin && <th className="px-3 py-2.5 font-medium text-center">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -304,6 +311,25 @@ function Inner({ locationId }: { locationId: string }) {
                       <span className="text-xs text-ink-subtle">none</span>
                     )}
                   </td>
+                  {isAdmin && (
+                    <td className="px-3 py-2.5 text-center">
+                      {confirmDeleteId === r.id ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <Button variant="danger" size="sm" onClick={() => void deleteOrder(r)}>Delete</Button>
+                          <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(r.id)}
+                          title="Delete order"
+                          className="mx-auto grid size-8 place-items-center rounded-md border border-border text-danger hover:bg-danger-soft"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

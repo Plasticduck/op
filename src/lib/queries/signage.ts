@@ -148,6 +148,9 @@ export const signage = {
   updateStatus: (id: string, patch: { status?: string; tracking_number?: string | null; status_updated_at?: string }) =>
     supabase.from('signage_requests').update(patch).eq('id', id),
 
+  // Delete an order (admin tracker only; RLS also gates to manager+).
+  remove: (id: string) => supabase.from('signage_requests').delete().eq('id', id),
+
   // Email the order's requester that its status changed (kevan-only server side).
   statusEmail: (requestId: string) =>
     supabase.functions.invoke('signage-status-email', { body: { request_id: requestId } }),
