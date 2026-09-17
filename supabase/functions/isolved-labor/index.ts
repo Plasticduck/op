@@ -1,22 +1,23 @@
 // isolved-labor — Supabase Edge Function (Deno).
-// Pulls iSolved timecard data for a date range and rolls it up by site, pay
-// type, and employee, including an ESTIMATED labor cost in dollars (each
-// employee's base rate x hours, OT at 1.5x, salaried costed at their effective
-// hourly rate = annualSalary / 2080). This is a base-rate estimate, NOT the
-// payroll gross (the paycheck/earnings endpoints are not in this API scope, and
-// it excludes employer taxes/benefits, differentials, bonuses, retro pay, and
-// mid-period rate changes). Credentials live in secrets; the browser never sees
-// them, and only rate fields (never SSN/DOB) leave this function. Restricted to
-// a single admin (kevan@washlyfe.com).
-// Secrets: ISOLVED_BASE_URL, ISOLVED_CLIENT_ID, ISOLVED_API_SECRET,
-//   ISOLVED_CLIENT (numeric client id), ISOLVED_LEGAL (numeric legal id).
+// Rolls up iSolved labor for a date range by site, pay type, and employee, with
+// an ESTIMATED labor cost in dollars. Two modes (body.includeSalaried):
+//   - all-in (default): hourly staff costed from timecard punches (rate x hours,
+//     OT 1.5x); ACTIVE salaried staff costed from the roster instead — their
+//     salary allocated to the range (annual / 365 x days) and assigned to their
+//     iSolved work location — so Corporate and salaried overhead are included
+//     even though salaried employees don't punch a clock.
+//   - timecard only (includeSalaried=false): everyone costed from punches.
+// This is a base-rate estimate, NOT the payroll gross (no employer taxes/
+// benefits, differentials, bonuses, retro pay, or mid-period rate changes; rates
+// are current). Credentials live in secrets; only rate/name fields (never SSN/
+// DOB) leave the function. Restricted to a single admin (kevan@washlyfe.com).
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
 const ADMIN_EMAIL = 'kevan@washlyfe.com'
-const FT_YEAR_HOURS = 2080 // 52 weeks x 40 hours, for salaried -> effective hourly
+const FT_YEAR_HOURS = 2080
 const OT_MULTIPLIER = 1.5
 
 const ALLOWED_ORIGINS = new Set<string>([
@@ -37,8 +38,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
 const json = (body: unknown, status: number, origin: string | null) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } })
 
-// iSolved "Location" labor codes map to Operator sites: NN -> MWNN, COR ->
-// Corporate, SPO -> Spotless (same scheme as the invoice classes).
+// Timecard "Location" labor codes: NN -> MWNN, COR -> Corporate, SPO -> Spotless.
 function siteLabel(code: string): string {
   if (!code) return 'Unassigned'
   if (/^\d+$/.test(code)) return 'MW' + code.padStart(2, '0')
@@ -47,18 +47,30 @@ function siteLabel(code: string): string {
   if (u === 'SPO') return 'Spotless'
   return code
 }
+// Roster "work location" strings look like "HOB #19", "COR ", "SPT", "LBK #1".
+function siteFromWorkLocation(wl: string): string {
+  if (!wl) return 'Unassigned'
+  const m = wl.match(/#\s*(\d+)/)
+  if (m) return 'MW' + m[1].padStart(2, '0')
+  const u = wl.trim().toUpperCase()
+  if (u.startsWith('COR')) return 'Corporate'
+  if (u.startsWith('SPT') || u.startsWith('SPO')) return 'Spotless'
+  return 'Unassigned'
+}
 
-// Effective hourly rate for costing: the base hourly rate when set, otherwise
-// derived from salary. Returns 0 when no rate is on file (flagged as unrated).
+function annualSalaryOf(e: Any): number {
+  const annual = Number(e.annualSalary) || 0
+  if (annual > 0) return annual
+  const perPay = Number(e.perPaySalary) || 0
+  const freq = Number(e.payFrequency) || 0
+  return perPay > 0 && freq > 0 ? perPay * freq : 0
+}
+// Effective hourly rate for costing hourly staff: base rate, else derived.
 function effRate(e: Any): number {
   const hr = Number(e.hourlyRate) || 0
   if (hr > 0) return hr
-  const annual = Number(e.annualSalary) || 0
-  if (annual > 0) return annual / FT_YEAR_HOURS
-  const perPay = Number(e.perPaySalary) || 0
-  const freq = Number(e.payFrequency) || 0
-  if (perPay > 0 && freq > 0) return (perPay * freq) / FT_YEAR_HOURS
-  return 0
+  const annual = annualSalaryOf(e)
+  return annual > 0 ? annual / FT_YEAR_HOURS : 0
 }
 
 async function getToken(base: string, cid: string, secret: string): Promise<string> {
@@ -97,7 +109,7 @@ Deno.serve(async (req) => {
     return json({ error: 'no_key', message: 'iSolved is not configured.' }, 503, origin)
   }
 
-  let body: { startDate?: string; endDate?: string } = {}
+  let body: { startDate?: string; endDate?: string; includeSalaried?: boolean } = {}
   try {
     body = await req.json()
   } catch {
@@ -105,16 +117,20 @@ Deno.serve(async (req) => {
   }
   const re = /^\d{4}-\d{2}-\d{2}$/
   const { startDate, endDate } = body
+  const includeSalaried = body.includeSalaried !== false // default all-in
   if (!startDate || !endDate || !re.test(startDate) || !re.test(endDate)) {
     return json({ error: 'bad_request', message: 'startDate and endDate (YYYY-MM-DD) are required.' }, 400, origin)
   }
+  const days = Math.max(1, Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86400000) + 1)
+
+  type Site = { code: string; site: string; total: number; cost: number; byType: Record<string, number>; emps: Set<string> }
+  type Emp = { number: string; name: string; payType: string; rate: number; rated: boolean; total: number; cost: number; byType: Record<string, number>; sites: Set<string> }
 
   try {
     let token = await getToken(base, cid, secret)
     const getJson = async (pageUrl: string): Promise<Any> => {
       let res = await fetch(pageUrl, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } })
       if (res.status === 401) {
-        // Token is short-lived (~5 min); refresh once and retry.
         token = await getToken(base, cid, secret)
         res = await fetch(pageUrl, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } })
       }
@@ -122,32 +138,43 @@ Deno.serve(async (req) => {
       return await res.json()
     }
 
-    // 1) Employee pay rates. Only the fields needed for costing are kept; SSN/DOB
-    //    and other PII are never retained or returned.
-    const rates = new Map<string, { rate: number; payType: string; rated: boolean }>()
+    // 1) Employee roster: rate lookup for timecard costing + the active-salaried
+    //    list for overhead costing. Only rate/name/location fields are kept.
+    const rateByKey = new Map<string, { rate: number; payType: string }>()
+    const salaried: Array<{ number: string; name: string; annual: number; site: string }> = []
     let empUrl = `${base}/api/clients/${client}/legals/${legal}/employees?pageSize=200&page=1`
     let ep = 0
     while (empUrl && ep < 200) {
       const d = await getJson(empUrl)
       ep++
       for (const e of d.results ?? []) {
-        const rate = effRate(e)
-        const rec = { rate, payType: String(e.payType ?? ''), rated: rate > 0 }
-        if (e.employeeNumber != null) rates.set(String(e.employeeNumber), rec)
-        if (e.id != null) rates.set('id:' + String(e.id), rec)
+        const payType = String(e.payType ?? '')
+        const rec = { rate: effRate(e), payType }
+        if (e.employeeNumber != null) rateByKey.set(String(e.employeeNumber), rec)
+        if (e.id != null) rateByKey.set('id:' + String(e.id), rec)
+        if (includeSalaried && payType === 'Salary' && String(e.employmentStatus) === 'Active') {
+          const na = e.nameAddress ?? {}
+          const name = [na.firstName, na.lastName].filter(Boolean).join(' ').trim() || String(e.employeeNumber ?? '')
+          salaried.push({ number: String(e.employeeNumber ?? e.id ?? ''), name, annual: annualSalaryOf(e), site: siteFromWorkLocation(String(e.workLocation ?? '')) })
+        }
       }
       empUrl = d.nextPageUrl ?? ''
     }
 
-    // 2) Timecards, aggregated with cost.
-    const sitesMap = new Map<string, { code: string; site: string; total: number; cost: number; byType: Record<string, number>; emps: Set<number> }>()
-    const empsMap = new Map<string, { number: string; name: string; payType: string; rate: number; rated: boolean; total: number; cost: number; byType: Record<string, number>; sites: Set<string> }>()
+    const sitesMap = new Map<string, Site>()
+    const empsMap = new Map<string, Emp>()
     const typeTotals: Record<string, number> = {}
     let grandHours = 0
     let grandCost = 0
-    let unratedEmps = new Set<string>()
+    const unratedEmps = new Set<string>()
     let unratedHours = 0
+    const siteOf = (label: string): Site => {
+      let s = sitesMap.get(label)
+      if (!s) { s = { code: '', site: label, total: 0, cost: 0, byType: {}, emps: new Set() }; sitesMap.set(label, s) }
+      return s
+    }
 
+    // 2) Timecards -> hourly (and, in timecard-only mode, salaried) cost.
     let pageUrl = `${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=200&page=1`
     let pages = 0
     while (pageUrl && pages < 200) {
@@ -156,46 +183,53 @@ Deno.serve(async (req) => {
       for (const r of d.results ?? []) {
         const empId = r.employeeId as number
         const empNum = String(r.employeeNumber ?? empId ?? '')
+        const rr = rateByKey.get(empNum) ?? rateByKey.get('id:' + String(empId)) ?? { rate: 0, payType: '' }
+        // In all-in mode salaried are costed from the roster instead of punches.
+        if (includeSalaried && rr.payType === 'Salary') continue
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || empNum
-        const rr = rates.get(empNum) ?? rates.get('id:' + String(empId)) ?? { rate: 0, payType: '', rated: false }
         let emp = empsMap.get(empNum)
         if (!emp) {
-          emp = { number: empNum, name, payType: rr.payType, rate: rr.rate, rated: rr.rated, total: 0, cost: 0, byType: {}, sites: new Set() }
+          emp = { number: empNum, name, payType: rr.payType, rate: rr.rate, rated: rr.rate > 0, total: 0, cost: 0, byType: {}, sites: new Set() }
           empsMap.set(empNum, emp)
         }
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
-          const label = siteLabel(String(loc))
-          let site = sitesMap.get(label)
-          if (!site) {
-            site = { code: String(loc), site: label, total: 0, cost: 0, byType: {}, emps: new Set() }
-            sitesMap.set(label, site)
-          }
+          const site = siteOf(siteLabel(String(loc)))
+          site.emps.add(empNum)
           for (const p of t.payItems ?? []) {
             const hrs = Number(p.payItemHours) || 0
             if (!hrs) continue
             const type = String(p.payItemName || p.payItemCode || 'Other')
-            const mult = /overtime/i.test(type) ? OT_MULTIPLIER : 1
-            const cost = rr.rate * hrs * mult
-            site.total += hrs
-            site.cost += cost
-            site.byType[type] = (site.byType[type] || 0) + hrs
-            site.emps.add(empId)
-            emp.total += hrs
-            emp.cost += cost
-            emp.byType[type] = (emp.byType[type] || 0) + hrs
-            emp.sites.add(label)
+            const cost = rr.rate * hrs * (/overtime/i.test(type) ? OT_MULTIPLIER : 1)
+            site.total += hrs; site.cost += cost; site.byType[type] = (site.byType[type] || 0) + hrs
+            emp.total += hrs; emp.cost += cost; emp.byType[type] = (emp.byType[type] || 0) + hrs; emp.sites.add(site.site)
             typeTotals[type] = (typeTotals[type] || 0) + hrs
-            grandHours += hrs
-            grandCost += cost
-            if (!rr.rated) {
-              unratedEmps.add(empNum)
-              unratedHours += hrs
-            }
+            grandHours += hrs; grandCost += cost
+            if (rr.rate <= 0) { unratedEmps.add(empNum); unratedHours += hrs }
           }
         }
       }
       pageUrl = d.nextPageUrl ?? ''
+    }
+
+    // 3) Salaried overhead (all-in): allocate each active salaried person's salary
+    //    across the range and assign it to their work-location site. Hours are a
+    //    full-time-equivalent estimate so blended $/hr stays sensible.
+    if (includeSalaried) {
+      const ftHours = (FT_YEAR_HOURS / 365) * days
+      for (const s of salaried) {
+        const cost = (s.annual / 365) * days
+        const rate = s.annual > 0 ? s.annual / FT_YEAR_HOURS : 0
+        const site = siteOf(s.site)
+        site.emps.add(s.number)
+        site.total += ftHours; site.cost += cost; site.byType['Salaried'] = (site.byType['Salaried'] || 0) + ftHours
+        let emp = empsMap.get(s.number)
+        if (!emp) { emp = { number: s.number, name: s.name, payType: 'Salary', rate, rated: s.annual > 0, total: 0, cost: 0, byType: {}, sites: new Set() }; empsMap.set(s.number, emp) }
+        emp.total += ftHours; emp.cost += cost; emp.byType['Salaried'] = (emp.byType['Salaried'] || 0) + ftHours; emp.sites.add(site.site)
+        typeTotals['Salaried'] = (typeTotals['Salaried'] || 0) + ftHours
+        grandHours += ftHours; grandCost += cost
+        if (s.annual <= 0) { unratedEmps.add(s.number); unratedHours += ftHours }
+      }
     }
 
     const round = (n: number) => Math.round(n * 100) / 100
@@ -211,6 +245,7 @@ Deno.serve(async (req) => {
     return json(
       {
         range: { startDate, endDate },
+        includeSalaried,
         payTypes,
         sites,
         employees,
@@ -223,7 +258,12 @@ Deno.serve(async (req) => {
           unratedEmployees: unratedEmps.size,
           unratedHours: round(unratedHours),
         },
-        assumptions: { otMultiplier: OT_MULTIPLIER, salariedBasis: 'annualSalary / 2080', note: 'Base-rate estimate, not payroll gross.' },
+        assumptions: {
+          otMultiplier: OT_MULTIPLIER,
+          salariedBasis: includeSalaried ? 'active salaried costed from roster: annual / 365 x days, FT-equivalent hours' : 'salaried costed from timecard punches',
+          days,
+          note: 'Base-rate estimate, not payroll gross.',
+        },
       },
       200,
       origin,

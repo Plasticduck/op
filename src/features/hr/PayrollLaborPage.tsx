@@ -41,12 +41,13 @@ export default function PayrollLaborPage() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<'sites' | 'employees'>('sites')
   const [empSearch, setEmpSearch] = useState('')
+  const [allIn, setAllIn] = useState(true)
 
-  const load = useCallback(async (s: string, e: string) => {
+  const load = useCallback(async (s: string, e: string, inc: boolean) => {
     setLoading(true)
     setError(null)
     try {
-      const { data: d, error: err } = await isolvedLabor(s, e)
+      const { data: d, error: err } = await isolvedLabor(s, e, inc)
       if (err || d?.error) {
         setError(await fnErrorMessage(err, (d ?? null) as { message?: string; error?: string } | null, 'Could not load payroll labor from iSolved.'))
         setData(null)
@@ -62,7 +63,7 @@ export default function PayrollLaborPage() {
   }, [])
 
   useEffect(() => {
-    void load(start, end)
+    void load(start, end, allIn)
     // Load once on mount with the default range; further loads are on demand.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -100,7 +101,7 @@ export default function PayrollLaborPage() {
         </div>
       </div>
       <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-ink-muted">
-        <strong className="text-ink">Estimate.</strong> Dollar figures are each employee&apos;s base pay rate times hours (overtime at 1.5x, salaried at annual salary / 2080). This is not the payroll gross: it excludes employer taxes and benefits, shift differentials, bonuses, and mid-period rate changes.
+        <strong className="text-ink">Estimate.</strong> Dollar figures are estimated from base pay rates and salaries, not the payroll gross: they exclude employer taxes and benefits, shift differentials, bonuses, retro pay, and mid-period rate changes.
       </div>
 
       {/* Controls */}
@@ -113,11 +114,25 @@ export default function PayrollLaborPage() {
                 const r = p.range()
                 setStart(r.start)
                 setEnd(r.end)
-                void load(r.start, r.end)
+                void load(r.start, r.end, allIn)
               }}
               className="rounded-lg border border-border bg-content px-3 py-2 text-sm font-medium text-ink-muted hover:border-accent hover:text-ink"
             >
               {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-content p-1">
+          {[{ k: true, l: 'All-in' }, { k: false, l: 'Timecard only' }].map((m) => (
+            <button
+              key={String(m.k)}
+              onClick={() => {
+                setAllIn(m.k)
+                void load(start, end, m.k)
+              }}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${allIn === m.k ? 'bg-card text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+            >
+              {m.l}
             </button>
           ))}
         </div>
@@ -131,7 +146,7 @@ export default function PayrollLaborPage() {
             <input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} className="mt-1 block rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink" />
           </label>
           <button
-            onClick={() => void load(start, end)}
+            onClick={() => void load(start, end, allIn)}
             disabled={loading}
             className="inline-flex h-[38px] items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-white disabled:opacity-60"
           >
@@ -259,8 +274,8 @@ export default function PayrollLaborPage() {
           )}
 
           <p className="mt-4 text-xs text-ink-subtle">
-            Source: iSolved timecard + employee rates for {data.range.startDate} to {data.range.endDate}. Costs are estimated from each employee&apos;s base rate (overtime at {data.assumptions?.otMultiplier ?? 1.5}x, salaried at annual salary / 2080) and are not the payroll gross.
-            {data.totals.unratedEmployees > 0 ? ` ${data.totals.unratedEmployees} employee(s) had no rate on file (${num(data.totals.unratedHours)} hrs at $0).` : ''}
+            Source: iSolved for {data.range.startDate} to {data.range.endDate}. {data.includeSalaried ? 'All-in: hourly staff from timecard punches (overtime at 1.5x) plus active salaried staff costed from salary (annual / 365 times days), assigned to their work location.' : 'Timecard only: everyone costed from punches (salaried at annual salary / 2080).'} Base-rate estimate, not the payroll gross.
+            {data.totals.unratedEmployees > 0 ? ` ${data.totals.unratedEmployees} employee(s) had no rate on file (shown at $0).` : ''}
           </p>
         </>
       )}

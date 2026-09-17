@@ -10,11 +10,12 @@ export type LaborResponse = {
   payTypes: string[]
   sites: LaborSite[]
   employees: LaborEmployee[]
+  includeSalaried?: boolean
   totals: { totalHours: number; totalCost: number; byPayType: Record<string, number>; employees: number; sites: number; unratedEmployees: number; unratedHours: number }
   assumptions?: { otMultiplier: number; salariedBasis: string; note: string }
   error?: string
   message?: string
 }
 
-export const isolvedLabor = (startDate: string, endDate: string) =>
-  supabase.functions.invoke<LaborResponse>('isolved-labor', { body: { startDate, endDate } })
+export const isolvedLabor = (startDate: string, endDate: string, includeSalaried = true) =>
+  supabase.functions.invoke<LaborResponse>('isolved-labor', { body: { startDate, endDate, includeSalaried } })
