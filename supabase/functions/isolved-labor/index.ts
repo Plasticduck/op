@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
     // 1) Employee roster: rate lookup for timecard costing + the active-salaried
     //    list for overhead costing. Only rate/name/location fields are kept.
     const rateByKey = new Map<string, { rate: number; payType: string }>()
-    const salaried: Array<{ number: string; name: string; annual: number; site: string }> = []
+    const roster: Array<{ number: string; name: string; payType: string; rate: number; annual: number; site: string }> = []
     let empUrl = `${base}/api/clients/${client}/legals/${legal}/employees?pageSize=200&page=1`
     let ep = 0
     while (empUrl && ep < 200) {
@@ -152,10 +152,10 @@ Deno.serve(async (req) => {
         const rec = { rate: effRate(e), payType }
         if (e.employeeNumber != null) rateByKey.set(String(e.employeeNumber), rec)
         if (e.id != null) rateByKey.set('id:' + String(e.id), rec)
-        if (includeSalaried && payType === 'Salary' && String(e.employmentStatus) === 'Active') {
+        if (includeSalaried && String(e.employmentStatus) === 'Active') {
           const na = e.nameAddress ?? {}
           const name = [na.firstName, na.lastName].filter(Boolean).join(' ').trim() || String(e.employeeNumber ?? '')
-          salaried.push({ number: String(e.employeeNumber ?? e.id ?? ''), name, annual: annualSalaryOf(e), site: siteFromWorkLocation(String(e.workLocation ?? '')) })
+          roster.push({ number: String(e.employeeNumber ?? e.id ?? ''), name, payType, rate: rec.rate, annual: annualSalaryOf(e), site: siteFromWorkLocation(String(e.workLocation ?? '')) })
         }
       }
       empUrl = d.nextPageUrl ?? ''
@@ -217,18 +217,26 @@ Deno.serve(async (req) => {
     //    full-time-equivalent estimate so blended $/hr stays sensible.
     if (includeSalaried) {
       const ftHours = (FT_YEAR_HOURS / 365) * days
-      for (const s of salaried) {
-        const cost = (s.annual / 365) * days
-        const rate = s.annual > 0 ? s.annual / FT_YEAR_HOURS : 0
-        const site = siteOf(s.site)
-        site.emps.add(s.number)
-        site.total += ftHours; site.cost += cost; site.byType['Salaried'] = (site.byType['Salaried'] || 0) + ftHours
-        let emp = empsMap.get(s.number)
-        if (!emp) { emp = { number: s.number, name: s.name, payType: 'Salary', rate, rated: s.annual > 0, total: 0, cost: 0, byType: {}, sites: new Set() }; empsMap.set(s.number, emp) }
-        emp.total += ftHours; emp.cost += cost; emp.byType['Salaried'] = (emp.byType['Salaried'] || 0) + ftHours; emp.sites.add(site.site)
-        typeTotals['Salaried'] = (typeTotals['Salaried'] || 0) + ftHours
-        grandHours += ftHours; grandCost += cost
-        if (s.annual <= 0) { unratedEmps.add(s.number); unratedHours += ftHours }
+      for (const s of roster) {
+        if (s.payType === 'Salary') {
+          const cost = (s.annual / 365) * days
+          const rate = s.annual > 0 ? s.annual / FT_YEAR_HOURS : 0
+          const site = siteOf(s.site)
+          site.emps.add(s.number)
+          site.total += ftHours; site.cost += cost; site.byType['Salaried'] = (site.byType['Salaried'] || 0) + ftHours
+          let emp = empsMap.get(s.number)
+          if (!emp) { emp = { number: s.number, name: s.name, payType: 'Salary', rate, rated: s.annual > 0, total: 0, cost: 0, byType: {}, sites: new Set() }; empsMap.set(s.number, emp) }
+          emp.total += ftHours; emp.cost += cost; emp.byType['Salaried'] = (emp.byType['Salaried'] || 0) + ftHours; emp.sites.add(site.site)
+          typeTotals['Salaried'] = (typeTotals['Salaried'] || 0) + ftHours
+          grandHours += ftHours; grandCost += cost
+          if (s.annual <= 0) { unratedEmps.add(s.number); unratedHours += ftHours }
+        } else if (!empsMap.has(s.number)) {
+          // Active hourly who did not punch in this range: list at their home site
+          // with no worked hours ($0) so the active roster is complete.
+          const site = siteOf(s.site)
+          site.emps.add(s.number)
+          empsMap.set(s.number, { number: s.number, name: s.name, payType: 'Hourly', rate: s.rate, rated: s.rate > 0, total: 0, cost: 0, byType: {}, sites: new Set([s.site]) })
+        }
       }
     }
 

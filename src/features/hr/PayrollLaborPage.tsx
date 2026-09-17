@@ -274,7 +274,7 @@ export default function PayrollLaborPage() {
           )}
 
           <p className="mt-4 text-xs text-ink-subtle">
-            Source: iSolved for {data.range.startDate} to {data.range.endDate}. {data.includeSalaried ? 'All-in: hourly staff from timecard punches (overtime at 1.5x) plus active salaried staff costed from salary (annual / 365 times days), assigned to their work location.' : 'Timecard only: everyone costed from punches (salaried at annual salary / 2080).'} Base-rate estimate, not the payroll gross.
+            Source: iSolved for {data.range.startDate} to {data.range.endDate}. {data.includeSalaried ? 'All-in: hourly staff from timecard punches (overtime at 1.5x) plus active salaried staff costed from salary (annual / 365 times days), assigned to their work location. Active employees with no hours in this range are listed at $0.' : 'Timecard only: everyone costed from punches (salaried at annual salary / 2080).'} Base-rate estimate, not the payroll gross.
             {data.totals.unratedEmployees > 0 ? ` ${data.totals.unratedEmployees} employee(s) had no rate on file (shown at $0).` : ''}
           </p>
         </>
