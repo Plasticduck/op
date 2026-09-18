@@ -54,7 +54,7 @@ const CATALOG_NAMES = new Set<string>(SIGNAGE_CATALOG.map((c) => c.name))
 // the file in /public and map the category name to its path here.
 const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const MW_TILE_IMAGES: Record<string, string> = {
-  'Menu Boards, Rack Cards, and Brochures': '/signage-rack-cards.png',
+  'Menu Boards, Rack Cards, and Brochures': '/signage-menu-rack-brochures.jpg',
   'Business Cards': '/signage-business-cards.jpg',
   'Note Pads': '/signage-note-pads.jpg',
   'Wind Signs': '/signage-wind-signs.jpg',
