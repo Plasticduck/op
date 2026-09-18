@@ -55,6 +55,9 @@ const CATALOG_NAMES = new Set<string>(SIGNAGE_CATALOG.map((c) => c.name))
 const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const MW_TILE_IMAGES: Record<string, string> = {
   'Menu Boards, Rack Cards, and Brochures': '/signage-rack-cards.png',
+  'Business Cards': '/signage-business-cards.jpg',
+  'Note Pads': '/signage-note-pads.jpg',
+  'Wind Signs': '/signage-wind-signs.jpg',
 }
 // Library artwork that belongs in a category's gallery (deduped by path). Other
 // Items catches anything uncategorized or tagged to a name we no longer show.
@@ -175,12 +178,14 @@ function Inner({ locationId }: { locationId: string }) {
                 className="group flex flex-col items-center gap-2.5"
               >
                 {tileImg ? (
-                  <img
-                    src={tileImg}
-                    alt={c.name}
-                    loading="lazy"
-                    className="aspect-square w-full rounded-xl object-cover shadow-sm ring-1 ring-black/5 transition group-hover:shadow-md group-active:scale-[0.98]"
-                  />
+                  <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-border bg-card p-2.5 shadow-sm transition group-hover:shadow-md group-active:scale-[0.98]">
+                    <img
+                      src={tileImg}
+                      alt={c.name}
+                      loading="lazy"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
                 ) : (
                   <div className="flex aspect-square w-full items-center justify-center rounded-xl border border-border bg-content text-ink-muted transition group-hover:bg-card group-active:scale-[0.98]">
                     <c.icon className="size-12" strokeWidth={1.5} />
