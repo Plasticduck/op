@@ -48,8 +48,10 @@ const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
 
 const CATALOG_NAMES = new Set<string>(SIGNAGE_CATALOG.map((c) => c.name))
 
-// Fixed cover images for specific catalog tiles, overriding the auto-generated
-// sample thumbnail. Mighty Wash only (the artwork is theirs).
+// Static cover images for the catalog tiles: plain JPG/PNG files that load
+// instantly (no client-side PDF rendering). Mighty Wash only (the artwork is
+// theirs). A tile without an image falls back to a plain icon. To add one, drop
+// the file in /public and map the category name to its path here.
 const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const MW_TILE_IMAGES: Record<string, string> = {
   'Menu Boards, Rack Cards, and Brochures': '/signage-rack-cards.png',
@@ -90,8 +92,6 @@ function Inner({ locationId }: { locationId: string }) {
   // the quantity-only order confirm.
   const [galleryCat, setGalleryCat] = useState<string | null>(null)
   const [pickedSign, setPickedSign] = useState<ArtworkItem | null>(null)
-  // A representative sample thumbnail per category, shown on its catalog tile.
-  const [catThumbs, setCatThumbs] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -124,26 +124,6 @@ function Inner({ locationId }: { locationId: string }) {
     setConfirmDeleteId(null)
     await load()
   }
-
-  // Render one sample thumbnail per category (the first sign in it) for the tiles.
-  useEffect(() => {
-    const reps = SIGNAGE_CATALOG
-      .map((c) => ({ cat: c.name, path: signsInCategory(library, c.name)[0]?.artwork_path }))
-      .filter((r): r is { cat: string; path: string } => !!r.path)
-    if (!reps.length) return
-    let active = true
-    void (async () => {
-      const urls = await signage.artworkUrls(reps.map((r) => r.path))
-      for (const r of reps) {
-        if (!active) return
-        const url = urls[r.path]
-        if (!url) continue
-        const img = await renderPdfThumb(url, r.path)
-        if (active && img) setCatThumbs((prev) => (prev[r.cat] ? prev : { ...prev, [r.cat]: img }))
-      }
-    })()
-    return () => { active = false }
-  }, [library])
 
   return (
     <div className="flex flex-col gap-6">
@@ -186,8 +166,7 @@ function Inner({ locationId }: { locationId: string }) {
           <h2 className="mb-3 text-sm font-semibold text-ink">Choose a category</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {SIGNAGE_CATALOG.map((c) => {
-              const tileImg =
-                (profile?.account_id === MW_ACCOUNT_ID ? MW_TILE_IMAGES[c.name] : undefined) ?? catThumbs[c.name]
+              const tileImg = profile?.account_id === MW_ACCOUNT_ID ? MW_TILE_IMAGES[c.name] : undefined
               return (
               <button
                 key={c.name}
@@ -195,13 +174,18 @@ function Inner({ locationId }: { locationId: string }) {
                 onClick={() => setGalleryCat(c.name)}
                 className="group flex flex-col items-center gap-2.5"
               >
-                <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 p-3 text-white shadow-sm ring-1 ring-black/5 transition group-hover:from-sky-500 group-hover:to-blue-700 group-active:scale-[0.98]">
-                  {tileImg ? (
-                    <img src={tileImg} alt={c.name} className="max-h-full max-w-full object-contain" />
-                  ) : (
+                {tileImg ? (
+                  <img
+                    src={tileImg}
+                    alt={c.name}
+                    loading="lazy"
+                    className="aspect-square w-full rounded-xl object-cover shadow-sm ring-1 ring-black/5 transition group-hover:shadow-md group-active:scale-[0.98]"
+                  />
+                ) : (
+                  <div className="flex aspect-square w-full items-center justify-center rounded-xl border border-border bg-content text-ink-muted transition group-hover:bg-card group-active:scale-[0.98]">
                     <c.icon className="size-12" strokeWidth={1.5} />
-                  )}
-                </div>
+                  </div>
+                )}
                 <span className="text-center text-sm font-semibold text-ink">{c.name}</span>
               </button>
               )
