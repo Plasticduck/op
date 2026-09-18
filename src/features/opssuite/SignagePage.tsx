@@ -41,7 +41,7 @@ const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
   { name: 'Safety Signs', icon: ShieldAlert },
   { name: 'Wind Signs', icon: Wind },
   { name: 'Business Cards', icon: CreditCard },
-  { name: 'Rack Cards & Brochures', icon: Gift },
+  { name: 'Menu Boards, Rack Cards, and Brochures', icon: Gift },
   { name: 'Note Pads', icon: StickyNote },
   { name: 'Other Items', icon: Package },
 ]
@@ -52,7 +52,7 @@ const CATALOG_NAMES = new Set<string>(SIGNAGE_CATALOG.map((c) => c.name))
 // sample thumbnail. Mighty Wash only (the artwork is theirs).
 const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const MW_TILE_IMAGES: Record<string, string> = {
-  'Rack Cards & Brochures': '/signage-rack-cards.png',
+  'Menu Boards, Rack Cards, and Brochures': '/signage-rack-cards.png',
 }
 // Library artwork that belongs in a category's gallery (deduped by path). Other
 // Items catches anything uncategorized or tagged to a name we no longer show.

@@ -20,7 +20,7 @@ export const SIGN_CATEGORIES = [
   'Safety Signs',
   'Wind Signs',
   'Business Cards',
-  'Rack Cards & Brochures',
+  'Menu Boards, Rack Cards, and Brochures',
   'Note Pads',
   'Other Items',
 ] as const
