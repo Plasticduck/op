@@ -2117,6 +2117,144 @@ export type Database = {
           },
         ]
       }
+      facility_request_updates: {
+        Row: {
+          account_id: string
+          author_id: string | null
+          author_name: string | null
+          created_at: string
+          id: string
+          note: string
+          request_id: string
+          status: string | null
+        }
+        Insert: {
+          account_id: string
+          author_id?: string | null
+          author_name?: string | null
+          created_at?: string
+          id?: string
+          note: string
+          request_id: string
+          status?: string | null
+        }
+        Update: {
+          account_id?: string
+          author_id?: string | null
+          author_name?: string | null
+          created_at?: string
+          id?: string
+          note?: string
+          request_id?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facility_request_updates_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facility_request_updates_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facility_request_updates_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "facility_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      facility_requests: {
+        Row: {
+          account_id: string
+          assigned_to: string | null
+          assigned_to_name: string | null
+          category: string
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          id: string
+          location_id: string | null
+          priority: string
+          requested_by: string | null
+          requested_by_name: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          assigned_to?: string | null
+          assigned_to_name?: string | null
+          category?: string
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          priority?: string
+          requested_by?: string | null
+          requested_by_name?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          assigned_to?: string | null
+          assigned_to_name?: string | null
+          category?: string
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          priority?: string
+          requested_by?: string | null
+          requested_by_name?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facility_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facility_requests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facility_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facility_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       flexwash_sites: {
         Row: {
           account_id: string

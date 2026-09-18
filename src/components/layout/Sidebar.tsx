@@ -35,6 +35,7 @@ import {
   Folders,
   Gauge,
   Globe,
+  Hammer,
   ListChecks,
   Building2,
   Map,
@@ -393,6 +394,18 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Maintenance Categories',
         icon: TagsIcon,
         roles: ['owner', 'manager', 'technician'],
+      },
+    ],
+  },
+  {
+    label: 'Facilities',
+    roles: ['owner', 'manager', 'employee', 'technician'],
+    items: [
+      {
+        to: '/app/facilities',
+        label: 'Service Board',
+        icon: Hammer,
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
     ],
   },
