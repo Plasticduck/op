@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { flexwashSales, type FlexSite, type FlexInteriorReport } from '@/lib/queries/flexwashSales'
-import { drbInterior, type DrbInteriorReport } from '@/lib/queries/drbInterior'
+import { drbInterior, type DrbInteriorReport, type DrbSite } from '@/lib/queries/drbInterior'
 
 // DRB detail categories in the order we present them.
 const DRB_CAT_ORDER = ['Detail Services', 'Detail Extras', 'ARM Plans Sold', 'ARM Plans Recharged']
@@ -57,7 +57,9 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
 
 export default function InteriorReportingPage() {
   const [sites, setSites] = useState<FlexSite[]>([])
-  const [carWashId, setCarWashId] = useState<string>('all')
+  const [drbSites, setDrbSites] = useState<DrbSite[]>([])
+  // Combined site pick: 'all', 'fw:<car_wash_id>', or 'drb:<site_number>'.
+  const [selection, setSelection] = useState<string>('all')
   const [start, setStart] = useState(monthStart())
   const [end, setEnd] = useState(yesterday())
   const [report, setReport] = useState<FlexInteriorReport | null>(null)
@@ -69,34 +71,42 @@ export default function InteriorReportingPage() {
 
   useEffect(() => {
     flexwashSales.sites().then(setSites)
+    drbInterior.sites().then(setDrbSites).catch(() => setDrbSites([]))
   }, [])
 
+  // Which source(s) the current pick covers.
+  const fwActive = selection === 'all' || selection.startsWith('fw:')
+  const drbActive = selection === 'all' || selection.startsWith('drb:')
+  const fwIds = selection === 'all' ? sites.map((s) => s.car_wash_id) : selection.startsWith('fw:') ? [selection.slice(3)] : []
+  const drbNums = selection.startsWith('drb:') ? [Number(selection.slice(4))] : []
+
   useEffect(() => {
-    const ids = carWashId === 'all' ? sites.map((s) => s.car_wash_id) : carWashId ? [carWashId] : []
-    if (!ids.length || !start || !end || start > end) return
+    if (!fwActive) { setReport(null); setError(null); return }
+    if (!fwIds.length || !start || !end || start > end) return
     let active = true
     setLoading(true)
     setError(null)
     flexwashSales
-      .interiorReport(ids, start, end)
+      .interiorReport(fwIds, start, end)
       .then((r) => { if (active) { setReport(r); setLoading(false) } })
       .catch((e) => { if (active) { setError(e instanceof Error ? e.message : String(e)); setLoading(false) } })
     return () => { active = false }
-  }, [carWashId, sites, start, end])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection, sites, start, end])
 
-  // DRB detail spans all DRB (non-FlexWash) sites, so it follows the date range
-  // only, not the FlexWash site picker.
   useEffect(() => {
+    if (!drbActive) { setDrb(null); setDrbError(null); return }
     if (!start || !end || start > end) return
     let active = true
     setDrbLoading(true)
     setDrbError(null)
     drbInterior
-      .report(start, end)
+      .report(start, end, drbNums.length ? drbNums : undefined)
       .then((d) => { if (active) { setDrb(d); setDrbLoading(false) } })
       .catch((e) => { if (active) { setDrbError(e instanceof Error ? e.message : String(e)); setDrbLoading(false) } })
     return () => { active = false }
-  }, [start, end])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection, start, end])
 
   const r = report
   const avgTicket = useMemo(() => (r && r.paid.count > 0 ? r.paid.revenue / r.paid.count : 0), [r])
@@ -120,11 +130,11 @@ export default function InteriorReportingPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Interior Reporting"
-        subtitle="Interior and detail services sold at the FlexWash sites, from FlexWash's detail category."
+        subtitle="Interior and detail services across the FlexWash and DRB sites."
         actions={
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-ink-muted">
-            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
-            {error ? 'Load failed' : loading ? 'Loading...' : report ? 'Loaded' : 'Pick a range'}
+            <RefreshCw className={cn('size-3.5', (loading || drbLoading) && 'animate-spin')} />
+            {(error || drbError) ? 'Load failed' : (loading || drbLoading) ? 'Loading...' : (report || drb) ? 'Loaded' : 'Pick a range'}
           </span>
         }
       />
@@ -132,11 +142,22 @@ export default function InteriorReportingPage() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <label htmlFor="ir-site" className="text-xs font-medium text-ink-muted">Site</label>
-          <Select id="ir-site" value={carWashId} onChange={(e) => setCarWashId(e.target.value)} className="h-9 w-48">
+          <Select id="ir-site" value={selection} onChange={(e) => setSelection(e.target.value)} className="h-9 w-56">
             <option value="all">All Sites</option>
-            {sites.map((s) => (
-              <option key={s.car_wash_id} value={s.car_wash_id}>#{s.site_number}{s.name ? ` — ${s.name}` : ''}</option>
-            ))}
+            {sites.length > 0 && (
+              <optgroup label="FlexWash">
+                {sites.map((s) => (
+                  <option key={s.car_wash_id} value={`fw:${s.car_wash_id}`}>#{s.site_number}{s.name ? ` — ${s.name}` : ''}</option>
+                ))}
+              </optgroup>
+            )}
+            {drbSites.length > 0 && (
+              <optgroup label="DRB">
+                {drbSites.map((s) => (
+                  <option key={s.site_number} value={`drb:${s.site_number}`}>#{s.site_number} — {s.name}</option>
+                ))}
+              </optgroup>
+            )}
           </Select>
         </div>
         <div className="flex flex-col gap-1">
@@ -212,14 +233,16 @@ export default function InteriorReportingPage() {
         </>
       )}
 
-      {/* DRB detail — all DRB sites, follows the date range only (not the site picker). */}
-      <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">DRB (detail)</h2>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] text-ink-muted">
-          <RefreshCw className={cn('size-3', drbLoading && 'animate-spin')} />
-          {drbError ? 'Load failed' : drbLoading ? 'Loading...' : drb ? 'All DRB sites' : '—'}
-        </span>
-      </div>
+      {/* DRB detail — pulled from SiteWatch by report category, scoped to the pick. */}
+      {drbActive && (
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">DRB (detail)</h2>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] text-ink-muted">
+            <RefreshCw className={cn('size-3', drbLoading && 'animate-spin')} />
+            {drbError ? 'Load failed' : drbLoading ? 'Loading...' : drb ? (drbNums.length ? `Site #${drbNums[0]}` : 'All DRB sites') : '—'}
+          </span>
+        </div>
+      )}
 
       {drbError && (
         <div className="flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
@@ -268,6 +291,25 @@ export default function InteriorReportingPage() {
               </table>
             )}
           </Section>
+
+          {drb.bySite.length > 1 && (
+            <Section title="DRB by site" sub="Detail revenue per DRB site.">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={th}>Site</th>
+                    <th className={th}>Count</th>
+                    <th className={th}>Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drb.bySite.map((s) => (
+                    <Row key={s.site_number} label={s.name} count={s.count} amount={s.revenue} />
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          )}
         </>
       )}
 
@@ -276,7 +318,8 @@ export default function InteriorReportingPage() {
         member-redeemed services are included in a membership and may show $0. DRB revenue is the
         net line amount (SUM of AMT) for every item in the Detail Services and Detail Extras report
         categories, plus MVP Mighty ARM Sld, Intro MVP PB/NM Rchg, Intro MVP Rchg, and MVP Mighty
-        Switch Rc. DRB covers all sites still on DRB and is not affected by the FlexWash site picker.
+        Switch Rc. The all-sites DRB rollup excludes the FlexWash sites (so they are not double
+        counted) and the corporate/HQ sites.
       </p>
     </div>
   )
