@@ -110,7 +110,6 @@ const MarketResearchPage = lz(() => import('@/features/opssuite/MarketResearchPa
 const MarketResearchDetailPage = lz(() => import('@/features/opssuite/MarketResearchDetailPage'))
 const SiteViolationsPage = lz(() => import('@/features/opssuite/SiteViolationsPage'))
 const SignagePage = lz(() => import('@/features/opssuite/SignagePage'))
-const SalesReportsPage = lz(() => import('@/features/opssuite/SalesReportsPage'))
 const SitePerformancePage = lz(() => import('@/features/opssuite/SitePerformancePage'))
 const InteriorDetailsPage = lz(() => import('@/features/opssuite/InteriorDetailsPage'))
 const MsaPerformancePage = lz(() => import('@/features/opssuite/MsaPerformancePage'))
@@ -223,7 +222,6 @@ export const router = createBrowserRouter([
           { path: 'market-research/:id', element: mgr(<MarketResearchDetailPage />) },
           { path: 'violations', element: mgr(<SiteViolationsPage />) },
           { path: 'signage', element: emp(<SignagePage />) },
-          { path: 'sales-reports', element: mgr(<SalesReportsPage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
           { path: 'hr/payroll-labor', element: <RequireSuperAdmin>{s(<PayrollLaborPage />)}</RequireSuperAdmin> },

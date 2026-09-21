@@ -116,6 +116,43 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: 'Operations - Admin',
+    roles: ['owner', 'manager', 'regional_manager', 'executive'],
+    items: [
+      {
+        to: '/app/market-explorer',
+        label: 'Market Explorer',
+        icon: Globe,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/bonuses',
+        label: 'Bonuses',
+        icon: BadgeDollarSign,
+        roles: ['owner', 'regional_manager', 'executive'],
+        flag: 'gm_bonus',
+      },
+      {
+        to: '/app/violations',
+        label: 'Violations',
+        icon: AlertTriangle,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/site-reviews',
+        label: 'RM Site Reviews',
+        icon: Stamp,
+        roles: ['owner', 'regional_manager', 'executive'],
+      },
+      {
+        to: '/app/site-audits',
+        label: 'Site Audits',
+        icon: SearchCheck,
+        roles: ['owner', 'manager'],
+      },
+    ],
+  },
+  {
     label: 'Operations',
     roles: ['owner', 'manager', 'employee', 'technician'],
     items: [
@@ -123,12 +160,6 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/site-performance',
         label: 'Site Performance',
         icon: Activity,
-        roles: ['owner', 'manager'],
-      },
-      {
-        to: '/app/market-explorer',
-        label: 'Market Explorer',
-        icon: Globe,
         roles: ['owner', 'manager'],
       },
       {
@@ -168,47 +199,10 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager', 'employee'],
       },
       {
-        to: '/app/tips',
-        label: 'Tips',
-        icon: Banknote,
-        roles: ['owner', 'manager'],
-      },
-      {
-        to: '/app/bonuses',
-        label: 'Bonuses',
-        icon: BadgeDollarSign,
-        roles: ['owner', 'regional_manager', 'executive'],
-        flag: 'gm_bonus',
-      },
-      {
-        to: '/app/site-reviews',
-        label: 'RM Site Reviews',
-        icon: Stamp,
-        roles: ['owner', 'regional_manager', 'executive'],
-      },
-      {
-        to: '/app/site-audits',
-        label: 'Site Audits',
-        icon: SearchCheck,
-        roles: ['owner', 'manager'],
-      },
-      {
         to: '/app/inventory',
         label: 'Inventory',
         icon: Warehouse,
         roles: ['owner', 'manager', 'technician'],
-      },
-      {
-        to: '/app/sales-reports',
-        label: 'Sales Reports',
-        icon: ChartNoAxesCombined,
-        roles: ['owner', 'manager'],
-      },
-      {
-        to: '/app/violations',
-        label: 'Violations',
-        icon: AlertTriangle,
-        roles: ['owner', 'manager'],
       },
       {
         to: '/app/documents',
@@ -389,6 +383,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/employees',
         label: 'Employees',
         icon: UsersRound,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/tips',
+        label: 'Tips',
+        icon: Banknote,
         roles: ['owner', 'manager'],
       },
       {
