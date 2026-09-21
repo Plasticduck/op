@@ -32,6 +32,12 @@ const BROWSER_UA =
 const DETAIL_BRANCHES = ['001002001', '001002002']
 // Specific ARM plan items the owner counts as interior (exact SiteWatch names).
 const ARM_ITEMS = ['MVP Mighty ARM Sld', 'Intro MVP PB/NM Rchg', 'Intro MVP Rchg', 'MVP Mighty Switch Rc']
+// All MVP UNLMTD membership items (ARM Plans Sold + Recharged) for the MVP report.
+// Category (ARM Plans Sold vs Recharged) determines the sold/recharged bucket.
+const MVP_ITEMS = [
+  'Intro MVP', 'Intro MVP $39', 'Intro MVP $39 SoldP', 'Intro MVP PB/NM', 'MVP Mighty ARM Sld',
+  'Intro MVP Rchg', 'Intro MVP $39 Rchg', 'Intro MVP PB/NM Rchg', 'MVP Mighty Switch Rc',
+]
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -173,11 +179,24 @@ Deno.serve(async (req) => {
   const itemSql = `SELECT TRIM(it.NAME), TRIM(rc.NAME), COUNT(*), SUM(si.QTY), SUM(si.AMT) ${joins} GROUP BY TRIM(it.NAME), TRIM(rc.NAME) ORDER BY 5 DESC`
   const siteSql = `SELECT s.SITE, COUNT(*), SUM(si.QTY), SUM(si.AMT) ${joins} GROUP BY s.SITE ORDER BY 4 DESC`
 
+  // MVP UNLMTD membership items (ARM Plans Sold + Recharged), by item.
+  const mvpList = MVP_ITEMS.map((n) => `'${n.replace(/'/g, "''")}'`).join(', ')
+  const mvpJoins =
+    `FROM SALEITEMS si ` +
+    `JOIN SALE s ON s.SITE = si.SITE AND s.OBJID = si.SALEID ` +
+    `JOIN ITEM it ON it.OBJID = si.ITEM ` +
+    `JOIN ITEMRPTCATEGORY rc ON rc.OBJID = it.REPORTCATEGORY ` +
+    `WHERE s.LOGDATE >= '${start} 00:00:00' AND s.LOGDATE < '${endExclusive} 00:00:00' ` +
+    `AND ${sitePred} AND TRIM(it.NAME) IN (${mvpList})`
+  const mvpSql = `SELECT TRIM(it.NAME), TRIM(rc.NAME), COUNT(*), SUM(si.QTY), SUM(si.AMT) ${mvpJoins} GROUP BY TRIM(it.NAME), TRIM(rc.NAME) ORDER BY 5 DESC`
+
   let itemsRes: SqlResult
   let siteRes: SqlResult
+  let mvpRes: SqlResult
   try {
     itemsRes = await runSql(base, cookie, itemSql)
     siteRes = await runSql(base, cookie, siteSql)
+    mvpRes = await runSql(base, cookie, mvpSql)
   } catch (e) {
     return json({ error: 'query_failed', message: String(e) }, 502, origin)
   }
@@ -198,5 +217,23 @@ Deno.serve(async (req) => {
     { count: 0, qty: 0, revenue: 0 },
   )
 
-  return json({ ok: true, items, bySite, total, truncated: !!itemsRes.truncated }, 200, origin)
+  // MVP UNLMTD: split by report category (Sold vs Recharged).
+  const mvpItems = (mvpRes.rows ?? []).map((r) => ({
+    name: String(r[0] ?? '').trim() || '—',
+    category: String(r[1] ?? '').trim() || '—',
+    count: Math.round(numify(r[2])),
+    revenue: numify(r[4]),
+  }))
+  const sumBucket = (pred: (c: string) => boolean) =>
+    mvpItems.filter((i) => pred(i.category.toLowerCase())).reduce(
+      (a, i) => ({ count: a.count + i.count, revenue: a.revenue + i.revenue }),
+      { count: 0, revenue: 0 },
+    )
+  const mvp = {
+    sold: sumBucket((c) => c.includes('sold')),
+    recharged: sumBucket((c) => c.includes('recharg')),
+    items: mvpItems,
+  }
+
+  return json({ ok: true, items, bySite, total, mvp, truncated: !!itemsRes.truncated }, 200, origin)
 })

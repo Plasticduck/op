@@ -133,6 +133,19 @@ export default function InteriorReportingPage() {
     return [...map.values()].sort((a, b) => rank(a.category) - rank(b.category))
   }, [drb])
 
+  // MVP UNLMTD membership rows, one per active source (+ a Total when both show).
+  type MvpBucket = { count: number; revenue: number }
+  const mvpRows: { src: string; sold: MvpBucket; recharged: MvpBucket }[] = []
+  if (fwActive && report) mvpRows.push({ src: 'FlexWash', sold: report.mvp.sold, recharged: report.mvp.recharged })
+  if (drbActive && drb) mvpRows.push({ src: 'DRB', sold: drb.mvp.sold, recharged: drb.mvp.recharged })
+  const mvpTotal = mvpRows.reduce(
+    (a, r2) => ({
+      sold: { count: a.sold.count + r2.sold.count, revenue: a.sold.revenue + r2.sold.revenue },
+      recharged: { count: a.recharged.count + r2.recharged.count, revenue: a.recharged.revenue + r2.recharged.revenue },
+    }),
+    { sold: { count: 0, revenue: 0 }, recharged: { count: 0, revenue: 0 } },
+  )
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -322,13 +335,107 @@ export default function InteriorReportingPage() {
         </>
       )}
 
+      {/* MVP UNLMTD memberships: new sales + recharges, spanning both sources. */}
+      {mvpRows.length > 0 && (
+        <>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">MVP UNLMTD memberships</h2>
+          <Section title="Memberships sold & recharged" sub="New MVP UNLMTD memberships and their recharges, for the sites in view.">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th className={th}>Source</th>
+                  <th className={th}>Sold</th>
+                  <th className={th}>Sold $</th>
+                  <th className={th}>Recharged</th>
+                  <th className={th}>Recharged $</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mvpRows.map((m) => (
+                  <tr key={m.src} className="border-t border-border">
+                    <td className={td}>{m.src}</td>
+                    <td className={td}>{num(m.sold.count)}</td>
+                    <td className={td}>{money(m.sold.revenue)}</td>
+                    <td className={td}>{num(m.recharged.count)}</td>
+                    <td className={td}>{money(m.recharged.revenue)}</td>
+                  </tr>
+                ))}
+                {mvpRows.length > 1 && (
+                  <tr className="border-t border-border bg-content/60 font-semibold">
+                    <td className={cn(td, 'font-semibold')}>Total</td>
+                    <td className={td}>{num(mvpTotal.sold.count)}</td>
+                    <td className={td}>{money(mvpTotal.sold.revenue)}</td>
+                    <td className={td}>{num(mvpTotal.recharged.count)}</td>
+                    <td className={td}>{money(mvpTotal.recharged.revenue)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </Section>
+
+          {fwActive && report && report.mvp.plans.length > 0 && (
+            <Section title="FlexWash MVP plans" sub="MVP UNLMTD sold and recharged by plan template.">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={th}>Plan</th>
+                    <th className={th}>Sold</th>
+                    <th className={th}>Sold $</th>
+                    <th className={th}>Recharged</th>
+                    <th className={th}>Recharged $</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.mvp.plans.map((p) => (
+                    <tr key={p.name} className="border-t border-border">
+                      <td className={td}>{p.name}</td>
+                      <td className={td}>{num(p.soldCount)}</td>
+                      <td className={td}>{money(p.soldRevenue)}</td>
+                      <td className={td}>{num(p.rechargeCount)}</td>
+                      <td className={td}>{money(p.rechargeRevenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          )}
+
+          {drbActive && drb && drb.mvp.items.length > 0 && (
+            <Section title="DRB MVP items" sub="MVP ARM items, Sold and Recharged.">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={th}>Item</th>
+                    <th className={cn(th, 'text-left')}>Category</th>
+                    <th className={th}>Count</th>
+                    <th className={th}>Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drb.mvp.items.map((it) => (
+                    <tr key={it.name} className="border-t border-border">
+                      <td className={td}>{it.name}</td>
+                      <td className={cn(td, 'text-left')}>{it.category}</td>
+                      <td className={td}>{num(it.count)}</td>
+                      <td className={td}>{money(it.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          )}
+        </>
+      )}
+
       <p className="text-xs text-ink-subtle">
         FlexWash revenue is the interior line price, gross of separately-listed discounts;
         member-redeemed services are included in a membership and may show $0. DRB revenue is the
         net line amount (SUM of AMT) for every item in the Detail Services and Detail Extras report
         categories, plus MVP Mighty ARM Sld, Intro MVP PB/NM Rchg, Intro MVP Rchg, and MVP Mighty
-        Switch Rc. The all-sites DRB rollup excludes the FlexWash sites (so they are not double
-        counted) and the corporate/HQ sites.
+        Switch Rc. MVP UNLMTD counts new memberships sold (every "sold" classification) and their
+        recharges/rebills: FlexWash MVP UNLMTD + Launch MVP UNLMTD plans, and the DRB MVP ARM items.
+        The all-sites DRB rollup excludes the FlexWash sites (so they are not double counted) and the
+        corporate/HQ sites.
       </p>
     </div>
   )

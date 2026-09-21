@@ -7,10 +7,18 @@ import { fnErrorMessage } from '@/lib/fnError'
 export type DrbSite = { site_number: number; name: string }
 export type DrbInteriorItem = { name: string; category: string; count: number; qty: number; revenue: number }
 export type DrbInteriorSite = { site_number: number; name: string; count: number; qty: number; revenue: number }
+// MVP UNLMTD membership items (ARM Plans Sold + Recharged), split by category.
+export type DrbMvpItem = { name: string; category: string; count: number; revenue: number }
+export type DrbMvpReport = {
+  sold: { count: number; revenue: number }
+  recharged: { count: number; revenue: number }
+  items: DrbMvpItem[]
+}
 export type DrbInteriorReport = {
   items: DrbInteriorItem[]
   bySite: DrbInteriorSite[]
   total: { count: number; qty: number; revenue: number }
+  mvp: DrbMvpReport
   truncated: boolean
 }
 
@@ -34,6 +42,7 @@ export const drbInterior = {
       items: d.items ?? [],
       bySite: d.bySite ?? [],
       total: d.total ?? { count: 0, qty: 0, revenue: 0 },
+      mvp: d.mvp ?? { sold: { count: 0, revenue: 0 }, recharged: { count: 0, revenue: 0 }, items: [] },
       truncated: !!d.truncated,
     }
   },

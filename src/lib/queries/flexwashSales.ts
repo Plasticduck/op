@@ -105,12 +105,20 @@ export type FlexBreakdown = {
 // (MVP/Hustle/Launch Interior, Mud, etc.). Revenue is the line price in dollars,
 // gross of separately-listed discounts.
 export type FlexInteriorItem = { name: string; count: number; revenue: number }
+// MVP UNLMTD membership activity (new sales + recharges), by plan template.
+export type FlexMvpPlan = { name: string; soldCount: number; soldRevenue: number; rechargeCount: number; rechargeRevenue: number }
+export type FlexMvpReport = {
+  sold: { count: number; revenue: number }
+  recharged: { count: number; revenue: number }
+  plans: FlexMvpPlan[]
+}
 export type FlexInteriorReport = {
   total: { count: number; revenue: number }
   paid: { count: number; revenue: number } // retail (non-member) interior sales
   member: { count: number; revenue: number } // member redemptions / rebilled interior
   items: FlexInteriorItem[]
   bySite: { site: string; count: number; revenue: number }[]
+  mvp: FlexMvpReport
   days: number
 }
 
@@ -395,10 +403,37 @@ export const flexwashSales = {
       const n = name.trim().toLowerCase()
       return EXCLUDE.has(n) || n.includes('hand dry') || (n.includes('tire') && n.includes('wheel'))
     }
-    const items = ((data?.lineItemsDetail ?? []) as Any[]).filter(
+    const raw = (data?.lineItemsDetail ?? []) as Any[]
+    const items = raw.filter(
       (it) => String(it.orderPackageType) === 'detail' && !isExcluded(stripCode(String(it.name ?? ''))),
     )
     const isMember = (it: Any) => String(it.orderClassification ?? '').startsWith('member')
+
+    // MVP UNLMTD memberships (from the same line items): sold = any
+    // membershipsSold* classification, recharged = membershipsRebilled. Catches
+    // both "MVP UNLMTD" and "Launch MVP UNLMTD" plan templates.
+    const mvpPlans = new Map<string, FlexMvpPlan>()
+    const mvpSold = { count: 0, revenue: 0 }
+    const mvpRecharged = { count: 0, revenue: 0 }
+    for (const it of raw) {
+      if (String(it.orderPackageType) !== 'membership') continue
+      const name = stripCode(String(it.name ?? '')).trim()
+      if (!name.toLowerCase().includes('mvp unlmtd')) continue
+      const cls = String(it.orderClassification ?? '')
+      const isSold = cls.startsWith('membershipsSold')
+      const isRecharge = cls === 'membershipsRebilled'
+      if (!isSold && !isRecharge) continue
+      const rev = toDollars(it.priceInCents)
+      const plan = mvpPlans.get(name) ?? { name, soldCount: 0, soldRevenue: 0, rechargeCount: 0, rechargeRevenue: 0 }
+      if (isSold) { mvpSold.count += 1; mvpSold.revenue += rev; plan.soldCount += 1; plan.soldRevenue += rev }
+      else { mvpRecharged.count += 1; mvpRecharged.revenue += rev; plan.rechargeCount += 1; plan.rechargeRevenue += rev }
+      mvpPlans.set(name, plan)
+    }
+    const mvp: FlexMvpReport = {
+      sold: mvpSold,
+      recharged: mvpRecharged,
+      plans: [...mvpPlans.values()].sort((a, b) => b.soldRevenue + b.rechargeRevenue - (a.soldRevenue + a.rechargeRevenue)),
+    }
 
     const byName = new Map<string, FlexInteriorItem>()
     const bySite = new Map<string, { site: string; count: number; revenue: number }>()
@@ -437,6 +472,7 @@ export const flexwashSales = {
       member,
       items: [...byName.values()].sort((a, b) => b.revenue - a.revenue || b.count - a.count),
       bySite: [...bySite.values()].sort((a, b) => b.revenue - a.revenue),
+      mvp,
       days: dates.size,
     }
   },
