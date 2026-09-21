@@ -113,7 +113,7 @@ export default function FlexwashSalesPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="FlexWash Sales Reports"
-        subtitle="Daily sales for the FlexWash sites (17, 18, 29, 30), grouped to mirror the DRB General Sales Report."
+        subtitle="Daily sales for the FlexWash sites, grouped to mirror the DRB General Sales Report."
         actions={
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-ink-muted">
             <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />

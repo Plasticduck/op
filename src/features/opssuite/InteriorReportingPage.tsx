@@ -84,7 +84,7 @@ export default function InteriorReportingPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Interior Reporting"
-        subtitle="Interior and detail services sold at the FlexWash sites (17, 18, 29, 30), from FlexWash's detail category."
+        subtitle="Interior and detail services sold at the FlexWash sites, from FlexWash's detail category."
         actions={
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-ink-muted">
             <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />

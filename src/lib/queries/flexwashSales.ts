@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { fnErrorMessage } from '@/lib/fnError'
 
-// FlexWash (sites 17/18/29/30) sales reporting, grouped to mirror the DRB
+// FlexWash sales reporting, grouped to mirror the DRB
 // General Sales Report as closely as FlexWash's API allows. All FlexWash money
 // is returned in cents; we convert to dollars here.
 
