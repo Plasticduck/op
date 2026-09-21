@@ -1,7 +1,8 @@
 // signage-request-email — Supabase Edge Function (Deno).
-// Emails a newly submitted signage request (with the artwork PDF attached) to
-// info@washlyfe.com. Best-effort side-effect: the request row is written
-// client-side first, so a missing key just returns 503 { error: 'no_key' }.
+// On a new signage order, sends two emails: (1) an internal notification with
+// the artwork PDF attached to info@washlyfe.com, and (2) a confirmation to the
+// person who placed the order. Best-effort side-effect: the request row is
+// written client-side first, so a missing key just returns 503 { error: 'no_key' }.
 //
 // Required secret: RESEND_API_KEY. Optional: RESEND_FROM, SIGNAGE_EMAIL_TO.
 // Auto-provided: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
@@ -66,6 +67,7 @@ Deno.serve(async (req) => {
   const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
   const { data: u } = await userClient.auth.getUser()
   const callerId = u.user?.id
+  const callerEmail = (u.user?.email ?? '').trim()
   if (!callerId) return json({ error: 'unauthorized' }, 401, origin)
 
   let body: { request_id?: string } = {}
@@ -145,6 +147,9 @@ Deno.serve(async (req) => {
   }
 
   const resend = new Resend(resendKey)
+
+  // 1) Internal notification to the print team, with the artwork PDF attached.
+  let internalError: string | null = null
   try {
     const { error } = await resend.emails.send({
       from: fromAddr,
@@ -153,9 +158,59 @@ Deno.serve(async (req) => {
       html,
       attachments: attachments.length ? attachments : undefined,
     })
-    if (error) return json({ ok: false, error: (error as { message?: string }).message ?? 'send_failed' }, 502, origin)
-    return json({ ok: true }, 200, origin)
+    if (error) internalError = (error as { message?: string }).message ?? 'send_failed'
   } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : 'send_failed' }, 502, origin)
+    internalError = e instanceof Error ? e.message : 'send_failed'
   }
+
+  // 2) Confirmation to the person who placed the order (best-effort). Prefer the
+  // caller's login email; fall back to the requester row's email. Skip if it is
+  // the same inbox as the internal notification.
+  let placerEmail = callerEmail
+  if (!placerEmail && req0.requested_by) {
+    const { data: usr } = await svc.from('users').select('email').eq('id', req0.requested_by).maybeSingle()
+    placerEmail = (((usr as { email?: string } | null)?.email) ?? '').trim()
+  }
+  let confirmationTo: string | null = null
+  if (placerEmail && placerEmail.toLowerCase() !== toAddr.toLowerCase()) {
+    const orderName = req0.title || req0.sign_category || 'Signage order'
+    const greet = (req0.first_name ?? '').trim()
+    const confirmRows: [string, string][] = [
+      ['Order title', req0.title ?? '—'],
+      ['Site', siteName || '—'],
+      ['Sign category', req0.sign_category ?? '—'],
+      ['Sign type', req0.sign_type ?? '—'],
+      ['Size', size],
+      ['Quantity', String(req0.quantity ?? '—')],
+    ]
+    const confirmHtml = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">
+        <h2 style="margin:0 0 4px;font-size:20px;">We received your signage order</h2>
+        <p style="margin:0 0 16px;color:#555;font-size:14px;">${esc(greet ? greet + ',' : 'Hi,')} your order has been sent to the print team. Here is a copy for your records.</p>
+        <table style="border-collapse:collapse;width:100%;font-size:14px;">
+          ${confirmRows
+            .map(
+              ([k, v]) =>
+                `<tr><td style="padding:6px 12px 6px 0;color:#666;white-space:nowrap;vertical-align:top;">${esc(k)}</td><td style="padding:6px 0;font-weight:600;">${esc(v)}</td></tr>`,
+            )
+            .join('')}
+        </table>
+        <p style="margin:22px 0 0;">
+          <a href="https://operator.washlyfe.com/app/signage" style="display:inline-block;background:#2563eb;color:#fff;font-size:15px;font-weight:600;padding:10px 18px;border-radius:8px;text-decoration:none;">View your orders</a>
+        </p>
+        <p style="margin:16px 0 0;color:#888;font-size:12px;">We will email you again when the order status changes. Sent from WashLyfe Operator.</p>
+      </div>`
+    try {
+      const { error } = await resend.emails.send({
+        from: fromAddr,
+        to: [placerEmail],
+        subject: `Signage order received: ${orderName}`,
+        html: confirmHtml,
+      })
+      if (!error) confirmationTo = placerEmail
+    } catch { /* best-effort: don't fail the request over the confirmation */ }
+  }
+
+  if (internalError) return json({ ok: false, error: internalError, confirmation_sent: !!confirmationTo }, 502, origin)
+  return json({ ok: true, confirmation_sent: !!confirmationTo, confirmation_to: confirmationTo }, 200, origin)
 })
