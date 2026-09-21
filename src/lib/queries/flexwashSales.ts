@@ -386,8 +386,14 @@ export const flexwashSales = {
       carWashIds,
       dateRange: { start, end },
     })
-    const items = ((data?.lineItemsDetail ?? []) as Any[]).filter((it) => String(it.orderPackageType) === 'detail')
     const stripCode = (name: string) => name.replace(/^[A-Za-z0-9]+ - /, '')
+    // MVP Interior Redeem is a $0 member redemption the owner does not want counted.
+    const EXCLUDE = new Set(['mvp interior redeem'])
+    const items = ((data?.lineItemsDetail ?? []) as Any[]).filter(
+      (it) =>
+        String(it.orderPackageType) === 'detail' &&
+        !EXCLUDE.has(stripCode(String(it.name ?? '')).trim().toLowerCase()),
+    )
     const isMember = (it: Any) => String(it.orderClassification ?? '').startsWith('member')
 
     const byName = new Map<string, FlexInteriorItem>()
