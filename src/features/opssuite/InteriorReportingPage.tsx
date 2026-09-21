@@ -8,6 +8,7 @@ import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { flexwashSales, type FlexSite, type FlexInteriorReport } from '@/lib/queries/flexwashSales'
 import { drbInterior, type DrbInteriorReport, type DrbSite } from '@/lib/queries/drbInterior'
+import { carsWashedTotal } from '@/lib/queries/carsWashed'
 
 // DRB detail categories in the order we present them.
 const DRB_CAT_ORDER = ['Detail Services', 'Detail Extras', 'ARM Plans Sold', 'ARM Plans Recharged']
@@ -68,20 +69,24 @@ export default function InteriorReportingPage() {
   const [drb, setDrb] = useState<DrbInteriorReport | null>(null)
   const [drbLoading, setDrbLoading] = useState(false)
   const [drbError, setDrbError] = useState<string | null>(null)
+  const [fwCars, setFwCars] = useState(0)
+  const [drbCars, setDrbCars] = useState(0)
 
   useEffect(() => {
     flexwashSales.sites().then(setSites)
     drbInterior.sites().then(setDrbSites).catch(() => setDrbSites([]))
   }, [])
 
-  // Which source(s) the current pick covers.
+  // Which source(s) the current pick covers, and the ids/site numbers in scope.
   const fwActive = selection === 'all' || selection.startsWith('fw:')
   const drbActive = selection === 'all' || selection.startsWith('drb:')
   const fwIds = selection === 'all' ? sites.map((s) => s.car_wash_id) : selection.startsWith('fw:') ? [selection.slice(3)] : []
   const drbNums = selection.startsWith('drb:') ? [Number(selection.slice(4))] : []
+  const fwSiteNums = fwIds.length ? sites.filter((s) => fwIds.includes(s.car_wash_id)).map((s) => s.site_number) : []
+  const drbScopeNums = selection === 'all' ? drbSites.map((s) => s.site_number) : drbNums
 
   useEffect(() => {
-    if (!fwActive) { setReport(null); setError(null); return }
+    if (!fwActive) { setReport(null); setError(null); setFwCars(0); return }
     if (!fwIds.length || !start || !end || start > end) return
     let active = true
     setLoading(true)
@@ -90,12 +95,13 @@ export default function InteriorReportingPage() {
       .interiorReport(fwIds, start, end)
       .then((r) => { if (active) { setReport(r); setLoading(false) } })
       .catch((e) => { if (active) { setError(e instanceof Error ? e.message : String(e)); setLoading(false) } })
+    void carsWashedTotal(fwSiteNums, start, end).then((c) => { if (active) setFwCars(c) })
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, sites, start, end])
 
   useEffect(() => {
-    if (!drbActive) { setDrb(null); setDrbError(null); return }
+    if (!drbActive) { setDrb(null); setDrbError(null); setDrbCars(0); return }
     if (!start || !end || start > end) return
     let active = true
     setDrbLoading(true)
@@ -104,9 +110,10 @@ export default function InteriorReportingPage() {
       .report(start, end, drbNums.length ? drbNums : undefined)
       .then((d) => { if (active) { setDrb(d); setDrbLoading(false) } })
       .catch((e) => { if (active) { setDrbError(e instanceof Error ? e.message : String(e)); setDrbLoading(false) } })
+    void carsWashedTotal(drbScopeNums, start, end).then((c) => { if (active) setDrbCars(c) })
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, start, end])
+  }, [selection, start, end, drbSites])
 
   const r = report
   const avgTicket = useMemo(() => (r && r.paid.count > 0 ? r.paid.revenue / r.paid.count : 0), [r])
@@ -183,8 +190,9 @@ export default function InteriorReportingPage() {
       {r && !error && (
         <>
           <h2 className="-mb-1 text-sm font-semibold uppercase tracking-wide text-ink-muted">FlexWash</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Kpi label="Interior Revenue" value={money(r.total.revenue)} sub={`${num(r.total.count)} services · ${num(r.days)} day${r.days === 1 ? '' : 's'}`} />
+            <Kpi label="Cars Washed" value={num(fwCars)} sub={fwCars ? `${((r.total.count / fwCars) * 100).toFixed(1)}% interior attach` : 'official cars'} />
             <Kpi label="Paid (Retail)" value={money(r.paid.revenue)} sub={`${num(r.paid.count)} services`} />
             <Kpi label="Member Redeemed" value={num(r.member.count)} sub={r.member.revenue ? money(r.member.revenue) : 'included in membership'} />
             <Kpi label="Avg Retail Ticket" value={money(avgTicket)} sub="paid interior only" />
@@ -256,8 +264,9 @@ export default function InteriorReportingPage() {
 
       {drb && !drbError && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Kpi label="Detail Revenue" value={money(drb.total.revenue)} sub="Detail Services + Extras + ARM plan items" />
+            <Kpi label="Cars Washed" value={num(drbCars)} sub={drbCars ? `${((drb.total.count / drbCars) * 100).toFixed(1)}% interior attach` : 'official cars'} />
             <Kpi label="Detail Items" value={num(drb.total.count)} sub="line items sold" />
             <Kpi label="Quantity" value={num(drb.total.qty)} sub="units" />
           </div>

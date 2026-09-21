@@ -6846,6 +6846,10 @@ export type Database = {
         Args: { p_account_id: string; p_site_managers: Json }
         Returns: undefined
       }
+      interior_cars_washed: {
+        Args: { p_end: string; p_site_numbers: number[]; p_start: string }
+        Returns: number
+      }
       invoice_approver_digest: {
         Args: never
         Returns: {

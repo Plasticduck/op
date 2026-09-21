@@ -387,13 +387,16 @@ export const flexwashSales = {
       dateRange: { start, end },
     })
     const stripCode = (name: string) => name.replace(/^[A-Za-z0-9]+ - /, '')
-    // Owner-excluded FlexWash detail lines: MVP Interior Redeem ($0 member
-    // redemption) and Rewash (a re-do credit, not an interior sale).
+    // Owner-excluded FlexWash detail lines that aren't interior sales:
+    //   MVP Interior Redeem ($0 member redemption), Rewash (a re-do credit),
+    //   Hand Dry, and any Wheel/Tire service.
     const EXCLUDE = new Set(['mvp interior redeem', 'rewash'])
+    const isExcluded = (name: string): boolean => {
+      const n = name.trim().toLowerCase()
+      return EXCLUDE.has(n) || n.includes('hand dry') || (n.includes('tire') && n.includes('wheel'))
+    }
     const items = ((data?.lineItemsDetail ?? []) as Any[]).filter(
-      (it) =>
-        String(it.orderPackageType) === 'detail' &&
-        !EXCLUDE.has(stripCode(String(it.name ?? '')).trim().toLowerCase()),
+      (it) => String(it.orderPackageType) === 'detail' && !isExcluded(stripCode(String(it.name ?? ''))),
     )
     const isMember = (it: Any) => String(it.orderClassification ?? '').startsWith('member')
 
