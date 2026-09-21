@@ -4,7 +4,7 @@ import { MarketingNav, MarketingFooter } from './components'
 
 const COMPANY = 'Wash Lyfe LLC'
 const CONTACT_EMAIL = 'info@washlyfe.com'
-const LAST_UPDATED = 'July 23, 2026'
+const LAST_UPDATED = 'September 21, 2026'
 const GOVERNING_STATE = 'Texas'
 
 function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
@@ -127,10 +127,13 @@ export function TermsPage() {
       <Section heading="8. Third-party services">
         <p>
           The Service relies on third-party providers, including hosting and database (Supabase),
-          payments (Stripe and Stripe Connect), AI processing (Anthropic), weather and geocoding
-          (Open-Meteo and OpenStreetMap/Nominatim), and optional integrations you choose to connect
-          (such as Google Calendar). Your use of those features may be subject to the providers'
-          terms. We are not responsible for third-party services we do not control.
+          payments (Stripe and Stripe Connect), AI processing (Anthropic), email delivery (Resend),
+          maps, geocoding, and place search (Google Maps Platform and OpenStreetMap/Nominatim), and
+          weather (Open-Meteo). It also supports optional integrations you choose to connect, such as
+          Google Calendar, a Microsoft 365 invoice inbox, payroll (iSolved), help desk (Issuetrak),
+          camera feeds (Spot AI), and wash point-of-sale systems (such as DRB/SiteWatch and
+          FlexWash). Your use of those features may be subject to the providers' terms. We are not
+          responsible for third-party services we do not control.
         </p>
       </Section>
       <Section heading="9. Disclaimers">
@@ -235,8 +238,10 @@ export function PrivacyPage() {
           </li>
           <li>
             <span className="text-ink">Integration data:</span> if you connect an optional
-            integration such as Google Calendar, the limited data needed to provide it (for example,
-            read-only calendar events and your connected email address).
+            integration, the limited data needed to provide it, for example calendar events and your
+            connected email address (Google Calendar), invoice emails and attachments (Microsoft
+            365), payroll and timecard data (iSolved), help-desk tickets (Issuetrak), camera feeds
+            (Spot AI), or wash transaction data (such as DRB/SiteWatch and FlexWash).
           </li>
           <li>
             <span className="text-ink">Payment information:</span> processed by our payment
@@ -308,10 +313,13 @@ export function PrivacyPage() {
           We do not sell personal information. We share information with service providers who help
           us run the Service, under confidentiality obligations, including: Supabase (hosting,
           database, storage, authentication), Stripe (payments and payouts), Anthropic (AI
-          processing), and Open-Meteo and OpenStreetMap/Nominatim (weather and geocoding). If you
-          connect Google Calendar, data is exchanged with Google to provide that integration. We
-          also share information with members of your own organization as part of normal use, and
-          when required by law or to protect rights and safety.
+          processing), Resend (email delivery), Google Maps Platform (maps, geocoding, and place
+          search), Open-Meteo (weather), and OpenStreetMap/Nominatim (geocoding). If you connect an
+          optional integration, data is exchanged with that provider to make it work, including
+          Google Calendar, a Microsoft 365 invoice inbox, iSolved (payroll), Issuetrak (help desk),
+          Spot AI (camera feeds), and wash point-of-sale systems (such as DRB/SiteWatch and
+          FlexWash). We also share information with members of your own organization as part of
+          normal use, and when required by law or to protect rights and safety.
         </p>
       </Section>
       <Section heading="Data retention">

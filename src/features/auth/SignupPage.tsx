@@ -156,6 +156,12 @@ export default function SignupPage() {
           {isSubmitting && <Loader2 className="size-4 animate-spin" />}
           Create account
         </Button>
+        <p className="text-center text-xs text-ink-muted">
+          By creating an account, you agree to our{' '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Terms of Service</a>
+          {' '}and{' '}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Privacy Policy</a>.
+        </p>
       </form>
     </AuthLayout>
   )
