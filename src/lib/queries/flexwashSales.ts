@@ -387,8 +387,9 @@ export const flexwashSales = {
       dateRange: { start, end },
     })
     const stripCode = (name: string) => name.replace(/^[A-Za-z0-9]+ - /, '')
-    // MVP Interior Redeem is a $0 member redemption the owner does not want counted.
-    const EXCLUDE = new Set(['mvp interior redeem'])
+    // Owner-excluded FlexWash detail lines: MVP Interior Redeem ($0 member
+    // redemption) and Rewash (a re-do credit, not an interior sale).
+    const EXCLUDE = new Set(['mvp interior redeem', 'rewash'])
     const items = ((data?.lineItemsDetail ?? []) as Any[]).filter(
       (it) =>
         String(it.orderPackageType) === 'detail' &&
