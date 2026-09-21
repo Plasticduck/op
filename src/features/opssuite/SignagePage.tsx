@@ -36,10 +36,9 @@ function statusBadge(status: string | null | undefined): { label: string; cls: s
 // Catalog tiles shown on the signage landing. Names must match SIGN_CATEGORIES so
 // a tile can preset the order form's category. Placeholder icons for now.
 const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
-  { name: 'A-Frame Signs', icon: Signpost },
   { name: 'Aluminum Signs', icon: Square },
   { name: 'Safety Signs', icon: ShieldAlert },
-  { name: 'Wind Signs', icon: Wind },
+  { name: 'Wind Signs and A-Frames', icon: Wind },
   { name: 'Business Cards', icon: CreditCard },
   { name: 'Menu Boards, Rack Cards, and Brochures', icon: Gift },
   { name: 'Note Pads', icon: StickyNote },
@@ -57,7 +56,7 @@ const MW_TILE_IMAGES: Record<string, string> = {
   'Menu Boards, Rack Cards, and Brochures': '/signage-menu-rack-brochures.jpg',
   'Business Cards': '/signage-business-cards.jpg',
   'Note Pads': '/signage-note-pads.jpg',
-  'Wind Signs': '/signage-wind-signs.jpg',
+  'Wind Signs and A-Frames': '/signage-wind-signs.jpg',
 }
 // Library artwork that belongs in a category's gallery (deduped by path). Other
 // Items catches anything uncategorized or tagged to a name we no longer show.

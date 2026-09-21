@@ -15,10 +15,9 @@ export type ArtworkItem = {
 
 // Top-level product categories (the signage catalog tiles + order form).
 export const SIGN_CATEGORIES = [
-  'A-Frame Signs',
   'Aluminum Signs',
   'Safety Signs',
-  'Wind Signs',
+  'Wind Signs and A-Frames',
   'Business Cards',
   'Menu Boards, Rack Cards, and Brochures',
   'Note Pads',
