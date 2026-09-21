@@ -693,6 +693,26 @@ export function SidebarNav({
           </div>
         )
       })}
+      <div className="mt-1 flex flex-col border-t border-white/5 px-2 pb-1 pt-3">
+        <a
+          href="/terms"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onNavigate}
+          className="rounded-md px-2 py-1 text-xs text-ink-invert-muted/70 transition hover:text-white"
+        >
+          Terms of Service
+        </a>
+        <a
+          href="/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onNavigate}
+          className="rounded-md px-2 py-1 text-xs text-ink-invert-muted/70 transition hover:text-white"
+        >
+          Privacy Policy
+        </a>
+      </div>
     </nav>
   )
 }
