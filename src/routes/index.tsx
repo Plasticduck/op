@@ -123,10 +123,6 @@ const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
 const AskOperatorPage = lz(() => import('@/features/ask/AskOperatorPage'))
 const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
 const LaborDashboardPage = lz(() => import('@/features/ops/labor/LaborDashboardPage'))
-const TeamsPage = lz(() => import('@/features/ops/teams/TeamsPage'))
-const ProceduresPage = lz(() => import('@/features/ops/procedures/ProceduresPage'))
-const PmPage = lz(() => import('@/features/ops/pm/PmPage'))
-const WorkRequestsPage = lz(() => import('@/features/ops/requests/WorkRequestsPage'))
 const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
@@ -205,10 +201,6 @@ export const router = createBrowserRouter([
           { path: 'work-orders', element: tech(<WorkOrdersPage />) },
           { path: 'work-orders/:id', element: tech(<WorkOrdersPage />) },
           { path: 'categories', element: tech(<CategoriesPage />) },
-          { path: 'teams', element: tech(<TeamsPage />) },
-          { path: 'procedures', element: tech(<ProceduresPage />) },
-          { path: 'preventive-maintenance', element: tech(<PmPage />) },
-          { path: 'work-requests', element: tech(<WorkRequestsPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },
           { path: 'assets', element: tech(<AssetsPage />) },
           { path: 'assets/:id', element: tech(<AssetsPage />) },
