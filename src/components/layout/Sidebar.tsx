@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
+  Armchair,
   Cctv,
   ReceiptText,
   AlarmClockOff,
@@ -178,6 +179,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/flexwash-sales',
         label: 'FlexWash Sales Reports',
         icon: ReceiptText,
+        roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/interior-reporting',
+        label: 'Interior Reporting',
+        icon: Armchair,
         roles: ['owner', 'manager'],
       },
       {

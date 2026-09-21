@@ -100,6 +100,20 @@ export type FlexBreakdown = {
   carsByTier: { label: string; count: number }[]
 }
 
+// Interior (detail) reporting. FlexWash tags every line item with an
+// orderPackageType; the "detail" bucket is its interior-services category
+// (MVP/Hustle/Launch Interior, Mud, etc.). Revenue is the line price in dollars,
+// gross of separately-listed discounts.
+export type FlexInteriorItem = { name: string; count: number; revenue: number }
+export type FlexInteriorReport = {
+  total: { count: number; revenue: number }
+  paid: { count: number; revenue: number } // retail (non-member) interior sales
+  member: { count: number; revenue: number } // member redemptions / rebilled interior
+  items: FlexInteriorItem[]
+  bySite: { site: string; count: number; revenue: number }[]
+  days: number
+}
+
 const CLASS_LABEL: Record<string, string> = {
   membershipsSoldNew: 'Memberships Sold (New)',
   membershipsRebilled: 'Memberships Recharged',
@@ -361,5 +375,59 @@ export const flexwashSales = {
       }))
       .sort((a, b) => rank(a.key) - rank(b.key))
     return { groups: gr, extraDiscounts, carsByTier }
+  },
+
+  // Interior (detail) reporting: every line item FlexWash classifies in its
+  // "detail" package category, aggregated by item, by site, and split retail vs
+  // member (member = redeemed/rebilled interior, which can be $0). Member
+  // classifications all begin with "member" (memberWashes, membershipsRebilled, ...).
+  interiorReport: async (carWashIds: string[], start: string, end: string): Promise<FlexInteriorReport> => {
+    const data = await flexApi('/external/accounting/get-line-items-detail', {
+      carWashIds,
+      dateRange: { start, end },
+    })
+    const items = ((data?.lineItemsDetail ?? []) as Any[]).filter((it) => String(it.orderPackageType) === 'detail')
+    const stripCode = (name: string) => name.replace(/^[A-Za-z0-9]+ - /, '')
+    const isMember = (it: Any) => String(it.orderClassification ?? '').startsWith('member')
+
+    const byName = new Map<string, FlexInteriorItem>()
+    const bySite = new Map<string, { site: string; count: number; revenue: number }>()
+    const dates = new Set<string>()
+    const total = { count: 0, revenue: 0 }
+    const paid = { count: 0, revenue: 0 }
+    const member = { count: 0, revenue: 0 }
+
+    for (const it of items) {
+      const rev = toDollars(it.priceInCents)
+      total.count += 1
+      total.revenue += rev
+      const bucket = isMember(it) ? member : paid
+      bucket.count += 1
+      bucket.revenue += rev
+
+      const name = stripCode(String(it.name ?? '—'))
+      const row = byName.get(name) ?? { name, count: 0, revenue: 0 }
+      row.count += 1
+      row.revenue += rev
+      byName.set(name, row)
+
+      const site = String(it.carWashName ?? '—')
+      const s = bySite.get(site) ?? { site, count: 0, revenue: 0 }
+      s.count += 1
+      s.revenue += rev
+      bySite.set(site, s)
+
+      const d = String(it.localizedInsertedAt ?? '').split(' ')[0]
+      if (d) dates.add(d)
+    }
+
+    return {
+      total,
+      paid,
+      member,
+      items: [...byName.values()].sort((a, b) => b.revenue - a.revenue || b.count - a.count),
+      bySite: [...bySite.values()].sort((a, b) => b.revenue - a.revenue),
+      days: dates.size,
+    }
   },
 }

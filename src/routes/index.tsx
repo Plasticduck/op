@@ -114,6 +114,7 @@ const SitePerformancePage = lz(() => import('@/features/opssuite/SitePerformance
 const InteriorDetailsPage = lz(() => import('@/features/opssuite/InteriorDetailsPage'))
 const MsaPerformancePage = lz(() => import('@/features/opssuite/MsaPerformancePage'))
 const FlexwashSalesPage = lz(() => import('@/features/opssuite/FlexwashSalesPage'))
+const InteriorReportingPage = lz(() => import('@/features/opssuite/InteriorReportingPage'))
 const CamerasPage = lz(() => import('@/features/cameras/CamerasPage'))
 const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
@@ -229,6 +230,7 @@ export const router = createBrowserRouter([
           { path: 'details', element: mgr(<InteriorDetailsPage />) },
           { path: 'msa-performance', element: mgr(<MsaPerformancePage />) },
           { path: 'flexwash-sales', element: mgr(<FlexwashSalesPage />) },
+          { path: 'interior-reporting', element: mgr(<InteriorReportingPage />) },
           { path: 'cameras', element: mgr(<CamerasPage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
 

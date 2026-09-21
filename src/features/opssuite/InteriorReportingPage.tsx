@@ -1,0 +1,185 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { RefreshCw, TriangleAlert, Armchair } from 'lucide-react'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { Select } from '@/components/ui/Select'
+import { Input } from '@/components/ui/Input'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { currency } from '@/lib/format'
+import { cn } from '@/lib/utils'
+import { flexwashSales, type FlexSite, type FlexInteriorReport } from '@/lib/queries/flexwashSales'
+
+const num = (n: number) => Math.round(n).toLocaleString('en-US')
+const money = (n: number) => currency(n)
+const yesterday = () => new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA')
+const monthStart = () => {
+  const d = new Date()
+  return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('en-CA')
+}
+
+function Section({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-4 py-3 sm:px-5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">{title}</h2>
+        {sub && <p className="mt-0.5 text-xs text-ink-subtle">{sub}</p>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+const th = 'px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-ink-subtle first:text-left'
+const td = 'px-4 py-2 text-right text-sm text-ink first:text-left tabular-nums'
+
+function Row({ label, count, amount, strong }: { label: string; count?: number; amount?: number; strong?: boolean }) {
+  return (
+    <tr className={cn('border-t border-border', strong && 'bg-content/60 font-semibold')}>
+      <td className={cn(td, strong && 'font-semibold')}>{label}</td>
+      <td className={td}>{count == null ? '' : num(count)}</td>
+      <td className={td}>{amount == null ? '' : money(amount)}</td>
+    </tr>
+  )
+}
+
+function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
+      <div className="mt-1 text-2xl font-bold tabular-nums text-ink">{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-ink-subtle">{sub}</div>}
+    </div>
+  )
+}
+
+export default function InteriorReportingPage() {
+  const [sites, setSites] = useState<FlexSite[]>([])
+  const [carWashId, setCarWashId] = useState<string>('all')
+  const [start, setStart] = useState(monthStart())
+  const [end, setEnd] = useState(yesterday())
+  const [report, setReport] = useState<FlexInteriorReport | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    flexwashSales.sites().then(setSites)
+  }, [])
+
+  useEffect(() => {
+    const ids = carWashId === 'all' ? sites.map((s) => s.car_wash_id) : carWashId ? [carWashId] : []
+    if (!ids.length || !start || !end || start > end) return
+    let active = true
+    setLoading(true)
+    setError(null)
+    flexwashSales
+      .interiorReport(ids, start, end)
+      .then((r) => { if (active) { setReport(r); setLoading(false) } })
+      .catch((e) => { if (active) { setError(e instanceof Error ? e.message : String(e)); setLoading(false) } })
+    return () => { active = false }
+  }, [carWashId, sites, start, end])
+
+  const r = report
+  const avgTicket = useMemo(() => (r && r.paid.count > 0 ? r.paid.revenue / r.paid.count : 0), [r])
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title="Interior Reporting"
+        subtitle="Interior and detail services sold at the FlexWash sites (17, 18, 29, 30), from FlexWash's detail category."
+        actions={
+          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-ink-muted">
+            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
+            {error ? 'Load failed' : loading ? 'Loading...' : report ? 'Loaded' : 'Pick a range'}
+          </span>
+        }
+      />
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="ir-site" className="text-xs font-medium text-ink-muted">Site</label>
+          <Select id="ir-site" value={carWashId} onChange={(e) => setCarWashId(e.target.value)} className="h-9 w-48">
+            <option value="all">All Sites</option>
+            {sites.map((s) => (
+              <option key={s.car_wash_id} value={s.car_wash_id}>#{s.site_number}{s.name ? ` — ${s.name}` : ''}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="ir-start" className="text-xs font-medium text-ink-muted">From</label>
+          <Input id="ir-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} className="h-9 w-40" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="ir-end" className="text-xs font-medium text-ink-muted">To</label>
+          <Input id="ir-end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="h-9 w-40" />
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p className="font-medium">Could not load FlexWash data.</p>
+            <p className="mt-0.5 text-danger/80">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {r && !error && (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Kpi label="Interior Revenue" value={money(r.total.revenue)} sub={`${num(r.total.count)} services · ${num(r.days)} day${r.days === 1 ? '' : 's'}`} />
+            <Kpi label="Paid (Retail)" value={money(r.paid.revenue)} sub={`${num(r.paid.count)} services`} />
+            <Kpi label="Member Redeemed" value={num(r.member.count)} sub={r.member.revenue ? money(r.member.revenue) : 'included in membership'} />
+            <Kpi label="Avg Retail Ticket" value={money(avgTicket)} sub="paid interior only" />
+          </div>
+
+          <Section title="Interior items" sub="Everything in FlexWash's detail category, by item.">
+            {r.items.length === 0 ? (
+              <EmptyState icon={Armchair} title="No interior services in this range" description="Try a wider date range or a different site." />
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={th}>Item</th>
+                    <th className={th}>Count</th>
+                    <th className={th}>Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.items.map((it) => (
+                    <Row key={it.name} label={it.name} count={it.count} amount={it.revenue} />
+                  ))}
+                  <Row label="Total" count={r.total.count} amount={r.total.revenue} strong />
+                </tbody>
+              </table>
+            )}
+          </Section>
+
+          {r.bySite.length > 1 && (
+            <Section title="By site" sub="Interior services and revenue per FlexWash site.">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={th}>Site</th>
+                    <th className={th}>Count</th>
+                    <th className={th}>Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.bySite.map((s) => (
+                    <Row key={s.site} label={s.site} count={s.count} amount={s.revenue} />
+                  ))}
+                </tbody>
+              </table>
+            </Section>
+          )}
+
+          <p className="text-xs text-ink-subtle">
+            Revenue is the interior line price, gross of separately-listed discounts. Member-redeemed
+            interior services are included in a membership and may show $0. Source: FlexWash detail
+            category. DRB sites will be added next.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
