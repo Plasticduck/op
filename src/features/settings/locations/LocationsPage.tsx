@@ -364,6 +364,10 @@ function LocationModal({
       ? { lat: Number(location.latitude), lng: Number(location.longitude) }
       : null,
   )
+  // True only after an explicit "use my current location" pick, so that GPS wins
+  // over the address but a stale pre-filled coordinate never overrides a changed
+  // address (which is what used to strand the old location on the map).
+  const [coordsFromGps, setCoordsFromGps] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -374,6 +378,7 @@ function LocationModal({
         navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 12000 }),
       )
       setLocationCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+      setCoordsFromGps(true)
     } catch (e) {
       setError('Could not read your location: ' + (e as Error).message)
     } finally {
@@ -391,7 +396,12 @@ function LocationModal({
     // was free-typed, fall back to geocoding it. Failure never blocks the save
     // (and on edit we keep existing coords).
     const addr = address.trim()
-    const geo = pickedCoords ?? (addr ? await geocodeAddress(addr) : null)
+    const originalAddr = (location?.address ?? '').trim()
+    const addressChanged = isNew || addr !== originalAddr
+    // A picked autocomplete suggestion carries coords; otherwise geocode the
+    // address, but only when it actually changed (so an unchanged address on edit
+    // keeps any hand-tuned coords).
+    const geo = pickedCoords ?? (addr && addressChanged ? await geocodeAddress(addr) : null)
 
     if (isNew) {
       // New sites use schema defaults for closeout/overtime/pay period; those
@@ -409,8 +419,9 @@ function LocationModal({
         return setError(err.message)
       }
     } else {
-      // A "use current location" override always wins over geocoded coords.
-      const finalCoords = locationCoords ?? (geo ? { lat: geo.lat, lng: geo.lon } : null)
+      // An explicit "use my location" GPS pick wins; otherwise a new/geocoded
+      // address updates the coords, and an unchanged address keeps the existing.
+      const finalCoords = coordsFromGps ? locationCoords : geo ? { lat: geo.lat, lng: geo.lon } : null
       const { error: err } = await updateLocation(location.id, {
         name: name.trim(),
         address: addr || null,
@@ -447,10 +458,12 @@ function LocationModal({
               onChange={(v) => {
                 setAddress(v)
                 setPickedCoords(null) // typing invalidates a prior pick
+                setCoordsFromGps(false) // ...and a prior GPS override
               }}
               onSelect={(p) => {
                 setAddress(p.address)
                 setPickedCoords({ lat: p.lat, lon: p.lon })
+                setCoordsFromGps(false)
               }}
             />
           )}
