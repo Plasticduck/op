@@ -151,7 +151,7 @@ export default function SiteAuditsPage() {
       </div>
       <OpsToolbar
         range={table.range} onRange={table.setRange} sort={table.sort} onSort={table.setSort} count={table.rows.length}
-        onExportPdf={() => exportPdf('Site Audits', EXPORT_COLUMNS, table.rows)}
+        onExportPdf={() => exportPdf('Site Audits', EXPORT_COLUMNS, table.rows, { logoUrl: isMightyWash ? '/mw-logo.png' : null })}
         onExportExcel={() => exportExcel('site-audits', EXPORT_COLUMNS, table.rows)}
       />
       {loading ? (

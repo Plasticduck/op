@@ -310,7 +310,7 @@ export default function SiteViolationsPage() {
             </button>
             <button
               type="button"
-              onClick={() => exportPdf('Violations', EXPORT_COLUMNS, computeFiltered())}
+              onClick={() => exportPdf('Violations', EXPORT_COLUMNS, computeFiltered(), { logoUrl: isMightyWash ? '/mw-logo.png' : null })}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-danger px-4 text-sm font-medium text-white transition hover:opacity-90"
             >
               <Download className="size-4" /> Export PDF

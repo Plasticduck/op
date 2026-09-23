@@ -9,6 +9,7 @@ import { Field } from '@/components/forms/Field'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
+import { useBrandLogoUrl } from '@/lib/brandLogo'
 import { useLocations } from '@/lib/locations'
 import { useSectionAllowed } from '@/lib/usePermissions'
 import { inventory, type InventoryItem, type InventoryCount, type InventoryCountSession, type InventoryCountLine } from '@/lib/queries/opsSuite'
@@ -52,6 +53,7 @@ const COUNT_COLUMNS: ExportColumn<CountRow>[] = [
 
 export default function InventoryPage() {
   const { profile } = useAuth()
+  const brandLogoUrl = useBrandLogoUrl()
   const { locations } = useLocations()
   // Section permissions: an admin can hide individual tabs per role/user.
   const tabAllowed: Record<Tab, boolean> = {
@@ -233,7 +235,7 @@ export default function InventoryPage() {
             <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportCountSheet(divisionLabel(division), visibleItems, division === 'chemical', profile?.brand_logo_url)}>
               <ClipboardList className="size-4" /> Count sheet
             </Button>
-            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportPdf(`Inventory Catalog - ${divisionLabel(division)}`, ITEM_COLUMNS, visibleItems)}>
+            <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportPdf(`Inventory Catalog - ${divisionLabel(division)}`, ITEM_COLUMNS, visibleItems, { logoUrl: brandLogoUrl })}>
               <FileText className="size-4" /> PDF
             </Button>
             <Button variant="secondary" size="sm" disabled={visibleItems.length === 0} onClick={() => exportExcel(`inventory-${division}`, ITEM_COLUMNS, visibleItems)}>
@@ -244,7 +246,7 @@ export default function InventoryPage() {
       ) : countsFiltersActive ? (
         <OpsToolbar
           range={countsTable.range} onRange={countsTable.setRange} sort={countsTable.sort} onSort={countsTable.setSort} count={countsTable.rows.length}
-          onExportPdf={() => exportPdf('Inventory Counts', COUNT_COLUMNS, countsTable.rows)}
+          onExportPdf={() => exportPdf('Inventory Counts', COUNT_COLUMNS, countsTable.rows, { logoUrl: brandLogoUrl })}
           onExportExcel={() => exportExcel('inventory-counts', COUNT_COLUMNS, countsTable.rows)}
         />
       ) : null}

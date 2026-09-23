@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
+import { useBrandLogoUrl } from '@/lib/brandLogo'
 import { useLocations } from '@/lib/locations'
 import { opsNotes, type OpsNote } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
@@ -29,6 +30,7 @@ const EXPORT_COLUMNS: ExportColumn<Row>[] = [
 
 export default function OpsNotesPage() {
   const { profile } = useAuth()
+  const brandLogoUrl = useBrandLogoUrl()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<Row | null>(null)
@@ -47,7 +49,7 @@ export default function OpsNotesPage() {
       />
       <OpsToolbar
         range={table.range} onRange={table.setRange} sort={table.sort} onSort={table.setSort} count={table.rows.length}
-        onExportPdf={() => exportPdf('Staffing & Culture Notes', EXPORT_COLUMNS, table.rows)}
+        onExportPdf={() => exportPdf('Staffing & Culture Notes', EXPORT_COLUMNS, table.rows, { logoUrl: brandLogoUrl })}
         onExportExcel={() => exportExcel('staffing-culture-notes', EXPORT_COLUMNS, table.rows)}
       />
       {loading ? (

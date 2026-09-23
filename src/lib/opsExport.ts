@@ -1,4 +1,5 @@
 import { format } from 'date-fns'
+import { loadPdfLogo } from '@/lib/pdfLogo'
 
 // A column definition shared by the on-screen export. `value` returns the plain
 // cell text for a row (no JSX) so the same columns drive both Excel and PDF.
@@ -25,15 +26,33 @@ export async function exportExcel<T>(filename: string, columns: ExportColumn<T>[
   XLSX.writeFile(wb, `${filename}-${stamp()}.xlsx`)
 }
 
-export async function exportPdf<T>(title: string, columns: ExportColumn<T>[], rows: T[], subtitle?: string): Promise<void> {
+export async function exportPdf<T>(
+  title: string,
+  columns: ExportColumn<T>[],
+  rows: T[],
+  opts?: { subtitle?: string; logoUrl?: string | null },
+): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
   const doc = new jsPDF({ orientation: columns.length > 5 ? 'landscape' : 'portrait' })
+
+  // Brand logo (e.g. the wash's) in the top-right corner, sized by height so a
+  // tall logo stays compact and clear of the title.
+  if (opts?.logoUrl) {
+    const logo = await loadPdfLogo(opts.logoUrl)
+    if (logo) {
+      const h = 16
+      const w = logo.w > 0 && logo.h > 0 ? h * (logo.w / logo.h) : h
+      const pageW = doc.internal.pageSize.getWidth()
+      try { doc.addImage(logo.dataUrl, 'PNG', pageW - 14 - w, 6, w, h) } catch { /* skip a bad logo */ }
+    }
+  }
+
   doc.setFontSize(14)
   doc.text(title, 14, 16)
   doc.setFontSize(9)
   doc.setTextColor(120)
-  doc.text(`${subtitle ? subtitle + ' · ' : ''}${rows.length} record${rows.length === 1 ? '' : 's'} · ${format(new Date(), 'PP')}`, 14, 22)
+  doc.text(`${opts?.subtitle ? opts.subtitle + ' · ' : ''}${rows.length} record${rows.length === 1 ? '' : 's'} · ${format(new Date(), 'PP')}`, 14, 22)
   autoTable(doc, {
     startY: 27,
     head: [columns.map((c) => c.header)],

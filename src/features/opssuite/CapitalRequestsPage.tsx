@@ -10,6 +10,7 @@ import { Field } from '@/components/forms/Field'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { shortDate, currency } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
+import { useBrandLogoUrl } from '@/lib/brandLogo'
 import { useLocations } from '@/lib/locations'
 import { capitalRequests, type CapitalRequest } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
@@ -46,6 +47,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 export default function CapitalRequestsPage() {
   const { profile } = useAuth()
+  const brandLogoUrl = useBrandLogoUrl()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filter>('pending')
@@ -94,7 +96,7 @@ export default function CapitalRequestsPage() {
 
       <OpsToolbar
         range={table.range} onRange={table.setRange} sort={table.sort} onSort={table.setSort} count={table.rows.length}
-        onExportPdf={() => exportPdf('Capital Improvement Requests', EXPORT_COLUMNS, table.rows)}
+        onExportPdf={() => exportPdf('Capital Improvement Requests', EXPORT_COLUMNS, table.rows, { logoUrl: brandLogoUrl })}
         onExportExcel={() => exportExcel('capital-requests', EXPORT_COLUMNS, table.rows)}
       />
 
