@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, Plus, ShieldAlert } from 'lucide-react'
+import { Download, FileText, Plus, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { shortDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
 import { groupByRegions, resolveRegions } from '@/lib/regions'
-import { siteViolations, type SiteViolation } from '@/lib/queries/opsSuite'
+import { siteViolations, attachments, type SiteViolation } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
+import { buildSiteViolationPdf, openPdfInNewTab, type ViolationAttachment } from '@/lib/reports/siteViolationPdf'
+import { loadPdfLogo } from '@/lib/pdfLogo'
 import { AddViolationModal } from './violations/AddViolationModal'
 import { ALL_VIOLATION_TYPES, DEPARTMENTS, DEPARTMENT_COLOR } from './violations/config'
 
@@ -26,6 +29,7 @@ const EXPORT_COLUMNS: ExportColumn<Row>[] = [
 ]
 
 export default function SiteViolationsPage() {
+  const { profile } = useAuth()
   const { locations } = useLocations()
   const { settings } = useCompany()
   const [rows, setRows] = useState<Row[]>([])
@@ -34,6 +38,39 @@ export default function SiteViolationsPage() {
   const load = () =>
     siteViolations.list().then(({ data }) => setRows((data as unknown as Row[]) ?? []))
   useEffect(() => { void load() }, [])
+
+  // Per-violation PDF export: details + attached photos, with the MW logo
+  // top-right (their brand, so only on their account).
+  const isMightyWash = profile?.account_id === '54f3e299-1f61-4ed2-9921-3d02160b72e6'
+  const [pdfBusyId, setPdfBusyId] = useState<string | null>(null)
+  const openViolationPdf = async (r: Row) => {
+    setPdfBusyId(r.id)
+    try {
+      const { data: atts } = await attachments.allForEntity('violation', r.id)
+      const logo = isMightyWash ? await loadPdfLogo('/mw-logo.png') : null
+      const blob = await buildSiteViolationPdf({
+        siteName: r.location?.name ?? null,
+        department: r.department,
+        violationType: r.violation_type,
+        severity: r.severity,
+        status: r.status,
+        description: r.description,
+        reportedByName: r.reported_by_name,
+        reportedAt: r.reported_at,
+        dueDate: r.due_date,
+        resolvedByName: r.resolved_by_name,
+        resolvedAt: r.resolved_at,
+        resolutionNotes: r.resolution_notes,
+        attachments: (atts as ViolationAttachment[] | null) ?? [],
+        logo,
+      })
+      openPdfInNewTab(blob)
+    } catch (e) {
+      window.alert('Could not build the PDF: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setPdfBusyId(null)
+    }
+  }
 
   const groups = useMemo(
     () => groupByRegions(locations, resolveRegions(settings.regions)),
@@ -308,6 +345,7 @@ export default function SiteViolationsPage() {
                       <th className="px-4 py-3 font-medium">Notes</th>
                       <th className="px-4 py-3 font-medium">Reported by</th>
                       <th className="px-4 py-3 font-medium">Reported</th>
+                      <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -321,6 +359,11 @@ export default function SiteViolationsPage() {
                         <td className="px-4 py-3 text-ink-muted">{r.description ?? '—'}</td>
                         <td className="px-4 py-3 text-ink-muted">{r.reported_by_name ?? '—'}</td>
                         <td className="px-4 py-3 text-ink-muted">{shortDate(r.reported_at)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Button variant="ghost" size="sm" disabled={pdfBusyId === r.id} onClick={() => void openViolationPdf(r)}>
+                            <FileText className="size-4" /> {pdfBusyId === r.id ? 'PDF…' : 'PDF'}
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -344,9 +387,12 @@ export default function SiteViolationsPage() {
                     {r.description && (
                       <p className="mt-1 text-sm text-ink-muted">{r.description}</p>
                     )}
-                    <p className="mt-1 text-xs text-ink-subtle">
-                      By {r.reported_by_name ?? '—'}
-                    </p>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="text-xs text-ink-subtle">By {r.reported_by_name ?? '—'}</p>
+                      <Button variant="ghost" size="sm" disabled={pdfBusyId === r.id} onClick={() => void openViolationPdf(r)}>
+                        <FileText className="size-4" /> {pdfBusyId === r.id ? 'PDF…' : 'PDF'}
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
