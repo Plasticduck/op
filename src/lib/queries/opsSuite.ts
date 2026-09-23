@@ -50,6 +50,26 @@ export const siteAudits = {
   list: () => supabase.from('site_audits').select(withLoc).order('created_at', { ascending: false }),
   create: (row: T['site_audits']['Insert']) => supabase.from('site_audits').insert(row).select().single(),
 }
+
+// Photos attached to individual site-audit items. Stored in the private
+// site-audit-photos bucket (mirrors site-review-photos); the storage paths live
+// on each item's answer in the audit's section columns. Replaces the old
+// base64-in-DB approach, which failed on large phone photos.
+export const siteAuditPhotos = {
+  upload: async (accountId: string, draftId: string, itemId: string, file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${accountId}/${draftId}/${itemId}/${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage
+      .from('site-audit-photos')
+      .upload(path, file, { contentType: file.type, upsert: false })
+    return { error, path: error ? null : path }
+  },
+  remove: (path: string) => supabase.storage.from('site-audit-photos').remove([path]),
+  signedUrl: async (path: string, expiresIn = 3600): Promise<string | null> => {
+    const { data } = await supabase.storage.from('site-audit-photos').createSignedUrl(path, expiresIn)
+    return data?.signedUrl ?? null
+  },
+}
 export const opsNotes = {
   list: () => supabase.from('ops_notes').select(withLoc).order('created_at', { ascending: false }),
   create: (row: T['ops_notes']['Insert']) => supabase.from('ops_notes').insert(row).select().single(),

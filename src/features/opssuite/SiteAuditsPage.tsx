@@ -13,14 +13,13 @@ import { AttachmentViewer } from '@/components/data/AttachmentViewer'
 import { shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
-import { supabase } from '@/lib/supabase'
-import { siteAudits, customForms, attachments, type SiteAudit } from '@/lib/queries/opsSuite'
+import { siteAudits, siteAuditPhotos, customForms, attachments, type SiteAudit } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
-import { buildAuditPdfInput, buildSiteAuditPdf, openPdfInNewTab, type AuditAttachment } from '@/lib/reports/siteAuditPdf'
+import { buildAuditPdfInput, buildSiteAuditPdf, openPdfInNewTab, reconstructAuditAnswers, type AuditAttachment } from '@/lib/reports/siteAuditPdf'
 import { loadPdfLogo } from '@/lib/pdfLogo'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
-import SiteAuditForm, { type SiteAuditPhotos } from './SiteAuditForm'
+import SiteAuditForm from './SiteAuditForm'
 import { SiteAuditBuilder } from './SiteAuditBuilder'
 import {
   DEFAULT_SITE_AUDIT_SCHEMA,
@@ -29,15 +28,6 @@ import {
 } from './siteAuditSchema'
 
 type Row = SiteAudit & { location: { name: string } | null }
-
-function fileToDataUri(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onload = () => resolve(String(r.result))
-    r.onerror = reject
-    r.readAsDataURL(file)
-  })
-}
 
 const EXPORT_COLUMNS: ExportColumn<Row>[] = [
   { header: 'Site', value: (r) => r.location?.name },
@@ -224,12 +214,14 @@ export default function SiteAuditsPage() {
         <Modal open onClose={() => setOpen(null)} title={`Audit · ${open.location?.name ?? 'Site'}`} size="lg">
           <div className="flex flex-col gap-4">
             {open.initial_observations && <Section title="Initial observations"><p className="text-sm text-ink whitespace-pre-wrap">{open.initial_observations}</p></Section>}
-            <Section title="Primary"><JsonView value={open.primary_section} /></Section>
-            <Section title="Secondary"><JsonView value={open.secondary_section} /></Section>
-            <Section title="Priority"><JsonView value={open.priority_section} /></Section>
-            <Section title="Section comments"><JsonView value={open.section_comments} /></Section>
-            <Section title="Final thoughts"><JsonView value={open.final_thoughts} /></Section>
+            <Section title="Primary"><JsonView value={stripPhotos(open.primary_section)} /></Section>
+            <Section title="Secondary"><JsonView value={stripPhotos(open.secondary_section)} /></Section>
+            <Section title="Priority"><JsonView value={stripPhotos(open.priority_section)} /></Section>
+            <Section title="Section comments"><JsonView value={stripPhotos(open.section_comments)} /></Section>
+            <Section title="Final thoughts"><JsonView value={stripPhotos(open.final_thoughts)} /></Section>
             {open.explanation && <Section title="Explanation"><p className="text-sm text-ink whitespace-pre-wrap">{open.explanation}</p></Section>}
+            <AuditPhotoStrip paths={auditPhotoPaths(schema, open)} />
+            {/* Legacy audits kept photos as base64 in ops_attachments. */}
             <AttachmentViewer entityType="audit" entityId={open.id} />
           </div>
         </Modal>
@@ -266,6 +258,59 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">{title}</h3>
       {children}
     </section>
+  )
+}
+
+// Strip photo storage paths from a section object so JsonView shows only the
+// answer values, not raw file paths.
+function stripPhotos(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stripPhotos)
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (k === 'photos') continue
+      out[k] = stripPhotos(val)
+    }
+    return out
+  }
+  return v
+}
+
+// Every storage photo path attached to an audit's items (new storage-based audits).
+function auditPhotoPaths(schema: SiteAuditSchema, audit: Row): string[] {
+  const answers = reconstructAuditAnswers(schema, audit)
+  const paths: string[] = []
+  for (const v of Object.values(answers)) {
+    const ph = (v as { photos?: unknown } | null | undefined)?.photos
+    if (Array.isArray(ph)) for (const p of ph) if (typeof p === 'string') paths.push(p)
+  }
+  return [...new Set(paths)]
+}
+
+function AuditPhotoStrip({ paths }: { paths: string[] }) {
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const key = paths.join('|')
+  useEffect(() => {
+    let alive = true
+    for (const p of paths) siteAuditPhotos.signedUrl(p).then((u) => { if (alive && u) setUrls((prev) => ({ ...prev, [p]: u })) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  if (!paths.length) return null
+  return (
+    <Section title="Photos">
+      <div className="flex flex-wrap gap-2">
+        {paths.map((p) =>
+          urls[p] ? (
+            <a key={p} href={urls[p]} target="_blank" rel="noreferrer" className="block size-20 overflow-hidden rounded-md border border-border">
+              <img src={urls[p]} alt="Audit photo" className="size-full object-cover" />
+            </a>
+          ) : (
+            <div key={p} className="size-20 animate-pulse rounded-md border border-border bg-content" />
+          ),
+        )}
+      </div>
+    </Section>
   )
 }
 
@@ -315,7 +360,7 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const save = async (answers: SiteAuditAnswers, photos: SiteAuditPhotos) => {
+  const save = async (answers: SiteAuditAnswers) => {
     setError(null)
     if (!locationId) {
       setError('Pick a site')
@@ -332,8 +377,10 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
       if (Object.keys(slice).length > 0) extraComments[section.id] = slice
     }
 
+    // Photos are already uploaded to storage while filling the form; their paths
+    // ride along on each item's answer through sliceAnswers into the columns.
     setBusy(true)
-    const { data, error: err } = await siteAudits.create({
+    const { error: err } = await siteAudits.create({
       account_id: accountId,
       location_id: locationId,
       initial_observations: initialObservations,
@@ -350,30 +397,6 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
       setBusy(false)
       setError(err.message)
       return
-    }
-
-    // Upload each item's staged photos, tagged with the item id (label).
-    const auditId = (data as { id?: string } | null)?.id
-    if (auditId) {
-      for (const [itemId, files] of Object.entries(photos)) {
-        for (const file of files) {
-          const dataUri = await fileToDataUri(file)
-          const { error: upErr } = await supabase.from('ops_attachments').insert({
-            account_id: accountId,
-            entity_type: 'audit',
-            entity_id: auditId,
-            label: itemId,
-            file_name: file.name,
-            file_type: file.type,
-            data_uri: dataUri,
-          })
-          if (upErr) {
-            setBusy(false)
-            setError(upErr.message)
-            return
-          }
-        }
-      }
     }
 
     setBusy(false)
@@ -394,7 +417,7 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
 
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
-        <SiteAuditForm schema={schema} onSubmit={save} submitting={busy} />
+        <SiteAuditForm accountId={accountId} schema={schema} onSubmit={save} submitting={busy} />
 
         <div className="flex justify-end">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>

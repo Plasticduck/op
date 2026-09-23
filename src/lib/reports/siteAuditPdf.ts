@@ -4,6 +4,7 @@ import type { SiteReviewSchema } from '@/features/opssuite/siteReviewSchema'
 import type { SiteReviewPdfInput } from './siteReviewPdf'
 import { buildSiteReviewPdf } from './siteReviewPdf'
 import type { PdfLogo } from '@/lib/pdfLogo'
+import { siteAuditPhotos } from '@/lib/queries/opsSuite'
 
 export { openPdfInNewTab, downloadBlob } from './siteReviewPdf'
 
@@ -53,50 +54,86 @@ export function reconstructAuditAnswers(schema: SiteAuditSchema, audit: AuditRow
 
 export type AuditAttachment = { id: string; label: string | null; file_type: string | null; data_uri: string | null }
 
-// Turn each attachment's base64 data URI into an embeddable JPEG thumbnail (with
-// pixel size), grouped by the item id stored in `label`. Undecodable images
-// (e.g. HEIC) are dropped rather than failing the whole export. No clickable URL
-// is set (the image lives only in the DB), so the PDF just embeds the thumbnail.
-async function resolveAuditPhotos(attachments: AuditAttachment[]): Promise<{
+type PhotoImg = { url: string; dataUrl?: string; w?: number; h?: number }
+
+// Decode an image source (storage blob URL or a base64 data URI) into a
+// downscaled JPEG thumbnail with pixel size. Returns null on failure (e.g. HEIC),
+// so one unreadable photo never fails the whole export.
+async function imageToThumb(src: string): Promise<PhotoImg | null> {
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const im = new Image()
+      im.onload = () => resolve(im)
+      im.onerror = reject
+      im.src = src
+    })
+    const maxDim = 1200
+    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
+    const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale))
+    const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0, w, h)
+    return { url: '', dataUrl: canvas.toDataURL('image/jpeg', 0.82), w, h }
+  } catch {
+    return null
+  }
+}
+
+// New audits keep photo storage paths on each item's answer. Resolve them to
+// embeddable thumbnails, keyed by the path (so the answers already reference them).
+async function resolveStoragePhotos(paths: string[]): Promise<Record<string, PhotoImg>> {
+  const out: Record<string, PhotoImg> = {}
+  await Promise.all(
+    [...new Set(paths)].map(async (p) => {
+      try {
+        const url = await siteAuditPhotos.signedUrl(p, 3600)
+        if (!url) return
+        const resp = await fetch(url)
+        if (!resp.ok) return
+        const objUrl = URL.createObjectURL(await resp.blob())
+        try {
+          const thumb = await imageToThumb(objUrl)
+          if (thumb) out[p] = thumb
+        } finally {
+          URL.revokeObjectURL(objUrl)
+        }
+      } catch {
+        // Skip a single unreadable photo.
+      }
+    }),
+  )
+  return out
+}
+
+// Older audits kept photos as base64 in ops_attachments, keyed by the item id in
+// `label`. Resolve those too, so their PDFs keep working.
+async function resolveLegacyPhotos(attachments: AuditAttachment[]): Promise<{
   photosByItem: Record<string, string[]>
-  photoImages: Record<string, { url: string; dataUrl?: string; w?: number; h?: number }>
+  photoImages: Record<string, PhotoImg>
 }> {
   const photosByItem: Record<string, string[]> = {}
-  const photoImages: Record<string, { url: string; dataUrl?: string; w?: number; h?: number }> = {}
+  const photoImages: Record<string, PhotoImg> = {}
   await Promise.all(
     attachments.map(async (a) => {
       if (!a.data_uri || !(a.file_type ?? '').startsWith('image/')) return
       const itemId = a.label ?? ''
       if (!itemId) return
-      try {
-        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-          const im = new Image()
-          im.onload = () => resolve(im)
-          im.onerror = reject
-          im.src = a.data_uri as string
-        })
-        const maxDim = 1200
-        const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
-        const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale))
-        const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale))
-        const canvas = document.createElement('canvas')
-        canvas.width = w
-        canvas.height = h
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-        ctx.drawImage(img, 0, 0, w, h)
-        photoImages[a.id] = { url: '', dataUrl: canvas.toDataURL('image/jpeg', 0.82), w, h }
-        ;(photosByItem[itemId] ??= []).push(a.id)
-      } catch {
-        // Skip a single unreadable image.
-      }
+      const thumb = await imageToThumb(a.data_uri)
+      if (!thumb) return
+      photoImages[a.id] = thumb
+      ;(photosByItem[itemId] ??= []).push(a.id)
     }),
   )
   return { photosByItem, photoImages }
 }
 
-// Build the review-PDF input for one audit: reconstruct the answers, attach each
-// item's photos, drop attachment-only sections, and add an audit-specific meta
+// Build the review-PDF input for one audit: reconstruct the answers, resolve both
+// storage-path photos (new) and legacy ops_attachments photos (old), attach them
+// to each item, drop attachment-only sections, and add an audit-specific meta
 // line. The shared builder then renders it (with the logo top-right).
 export async function buildAuditPdfInput(
   audit: AuditRow,
@@ -105,10 +142,19 @@ export async function buildAuditPdfInput(
   logo: PdfLogo | null,
 ): Promise<SiteReviewPdfInput> {
   const answers = reconstructAuditAnswers(schema, audit) as Record<string, { value?: unknown; comments?: unknown; photos?: string[] }>
-  const { photosByItem, photoImages } = await resolveAuditPhotos(attachments)
-  for (const [itemId, keys] of Object.entries(photosByItem)) {
-    answers[itemId] = { ...(answers[itemId] ?? {}), photos: keys }
+  // Photo storage paths already sit on each item's answer (new audits).
+  const storagePaths: string[] = []
+  for (const v of Object.values(answers)) if (Array.isArray(v?.photos)) storagePaths.push(...(v.photos as string[]))
+  const [storageImages, legacy] = await Promise.all([
+    resolveStoragePhotos(storagePaths),
+    resolveLegacyPhotos(attachments),
+  ])
+  // Append legacy attachment keys to their item (they carry their own images).
+  for (const [itemId, keys] of Object.entries(legacy.photosByItem)) {
+    const existing = (answers[itemId] ?? {}) as { photos?: string[] }
+    answers[itemId] = { ...existing, photos: [...(existing.photos ?? []), ...keys] }
   }
+  const photoImages = { ...storageImages, ...legacy.photoImages }
   // Only render sections that have at least one non-attachment item (skips the
   // empty "Attachments" section, since photos hang off their own items).
   const sections = schema.sections.filter((s) => s.items.some((it) => it.type !== 'attachment'))

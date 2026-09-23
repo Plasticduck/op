@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Camera, Check, X } from 'lucide-react'
 import { Field } from '@/components/forms/Field'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
+import { siteAuditPhotos } from '@/lib/queries/opsSuite'
 import type {
   SiteAuditSchema,
   SiteAuditAnswers,
@@ -11,9 +12,6 @@ import type {
   SiteAuditItem,
 } from './siteAuditSchema'
 import { emptyAnswersFor } from './siteAuditSchema'
-
-// Staged photos per item id, uploaded after the audit is created.
-export type SiteAuditPhotos = Record<string, File[]>
 
 // Pass / warn / fail — green check, yellow exclamation, red X.
 const STATUS = [
@@ -28,20 +26,24 @@ const STATUS = [
 ] as const
 
 export default function SiteAuditForm({
+  accountId,
   schema,
   initialAnswers,
   onSubmit,
   submitting,
 }: {
+  accountId: string
   schema: SiteAuditSchema
   initialAnswers?: SiteAuditAnswers
-  onSubmit: (answers: SiteAuditAnswers, photos: SiteAuditPhotos) => void | Promise<void>
+  onSubmit: (answers: SiteAuditAnswers) => void | Promise<void>
   submitting?: boolean
 }) {
   const [answers, setAnswers] = useState<SiteAuditAnswers>(
     initialAnswers ?? emptyAnswersFor(schema),
   )
-  const [photos, setPhotos] = useState<SiteAuditPhotos>({})
+  // Groups this audit's photos in storage before the audit row exists; the
+  // storage paths are kept on each item's answer and saved with the audit.
+  const draftId = useMemo(() => crypto.randomUUID(), [])
 
   const setItem = (itemId: string, patch: Record<string, unknown>) => {
     setAnswers((prev) => ({
@@ -50,18 +52,11 @@ export default function SiteAuditForm({
     }))
   }
 
-  const addPhotos = (itemId: string, files: FileList | null) => {
-    const list = Array.from(files ?? [])
-    if (list.length) setPhotos((prev) => ({ ...prev, [itemId]: [...(prev[itemId] ?? []), ...list] }))
-  }
-  const removePhoto = (itemId: string, i: number) =>
-    setPhotos((prev) => ({ ...prev, [itemId]: (prev[itemId] ?? []).filter((_, idx) => idx !== i) }))
-
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault()
-        void onSubmit(answers, photos)
+        void onSubmit(answers)
       }}
       className="flex flex-col gap-4"
     >
@@ -76,11 +71,11 @@ export default function SiteAuditForm({
                 <PassFailRow
                   key={item.id}
                   item={item}
+                  accountId={accountId}
+                  draftId={draftId}
                   value={(answers[item.id] as Record<string, unknown> | undefined) ?? {}}
-                  photos={photos[item.id] ?? []}
                   onStatus={(v) => setItem(item.id, { value: v })}
-                  onAddPhotos={(files) => addPhotos(item.id, files)}
-                  onRemovePhoto={(i) => removePhoto(item.id, i)}
+                  onPhotosChange={(next) => setItem(item.id, { photos: next })}
                 />
               ) : (
                 <div key={item.id} className="border-b border-border py-3 last:border-b-0">
@@ -115,51 +110,28 @@ export default function SiteAuditForm({
 
 function PassFailRow({
   item,
+  accountId,
+  draftId,
   value,
-  photos,
   onStatus,
-  onAddPhotos,
-  onRemovePhoto,
+  onPhotosChange,
 }: {
   item: SiteAuditItem
+  accountId: string
+  draftId: string
   value: Record<string, unknown>
-  photos: File[]
   onStatus: (v: string | null) => void
-  onAddPhotos: (files: FileList | null) => void
-  onRemovePhoto: (i: number) => void
+  onPhotosChange: (photos: string[]) => void
 }) {
   const current = (value.value as string | null | undefined) ?? null
+  const photos = (value.photos as string[] | undefined) ?? []
   return (
     <div className="flex items-start justify-between gap-4 border-b border-border py-3 last:border-b-0">
       <div className="min-w-0">
         <p className="font-semibold text-ink">{item.label}</p>
         {item.helpText && <p className="mt-0.5 text-sm text-ink-muted">{item.helpText}</p>}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:bg-content">
-            <Camera className="size-3.5" /> Add Photo
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                onAddPhotos(e.target.files)
-                e.target.value = ''
-              }}
-            />
-          </label>
-          {photos.map((f, i) => (
-            <span
-              key={`${f.name}-${i}`}
-              className="inline-flex items-center gap-1 rounded-full bg-content px-2 py-0.5 text-xs text-ink-muted"
-            >
-              <span className="max-w-32 truncate">{f.name}</span>
-              <button type="button" onClick={() => onRemovePhoto(i)} aria-label="Remove photo">
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
+        <div className="mt-2">
+          <ItemPhotos accountId={accountId} draftId={draftId} itemId={item.id} photos={photos} onChange={onPhotosChange} />
         </div>
       </div>
 
@@ -192,6 +164,93 @@ function PassFailRow({
   )
 }
 
+// Photo attach + thumbnail strip for one item. Uploads immediately to the
+// site-audit-photos bucket and keeps the storage paths on the answer, so large
+// phone photos never hit the old base64-in-DB size ceiling.
+function ItemPhotos({
+  accountId, draftId, itemId, photos, onChange,
+}: {
+  accountId: string
+  draftId: string
+  itemId: string
+  photos: string[]
+  onChange: (photos: string[]) => void
+}) {
+  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    for (const p of photos) {
+      if (urls[p]) continue
+      siteAuditPhotos.signedUrl(p).then((u) => { if (alive && u) setUrls((prev) => ({ ...prev, [p]: u })) })
+    }
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos])
+
+  const pick = async (files: FileList | null) => {
+    if (!files?.length) return
+    setBusy(true)
+    setError(null)
+    const added: string[] = []
+    for (const f of Array.from(files)) {
+      const { path, error: upErr } = await siteAuditPhotos.upload(accountId, draftId, itemId, f)
+      if (upErr) { setError(upErr.message); break }
+      if (path) added.push(path)
+    }
+    if (added.length) onChange([...photos, ...added])
+    setBusy(false)
+  }
+
+  const remove = async (p: string) => {
+    await siteAuditPhotos.remove(p)
+    onChange(photos.filter((x) => x !== p))
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-2">
+        {photos.map((p) => (
+          <div key={p} className="relative size-16 overflow-hidden rounded-md border border-border bg-content">
+            {urls[p]
+              ? <img src={urls[p]} alt="Audit photo" className="size-full object-cover" />
+              : <div className="size-full animate-pulse bg-content" />}
+            <button
+              type="button"
+              onClick={() => void remove(p)}
+              aria-label="Remove photo"
+              className="absolute right-0 top-0 grid size-5 place-items-center rounded-bl-md bg-black/60 text-white hover:bg-black/80"
+            >
+              <X className="size-3" />
+            </button>
+          </div>
+        ))}
+        <label
+          className={cn(
+            'flex size-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border text-[11px] font-medium text-ink-muted transition hover:bg-content',
+            busy && 'pointer-events-none opacity-50',
+          )}
+        >
+          <Camera className="size-4" />
+          {busy ? '…' : 'Photo'}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            multiple
+            className="hidden"
+            disabled={busy}
+            onChange={(e) => { void pick(e.target.files); e.target.value = '' }}
+          />
+        </label>
+      </div>
+      {error && <p className="text-xs text-danger">Could not upload a photo: {error}</p>}
+    </div>
+  )
+}
+
 function renderControl(
   id: string,
   item: SiteAuditItem,
@@ -218,7 +277,7 @@ function renderControl(
       )
     }
     case 'attachment': {
-      return <p className="text-sm italic text-ink-muted">Attach files after saving the audit.</p>
+      return <p className="text-sm italic text-ink-muted">Attach photos to individual items above.</p>
     }
     case 'comments': {
       const text = (value.value as string | undefined) ?? ''
