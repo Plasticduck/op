@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ClipboardCheck, MapPin, Plus, Search } from 'lucide-react'
+import { ClipboardCheck, FileText, MapPin, Plus, Search } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -14,8 +14,10 @@ import { shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { supabase } from '@/lib/supabase'
-import { siteAudits, customForms, type SiteAudit } from '@/lib/queries/opsSuite'
+import { siteAudits, customForms, attachments, type SiteAudit } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
+import { buildAuditPdfInput, buildSiteAuditPdf, openPdfInNewTab, type AuditAttachment } from '@/lib/reports/siteAuditPdf'
+import { loadPdfLogo } from '@/lib/pdfLogo'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
 import SiteAuditForm, { type SiteAuditPhotos } from './SiteAuditForm'
@@ -96,6 +98,24 @@ export default function SiteAuditsPage() {
 
   const canCustomize = profile?.role === 'owner' || profile?.role === 'manager'
 
+  // PDF export per audit: photos are embedded below each line item, with the
+  // Mighty Wash logo top-right (their brand, so only on their account).
+  const isMightyWash = profile?.account_id === '54f3e299-1f61-4ed2-9921-3d02160b72e6'
+  const [pdfBusyId, setPdfBusyId] = useState<string | null>(null)
+  const openPdf = async (a: Row) => {
+    setPdfBusyId(a.id)
+    try {
+      const { data: atts } = await attachments.allForEntity('audit', a.id)
+      const logo = isMightyWash ? await loadPdfLogo('/mw-logo.png') : null
+      const input = await buildAuditPdfInput(a, schema, (atts as AuditAttachment[] | null) ?? [], logo)
+      openPdfInNewTab(await buildSiteAuditPdf(input))
+    } catch (e) {
+      window.alert('Could not build the PDF: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setPdfBusyId(null)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -168,7 +188,12 @@ export default function SiteAuditsPage() {
                     <td className="px-3 py-2.5 text-ink-muted">{a.submitted_by_name ?? '—'}</td>
                     <td className="px-3 py-2.5 text-ink-muted">{shortDate(a.created_at)}</td>
                     <td className="px-3 py-2.5 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => setOpen(a)}>View</Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setOpen(a)}>View</Button>
+                        <Button variant="ghost" size="sm" disabled={pdfBusyId === a.id} onClick={() => void openPdf(a)}>
+                          <FileText className="size-4" /> {pdfBusyId === a.id ? 'PDF…' : 'PDF'}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -179,20 +204,16 @@ export default function SiteAuditsPage() {
           {/* Mobile cards */}
           <ul className="flex flex-col gap-2 sm:hidden">
             {table.rows.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => setOpen(a)}
-                  className="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-card p-3 text-left"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-ink">{a.location?.name ?? '—'}</p>
-                    <p className="text-xs text-ink-muted">
-                      {a.submitted_by_name ?? '—'} · {shortDate(a.created_at)}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-xs font-medium text-accent">View</span>
+              <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card p-3">
+                <button type="button" onClick={() => setOpen(a)} className="min-w-0 flex-1 text-left">
+                  <p className="truncate font-medium text-ink">{a.location?.name ?? '—'}</p>
+                  <p className="text-xs text-ink-muted">
+                    {a.submitted_by_name ?? '—'} · {shortDate(a.created_at)}
+                  </p>
                 </button>
+                <Button variant="ghost" size="sm" disabled={pdfBusyId === a.id} onClick={() => void openPdf(a)}>
+                  <FileText className="size-4" /> {pdfBusyId === a.id ? 'PDF…' : 'PDF'}
+                </Button>
               </li>
             ))}
           </ul>

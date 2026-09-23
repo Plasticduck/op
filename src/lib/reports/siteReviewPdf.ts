@@ -7,6 +7,9 @@ export type SiteReviewPdfInput = {
   date?: string | null
   weather?: string | null
   timeArrived?: string | null
+  // Overrides the default "Site | Date | Weather | Time Arrived" meta line (used
+  // by reports without weather/arrival, e.g. Site Audits).
+  metaLine?: string
   schema: SiteReviewSchema
   answers: SiteReviewAnswers
   summaryText?: string | null
@@ -73,7 +76,7 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
   doc.setFontSize(10)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(110, 116, 124)
-  const meta = [
+  const meta = input.metaLine ?? [
     'Site: ' + (input.siteName ?? '-'),
     'Date: ' + fmtDate(input.date),
     'Weather: ' + (input.weather ?? '-'),
@@ -139,7 +142,7 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
       const ans = input.answers[item.id] as { value?: unknown; comments?: unknown; photos?: string[] } | undefined
       if (item.type === 'pass_fail') {
         const v = ans?.value
-        const pf = v === 'pass' ? 'Pass' : v === 'fail' ? 'Fail' : '-'
+        const pf = v === 'pass' ? 'Pass' : v === 'warn' ? 'Warn' : v === 'fail' ? 'Fail' : '-'
         const commentsRaw = (ans?.comments as string | undefined) ?? ''
         const comments = commentsRaw.toString().trim() || '-'
         rows.push([item.label, pf, comments])
@@ -201,7 +204,7 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
           } else {
             drawPhotoPlaceholder(doc, xx, yy, pos.w, imgH)
           }
-          linkDoc.link(xx, yy, pos.w, imgH, { url: pos.img.url })
+          if (pos.img.url) linkDoc.link(xx, yy, pos.w, imgH, { url: pos.img.url })
         }
       },
     })

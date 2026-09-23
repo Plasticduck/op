@@ -187,4 +187,8 @@ export const attachments = {
   metaForEntity: (type: string, id: string) =>
     supabase.from('ops_attachments').select('id, label, file_name, file_type, created_at').eq('entity_type', type).eq('entity_id', id).order('created_at'),
   data: (id: string) => supabase.from('ops_attachments').select('data_uri, file_name, file_type').eq('id', id).single(),
+  // All attachments (with their base64 data_uri) for one entity — used to embed
+  // photos into a PDF export.
+  allForEntity: (type: string, id: string) =>
+    supabase.from('ops_attachments').select('id, label, file_type, file_name, data_uri').eq('entity_type', type).eq('entity_id', id).order('created_at'),
 }
