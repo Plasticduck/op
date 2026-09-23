@@ -49,6 +49,10 @@ export const siteReviewPhotos = {
 export const siteAudits = {
   list: () => supabase.from('site_audits').select(withLoc).order('created_at', { ascending: false }),
   create: (row: T['site_audits']['Insert']) => supabase.from('site_audits').insert(row).select().single(),
+  // Emails the audit PDF (photos included) to leadership, the site, and its RM.
+  // The PDF is built server-side from the audit id.
+  emailReport: (auditId: string) =>
+    supabase.functions.invoke('email-site-audit', { body: { audit_id: auditId } }),
 }
 
 // Photos attached to individual site-audit items. Stored in the private

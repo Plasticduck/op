@@ -380,7 +380,7 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
     // Photos are already uploaded to storage while filling the form; their paths
     // ride along on each item's answer through sliceAnswers into the columns.
     setBusy(true)
-    const { error: err } = await siteAudits.create({
+    const { data, error: err } = await siteAudits.create({
       account_id: accountId,
       location_id: locationId,
       initial_observations: initialObservations,
@@ -398,6 +398,11 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
       setError(err.message)
       return
     }
+
+    // Email the audit PDF to leadership, the site, and its RM (best-effort; a
+    // delivery failure never blocks the save).
+    const auditId = (data as { id?: string } | null)?.id
+    if (auditId) void siteAudits.emailReport(auditId)
 
     setBusy(false)
     onSaved()
