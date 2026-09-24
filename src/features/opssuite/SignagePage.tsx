@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CreditCard, FileText, Gift, Images, Package, Plus, ShieldAlert, Signpost, Square, StickyNote, Trash2, Upload, Wind, type LucideIcon } from 'lucide-react'
+import { CreditCard, FileText, Gift, GripVertical, Images, Package, Plus, ShieldAlert, Signpost, Square, StickyNote, Trash2, Upload, Wind, type LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -62,17 +62,31 @@ const MW_TILE_IMAGES: Record<string, string> = {
 // Library artwork that belongs in a category's gallery (deduped by path). Other
 // Items catches anything uncategorized or tagged to a name we no longer show.
 function signsInCategory(items: ArtworkItem[], category: string): ArtworkItem[] {
-  const seen = new Set<string>()
-  const out: ArtworkItem[] = []
+  const byPath = new Map<string, ArtworkItem>()
   for (const i of items) {
-    if (!i.artwork_path || seen.has(i.artwork_path)) continue
+    if (!i.artwork_path) continue
     const cat = i.sign_category
     const match = category === 'Other Items'
       ? (!cat || !CATALOG_NAMES.has(cat) || cat === 'Other Items')
       : cat === category
-    if (match) { seen.add(i.artwork_path); out.push(i) }
+    if (!match) continue
+    const existing = byPath.get(i.artwork_path)
+    if (!existing) {
+      byPath.set(i.artwork_path, i)
+    } else if (existing.sort_order == null && i.sort_order != null) {
+      // Same artwork can appear as both a library row and an order row; keep the
+      // first-seen display fields but adopt the admin-arranged position.
+      byPath.set(i.artwork_path, { ...existing, sort_order: i.sort_order })
+    }
   }
-  return out
+  // Admin-arranged signs (sort_order set) come first in that order; the rest keep
+  // the previous default (newest first).
+  return [...byPath.values()].sort((a, b) => {
+    if (a.sort_order != null && b.sort_order != null) return a.sort_order - b.sort_order
+    if (a.sort_order != null) return -1
+    if (b.sort_order != null) return 1
+    return b.created_at > a.created_at ? 1 : -1
+  })
 }
 
 async function openArtwork(path: string) {
@@ -159,7 +173,8 @@ function Inner({ locationId }: { locationId: string }) {
           category={galleryCat}
           items={library}
           accountId={profile?.account_id ?? ''}
-          canDelete={(profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'}
+          canDelete={isAdmin}
+          canReorder={isAdmin}
           onBack={() => setGalleryCat(null)}
           onChanged={load}
           onPick={setPickedSign}
@@ -569,18 +584,51 @@ function AddFromLibraryModal({
 
 // The gallery of signs in one category. Pick a sign to order it (quantity only).
 function SignGallery({
-  category, items, accountId, canDelete, onBack, onChanged, onPick,
+  category, items, accountId, canDelete, canReorder, onBack, onChanged, onPick,
 }: {
   category: string
   items: ArtworkItem[]
   accountId: string
   canDelete: boolean
+  canReorder: boolean
   onBack: () => void
   onChanged: () => void
   onPick: (sign: ArtworkItem) => void
 }) {
   const signs = useMemo(() => signsInCategory(items, category), [items, category])
   const thumbs = useArtworkThumbs(useMemo(() => signs.map((s) => s.artwork_path), [signs]))
+
+  // Local, drag-reorderable copy of the gallery (admin only). Resets whenever the
+  // underlying signs change (reload, category switch).
+  const [ordered, setOrdered] = useState<ArtworkItem[]>(signs)
+  useEffect(() => { setOrdered(signs) }, [signs])
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dirty, setDirty] = useState(false)
+  const [savingOrder, setSavingOrder] = useState(false)
+  const reorderTo = (i: number) => {
+    if (dragIndex === null || dragIndex === i) return
+    setOrdered((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(dragIndex, 1)
+      next.splice(i, 0, moved)
+      return next
+    })
+    setDragIndex(i)
+    setDirty(true)
+  }
+  const saveOrder = async () => {
+    setDragIndex(null)
+    if (!dirty) return
+    setDirty(false)
+    setSavingOrder(true)
+    const { error: err } = await signage.reorderCategory(
+      category,
+      ordered.map((s) => ({ path: s.artwork_path, name: s.artwork_name })),
+    )
+    setSavingOrder(false)
+    if (err) { setError(err.message); return }
+    onChanged()
+  }
 
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -624,6 +672,11 @@ function SignGallery({
           </Button>
         </div>
       </div>
+      {canReorder && signs.length > 1 && (
+        <p className="text-xs text-ink-muted">
+          {savingOrder ? 'Saving order…' : 'Drag any sign to rearrange the gallery. Your order is saved automatically.'}
+        </p>
+      )}
       {picking && (
         <AddFromLibraryModal
           category={category}
@@ -643,21 +696,34 @@ function SignGallery({
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {signs.map((s) => (
+          {ordered.map((s, i) => (
             <div
               key={s.artwork_path}
-              className="group relative flex flex-col gap-2 rounded-xl border border-border bg-card p-2 transition hover:border-accent"
+              draggable={canReorder}
+              onDragStart={canReorder ? (e) => { setDragIndex(i); e.dataTransfer.effectAllowed = 'move' } : undefined}
+              onDragOver={canReorder ? (e) => { e.preventDefault(); reorderTo(i) } : undefined}
+              onDragEnd={canReorder ? () => void saveOrder() : undefined}
+              className={cn(
+                'group relative flex flex-col gap-2 rounded-xl border border-border bg-card p-2 transition hover:border-accent',
+                canReorder && 'cursor-move',
+                dragIndex === i && 'opacity-50 ring-2 ring-accent',
+              )}
             >
               <button type="button" onClick={() => onPick(s)} className="flex flex-col gap-2 text-left">
                 <div className="flex h-60 items-center justify-center overflow-hidden rounded-lg bg-content p-2">
                   {thumbs[s.artwork_path] ? (
-                    <img src={thumbs[s.artwork_path]} alt={s.artwork_name ?? 'Sign'} className="max-h-full max-w-full object-contain" />
+                    <img src={thumbs[s.artwork_path]} alt={s.artwork_name ?? 'Sign'} className="max-h-full max-w-full object-contain" draggable={false} />
                   ) : (
                     <FileText className="size-8 text-ink-subtle" />
                   )}
                 </div>
                 <p className="truncate px-1 text-center text-sm font-medium text-ink group-hover:text-accent">{s.artwork_name ?? 'Sign.pdf'}</p>
               </button>
+              {canReorder && (
+                <div className="absolute left-2 top-2 z-10 rounded-md border border-border bg-card/90 p-1.5 text-ink-muted shadow-sm" title="Drag to rearrange">
+                  <GripVertical className="size-4" />
+                </div>
+              )}
               {canDelete && (
                 <button
                   type="button"

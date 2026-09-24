@@ -32,6 +32,8 @@ export type ArtworkItem = {
   sign_category: string | null
   sign_type: string | null
   created_at: string
+  // Explicit gallery position (admin-arranged). Null sorts after ordered signs.
+  sort_order: number | null
 }
 
 // Top-level product categories (the signage catalog tiles + order form).
@@ -133,16 +135,16 @@ export const signage = {
   // artwork attached to past orders, newest first. Deduped by path in the UI.
   libraryList: async (): Promise<ArtworkItem[]> => {
     const [std, orders] = await Promise.all([
-      supabase.from('signage_artwork').select('path, name, sign_category, created_at'),
+      supabase.from('signage_artwork').select('path, name, sign_category, created_at, sort_order'),
       supabase
         .from('signage_requests')
         .select('artwork_path, artwork_name, sign_category, sign_type, created_at')
         .not('artwork_path', 'is', null),
     ])
-    const a: ArtworkItem[] = ((std.data as { path: string; name: string | null; sign_category: string | null; created_at: string }[] | null) ?? []).map(
-      (s) => ({ artwork_path: s.path, artwork_name: s.name, sign_category: s.sign_category, sign_type: null, created_at: s.created_at }),
+    const a: ArtworkItem[] = ((std.data as { path: string; name: string | null; sign_category: string | null; created_at: string; sort_order: number | null }[] | null) ?? []).map(
+      (s) => ({ artwork_path: s.path, artwork_name: s.name, sign_category: s.sign_category, sign_type: null, created_at: s.created_at, sort_order: s.sort_order }),
     )
-    const b: ArtworkItem[] = (orders.data as ArtworkItem[] | null) ?? []
+    const b: ArtworkItem[] = ((orders.data as Omit<ArtworkItem, 'sort_order'>[] | null) ?? []).map((o) => ({ ...o, sort_order: null }))
     return [...a, ...b].sort((x, y) => (y.created_at > x.created_at ? 1 : -1))
   },
 
@@ -180,6 +182,12 @@ export const signage = {
   // this is locked to a single admin; everyone else gets 403.
   removeArtwork: (path: string) =>
     supabase.functions.invoke('signage-artwork-remove', { body: { path } }),
+
+  // Save the display order of a category's gallery. Send the full ordered list;
+  // each sign's sort_order becomes its index. Server-side this is locked to a
+  // single admin (kevan-only); everyone else gets 403.
+  reorderCategory: (category: string, order: { path: string; name: string | null }[]) =>
+    supabase.functions.invoke('signage-reorder', { body: { category, order } }),
 
   // Add an existing library artwork to a category's gallery (upsert a library row
   // for its path with the category set). Works for standalone + order artwork.
