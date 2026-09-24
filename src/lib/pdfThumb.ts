@@ -19,6 +19,31 @@ async function loadPdfjs() {
 // the storage path (signed URLs change), passed in as `cacheKey`.
 const cache = new Map<string, string>()
 
+// Render the first PDF page to a JPEG blob, for storing a static thumbnail
+// (`<path>.jpg`) so galleries can load an image instead of rendering the PDF.
+export async function renderPdfToJpegBlob(url: string, maxWidth = 600): Promise<Blob | null> {
+  try {
+    const pdfjs = await loadPdfjs()
+    const doc = await pdfjs.getDocument({ url }).promise
+    const page = await doc.getPage(1)
+    const base = page.getViewport({ scale: 1 })
+    const scale = Math.min(2, maxWidth / base.width)
+    const viewport = page.getViewport({ scale })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(viewport.width)
+    canvas.height = Math.ceil(viewport.height)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) { void doc.destroy(); return null }
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    await page.render({ canvasContext: ctx, viewport, background: 'white' }).promise
+    void doc.destroy()
+    return await new Promise<Blob | null>((res) => canvas.toBlob((b) => res(b), 'image/jpeg', 0.82))
+  } catch {
+    return null
+  }
+}
+
 export async function renderPdfThumb(url: string, cacheKey: string, maxWidth = 480): Promise<string | null> {
   const hit = cache.get(cacheKey)
   if (hit) return hit

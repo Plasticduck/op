@@ -1,5 +1,26 @@
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/lib/database.types'
+import { renderPdfToJpegBlob } from '@/lib/pdfThumb'
+
+// A static JPG thumbnail lives beside each artwork PDF at `<path>.jpg` in the
+// same bucket, so galleries load an image instantly instead of rendering the PDF.
+async function generateArtworkThumb(path: string, file: File): Promise<void> {
+  try {
+    const objUrl = URL.createObjectURL(file)
+    try {
+      const blob = await renderPdfToJpegBlob(objUrl)
+      if (blob) {
+        await supabase.storage
+          .from('signage-artwork')
+          .upload(`${path}.jpg`, blob, { contentType: 'image/jpeg', upsert: true })
+      }
+    } finally {
+      URL.revokeObjectURL(objUrl)
+    }
+  } catch {
+    // Best-effort: the gallery falls back to rendering the PDF if no thumb exists.
+  }
+}
 
 type T = Database['public']['Tables']
 export type SignageRequest = T['signage_requests']['Row']
@@ -136,6 +157,7 @@ export const signage = {
     const { error } = await supabase
       .from('signage_artwork')
       .insert({ account_id: accountId, path, name: file.name, sign_category: category ?? null })
+    if (!error) await generateArtworkThumb(path, file)
     return { error }
   },
 
@@ -172,7 +194,9 @@ export const signage = {
     const { error } = await supabase.storage
       .from('signage-artwork')
       .upload(path, file, { contentType: 'application/pdf', upsert: false })
-    return { error, path: error ? null : path }
+    if (error) return { error, path: null }
+    await generateArtworkThumb(path, file)
+    return { error: null, path }
   },
   artworkUrl: async (path: string, expiresIn = 3600) => {
     const { data, error } = await supabase.storage
@@ -186,6 +210,16 @@ export const signage = {
     const { data } = await supabase.storage.from('signage-artwork').createSignedUrls(paths, expiresIn)
     const map: Record<string, string> = {}
     for (const d of data ?? []) if (d.path && d.signedUrl) map[d.path] = d.signedUrl
+    return map
+  },
+  // Batch signed URLs for the static JPG thumbnails (`<path>.jpg`), keyed by the
+  // ORIGINAL artwork path. Missing thumbs are omitted so the caller can fall back
+  // to rendering the PDF.
+  thumbUrls: async (paths: string[], expiresIn = 3600): Promise<Record<string, string>> => {
+    if (!paths.length) return {}
+    const { data } = await supabase.storage.from('signage-artwork').createSignedUrls(paths.map((p) => `${p}.jpg`), expiresIn)
+    const map: Record<string, string> = {}
+    ;(data ?? []).forEach((d, i) => { if (!d.error && d.signedUrl) map[paths[i]] = d.signedUrl })
     return map
   },
 }

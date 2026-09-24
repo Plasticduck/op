@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { timeAgo, shortDate } from '@/lib/format'
 import { renderPdfThumb } from '@/lib/pdfThumb'
+import { useArtworkThumbs } from './useArtworkThumbs'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
@@ -383,23 +384,7 @@ function ArtworkLibrary({
 
   // Small rendered preview (first PDF page) per artwork, so users can see the
   // whole sign without opening it. Rendered on demand and cached across visits.
-  const [thumbs, setThumbs] = useState<Record<string, string>>({})
-  useEffect(() => {
-    const paths = unique.map((u) => u.artwork_path)
-    if (!paths.length) return
-    let active = true
-    void (async () => {
-      const urls = await signage.artworkUrls(paths)
-      for (const p of paths) {
-        if (!active) return
-        const url = urls[p]
-        if (!url) continue
-        const img = await renderPdfThumb(url, p)
-        if (active && img) setThumbs((prev) => (prev[p] ? prev : { ...prev, [p]: img }))
-      }
-    })()
-    return () => { active = false }
-  }, [unique])
+  const thumbs = useArtworkThumbs(useMemo(() => unique.map((u) => u.artwork_path), [unique]))
 
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -529,23 +514,7 @@ function AddFromLibraryModal({
     return items.filter((i) => i.artwork_path && !inCat.has(i.artwork_path) && !seen.has(i.artwork_path) && seen.add(i.artwork_path))
   }, [items, category])
 
-  const [thumbs, setThumbs] = useState<Record<string, string>>({})
-  useEffect(() => {
-    const paths = candidates.map((s) => s.artwork_path)
-    if (!paths.length) return
-    let active = true
-    void (async () => {
-      const urls = await signage.artworkUrls(paths)
-      for (const p of paths) {
-        if (!active) return
-        const url = urls[p]
-        if (!url) continue
-        const img = await renderPdfThumb(url, p)
-        if (active && img) setThumbs((prev) => (prev[p] ? prev : { ...prev, [p]: img }))
-      }
-    })()
-    return () => { active = false }
-  }, [candidates])
+  const thumbs = useArtworkThumbs(useMemo(() => candidates.map((s) => s.artwork_path), [candidates]))
 
   const [added, setAdded] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState<string | null>(null)
@@ -611,23 +580,7 @@ function SignGallery({
   onPick: (sign: ArtworkItem) => void
 }) {
   const signs = useMemo(() => signsInCategory(items, category), [items, category])
-  const [thumbs, setThumbs] = useState<Record<string, string>>({})
-  useEffect(() => {
-    const paths = signs.map((s) => s.artwork_path)
-    if (!paths.length) return
-    let active = true
-    void (async () => {
-      const urls = await signage.artworkUrls(paths)
-      for (const p of paths) {
-        if (!active) return
-        const url = urls[p]
-        if (!url) continue
-        const img = await renderPdfThumb(url, p)
-        if (active && img) setThumbs((prev) => (prev[p] ? prev : { ...prev, [p]: img }))
-      }
-    })()
-    return () => { active = false }
-  }, [signs])
+  const thumbs = useArtworkThumbs(useMemo(() => signs.map((s) => s.artwork_path), [signs]))
 
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
