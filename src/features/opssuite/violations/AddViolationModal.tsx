@@ -87,6 +87,10 @@ export function AddViolationModal({
         }
       }
     }
+    // Email the violation PDF to kjowers, the site's RM, and lkeith (best-effort;
+    // a delivery failure never blocks the save). Sent after attachments upload so
+    // the server-side PDF includes any photos.
+    if (newId) void siteViolations.emailReport(newId)
     setBusy(false)
     onSaved()
   }

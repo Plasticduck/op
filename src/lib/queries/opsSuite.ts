@@ -188,6 +188,11 @@ export const siteViolations = {
       .from('site_violations')
       .update({ status: 'resolved', resolved_by: userId, resolved_by_name: name, resolved_at: new Date().toISOString(), resolution_notes: notes })
       .eq('id', id),
+  // Emails the violation PDF (photos included) to kjowers, the site's RM, and
+  // lkeith. The PDF is built server-side from the violation id, so call this
+  // after any attachments have been saved.
+  emailReport: (violationId: string) =>
+    supabase.functions.invoke('email-site-violation', { body: { violation_id: violationId } }),
 }
 // Per-account customizable form schemas. One row per (account_id, form_key).
 // Returns null when the account hasn't customized that form yet — the caller
