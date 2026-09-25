@@ -32,17 +32,19 @@ export async function loadPdfLogo(url?: string | null): Promise<PdfLogo | null> 
   }
 }
 
-// Place the logo in the top-right corner, preserving aspect ratio.
+// Place the logo in the top-right corner, preserving aspect ratio. Size by
+// `height` when given (matches the RM Site Reviews export), otherwise by `width`.
 export function placePdfLogo(
   doc: JsPdf,
   logo: PdfLogo | null,
-  opts?: { width?: number; margin?: number; y?: number },
+  opts?: { width?: number; height?: number; margin?: number; y?: number },
 ) {
   if (!logo) return
-  const width = opts?.width ?? 42
   const margin = opts?.margin ?? 14
   const y = opts?.y ?? 8
-  const height = width * (logo.h / logo.w)
+  const ratio = logo.w > 0 && logo.h > 0 ? logo.w / logo.h : 1
+  const height = opts?.height ?? (opts?.width ?? 42) * (1 / ratio)
+  const width = opts?.height ? opts.height * ratio : (opts?.width ?? 42)
   const pageW = doc.internal.pageSize.getWidth()
   doc.addImage(logo.dataUrl, 'PNG', pageW - margin - width, y, width, height)
 }

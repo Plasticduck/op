@@ -78,7 +78,8 @@ export async function buildSiteViolationPdf(input: SiteViolationPdfInput): Promi
   const meta = ['Site: ' + (input.siteName ?? '-'), 'Department: ' + (input.department ?? '-'), 'Reported: ' + fmtDate(input.reportedAt)].join('  |  ')
   doc.text(meta, marginX, topMargin + 7)
 
-  placePdfLogo(doc, input.logo, { width: 34, margin: marginX, y: 6 })
+  // Match the RM Site Reviews export: sized to 18mm tall in the top-right corner.
+  placePdfLogo(doc, input.logo, { height: 18, margin: marginX, y: 6 })
 
   // Detail rows (blank/absent fields dropped so resolved-only info is omitted
   // for open violations).
