@@ -1,12 +1,16 @@
 // isolved-labor — Supabase Edge Function (Deno).
 // Rolls up iSolved labor for a date range by site, pay type, and employee, with
-// an ESTIMATED labor cost in dollars. Two modes (body.includeSalaried):
-//   - all-in (default): hourly staff costed from timecard punches (rate x hours,
-//     OT 1.5x); ACTIVE salaried staff costed from the roster instead — their
-//     salary allocated to the range (annual / 365 x days) and assigned to their
-//     iSolved work location — so Corporate and salaried overhead are included
-//     even though salaried employees don't punch a clock.
-//   - timecard only (includeSalaried=false): everyone costed from punches.
+// an ESTIMATED labor cost in dollars. Hourly staff are costed from timecard
+// punches (rate x hours, OT 1.5x); ACTIVE salaried staff are costed from the
+// roster instead — their salary allocated to the range (annual / 365 x days) and
+// assigned to their iSolved work location — since salaried employees don't punch
+// a clock. Which salaried are included is set by body.salariedScope:
+//   - 'exclude-corporate' (default): hourly + salaried EXCEPT Corporate salaried
+//     (the operational "Labor Data" view; Corporate salaried is overhead shown
+//     only on the Salaried Labor page).
+//   - 'none': hourly only, no salaried at all (Labor Data with salaried hidden).
+//   - 'only': salaried only, ALL sites including Corporate; no hourly (the
+//     Salaried Labor page).
 // This is a base-rate estimate, NOT the payroll gross (no employer taxes/
 // benefits, differentials, bonuses, retro pay, or mid-period rate changes; rates
 // are current). Credentials live in secrets; only rate/name fields (never SSN/
@@ -109,7 +113,7 @@ Deno.serve(async (req) => {
     return json({ error: 'no_key', message: 'iSolved is not configured.' }, 503, origin)
   }
 
-  let body: { startDate?: string; endDate?: string; includeSalaried?: boolean } = {}
+  let body: { startDate?: string; endDate?: string; salariedScope?: string } = {}
   try {
     body = await req.json()
   } catch {
@@ -117,7 +121,9 @@ Deno.serve(async (req) => {
   }
   const re = /^\d{4}-\d{2}-\d{2}$/
   const { startDate, endDate } = body
-  const includeSalaried = body.includeSalaried !== false // default all-in
+  // Which salaried staff to include. Default is the operational Labor Data view.
+  const scope: 'exclude-corporate' | 'none' | 'only' =
+    body.salariedScope === 'none' || body.salariedScope === 'only' ? body.salariedScope : 'exclude-corporate'
   if (!startDate || !endDate || !re.test(startDate) || !re.test(endDate)) {
     return json({ error: 'bad_request', message: 'startDate and endDate (YYYY-MM-DD) are required.' }, 400, origin)
   }
@@ -152,7 +158,7 @@ Deno.serve(async (req) => {
         const rec = { rate: effRate(e), payType }
         if (e.employeeNumber != null) rateByKey.set(String(e.employeeNumber), rec)
         if (e.id != null) rateByKey.set('id:' + String(e.id), rec)
-        if (includeSalaried && String(e.employmentStatus) === 'Active') {
+        if (String(e.employmentStatus) === 'Active') {
           const na = e.nameAddress ?? {}
           const name = [na.firstName, na.lastName].filter(Boolean).join(' ').trim() || String(e.employeeNumber ?? '')
           roster.push({ number: String(e.employeeNumber ?? e.id ?? ''), name, payType, rate: rec.rate, annual: annualSalaryOf(e), site: siteFromWorkLocation(String(e.workLocation ?? '')) })
@@ -174,8 +180,9 @@ Deno.serve(async (req) => {
       return s
     }
 
-    // 2) Timecards -> hourly (and, in timecard-only mode, salaried) cost.
-    let pageUrl = `${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=200&page=1`
+    // 2) Timecards -> hourly cost. Salaried are always costed from the roster
+    //    (step 3), never from punches. Skipped entirely on the salaried-only view.
+    let pageUrl = scope === 'only' ? '' : `${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=200&page=1`
     let pages = 0
     while (pageUrl && pages < 200) {
       const d = await getJson(pageUrl)
@@ -184,8 +191,8 @@ Deno.serve(async (req) => {
         const empId = r.employeeId as number
         const empNum = String(r.employeeNumber ?? empId ?? '')
         const rr = rateByKey.get(empNum) ?? rateByKey.get('id:' + String(empId)) ?? { rate: 0, payType: '' }
-        // In all-in mode salaried are costed from the roster instead of punches.
-        if (includeSalaried && rr.payType === 'Salary') continue
+        // Salaried are costed from the roster, not punches.
+        if (rr.payType === 'Salary') continue
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || empNum
         let emp = empsMap.get(empNum)
         if (!emp) {
@@ -212,13 +219,17 @@ Deno.serve(async (req) => {
       pageUrl = d.nextPageUrl ?? ''
     }
 
-    // 3) Salaried overhead (all-in): allocate each active salaried person's salary
-    //    across the range and assign it to their work-location site. Hours are a
-    //    full-time-equivalent estimate so blended $/hr stays sensible.
-    if (includeSalaried) {
+    // 3) Roster pass. Salaried overhead: allocate each active salaried person's
+    //    salary across the range and assign it to their work-location site (hours
+    //    are a full-time-equivalent estimate so blended $/hr stays sensible).
+    //    Which salaried are kept depends on scope; Corporate salaried is dropped
+    //    from the operational views and kept only on the salaried-only view.
+    {
       const ftHours = (FT_YEAR_HOURS / 365) * days
       for (const s of roster) {
         if (s.payType === 'Salary') {
+          if (scope === 'none') continue
+          if (scope === 'exclude-corporate' && s.site === 'Corporate') continue
           const cost = (s.annual / 365) * days
           const rate = s.annual > 0 ? s.annual / FT_YEAR_HOURS : 0
           const site = siteOf(s.site)
@@ -230,9 +241,10 @@ Deno.serve(async (req) => {
           typeTotals['Salaried'] = (typeTotals['Salaried'] || 0) + ftHours
           grandHours += ftHours; grandCost += cost
           if (s.annual <= 0) { unratedEmps.add(s.number); unratedHours += ftHours }
-        } else if (!empsMap.has(s.number)) {
+        } else if (scope !== 'only' && !empsMap.has(s.number)) {
           // Active hourly who did not punch in this range: list at their home site
-          // with no worked hours ($0) so the active roster is complete.
+          // with no worked hours ($0) so the active roster is complete. Not shown
+          // on the salaried-only view.
           const site = siteOf(s.site)
           site.emps.add(s.number)
           empsMap.set(s.number, { number: s.number, name: s.name, payType: 'Hourly', rate: s.rate, rated: s.rate > 0, total: 0, cost: 0, byType: {}, sites: new Set([s.site]) })
@@ -253,7 +265,7 @@ Deno.serve(async (req) => {
     return json(
       {
         range: { startDate, endDate },
-        includeSalaried,
+        salariedScope: scope,
         payTypes,
         sites,
         employees,
@@ -268,7 +280,9 @@ Deno.serve(async (req) => {
         },
         assumptions: {
           otMultiplier: OT_MULTIPLIER,
-          salariedBasis: includeSalaried ? 'active salaried costed from roster: annual / 365 x days, FT-equivalent hours' : 'salaried costed from timecard punches',
+          salariedBasis: scope === 'none'
+            ? 'salaried excluded; hourly costed from timecard punches'
+            : 'active salaried costed from roster: annual / 365 x days, FT-equivalent hours',
           days,
           note: 'Base-rate estimate, not payroll gross.',
         },

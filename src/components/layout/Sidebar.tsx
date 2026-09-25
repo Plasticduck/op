@@ -262,8 +262,15 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         to: '/app/hr/payroll-labor',
-        label: 'Payroll Labor',
+        label: 'Labor Data',
         icon: Clock,
+        roles: ['owner'],
+        superAdmin: true,
+      },
+      {
+        to: '/app/hr/salaried-labor',
+        label: 'Salaried Labor',
+        icon: Wallet,
         roles: ['owner'],
         superAdmin: true,
       },

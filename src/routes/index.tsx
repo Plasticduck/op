@@ -127,7 +127,8 @@ const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortal
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
 const MarketExplorerPage = lz(() => import('@/features/opssuite/MarketExplorerPage'))
-const PayrollLaborPage = lz(() => import('@/features/hr/PayrollLaborPage'))
+const LaborDataPage = lz(() => import('@/features/hr/LaborDataPage'))
+const SalariedLaborPage = lz(() => import('@/features/hr/SalariedLaborPage'))
 const ServiceBoardPage = lz(() => import('@/features/facilities/ServiceBoardPage'))
 const HouseholdFinderPage = lz(() => import('@/features/opssuite/HouseholdFinderPage'))
 const LubeShopPage = lz(() => import('@/features/opssuite/LubeShopPage'))
@@ -225,7 +226,8 @@ export const router = createBrowserRouter([
           { path: 'signage', element: emp(<SignagePage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
-          { path: 'hr/payroll-labor', element: <RequireSuperAdmin>{s(<PayrollLaborPage />)}</RequireSuperAdmin> },
+          { path: 'hr/payroll-labor', element: <RequireSuperAdmin>{s(<LaborDataPage />)}</RequireSuperAdmin> },
+          { path: 'hr/salaried-labor', element: <RequireSuperAdmin>{s(<SalariedLaborPage />)}</RequireSuperAdmin> },
           { path: 'facilities', element: s(<ServiceBoardPage />) },
           { path: 'details', element: mgr(<InteriorDetailsPage />) },
           { path: 'msa-performance', element: mgr(<MsaPerformancePage />) },

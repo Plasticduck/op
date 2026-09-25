@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { format, startOfMonth, subDays, subMonths, endOfMonth } from 'date-fns'
-import { Clock, Loader2, RefreshCw, Download, Search, Building2, Users } from 'lucide-react'
-import { isolvedLabor, type LaborResponse } from '@/lib/queries/isolved'
+import { Clock, Loader2, RefreshCw, Download, Search, Building2, Users, Wallet } from 'lucide-react'
+import { isolvedLabor, type LaborResponse, type SalariedScope } from '@/lib/queries/isolved'
 import { fnErrorMessage } from '@/lib/fnError'
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd')
@@ -33,7 +33,14 @@ function downloadCsv(name: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url)
 }
 
-export default function PayrollLaborPage() {
+// Two views share this report:
+//   - 'labor'    (Labor Data): hourly + non-Corporate salaried, with a toggle to
+//     show or hide salaried. Corporate salaried is never shown here.
+//   - 'salaried' (Salaried Labor): salaried only, all sites incl. Corporate.
+export type LaborVariant = 'labor' | 'salaried'
+
+export default function LaborReport({ variant }: { variant: LaborVariant }) {
+  const salaried = variant === 'salaried'
   const [start, setStart] = useState(() => iso(startOfMonth(new Date())))
   const [end, setEnd] = useState(() => iso(new Date()))
   const [data, setData] = useState<LaborResponse | null>(null)
@@ -41,21 +48,27 @@ export default function PayrollLaborPage() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<'sites' | 'employees'>('sites')
   const [empSearch, setEmpSearch] = useState('')
-  const [allIn, setAllIn] = useState(true)
+  // Labor Data only: whether salaried (non-Corporate) staff are shown.
+  const [showSalaried, setShowSalaried] = useState(true)
 
-  const load = useCallback(async (s: string, e: string, inc: boolean) => {
+  const scopeFor = useCallback(
+    (show: boolean): SalariedScope => (salaried ? 'only' : show ? 'exclude-corporate' : 'none'),
+    [salaried],
+  )
+
+  const load = useCallback(async (s: string, e: string, scope: SalariedScope) => {
     setLoading(true)
     setError(null)
     try {
-      const { data: d, error: err } = await isolvedLabor(s, e, inc)
+      const { data: d, error: err } = await isolvedLabor(s, e, scope)
       if (err || d?.error) {
-        setError(await fnErrorMessage(err, (d ?? null) as { message?: string; error?: string } | null, 'Could not load payroll labor from iSolved.'))
+        setError(await fnErrorMessage(err, (d ?? null) as { message?: string; error?: string } | null, 'Could not load labor from iSolved.'))
         setData(null)
         return
       }
       setData(d ?? null)
     } catch {
-      setError('Could not load payroll labor from iSolved.')
+      setError('Could not load labor from iSolved.')
       setData(null)
     } finally {
       setLoading(false)
@@ -63,7 +76,7 @@ export default function PayrollLaborPage() {
   }, [])
 
   useEffect(() => {
-    void load(start, end, allIn)
+    void load(start, end, scopeFor(showSalaried))
     // Load once on mount with the default range; further loads are on demand.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -76,28 +89,35 @@ export default function PayrollLaborPage() {
     return q ? list.filter((e) => e.name.toLowerCase().includes(q) || e.employeeNumber.includes(q)) : list
   }, [data, empSearch])
 
+  const filePrefix = salaried ? 'salaried-labor' : 'labor-data'
   const exportSites = () => {
     if (!data) return
     const header = ['Site', ...payTypes, 'Total hours', 'Est. cost', 'Employees']
     const rows = data.sites.map((s) => [s.site, ...payTypes.map((p) => s.byPayType[p] ?? 0), s.totalHours, s.cost, s.employees])
     const totalRow = ['Total', ...payTypes.map((p) => data.totals.byPayType[p] ?? 0), data.totals.totalHours, data.totals.totalCost, data.totals.employees]
-    downloadCsv(`payroll-labor-by-site-${start}-to-${end}.csv`, [header, ...rows, totalRow])
+    downloadCsv(`${filePrefix}-by-site-${start}-to-${end}.csv`, [header, ...rows, totalRow])
   }
   const exportEmployees = () => {
     if (!data) return
     const header = ['Employee', 'Emp #', 'Type', 'Rate', 'Sites', ...payTypes, 'Total hours', 'Est. cost']
     const rows = data.employees.map((e) => [e.name, e.employeeNumber, e.payType, e.rate, e.sites.join(' / '), ...payTypes.map((p) => e.byPayType[p] ?? 0), e.totalHours, e.cost])
-    downloadCsv(`payroll-labor-by-employee-${start}-to-${end}.csv`, [header, ...rows])
+    downloadCsv(`${filePrefix}-by-employee-${start}-to-${end}.csv`, [header, ...rows])
   }
+
+  const title = salaried ? 'Salaried Labor' : 'Labor Data'
+  const Icon = salaried ? Wallet : Clock
+  const subtitle = salaried
+    ? 'Salaried staff and estimated salary cost from iSolved, including Corporate, by site and employee.'
+    : 'Timecard hours and estimated labor cost from iSolved, by site and employee. Corporate salaried is excluded here.'
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-ink">
-            <Clock className="size-6 text-accent" /> Payroll Labor
+            <Icon className="size-6 text-accent" /> {title}
           </h1>
-          <p className="mt-1 text-sm text-ink-muted">Timecard hours and estimated labor cost from iSolved, by site and employee.</p>
+          <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>
         </div>
       </div>
       <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-ink-muted">
@@ -114,7 +134,7 @@ export default function PayrollLaborPage() {
                 const r = p.range()
                 setStart(r.start)
                 setEnd(r.end)
-                void load(r.start, r.end, allIn)
+                void load(r.start, r.end, scopeFor(showSalaried))
               }}
               className="rounded-lg border border-border bg-content px-3 py-2 text-sm font-medium text-ink-muted hover:border-accent hover:text-ink"
             >
@@ -122,20 +142,24 @@ export default function PayrollLaborPage() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-content p-1">
-          {[{ k: true, l: 'All-in' }, { k: false, l: 'Timecard only' }].map((m) => (
-            <button
-              key={String(m.k)}
-              onClick={() => {
-                setAllIn(m.k)
-                void load(start, end, m.k)
-              }}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${allIn === m.k ? 'bg-card text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
-            >
-              {m.l}
-            </button>
-          ))}
-        </div>
+        {!salaried && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showSalaried}
+            onClick={() => {
+              const next = !showSalaried
+              setShowSalaried(next)
+              void load(start, end, scopeFor(next))
+            }}
+            className="flex items-center gap-2 rounded-lg border border-border bg-content px-3 py-2 text-sm font-medium text-ink-muted hover:border-accent hover:text-ink"
+          >
+            <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${showSalaried ? 'bg-accent' : 'bg-border'}`}>
+              <span className={`inline-block size-4 rounded-full bg-white shadow transition ${showSalaried ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </span>
+            Show salaried
+          </button>
+        )}
         <div className="flex items-end gap-2">
           <label className="text-xs font-medium text-ink-subtle">
             Start
@@ -146,7 +170,7 @@ export default function PayrollLaborPage() {
             <input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} className="mt-1 block rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink" />
           </label>
           <button
-            onClick={() => void load(start, end, allIn)}
+            onClick={() => void load(start, end, scopeFor(showSalaried))}
             disabled={loading}
             className="inline-flex h-[38px] items-center gap-2 rounded-lg bg-accent px-4 text-sm font-semibold text-white disabled:opacity-60"
           >
@@ -274,13 +298,24 @@ export default function PayrollLaborPage() {
           )}
 
           <p className="mt-4 text-xs text-ink-subtle">
-            Source: iSolved for {data.range.startDate} to {data.range.endDate}. {data.includeSalaried ? 'All-in: hourly staff from timecard punches (overtime at 1.5x) plus active salaried staff costed from salary (annual / 365 times days), assigned to their work location. Active employees with no hours in this range are listed at $0.' : 'Timecard only: everyone costed from punches (salaried at annual salary / 2080).'} Base-rate estimate, not the payroll gross.
+            Source: iSolved for {data.range.startDate} to {data.range.endDate}. {footerNote(data)}
             {data.totals.unratedEmployees > 0 ? ` ${data.totals.unratedEmployees} employee(s) had no rate on file (shown at $0).` : ''}
           </p>
         </>
       )}
     </div>
   )
+}
+
+function footerNote(data: LaborResponse): string {
+  switch (data.salariedScope) {
+    case 'only':
+      return 'Salaried staff only, including Corporate, costed from salary (annual / 365 times days) and assigned to their work location.'
+    case 'none':
+      return 'Salaried hidden: hourly staff costed from timecard punches (overtime at 1.5x). Active hourly with no hours in this range are listed at $0.'
+    default:
+      return 'Hourly staff from timecard punches (overtime at 1.5x) plus active salaried costed from salary (annual / 365 times days), assigned to their work location. Corporate salaried is excluded. Active employees with no hours in this range are listed at $0.'
+  }
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: 'accent' }) {
