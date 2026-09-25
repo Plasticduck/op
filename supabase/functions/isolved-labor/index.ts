@@ -62,6 +62,14 @@ function siteFromWorkLocation(wl: string): string {
   return 'Unassigned'
 }
 
+// Specific salaried staff to omit from the operational Labor Data view (they
+// remain on the Salaried Labor page). Matched loosely on name so a Murry/Murray
+// spelling or a middle initial still hits. Per request 2026-09-25.
+function isExcludedFromLaborData(name: string): boolean {
+  const n = name.toLowerCase()
+  return n.includes('heather') && n.includes('mur')
+}
+
 function annualSalaryOf(e: Any): number {
   const annual = Number(e.annualSalary) || 0
   if (annual > 0) return annual
@@ -230,6 +238,7 @@ Deno.serve(async (req) => {
         if (s.payType === 'Salary') {
           if (scope === 'none') continue
           if (scope === 'exclude-corporate' && s.site === 'Corporate') continue
+          if (scope === 'exclude-corporate' && isExcludedFromLaborData(s.name)) continue
           const cost = (s.annual / 365) * days
           const rate = s.annual > 0 ? s.annual / FT_YEAR_HOURS : 0
           const site = siteOf(s.site)
