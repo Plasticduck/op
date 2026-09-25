@@ -27,7 +27,6 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const DEFAULT_BASE = 'https://dashboard.tail1e050b.ts.net'
 const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
-const NON_WASH_SITES = [98, 99]
 const WASH_SALES_ROLE = 101 // EMPROLE.OBJID for "Wash Sales" (role type 30 = Sales)
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 const PLAN_CHANGE_RECHARGE_DAYS = 45 // a recharge within N days before = already an active member
@@ -85,6 +84,25 @@ async function runSql(base: string, cookie: string, sql: string): Promise<SqlRes
   return data as SqlResult
 }
 
+// SiteWatch SALE.SITE is an internal site id, NOT the MW store number. The real
+// store number lives in SITELIST.SITENAME ("MightyWash 001" -> MW01). OLD/HQ rows
+// don't match and are skipped.
+async function loadSiteMap(base: string, cookie: string): Promise<Map<number, { store: number; label: string }>> {
+  const m = new Map<number, { store: number; label: string }>()
+  let res: SqlResult
+  try { res = await runSql(base, cookie, `SELECT sl.ID, TRIM(sl.SITENAME) FROM SITELIST sl`) } catch { return m }
+  for (const r of res.rows ?? []) {
+    const id = Math.trunc(Number(r[0]) || 0)
+    const nm = String(r[1] ?? '')
+    const mm = nm.match(/mightywash\s*0*(\d+)/i)
+    if (!id || !mm) continue
+    const store = parseInt(mm[1], 10)
+    if (!Number.isFinite(store) || store <= 0) continue
+    m.set(id, { store, label: `MW${String(store).padStart(2, '0')}` })
+  }
+  return m
+}
+
 const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
 const addDays = (d: string, n: number): string => new Date(new Date(d + 'T00:00:00Z').getTime() + n * 86400_000).toISOString().slice(0, 10)
 const num = (v: unknown): number => (v == null ? 0 : Number(v) || 0)
@@ -122,20 +140,23 @@ Deno.serve(async (req) => {
   let cookie: string
   try { cookie = await login(base, password) } catch (e) { return json({ error: 'login_failed', message: String(e) }, 502, origin) }
 
-  // Selectable DRB sites (last 60 days), minus FlexWash + HQ.
+  // Selectable DRB sites: active MightyWash stores with sales in the last 60 days,
+  // minus FlexWash stores (they're audited on the FlexWash side) and HQ. The
+  // dropdown value is the internal SITE id; the label is the real store number.
   if (body.list) {
     const { data: fw } = await svc.from('flexwash_sites').select('site_number').eq('active', true)
-    const fwNums = ((fw as { site_number: number }[] | null) ?? []).map((s) => s.site_number).filter((n) => Number.isInteger(n))
+    const fwStores = new Set(((fw as { site_number: number }[] | null) ?? []).map((s) => s.site_number))
     const cutoff = addDays(new Date().toISOString().slice(0, 10), -60)
-    const excl = [...fwNums, ...NON_WASH_SITES]
-    const sql = `SELECT s.SITE, COUNT(*) FROM SALE s WHERE s.LOGDATE >= '${cutoff} 00:00:00' ` +
-      (excl.length ? `AND s.SITE NOT IN (${excl.join(', ')}) ` : '') + `GROUP BY s.SITE ORDER BY s.SITE`
-    let res: SqlResult
-    try { res = await runSql(base, cookie, sql) } catch (e) { return json({ error: 'query_failed', message: String(e) }, 502, origin) }
-    const sites = (res.rows ?? [])
-      .map((r) => Math.trunc(num(r[0])))
-      .filter((n) => Number.isInteger(n) && n > 0)
-      .map((n) => ({ site_number: n, name: `Mighty Wash #${n}` }))
+    let recent: SqlResult, map: Map<number, { store: number; label: string }>
+    try {
+      recent = await runSql(base, cookie, `SELECT s.SITE FROM SALE s WHERE s.LOGDATE >= '${cutoff} 00:00:00' GROUP BY s.SITE`)
+      map = await loadSiteMap(base, cookie)
+    } catch (e) { return json({ error: 'query_failed', message: String(e) }, 502, origin) }
+    const recentIds = new Set((recent.rows ?? []).map((r) => Math.trunc(num(r[0]))))
+    const sites = [...map.entries()]
+      .filter(([id, info]) => recentIds.has(id) && !fwStores.has(info.store))
+      .map(([id, info]) => ({ site_number: id, store: info.store, name: info.label }))
+      .sort((a, b) => a.store - b.store)
     return json({ ok: true, sites }, 200, origin)
   }
 
@@ -256,9 +277,12 @@ Deno.serve(async (req) => {
 
   detail.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0))
 
+  const siteLabel = (await loadSiteMap(base, cookie)).get(site)?.label ?? `Site ${site}`
+
   return json({
     ok: true,
     site,
+    siteLabel,
     range: { start, end: body.end },
     rows: out,
     detail,

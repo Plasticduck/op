@@ -30,6 +30,7 @@ export type MsaAuditSale = {
 }
 export type MsaAuditReport = {
   site: number
+  siteLabel: string
   range: { start: string; end: string }
   rows: MsaAuditRow[]
   detail: MsaAuditSale[]
@@ -51,6 +52,7 @@ export const drbMsaAudit = {
     const d = (data ?? {}) as Partial<MsaAuditReport>
     return {
       site: d.site ?? site,
+      siteLabel: d.siteLabel ?? `Site ${site}`,
       range: d.range ?? { start, end },
       rows: d.rows ?? [],
       detail: d.detail ?? [],

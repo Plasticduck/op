@@ -111,7 +111,7 @@ export default function MsaSaleAuditPage() {
           Site
           <Select value={site} onChange={(e) => setSite(e.target.value)} className="mt-1 block h-9 w-44">
             {sites.length === 0 && <option value="">Loading…</option>}
-            {sites.map((s) => <option key={s.site_number} value={s.site_number}>{`Mighty Wash #${s.site_number}`}</option>)}
+            {sites.map((s) => <option key={s.site_number} value={s.site_number}>{s.name}</option>)}
           </Select>
         </label>
         <label className="text-xs font-medium text-ink-subtle">
@@ -142,6 +142,7 @@ export default function MsaSaleAuditPage() {
 
       {report && (
         <>
+          <p className="-mt-2 text-sm font-medium text-ink">{report.siteLabel} · {report.range.start} to {report.range.end}</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Kpi label="Conversion" value={totals.conv !== null ? `${totals.conv}%` : '—'} sub="memberships ÷ eligible washes" />
             <Kpi label="Memberships sold" value={num(totals.net)} sub={totals.raw !== totals.net ? `${num(totals.raw)} before exclusions` : 'counted'} />
