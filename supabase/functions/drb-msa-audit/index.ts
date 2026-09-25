@@ -108,6 +108,17 @@ const addDays = (d: string, n: number): string => new Date(new Date(d + 'T00:00:
 const num = (v: unknown): number => (v == null ? 0 : Number(v) || 0)
 const nameOf = (first: unknown, last: unknown, empId: unknown): string =>
   [String(first ?? '').trim(), String(last ?? '').trim()].filter(Boolean).join(' ').trim() || `#${empId}`
+// SALE.LOGDATE is date-only; the real transaction time is on SALE.CREATED
+// ("2026-09-24 08:48:26"). Format to a 12-hour clock; '' if unparseable.
+const fmtTime = (created: unknown): string => {
+  const m = String(created ?? '').match(/\d{4}-\d{2}-\d{2}[ T](\d{2}):(\d{2})/)
+  if (!m) return ''
+  let h = parseInt(m[1], 10)
+  const ap = h >= 12 ? 'PM' : 'AM'
+  h = h % 12
+  if (h === 0) h = 12
+  return `${h}:${m[2]} ${ap}`
+}
 const isKiosk = (name: string): boolean => /\bxpt\b/i.test(name) || /kiosk/i.test(name)
 const dayKey = (v: unknown): string => String(v ?? '').slice(0, 10)
 
@@ -173,7 +184,7 @@ Deno.serve(async (req) => {
 
   // 1) Membership sales (numerator base), per (sale, Wash-Sales employee, item).
   const soldSql =
-    `SELECT s.OBJID, s.CODE, s.LOGDATE, s.CUSTOMERCODE, se.EMPLOYEE, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME), TRIM(it.NAME) ` +
+    `SELECT s.OBJID, s.CODE, s.LOGDATE, s.CUSTOMERCODE, se.EMPLOYEE, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME), TRIM(it.NAME), s.CREATED ` +
     `FROM SALE s ` +
     `JOIN SALEITEMS si ON si.SITE = s.SITE AND si.SALEID = s.OBJID ` +
     `JOIN ITEM it ON it.OBJID = si.ITEM ` +
@@ -229,7 +240,7 @@ Deno.serve(async (req) => {
   }
 
   // Fold membership-sale rows into one record per sale.
-  type Sale = { objid: string; code: string; day: string; customer: string; empId: string; empName: string; items: Set<string> }
+  type Sale = { objid: string; code: string; day: string; time: string; customer: string; empId: string; empName: string; items: Set<string> }
   const sales = new Map<string, Sale>()
   for (const r of soldRes.rows ?? []) {
     const objid = String(r[0] ?? '')
@@ -237,7 +248,7 @@ Deno.serve(async (req) => {
     const key = objid + ':' + empId // credit each Wash-Sales employee on the sale
     let rec = sales.get(key)
     if (!rec) {
-      rec = { objid, code: String(r[1] ?? ''), day: dayKey(r[2]), customer: String(r[3] ?? ''), empId, empName: nameOf(r[5], r[6], empId), items: new Set() }
+      rec = { objid, code: String(r[1] ?? ''), day: dayKey(r[2]), time: fmtTime(r[8]), customer: String(r[3] ?? ''), empId, empName: nameOf(r[5], r[6], empId), items: new Set() }
       sales.set(key, rec)
     }
     const item = String(r[7] ?? '').trim()
@@ -267,7 +278,7 @@ Deno.serve(async (req) => {
     if (f?.reactivation) { excluded = 'reactivation_90d'; row.excludedReactivation += 1 }
     else if (f?.planChange) { excluded = 'plan_change'; row.excludedPlanChange += 1 }
     else row.soldNet += 1
-    detail.push({ code: s.code, day: s.day, customer: s.customer || null, employeeId: s.empId, employee: s.empName, kiosk: isKiosk(s.empName), items: [...s.items], excluded })
+    detail.push({ code: s.code, day: s.day, time: s.time, customer: s.customer || null, employeeId: s.empId, employee: s.empName, kiosk: isKiosk(s.empName), items: [...s.items], excluded })
   }
 
   const out = [...rows.values()].map((r) => ({

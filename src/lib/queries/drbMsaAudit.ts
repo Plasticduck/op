@@ -21,6 +21,7 @@ export type MsaAuditRow = {
 export type MsaAuditSale = {
   code: string
   day: string
+  time: string
   customer: string | null
   employeeId: string
   employee: string

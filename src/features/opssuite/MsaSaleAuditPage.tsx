@@ -199,13 +199,13 @@ export default function MsaSaleAuditPage() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-y border-border">
-                    {['Date', 'Ticket', 'MSA', 'Plan item', 'Customer', 'Status'].map((h) => <th key={h} className={th}>{h}</th>)}
+                    {['Date & time', 'Ticket', 'MSA', 'Plan item', 'Customer', 'Status'].map((h) => <th key={h} className={th}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {detail.map((s, i) => (
                     <tr key={s.code + s.employeeId + i} className={cn(s.excluded && 'bg-warn-soft/40')}>
-                      <td className={td}>{s.day}</td>
+                      <td className={td}>{s.day}{s.time ? ` · ${s.time}` : ''}</td>
                       <td className={td}>#{s.code}</td>
                       <td className={cn(td, s.kiosk && 'text-ink-muted')}>{s.employee}</td>
                       <td className={td}>{s.items.join(', ') || '—'}</td>
