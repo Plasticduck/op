@@ -113,6 +113,7 @@ const SignagePage = lz(() => import('@/features/opssuite/SignagePage'))
 const SitePerformancePage = lz(() => import('@/features/opssuite/SitePerformancePage'))
 const InteriorDetailsPage = lz(() => import('@/features/opssuite/InteriorDetailsPage'))
 const MsaPerformancePage = lz(() => import('@/features/opssuite/MsaPerformancePage'))
+const MsaSaleAuditPage = lz(() => import('@/features/opssuite/MsaSaleAuditPage'))
 const FlexwashSalesPage = lz(() => import('@/features/opssuite/FlexwashSalesPage'))
 const InteriorReportingPage = lz(() => import('@/features/opssuite/InteriorReportingPage'))
 const CamerasPage = lz(() => import('@/features/cameras/CamerasPage'))
@@ -231,6 +232,7 @@ export const router = createBrowserRouter([
           { path: 'facilities', element: s(<ServiceBoardPage />) },
           { path: 'details', element: mgr(<InteriorDetailsPage />) },
           { path: 'msa-performance', element: mgr(<MsaPerformancePage />) },
+          { path: 'msa-sale-audit', element: mgr(<MsaSaleAuditPage />) },
           { path: 'flexwash-sales', element: mgr(<FlexwashSalesPage />) },
           { path: 'interior-reporting', element: mgr(<InteriorReportingPage />) },
           { path: 'cameras', element: mgr(<CamerasPage />) },

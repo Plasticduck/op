@@ -176,6 +176,12 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
+        to: '/app/msa-sale-audit',
+        label: 'MSA Sale Audit',
+        icon: SearchCheck,
+        roles: ['owner', 'manager'],
+      },
+      {
         to: '/app/flexwash-sales',
         label: 'FlexWash Sales Reports',
         icon: ReceiptText,
