@@ -9,8 +9,21 @@ export type LubeDay = { date: string; tickets: number; net_sales: number; tax: n
 export type LubeCategory = { name: string; dollars: number; items: number }
 export type LubeTotals = { net_sales: number; tax: number; tickets: number }
 // Add-ons (upsell parts/accessories) sold, credited to the Lube Top Tech on the ticket.
-export type LubeAddonTech = { employee_id: string; name: string; tickets: number; units: number; lines: number; dollars: number; avg_addon_per_ticket: number; top_item: { name: string; units: number } | null }
+export type LubeAddonTech = {
+  employee_id: string
+  name: string
+  tickets: number
+  units: number
+  lines: number
+  dollars: number
+  avg_addon_per_ticket: number
+  addon_tickets: number
+  attach_rate: number
+  units_per_ticket: number
+  top_item: { name: string; units: number } | null
+}
 export type LubeAddonCategory = { name: string; units: number; dollars: number }
+export type LubeTechCategory = { employee_id: string; category: string; units: number; dollars: number }
 export type LubeStats = {
   start: string
   end: string
@@ -18,6 +31,7 @@ export type LubeStats = {
   categories: LubeCategory[]
   addonsByTech: LubeAddonTech[]
   addonCategories: LubeAddonCategory[]
+  techCategoryMatrix: LubeTechCategory[]
   totals: LubeTotals
 }
 
@@ -28,6 +42,7 @@ export async function fetchLubeStats(start: string, end: string): Promise<LubeSt
   return {
     start: d.start, end: d.end, days: d.days ?? [], categories: d.categories ?? [],
     addonsByTech: d.addonsByTech ?? [], addonCategories: d.addonCategories ?? [],
+    techCategoryMatrix: d.techCategoryMatrix ?? [],
     totals: d.totals ?? { net_sales: 0, tax: 0, tickets: 0 },
   }
 }

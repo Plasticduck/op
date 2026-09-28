@@ -336,6 +336,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Wrench,
         roles: ['owner', 'manager'],
       },
+      {
+        to: '/app/lube-leaderboard',
+        label: 'Add-on Leaderboard',
+        icon: Trophy,
+        roles: ['owner', 'manager'],
+      },
     ],
   },
   {

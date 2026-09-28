@@ -112,11 +112,11 @@ function techTicketsSql(start: string, end: string): string {
     WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}'
     GROUP BY e.OBJID, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME)`
 }
-// Add-on units per (top tech, add-on category) so we can show each tech's #1
-// add-on. Grouped by category name (Air Filters, Cabin Air Filters, ...) because
-// the raw item names are cryptic SKUs ("FP-92 CF (ZK)").
+// Add-on units + dollars per (top tech, add-on category): drives each tech's #1
+// add-on AND the per-category contest leaderboards. Grouped by category name (Air
+// Filters, Cabin Air Filters, ...) because raw item names are cryptic SKUs.
 function techAddonItemsSql(start: string, end: string): string {
-  return `SELECT se.EMPLOYEE, TRIM(rc.NAME), SUM(si.QTY) AS UNITS
+  return `SELECT se.EMPLOYEE, TRIM(rc.NAME), SUM(si.QTY) AS UNITS, ROUND(SUM(si.AMT),2) AS DOLLARS
     FROM SALEITEMS si
     JOIN SALE s ON s.SITE = si.SITE AND s.OBJID = si.SALEID
     JOIN ITEM it ON it.OBJID = si.ITEM
@@ -124,6 +124,18 @@ function techAddonItemsSql(start: string, end: string): string {
     JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${TOP_TECH_ROLE}
     WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}' AND si.FLAGS >= 0 AND ${ADDON_PRED}
     GROUP BY se.EMPLOYEE, TRIM(rc.NAME)`
+}
+// Distinct tickets that had at least one add-on, per top tech (for attach rate =
+// add-on tickets / total tickets).
+function addonTicketsSql(start: string, end: string): string {
+  return `SELECT se.EMPLOYEE, COUNT(DISTINCT s.OBJID) AS ATICKETS
+    FROM SALEITEMS si
+    JOIN SALE s ON s.SITE = si.SITE AND s.OBJID = si.SALEID
+    JOIN ITEM it ON it.OBJID = si.ITEM
+    JOIN ITEMRPTCATEGORY rc ON rc.OBJID = it.REPORTCATEGORY
+    JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${TOP_TECH_ROLE}
+    WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}' AND si.FLAGS >= 0 AND ${ADDON_PRED}
+    GROUP BY se.EMPLOYEE`
 }
 // Add-on units + dollars by category (transparency: what counts as an add-on).
 function addonCategoriesSql(start: string, end: string): string {
@@ -195,13 +207,14 @@ Deno.serve(async (req) => {
   try { cookie = await login(base, password) } catch (e) { return json({ error: 'login_failed', message: String(e) }, 502, origin) }
 
   const EMPTY: SqlResult = { columns: [], row_count: 0, rows: [] }
-  let dayRows: SqlResult, catRows: SqlResult, techRows: SqlResult, ticketRows: SqlResult, techItemRows: SqlResult, addonCatRows: SqlResult
+  let dayRows: SqlResult, catRows: SqlResult, techRows: SqlResult, ticketRows: SqlResult, techItemRows: SqlResult, addonTicketRows: SqlResult, addonCatRows: SqlResult
   try {
     dayRows = await runSql(base, cookie, daysSql(start, end))
     catRows = body.persist ? EMPTY : await runSql(base, cookie, categoriesSql(start, end))
     techRows = body.persist ? EMPTY : await runSql(base, cookie, addonsByTechSql(start, end))
     ticketRows = body.persist ? EMPTY : await runSql(base, cookie, techTicketsSql(start, end))
     techItemRows = body.persist ? EMPTY : await runSql(base, cookie, techAddonItemsSql(start, end))
+    addonTicketRows = body.persist ? EMPTY : await runSql(base, cookie, addonTicketsSql(start, end))
     addonCatRows = body.persist ? EMPTY : await runSql(base, cookie, addonCategoriesSql(start, end))
   } catch (e) {
     return json({ error: 'query_failed', message: String(e) }, 502, origin)
@@ -236,16 +249,25 @@ Deno.serve(async (req) => {
   for (const r of ticketRows.rows ?? []) {
     tech.set(String(r[0] ?? ''), { name: [String(r[1] ?? '').trim(), String(r[2] ?? '').trim()].filter(Boolean).join(' ') || `#${r[0]}`, tickets: num(r[3]) })
   }
-  // Each tech's #1 add-on item (most units).
+  // Each tech's #1 add-on category + the full per-tech/category matrix (for
+  // category-specific contest leaderboards).
   const topItem = new Map<string, { name: string; units: number }>()
+  const techCategoryMatrix: { employee_id: string; category: string; units: number; dollars: number }[] = []
   for (const r of techItemRows.rows ?? []) {
     const emp = String(r[0] ?? '')
-    const cand = { name: String(r[1] ?? '').trim(), units: num(r[2]) }
+    const cat = String(r[1] ?? '').trim()
+    const units = num(r[2])
+    techCategoryMatrix.push({ employee_id: emp, category: cat, units, dollars: num(r[3]) })
     const cur = topItem.get(emp)
-    if (!cur || cand.units > cur.units) topItem.set(emp, cand)
+    if (!cur || units > cur.units) topItem.set(emp, { name: cat, units })
   }
+  // Distinct add-on tickets per tech (attach rate).
+  const addonTix = new Map<string, number>()
+  for (const r of addonTicketRows.rows ?? []) addonTix.set(String(r[0] ?? ''), num(r[1]))
+
   const addonsByTech = [...tech.entries()].map(([empId, t]) => {
     const a = addon.get(empId) ?? { units: 0, lines: 0, dollars: 0 }
+    const at = addonTix.get(empId) ?? 0
     return {
       employee_id: empId,
       name: t.name,
@@ -254,6 +276,9 @@ Deno.serve(async (req) => {
       lines: a.lines,
       dollars: a.dollars,
       avg_addon_per_ticket: t.tickets > 0 ? Math.round((a.dollars / t.tickets) * 100) / 100 : 0,
+      addon_tickets: at,
+      attach_rate: t.tickets > 0 ? Math.round((at / t.tickets) * 1000) / 10 : 0,
+      units_per_ticket: t.tickets > 0 ? Math.round((a.units / t.tickets) * 100) / 100 : 0,
       top_item: topItem.get(empId) ?? null,
     }
   }).sort((x, y) => y.units - x.units)
@@ -262,5 +287,5 @@ Deno.serve(async (req) => {
     (a, d) => ({ net_sales: a.net_sales + d.net_sales, tax: a.tax + d.tax, tickets: a.tickets + d.tickets }),
     { net_sales: 0, tax: 0, tickets: 0 },
   )
-  return json({ ok: true, start, end, days, categories, addonsByTech, addonCategories, totals }, 200, origin)
+  return json({ ok: true, start, end, days, categories, addonsByTech, addonCategories, techCategoryMatrix, totals }, 200, origin)
 })
