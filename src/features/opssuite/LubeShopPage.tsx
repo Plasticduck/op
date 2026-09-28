@@ -89,6 +89,37 @@ export default function LubeShopPage() {
         <Kpi icon={Wrench} label="Sales tax" value={data ? money(data.totals.tax) : '—'} loading={loading} />
       </div>
 
+      {/* Add-ons by Top Tech */}
+      <section className="rounded-md border border-border bg-card p-4">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-ink">Add-ons by Top Tech</h2>
+          {data && data.addonsByTech.length > 0 && (
+            <span className="text-xs text-ink-subtle">
+              {data.addonsByTech.reduce((a, t) => a + t.units, 0).toLocaleString()} add-ons · {money(data.addonsByTech.reduce((a, t) => a + t.dollars, 0))}
+            </span>
+          )}
+        </div>
+        <p className="mb-3 text-xs text-ink-subtle">
+          Upsell parts &amp; accessories (air / cabin / fuel filters, wiper blades, headlights, battery, accessories) credited to the Lube Top Tech on the ticket. Excludes the base oil change.
+        </p>
+        {loading ? (
+          <div className="h-40 animate-pulse rounded bg-content" />
+        ) : data && data.addonsByTech.length ? (
+          <AddonTechTable rows={data.addonsByTech} />
+        ) : (
+          <div className="py-10 text-center text-sm text-ink-muted">No add-ons in this range.</div>
+        )}
+        {data && data.addonCategories.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
+            {data.addonCategories.map((c) => (
+              <span key={c.name} className="rounded-full border border-border bg-content px-3 py-1 text-xs text-ink-muted">
+                {c.name} <span className="font-semibold text-ink">{c.units.toLocaleString()}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Daily trend */}
       <section className="rounded-md border border-border bg-card p-4">
         <h2 className="mb-3 text-sm font-semibold text-ink">Daily net sales</h2>
@@ -153,6 +184,38 @@ function TrendChart({ days }: { days: { date: string; net_sales: number }[] }) {
         <text x={pad.l} y={H - 6} className="fill-ink-subtle text-[10px]">{days.length ? fmtDay(days[0].date) : ''}</text>
         <text x={W - pad.r} y={H - 6} textAnchor="end" className="fill-ink-subtle text-[10px]">{days.length ? fmtDay(days[days.length - 1].date) : ''}</text>
       </svg>
+    </div>
+  )
+}
+
+function AddonTechTable({ rows }: { rows: { employee_id: string; name: string; units: number; lines: number; dollars: number }[] }) {
+  const max = Math.max(1, ...rows.map((r) => r.units))
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-ink-subtle">
+            <th className="py-2 pr-3 font-semibold">Top Tech</th>
+            <th className="py-2 pr-3 font-semibold">Add-ons sold</th>
+            <th className="py-2 pr-3 font-semibold" />
+            <th className="py-2 text-right font-semibold">Revenue</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r) => (
+            <tr key={r.employee_id}>
+              <td className="py-2 pr-3 font-medium text-ink">{r.name}</td>
+              <td className="w-20 py-2 pr-3 tabular font-semibold text-ink">{r.units.toLocaleString()}</td>
+              <td className="py-2 pr-3">
+                <div className="h-3 w-40 overflow-hidden rounded bg-content">
+                  <div className="h-full rounded bg-accent" style={{ width: `${Math.max(3, (r.units / max) * 100)}%` }} />
+                </div>
+              </td>
+              <td className="py-2 text-right tabular text-ink-muted">{money(r.dollars)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

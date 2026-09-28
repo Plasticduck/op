@@ -80,6 +80,39 @@ const num = (v: unknown) => Number(v) || 0
 // (001008/001009), deposits (001005), paidouts (001006) are excluded.
 const SALES_BRANCHES = "(rc.BRANCH STARTING WITH '001001' OR rc.BRANCH STARTING WITH '001002' OR rc.BRANCH STARTING WITH '001003' OR rc.BRANCH STARTING WITH '001004')"
 
+// Lube "add-ons" = upsell parts/accessories beyond the base oil change: air /
+// cabin / fuel filters, wiper blades, headlights/bulbs, battery (001003008 parts,
+// minus standard oil filters 001003008001) plus accessories (001003014*). Base
+// service (labor, oil, oil filters, packages) is NOT an add-on.
+const ADDON_PRED =
+  "(rc.BRANCH IN ('001003008002','001003008005','001003008007','001003008008','001003008010','001003008012') OR rc.BRANCH STARTING WITH '001003014')"
+// The employee credited with the add-on = the "Lube Top Tech" on the ticket.
+const TOP_TECH_ROLE = 1500002
+
+// Add-ons sold per Lube Top Tech (units = sum of QTY; also lines and dollars).
+function addonsByTechSql(start: string, end: string): string {
+  return `SELECT e.OBJID, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME),
+    SUM(si.QTY) AS UNITS, COUNT(*) AS LINES, ROUND(SUM(si.AMT),2) AS DOLLARS
+    FROM SALEITEMS si
+    JOIN SALE s ON s.SITE = si.SITE AND s.OBJID = si.SALEID
+    JOIN ITEM it ON it.OBJID = si.ITEM
+    JOIN ITEMRPTCATEGORY rc ON rc.OBJID = it.REPORTCATEGORY
+    JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${TOP_TECH_ROLE}
+    JOIN EMPLOYEE e ON e.OBJID = se.EMPLOYEE
+    WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}' AND si.FLAGS >= 0 AND ${ADDON_PRED}
+    GROUP BY e.OBJID, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME) ORDER BY 4 DESC`
+}
+// Add-on units + dollars by category (transparency: what counts as an add-on).
+function addonCategoriesSql(start: string, end: string): string {
+  return `SELECT TRIM(rc.NAME), SUM(si.QTY) AS UNITS, ROUND(SUM(si.AMT),2) AS DOLLARS
+    FROM SALEITEMS si
+    JOIN SALE s ON s.SITE = si.SITE AND s.OBJID = si.SALEID
+    JOIN ITEM it ON it.OBJID = si.ITEM
+    JOIN ITEMRPTCATEGORY rc ON rc.OBJID = it.REPORTCATEGORY
+    WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}' AND si.FLAGS >= 0 AND ${ADDON_PRED}
+    GROUP BY TRIM(rc.NAME) ORDER BY 2 DESC`
+}
+
 function daysSql(start: string, end: string): string {
   return `SELECT s.LOGDATE AS D, COUNT(DISTINCT s.OBJID) AS TICKETS,
     ROUND(SUM(CASE WHEN ${SALES_BRANCHES} THEN si.AMT ELSE 0 END),2) AS NET,
@@ -138,10 +171,13 @@ Deno.serve(async (req) => {
   let cookie: string
   try { cookie = await login(base, password) } catch (e) { return json({ error: 'login_failed', message: String(e) }, 502, origin) }
 
-  let dayRows: SqlResult, catRows: SqlResult
+  const EMPTY: SqlResult = { columns: [], row_count: 0, rows: [] }
+  let dayRows: SqlResult, catRows: SqlResult, techRows: SqlResult, addonCatRows: SqlResult
   try {
     dayRows = await runSql(base, cookie, daysSql(start, end))
-    catRows = body.persist ? { columns: [], row_count: 0, rows: [] } : await runSql(base, cookie, categoriesSql(start, end))
+    catRows = body.persist ? EMPTY : await runSql(base, cookie, categoriesSql(start, end))
+    techRows = body.persist ? EMPTY : await runSql(base, cookie, addonsByTechSql(start, end))
+    addonCatRows = body.persist ? EMPTY : await runSql(base, cookie, addonCategoriesSql(start, end))
   } catch (e) {
     return json({ error: 'query_failed', message: String(e) }, 502, origin)
   }
@@ -166,9 +202,17 @@ Deno.serve(async (req) => {
   }
 
   const categories = (catRows.rows ?? []).map((r) => ({ name: String(r[0] ?? ''), dollars: num(r[1]), items: num(r[2]) }))
+  const addonsByTech = (techRows.rows ?? []).map((r) => ({
+    employee_id: String(r[0] ?? ''),
+    name: [String(r[1] ?? '').trim(), String(r[2] ?? '').trim()].filter(Boolean).join(' ') || `#${r[0]}`,
+    units: num(r[3]),
+    lines: num(r[4]),
+    dollars: num(r[5]),
+  }))
+  const addonCategories = (addonCatRows.rows ?? []).map((r) => ({ name: String(r[0] ?? ''), units: num(r[1]), dollars: num(r[2]) }))
   const totals = days.reduce(
     (a, d) => ({ net_sales: a.net_sales + d.net_sales, tax: a.tax + d.tax, tickets: a.tickets + d.tickets }),
     { net_sales: 0, tax: 0, tickets: 0 },
   )
-  return json({ ok: true, start, end, days, categories, totals }, 200, origin)
+  return json({ ok: true, start, end, days, categories, addonsByTech, addonCategories, totals }, 200, origin)
 })
