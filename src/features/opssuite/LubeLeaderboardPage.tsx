@@ -8,12 +8,13 @@ import { fetchLubeStats, type LubeStats, type LubeAddonTech } from '@/lib/querie
 // Add-on contest leaderboard for lube techs. Pick a contest window, a metric to
 // compete on, and (optionally) a single add-on category, and rank the top techs.
 
-type RangeKey = 'today' | 'week' | 'mtd' | 'd30'
+type RangeKey = 'today' | 'week' | 'mtd' | 'd30' | 'ytd'
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'week', label: 'This week' },
   { key: 'mtd', label: 'This month' },
   { key: 'd30', label: 'Last 30 days' },
+  { key: 'ytd', label: 'This year' },
 ]
 function rangeDates(key: RangeKey): { start: string; end: string } {
   const now = new Date()
@@ -22,6 +23,7 @@ function rangeDates(key: RangeKey): { start: string; end: string } {
   if (key === 'today') start = now
   else if (key === 'week') start = new Date(now.getTime() - 6 * 86400_000)
   else if (key === 'mtd') start = new Date(now.getFullYear(), now.getMonth(), 1)
+  else if (key === 'ytd') start = new Date(now.getFullYear(), 0, 1)
   else start = new Date(now.getTime() - 29 * 86400_000)
   return { start: start.toISOString().slice(0, 10), end }
 }
