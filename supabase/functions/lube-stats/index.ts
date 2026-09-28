@@ -112,6 +112,19 @@ function techTicketsSql(start: string, end: string): string {
     WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}'
     GROUP BY e.OBJID, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME)`
 }
+// Add-on units per (top tech, add-on category) so we can show each tech's #1
+// add-on. Grouped by category name (Air Filters, Cabin Air Filters, ...) because
+// the raw item names are cryptic SKUs ("FP-92 CF (ZK)").
+function techAddonItemsSql(start: string, end: string): string {
+  return `SELECT se.EMPLOYEE, TRIM(rc.NAME), SUM(si.QTY) AS UNITS
+    FROM SALEITEMS si
+    JOIN SALE s ON s.SITE = si.SITE AND s.OBJID = si.SALEID
+    JOIN ITEM it ON it.OBJID = si.ITEM
+    JOIN ITEMRPTCATEGORY rc ON rc.OBJID = it.REPORTCATEGORY
+    JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${TOP_TECH_ROLE}
+    WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}' AND si.FLAGS >= 0 AND ${ADDON_PRED}
+    GROUP BY se.EMPLOYEE, TRIM(rc.NAME)`
+}
 // Add-on units + dollars by category (transparency: what counts as an add-on).
 function addonCategoriesSql(start: string, end: string): string {
   return `SELECT TRIM(rc.NAME), SUM(si.QTY) AS UNITS, ROUND(SUM(si.AMT),2) AS DOLLARS
@@ -182,12 +195,13 @@ Deno.serve(async (req) => {
   try { cookie = await login(base, password) } catch (e) { return json({ error: 'login_failed', message: String(e) }, 502, origin) }
 
   const EMPTY: SqlResult = { columns: [], row_count: 0, rows: [] }
-  let dayRows: SqlResult, catRows: SqlResult, techRows: SqlResult, ticketRows: SqlResult, addonCatRows: SqlResult
+  let dayRows: SqlResult, catRows: SqlResult, techRows: SqlResult, ticketRows: SqlResult, techItemRows: SqlResult, addonCatRows: SqlResult
   try {
     dayRows = await runSql(base, cookie, daysSql(start, end))
     catRows = body.persist ? EMPTY : await runSql(base, cookie, categoriesSql(start, end))
     techRows = body.persist ? EMPTY : await runSql(base, cookie, addonsByTechSql(start, end))
     ticketRows = body.persist ? EMPTY : await runSql(base, cookie, techTicketsSql(start, end))
+    techItemRows = body.persist ? EMPTY : await runSql(base, cookie, techAddonItemsSql(start, end))
     addonCatRows = body.persist ? EMPTY : await runSql(base, cookie, addonCategoriesSql(start, end))
   } catch (e) {
     return json({ error: 'query_failed', message: String(e) }, 502, origin)
@@ -222,6 +236,14 @@ Deno.serve(async (req) => {
   for (const r of ticketRows.rows ?? []) {
     tech.set(String(r[0] ?? ''), { name: [String(r[1] ?? '').trim(), String(r[2] ?? '').trim()].filter(Boolean).join(' ') || `#${r[0]}`, tickets: num(r[3]) })
   }
+  // Each tech's #1 add-on item (most units).
+  const topItem = new Map<string, { name: string; units: number }>()
+  for (const r of techItemRows.rows ?? []) {
+    const emp = String(r[0] ?? '')
+    const cand = { name: String(r[1] ?? '').trim(), units: num(r[2]) }
+    const cur = topItem.get(emp)
+    if (!cur || cand.units > cur.units) topItem.set(emp, cand)
+  }
   const addonsByTech = [...tech.entries()].map(([empId, t]) => {
     const a = addon.get(empId) ?? { units: 0, lines: 0, dollars: 0 }
     return {
@@ -232,6 +254,7 @@ Deno.serve(async (req) => {
       lines: a.lines,
       dollars: a.dollars,
       avg_addon_per_ticket: t.tickets > 0 ? Math.round((a.dollars / t.tickets) * 100) / 100 : 0,
+      top_item: topItem.get(empId) ?? null,
     }
   }).sort((x, y) => y.units - x.units)
   const addonCategories = (addonCatRows.rows ?? []).map((r) => ({ name: String(r[0] ?? ''), units: num(r[1]), dollars: num(r[2]) }))

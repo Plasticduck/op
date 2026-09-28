@@ -188,7 +188,7 @@ function TrendChart({ days }: { days: { date: string; net_sales: number }[] }) {
   )
 }
 
-function AddonTechTable({ rows }: { rows: { employee_id: string; name: string; tickets: number; units: number; lines: number; dollars: number; avg_addon_per_ticket: number }[] }) {
+function AddonTechTable({ rows }: { rows: { employee_id: string; name: string; tickets: number; units: number; lines: number; dollars: number; avg_addon_per_ticket: number; top_item: { name: string; units: number } | null }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.units))
   return (
     <div className="overflow-x-auto">
@@ -199,6 +199,7 @@ function AddonTechTable({ rows }: { rows: { employee_id: string; name: string; t
             <th className="py-2 pr-3 text-right font-semibold">Tickets</th>
             <th className="py-2 pr-3 text-right font-semibold">Add-ons sold</th>
             <th className="py-2 pr-3 font-semibold" />
+            <th className="py-2 pr-3 font-semibold">Top add-on</th>
             <th className="py-2 pr-3 text-right font-semibold">Revenue</th>
             <th className="py-2 text-right font-semibold">Avg add-on $/ticket</th>
           </tr>
@@ -210,10 +211,11 @@ function AddonTechTable({ rows }: { rows: { employee_id: string; name: string; t
               <td className="py-2 pr-3 text-right tabular text-ink-muted">{r.tickets.toLocaleString()}</td>
               <td className="w-20 py-2 pr-3 text-right tabular font-semibold text-ink">{r.units.toLocaleString()}</td>
               <td className="py-2 pr-3">
-                <div className="h-3 w-32 overflow-hidden rounded bg-content">
+                <div className="h-3 w-28 overflow-hidden rounded bg-content">
                   <div className="h-full rounded bg-accent" style={{ width: `${Math.max(3, (r.units / max) * 100)}%` }} />
                 </div>
               </td>
+              <td className="py-2 pr-3 text-ink-muted">{r.top_item ? `${r.top_item.name} (${r.top_item.units.toLocaleString()})` : '—'}</td>
               <td className="py-2 pr-3 text-right tabular text-ink-muted">{money(r.dollars)}</td>
               <td className="py-2 text-right tabular font-medium text-ink">{money2(r.avg_addon_per_ticket)}</td>
             </tr>
