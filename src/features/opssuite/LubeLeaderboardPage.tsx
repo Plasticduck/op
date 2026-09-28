@@ -46,6 +46,10 @@ const METRICS: Record<MetricKey, { label: string; blurb: string; value: (t: Lube
 type Row = { employee_id: string; name: string; value: number; sub: string }
 const MEDAL = ['text-[#d4af37]', 'text-[#9ca3af]', 'text-[#cd7f32]'] // gold / silver / bronze
 
+// Techs kept out of the contest (e.g. managers/leads), matched on name.
+const EXCLUDED_TECHS = new Set(['jose gonzales', 'tiffany morris'])
+const isExcluded = (name: string) => EXCLUDED_TECHS.has(name.trim().toLowerCase())
+
 export default function LubeLeaderboardPage() {
   const [range, setRange] = useState<RangeKey>('mtd')
   const [metric, setMetric] = useState<MetricKey>('dollars')
@@ -71,23 +75,25 @@ export default function LubeLeaderboardPage() {
 
   const { rows, metricLabel, fmt } = useMemo(() => {
     if (!data) return { rows: [] as Row[], metricLabel: '', fmt: int as (n: number) => string }
+    const techs = data.addonsByTech.filter((t) => !isExcluded(t.name))
+    const excludedIds = new Set(data.addonsByTech.filter((t) => isExcluded(t.name)).map((t) => t.employee_id))
     if (usingCategory) {
-      const ticketsById = new Map(data.addonsByTech.map((t) => [t.employee_id, t]))
+      const ticketsById = new Map(techs.map((t) => [t.employee_id, t]))
       const byTech = new Map<string, Row>()
       for (const m of data.techCategoryMatrix) {
-        if (m.category !== category) continue
+        if (m.category !== category || excludedIds.has(m.employee_id)) continue
         const t = ticketsById.get(m.employee_id)
         const name = t?.name ?? `#${m.employee_id}`
         const value = catMetric === 'dollars' ? m.dollars : m.units
         byTech.set(m.employee_id, { employee_id: m.employee_id, name, value, sub: `${int(m.units)} units · ${usd(m.dollars)}` })
       }
       // Include techs with 0 of this category too (so a contest shows everyone).
-      for (const t of data.addonsByTech) if (!byTech.has(t.employee_id)) byTech.set(t.employee_id, { employee_id: t.employee_id, name: t.name, value: 0, sub: '0 units' })
+      for (const t of techs) if (!byTech.has(t.employee_id)) byTech.set(t.employee_id, { employee_id: t.employee_id, name: t.name, value: 0, sub: '0 units' })
       const f = catMetric === 'dollars' ? usd : int
       return { rows: [...byTech.values()].sort((a, b) => b.value - a.value), metricLabel: `${category} · ${catMetric === 'dollars' ? 'revenue' : 'units'}`, fmt: f }
     }
     const m = METRICS[metric]
-    const rows = data.addonsByTech.map((t) => ({
+    const rows = techs.map((t) => ({
       employee_id: t.employee_id, name: t.name, value: m.value(t),
       sub: `${int(t.tickets)} tickets · ${int(t.units)} add-ons · ${usd(t.dollars)}`,
     })).sort((a, b) => b.value - a.value)
