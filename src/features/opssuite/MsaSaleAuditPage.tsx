@@ -156,6 +156,9 @@ export default function MsaSaleAuditPage() {
               <p><span className="font-medium text-ink">Memberships sold:</span> all ARM Plans Sold items, minus {report.rules.soldExclusions}.</p>
               <p><span className="font-medium text-ink">Eligible washes:</span> {report.rules.eligibleWash}.</p>
               <p><span className="font-medium text-ink">Credit:</span> {report.rules.attribution}.</p>
+              {(report.diag.recoveredSales ?? 0) > 0 && (
+                <p><span className="font-medium text-ink">Kiosk recovery:</span> {report.diag.recoveredSales} membership sale(s) and {report.diag.recoveredWashes ?? 0} wash(es) rung on a staffed terminal but logged to the kiosk were credited to the operating MSA (marked <span className="text-accent">↩ kiosk</span>).</p>
+              )}
             </div>
           </div>
 
@@ -207,7 +210,10 @@ export default function MsaSaleAuditPage() {
                     <tr key={s.code + s.employeeId + i} className={cn(s.excluded && 'bg-warn-soft/40')}>
                       <td className={td}>{s.day}{s.time ? ` · ${s.time}` : ''}</td>
                       <td className={td}>#{s.code}</td>
-                      <td className={cn(td, s.kiosk && 'text-ink-muted')}>{s.employee}</td>
+                      <td className={cn(td, s.kiosk && 'text-ink-muted')}>
+                        {s.employee}
+                        {s.recovered && <span title="Rung on a staffed terminal but logged to the kiosk; credited to the operating MSA" className="ml-1 rounded bg-accent-soft px-1 py-0.5 text-[10px] font-medium text-accent">↩ kiosk</span>}
+                      </td>
                       <td className={td}>{s.items.join(', ') || '—'}</td>
                       <td className={td}>{s.customer ?? '—'}</td>
                       <td className={td}>

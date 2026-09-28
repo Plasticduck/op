@@ -28,6 +28,9 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 const DEFAULT_BASE = 'https://dashboard.tail1e050b.ts.net'
 const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const WASH_SALES_ROLE = 101 // EMPROLE.OBJID for "Wash Sales" (role type 30 = Sales)
+const REASSIGN_WINDOW_MIN = 90 // XPT ticket on a staffed terminal -> nearest human seller within N min
+// A sale's Wash-Sales employee is the express/kiosk pseudo-seller.
+const XPT_PRED = `(UPPER(e.FIRSTNAME) CONTAINING 'XPT' OR UPPER(e.LASTNAME) CONTAINING 'XPT')`
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 const PLAN_CHANGE_RECHARGE_DAYS = 45 // a recharge within N days before = already an active member
 const DECLINE_LAPSE_DAYS = 90        // returned within N days of a card decline
@@ -202,12 +205,15 @@ Deno.serve(async (req) => {
   //    by item NAME, not by the discount category.)
   const paidWash = `EXISTS (SELECT 1 FROM SALEITEMS si JOIN ITEM it ON it.OBJID = si.ITEM JOIN ITEMRPTCATEGORY rc ON rc.OBJID = it.REPORTCATEGORY WHERE si.SITE = s.SITE AND si.SALEID = s.OBJID AND si.FLAGS >= 0 AND rc.BRANCH STARTING WITH '001001001' AND si.AMT > 0)`
   const compLike = `EXISTS (SELECT 1 FROM SALEITEMS si2 JOIN ITEM it2 ON it2.OBJID = si2.ITEM WHERE si2.SITE = s.SITE AND si2.SALEID = s.OBJID AND si2.FLAGS >= 0 AND (UPPER(it2.NAME) CONTAINING 'COMP' OR UPPER(it2.NAME) CONTAINING 'EMPL' OR UPPER(it2.NAME) CONTAINING 'REWASH'))`
+  // (SALE.TOTAL is 0 on most paid tickets — it is not the paid amount — so the
+  //  "not zeroed out" rule is enforced by requiring a paid Carwashes line, not by
+  //  filtering on TOTAL.)
   const washSql =
     `SELECT se.EMPLOYEE, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME), COUNT(DISTINCT s.OBJID) ` +
     `FROM SALE s ` +
     `JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${WASH_SALES_ROLE} ` +
     `JOIN EMPLOYEE e ON e.OBJID = se.EMPLOYEE ` +
-    `WHERE s.SITE = ${site} AND s.ARMCUSTOMER IS NULL AND s.TOTAL > 0 ` +
+    `WHERE s.SITE = ${site} AND s.ARMCUSTOMER IS NULL ` +
     `AND s.LOGDATE >= '${startTs}' AND s.LOGDATE < '${endTs}' ` +
     `AND ${paidWash} AND NOT ${compLike} ` +
     `GROUP BY se.EMPLOYEE, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME)`
@@ -239,16 +245,80 @@ Deno.serve(async (req) => {
     flagByObjid.set(String(r[0] ?? ''), { reactivation: num(r[1]) > 0, planChange: num(r[2]) > 0 })
   }
 
-  // Fold membership-sale rows into one record per sale.
-  type Sale = { objid: string; code: string; day: string; time: string; customer: string; empId: string; empName: string; items: Set<string> }
+  // 4) XPT recovery. On a STAFFED terminal (one that also has human sellers), a
+  //    ticket credited to the express/kiosk pseudo-seller is a dropped-login
+  //    attribution, not a real self-serve sale, so credit it to the human who was
+  //    operating that terminal — the nearest human Wash-Sales seller on the same
+  //    terminal within the window. True express lanes (no human sellers) are left
+  //    as XPT. Applies to both memberships (numerator) and eligible washes
+  //    (denominator). Best-effort: any failure leaves the raw XPT attribution.
+  const memberReassign = new Map<string, { humanId: string; humanName: string }>() // objid -> human
+  const washReassign: { objid: string; xptId: string; humanId: string; humanName: string }[] = []
+  try {
+    const staffedRes = await runSql(base, cookie,
+      `SELECT DISTINCT s.TERMINAL FROM SALE s ` +
+      `JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${WASH_SALES_ROLE} ` +
+      `JOIN EMPLOYEE e ON e.OBJID = se.EMPLOYEE ` +
+      `WHERE s.SITE = ${site} AND s.LOGDATE >= '${startTs}' AND s.LOGDATE < '${endTs}' AND NOT ${XPT_PRED}`)
+    const staffed = (staffedRes.rows ?? []).map((r) => Math.trunc(num(r[0]))).filter((n) => Number.isInteger(n) && n > 0)
+    if (staffed.length) {
+      const inList = staffed.join(', ')
+      // Nearest human Wash-Sales seller on the same terminal, within the window.
+      const near =
+        `(SELECT FIRST 1 (e2.OBJID || '~' || TRIM(e2.FIRSTNAME) || ' ' || TRIM(e2.LASTNAME)) ` +
+        `FROM SALE s2 JOIN SALEEMPLOYEES se2 ON se2.SITE = s2.SITE AND se2.SALEID = s2.OBJID AND se2.EMPROLE = ${WASH_SALES_ROLE} ` +
+        `JOIN EMPLOYEE e2 ON e2.OBJID = se2.EMPLOYEE ` +
+        `WHERE s2.SITE = s.SITE AND s2.TERMINAL = s.TERMINAL ` +
+        `AND NOT (UPPER(e2.FIRSTNAME) CONTAINING 'XPT' OR UPPER(e2.LASTNAME) CONTAINING 'XPT') ` +
+        `AND s2.CREATED >= DATEADD(-${REASSIGN_WINDOW_MIN} MINUTE TO s.CREATED) AND s2.CREATED <= DATEADD(${REASSIGN_WINDOW_MIN} MINUTE TO s.CREATED) ` +
+        `ORDER BY ABS(DATEDIFF(SECOND FROM s2.CREATED TO s.CREATED)))`
+      const memSql =
+        `SELECT s.OBJID, ${near} FROM SALE s ` +
+        `JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${WASH_SALES_ROLE} ` +
+        `JOIN EMPLOYEE e ON e.OBJID = se.EMPLOYEE ` +
+        `WHERE s.SITE = ${site} AND s.TERMINAL IN (${inList}) AND ${XPT_PRED} ` +
+        `AND s.LOGDATE >= '${startTs}' AND s.LOGDATE < '${endTs}' ` +
+        `AND EXISTS (SELECT 1 FROM SALEITEMS si JOIN ITEM it ON it.OBJID = si.ITEM JOIN ITEMRPTCATEGORY rc ON rc.OBJID = it.REPORTCATEGORY WHERE si.SITE = s.SITE AND si.SALEID = s.OBJID AND si.FLAGS >= 0 AND rc.BRANCH STARTING WITH '001004005')`
+      const washSql2 =
+        `SELECT s.OBJID, se.EMPLOYEE, ${near} FROM SALE s ` +
+        `JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${WASH_SALES_ROLE} ` +
+        `JOIN EMPLOYEE e ON e.OBJID = se.EMPLOYEE ` +
+        `WHERE s.SITE = ${site} AND s.TERMINAL IN (${inList}) AND ${XPT_PRED} AND s.ARMCUSTOMER IS NULL ` +
+        `AND s.LOGDATE >= '${startTs}' AND s.LOGDATE < '${endTs}' AND ${paidWash} AND NOT ${compLike}`
+      const [memRes, washReRes] = await Promise.all([runSql(base, cookie, memSql), runSql(base, cookie, washSql2)])
+      const parseKey = (v: unknown): { humanId: string; humanName: string } | null => {
+        const s = String(v ?? '')
+        const i = s.indexOf('~')
+        if (i <= 0) return null
+        return { humanId: s.slice(0, i), humanName: s.slice(i + 1).trim() }
+      }
+      for (const r of memRes.rows ?? []) {
+        const h = parseKey(r[1]); if (h) memberReassign.set(String(r[0] ?? ''), h)
+      }
+      for (const r of washReRes.rows ?? []) {
+        const h = parseKey(r[2]); if (h) washReassign.push({ objid: String(r[0] ?? ''), xptId: String(r[1] ?? ''), humanId: h.humanId, humanName: h.humanName })
+      }
+    }
+  } catch { /* best-effort: leave raw XPT attribution */ }
+
+  // Fold membership-sale rows into one record per sale. If the seller is the
+  // kiosk/XPT pseudo-seller but the ticket was recovered to a human (step 4),
+  // credit that human instead.
+  type Sale = { objid: string; code: string; day: string; time: string; customer: string; empId: string; empName: string; items: Set<string>; recovered: boolean }
   const sales = new Map<string, Sale>()
   for (const r of soldRes.rows ?? []) {
     const objid = String(r[0] ?? '')
-    const empId = String(r[4] ?? '')
+    let empId = String(r[4] ?? '')
+    let empName = nameOf(r[5], r[6], empId)
+    let recovered = false
+    if (isKiosk(empName)) {
+      const h = memberReassign.get(objid)
+      if (h) { empId = h.humanId; empName = h.humanName; recovered = true }
+    }
     const key = objid + ':' + empId // credit each Wash-Sales employee on the sale
     let rec = sales.get(key)
     if (!rec) {
-      rec = { objid, code: String(r[1] ?? ''), day: dayKey(r[2]), time: fmtTime(r[8]), customer: String(r[3] ?? ''), empId, empName: nameOf(r[5], r[6], empId), items: new Set() }
+      rec = { objid, code: String(r[1] ?? ''), day: dayKey(r[2]), time: fmtTime(r[8]), customer: String(r[3] ?? ''), empId, empName, items: new Set(), recovered }
       sales.set(key, rec)
     }
     const item = String(r[7] ?? '').trim()
@@ -268,6 +338,12 @@ Deno.serve(async (req) => {
     const row = rowFor(empId, nameOf(w[1], w[2], empId))
     row.eligibleWashes += Math.round(num(w[3]))
   }
+  // Move recovered XPT eligible washes from the kiosk to the human operator.
+  for (const wr of washReassign) {
+    rowFor(wr.humanId, wr.humanName).eligibleWashes += 1
+    const xrow = rows.get(wr.xptId)
+    if (xrow) xrow.eligibleWashes = Math.max(0, xrow.eligibleWashes - 1)
+  }
 
   const detail: Any[] = []
   for (const s of sales.values()) {
@@ -278,7 +354,7 @@ Deno.serve(async (req) => {
     if (f?.reactivation) { excluded = 'reactivation_90d'; row.excludedReactivation += 1 }
     else if (f?.planChange) { excluded = 'plan_change'; row.excludedPlanChange += 1 }
     else row.soldNet += 1
-    detail.push({ code: s.code, day: s.day, time: s.time, customer: s.customer || null, employeeId: s.empId, employee: s.empName, kiosk: isKiosk(s.empName), items: [...s.items], excluded })
+    detail.push({ code: s.code, day: s.day, time: s.time, customer: s.customer || null, employeeId: s.empId, employee: s.empName, kiosk: isKiosk(s.empName), recovered: s.recovered, items: [...s.items], excluded })
   }
 
   const out = [...rows.values()].map((r) => ({
@@ -298,10 +374,16 @@ Deno.serve(async (req) => {
     rows: out,
     detail,
     rules: {
-      attribution: 'Wash Sales role (EMPROLE 101); "xpt"/kiosk shown separately',
+      attribution: `Wash Sales role (EMPROLE 101). Kiosk/XPT tickets on a staffed terminal are credited to the nearest human seller on that terminal within ${REASSIGN_WINDOW_MIN} min; true self-serve express lanes stay as XPT`,
       soldExclusions: `plan change (recharge within ${PLAN_CHANGE_RECHARGE_DAYS}d or transfer) and card-decline return within ${DECLINE_LAPSE_DAYS}d`,
-      eligibleWash: 'non-member (ARMCUSTOMER null), sale total > 0, a paid Carwashes line, no comp/employee/rewash line',
+      eligibleWash: 'non-member (ARMCUSTOMER null), a paid Carwashes line, no comp/employee/rewash line',
     },
-    diag: { soldSales: flagByObjid.size, excludedPlanChange: [...rows.values()].reduce((a, r) => a + r.excludedPlanChange, 0), excludedReactivation: [...rows.values()].reduce((a, r) => a + r.excludedReactivation, 0) },
+    diag: {
+      soldSales: flagByObjid.size,
+      excludedPlanChange: [...rows.values()].reduce((a, r) => a + r.excludedPlanChange, 0),
+      excludedReactivation: [...rows.values()].reduce((a, r) => a + r.excludedReactivation, 0),
+      recoveredSales: memberReassign.size,
+      recoveredWashes: washReassign.length,
+    },
   }, 200, origin)
 })

@@ -26,6 +26,7 @@ export type MsaAuditSale = {
   employeeId: string
   employee: string
   kiosk: boolean
+  recovered: boolean
   items: string[]
   excluded: 'plan_change' | 'reactivation_90d' | null
 }
@@ -36,7 +37,7 @@ export type MsaAuditReport = {
   rows: MsaAuditRow[]
   detail: MsaAuditSale[]
   rules: { attribution: string; soldExclusions: string; eligibleWash: string }
-  diag: { soldSales: number; excludedPlanChange: number; excludedReactivation: number }
+  diag: { soldSales: number; excludedPlanChange: number; excludedReactivation: number; recoveredSales?: number; recoveredWashes?: number }
 }
 
 export const drbMsaAudit = {
