@@ -188,7 +188,7 @@ function TrendChart({ days }: { days: { date: string; net_sales: number }[] }) {
   )
 }
 
-function AddonTechTable({ rows }: { rows: { employee_id: string; name: string; units: number; lines: number; dollars: number }[] }) {
+function AddonTechTable({ rows }: { rows: { employee_id: string; name: string; tickets: number; units: number; lines: number; dollars: number; avg_addon_per_ticket: number }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.units))
   return (
     <div className="overflow-x-auto">
@@ -196,22 +196,26 @@ function AddonTechTable({ rows }: { rows: { employee_id: string; name: string; u
         <thead>
           <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-ink-subtle">
             <th className="py-2 pr-3 font-semibold">Top Tech</th>
-            <th className="py-2 pr-3 font-semibold">Add-ons sold</th>
+            <th className="py-2 pr-3 text-right font-semibold">Tickets</th>
+            <th className="py-2 pr-3 text-right font-semibold">Add-ons sold</th>
             <th className="py-2 pr-3 font-semibold" />
-            <th className="py-2 text-right font-semibold">Revenue</th>
+            <th className="py-2 pr-3 text-right font-semibold">Revenue</th>
+            <th className="py-2 text-right font-semibold">Avg add-on $/ticket</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {rows.map((r) => (
             <tr key={r.employee_id}>
               <td className="py-2 pr-3 font-medium text-ink">{r.name}</td>
-              <td className="w-20 py-2 pr-3 tabular font-semibold text-ink">{r.units.toLocaleString()}</td>
+              <td className="py-2 pr-3 text-right tabular text-ink-muted">{r.tickets.toLocaleString()}</td>
+              <td className="w-20 py-2 pr-3 text-right tabular font-semibold text-ink">{r.units.toLocaleString()}</td>
               <td className="py-2 pr-3">
-                <div className="h-3 w-40 overflow-hidden rounded bg-content">
+                <div className="h-3 w-32 overflow-hidden rounded bg-content">
                   <div className="h-full rounded bg-accent" style={{ width: `${Math.max(3, (r.units / max) * 100)}%` }} />
                 </div>
               </td>
-              <td className="py-2 text-right tabular text-ink-muted">{money(r.dollars)}</td>
+              <td className="py-2 pr-3 text-right tabular text-ink-muted">{money(r.dollars)}</td>
+              <td className="py-2 text-right tabular font-medium text-ink">{money2(r.avg_addon_per_ticket)}</td>
             </tr>
           ))}
         </tbody>

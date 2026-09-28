@@ -102,6 +102,16 @@ function addonsByTechSql(start: string, end: string): string {
     WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}' AND si.FLAGS >= 0 AND ${ADDON_PRED}
     GROUP BY e.OBJID, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME) ORDER BY 4 DESC`
 }
+// Total tickets each Lube Top Tech worked (denominator for avg add-on $/ticket;
+// includes tickets with no add-on so the average and attach rate are honest).
+function techTicketsSql(start: string, end: string): string {
+  return `SELECT e.OBJID, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME), COUNT(DISTINCT s.OBJID) AS TICKETS
+    FROM SALE s
+    JOIN SALEEMPLOYEES se ON se.SITE = s.SITE AND se.SALEID = s.OBJID AND se.EMPROLE = ${TOP_TECH_ROLE}
+    JOIN EMPLOYEE e ON e.OBJID = se.EMPLOYEE
+    WHERE s.SITE = ${LUBE_SITE} AND s.LOGDATE >= '${start}' AND s.LOGDATE <= '${end}'
+    GROUP BY e.OBJID, TRIM(e.FIRSTNAME), TRIM(e.LASTNAME)`
+}
 // Add-on units + dollars by category (transparency: what counts as an add-on).
 function addonCategoriesSql(start: string, end: string): string {
   return `SELECT TRIM(rc.NAME), SUM(si.QTY) AS UNITS, ROUND(SUM(si.AMT),2) AS DOLLARS
@@ -172,11 +182,12 @@ Deno.serve(async (req) => {
   try { cookie = await login(base, password) } catch (e) { return json({ error: 'login_failed', message: String(e) }, 502, origin) }
 
   const EMPTY: SqlResult = { columns: [], row_count: 0, rows: [] }
-  let dayRows: SqlResult, catRows: SqlResult, techRows: SqlResult, addonCatRows: SqlResult
+  let dayRows: SqlResult, catRows: SqlResult, techRows: SqlResult, ticketRows: SqlResult, addonCatRows: SqlResult
   try {
     dayRows = await runSql(base, cookie, daysSql(start, end))
     catRows = body.persist ? EMPTY : await runSql(base, cookie, categoriesSql(start, end))
     techRows = body.persist ? EMPTY : await runSql(base, cookie, addonsByTechSql(start, end))
+    ticketRows = body.persist ? EMPTY : await runSql(base, cookie, techTicketsSql(start, end))
     addonCatRows = body.persist ? EMPTY : await runSql(base, cookie, addonCategoriesSql(start, end))
   } catch (e) {
     return json({ error: 'query_failed', message: String(e) }, 502, origin)
@@ -202,13 +213,27 @@ Deno.serve(async (req) => {
   }
 
   const categories = (catRows.rows ?? []).map((r) => ({ name: String(r[0] ?? ''), dollars: num(r[1]), items: num(r[2]) }))
-  const addonsByTech = (techRows.rows ?? []).map((r) => ({
-    employee_id: String(r[0] ?? ''),
-    name: [String(r[1] ?? '').trim(), String(r[2] ?? '').trim()].filter(Boolean).join(' ') || `#${r[0]}`,
-    units: num(r[3]),
-    lines: num(r[4]),
-    dollars: num(r[5]),
-  }))
+
+  // Merge add-on stats with each tech's total tickets so we can show tickets and
+  // avg add-on $/ticket, including techs who sold no add-ons.
+  const addon = new Map<string, { units: number; lines: number; dollars: number }>()
+  for (const r of techRows.rows ?? []) addon.set(String(r[0] ?? ''), { units: num(r[3]), lines: num(r[4]), dollars: num(r[5]) })
+  const tech = new Map<string, { name: string; tickets: number }>()
+  for (const r of ticketRows.rows ?? []) {
+    tech.set(String(r[0] ?? ''), { name: [String(r[1] ?? '').trim(), String(r[2] ?? '').trim()].filter(Boolean).join(' ') || `#${r[0]}`, tickets: num(r[3]) })
+  }
+  const addonsByTech = [...tech.entries()].map(([empId, t]) => {
+    const a = addon.get(empId) ?? { units: 0, lines: 0, dollars: 0 }
+    return {
+      employee_id: empId,
+      name: t.name,
+      tickets: t.tickets,
+      units: a.units,
+      lines: a.lines,
+      dollars: a.dollars,
+      avg_addon_per_ticket: t.tickets > 0 ? Math.round((a.dollars / t.tickets) * 100) / 100 : 0,
+    }
+  }).sort((x, y) => y.units - x.units)
   const addonCategories = (addonCatRows.rows ?? []).map((r) => ({ name: String(r[0] ?? ''), units: num(r[1]), dollars: num(r[2]) }))
   const totals = days.reduce(
     (a, d) => ({ net_sales: a.net_sales + d.net_sales, tax: a.tax + d.tax, tickets: a.tickets + d.tickets }),

@@ -9,7 +9,7 @@ export type LubeDay = { date: string; tickets: number; net_sales: number; tax: n
 export type LubeCategory = { name: string; dollars: number; items: number }
 export type LubeTotals = { net_sales: number; tax: number; tickets: number }
 // Add-ons (upsell parts/accessories) sold, credited to the Lube Top Tech on the ticket.
-export type LubeAddonTech = { employee_id: string; name: string; units: number; lines: number; dollars: number }
+export type LubeAddonTech = { employee_id: string; name: string; tickets: number; units: number; lines: number; dollars: number; avg_addon_per_ticket: number }
 export type LubeAddonCategory = { name: string; units: number; dollars: number }
 export type LubeStats = {
   start: string
