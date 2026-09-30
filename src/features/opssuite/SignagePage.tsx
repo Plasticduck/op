@@ -199,10 +199,23 @@ function Inner({ locationId }: { locationId: string }) {
   // batch and work through. Toggle groups by site, item, or order date.
   const brandLogoUrl = useBrandLogoUrl()
   const [groupBy, setGroupBy] = useState<'site' | 'item' | 'date'>('site')
-  const unfulfilled = useMemo(
+  // Production filter: single out orders still needing to be moved to production
+  // ("needs" = Ordered) vs. those already In Production, or show all unfulfilled.
+  const [prodFilter, setProdFilter] = useState<'all' | 'needs' | 'production'>('all')
+  const baseUnfulfilled = useMemo(
     () => rows.filter((r) => { const s = statusOf(r); return s !== 'shipped' && s !== 'completed' }),
     [rows],
   )
+  const prodCounts = useMemo(() => {
+    let needs = 0, production = 0
+    for (const r of baseUnfulfilled) { if (statusOf(r) === 'in_production') production++; else needs++ }
+    return { all: baseUnfulfilled.length, needs, production }
+  }, [baseUnfulfilled])
+  const unfulfilled = useMemo(() => {
+    if (prodFilter === 'needs') return baseUnfulfilled.filter((r) => statusOf(r) !== 'in_production')
+    if (prodFilter === 'production') return baseUnfulfilled.filter((r) => statusOf(r) === 'in_production')
+    return baseUnfulfilled
+  }, [baseUnfulfilled, prodFilter])
   const totalQty = useMemo(() => unfulfilled.reduce((sum, r) => sum + r.quantity, 0), [unfulfilled])
   const groups = useMemo(() => {
     const map = new Map<string, { key: string; label: string; rows: Row[]; qty: number }>()
@@ -225,10 +238,11 @@ function Inner({ locationId }: { locationId: string }) {
   }, [unfulfilled, groupBy])
   const exportRows = useMemo(() => groups.flatMap((g) => g.rows), [groups])
   const groupWord = groupBy === 'date' ? 'day' : groupBy
+  const prodFilterLabel = prodFilter === 'needs' ? 'Needs production' : prodFilter === 'production' ? 'In production' : 'All unfulfilled'
   const runExport = (kind: 'pdf' | 'excel') => {
     if (kind === 'excel') { void exportExcel('unfulfilled-signage-orders', FULFILLMENT_COLUMNS, exportRows); return }
     void exportPdf('Unfulfilled Signage Orders', FULFILLMENT_COLUMNS, exportRows, {
-      subtitle: `Grouped by ${groupBy}`,
+      subtitle: `${prodFilterLabel} · grouped by ${groupBy}`,
       logoUrl: brandLogoUrl,
     })
   }
@@ -455,7 +469,7 @@ function Inner({ locationId }: { locationId: string }) {
 
       {isAdmin && tab === 'fulfillment' && (loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
-      ) : unfulfilled.length === 0 ? (
+      ) : baseUnfulfilled.length === 0 ? (
         <EmptyState
           icon={ClipboardList}
           title="Nothing to fulfill"
@@ -463,34 +477,72 @@ function Inner({ locationId }: { locationId: string }) {
         />
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card p-3">
-            <span className="text-xs font-medium text-ink-subtle">Group by</span>
-            <div className="flex rounded-md border border-border p-0.5">
-              {(['site', 'item', 'date'] as const).map((g) => (
-                <button
-                  key={g}
-                  type="button"
-                  onClick={() => setGroupBy(g)}
-                  className={cn(
-                    'rounded px-3 py-1 text-sm font-medium capitalize transition',
-                    groupBy === g ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
-                  )}
-                >
-                  {g}
-                </button>
-              ))}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-md border border-border bg-card p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-ink-subtle">Group by</span>
+              <div className="flex rounded-md border border-border p-0.5">
+                {(['site', 'item', 'date'] as const).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGroupBy(g)}
+                    className={cn(
+                      'rounded px-3 py-1 text-sm font-medium capitalize transition',
+                      groupBy === g ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
+                    )}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-ink-subtle">Show</span>
+              <div className="flex rounded-md border border-border p-0.5">
+                {([
+                  ['all', `All (${prodCounts.all})`],
+                  ['needs', `Needs production (${prodCounts.needs})`],
+                  ['production', `In production (${prodCounts.production})`],
+                ] as const).map(([key, lbl]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setProdFilter(key)}
+                    className={cn(
+                      'rounded px-3 py-1 text-sm font-medium transition',
+                      prodFilter === key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
+                    )}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => runExport('pdf')}><Download className="size-4" /> PDF</Button>
-              <Button variant="secondary" size="sm" onClick={() => runExport('excel')}><Download className="size-4" /> Excel</Button>
+              <Button variant="secondary" size="sm" disabled={unfulfilled.length === 0} onClick={() => runExport('pdf')}><Download className="size-4" /> PDF</Button>
+              <Button variant="secondary" size="sm" disabled={unfulfilled.length === 0} onClick={() => runExport('excel')}><Download className="size-4" /> Excel</Button>
             </div>
           </div>
-          <p className="text-xs text-ink-muted">
-            {unfulfilled.length} unfulfilled order{unfulfilled.length === 1 ? '' : 's'} · {totalQty} item{totalQty === 1 ? '' : 's'} total · {groups.length} {groupWord}{groups.length === 1 ? '' : 's'}
-          </p>
-          {groups.map((g) => (
-            <FulfillmentGroup key={g.key} group={g} groupBy={groupBy} isAdmin={isAdmin} onChangeStatus={changeStatus} />
-          ))}
+          {unfulfilled.length === 0 ? (
+            <EmptyState
+              icon={ClipboardList}
+              title={prodFilter === 'needs' ? 'Nothing needs production' : 'Nothing in production'}
+              description={
+                prodFilter === 'needs'
+                  ? 'Every unfulfilled order has already been moved into production.'
+                  : 'No orders are marked In Production yet. Move an order to In Production to see it here.'
+              }
+            />
+          ) : (
+            <>
+              <p className="text-xs text-ink-muted">
+                {unfulfilled.length} order{unfulfilled.length === 1 ? '' : 's'} · {totalQty} item{totalQty === 1 ? '' : 's'} total · {groups.length} {groupWord}{groups.length === 1 ? '' : 's'} · <span className="font-medium text-ink">{prodFilterLabel}</span>
+              </p>
+              {groups.map((g) => (
+                <FulfillmentGroup key={g.key} group={g} groupBy={groupBy} isAdmin={isAdmin} onChangeStatus={changeStatus} />
+              ))}
+            </>
+          )}
         </div>
       ))}
 
@@ -574,6 +626,7 @@ function FulfillmentGroup({
                 <th className="px-3 py-2 font-medium numeric">Qty</th>
                 <th className="px-3 py-2 font-medium">Ordered by</th>
                 {showWhen && <th className="px-3 py-2 font-medium">When</th>}
+                <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium text-center">Artwork</th>
                 {isAdmin && <th className="px-3 py-2 font-medium">Fulfill</th>}
               </tr>
@@ -592,6 +645,9 @@ function FulfillmentGroup({
                   <td className="px-3 py-2 numeric tabular text-ink-muted">{r.quantity}</td>
                   <td className="px-3 py-2 text-ink-muted">{orderedByOf(r)}</td>
                   {showWhen && <td className="px-3 py-2 text-ink-muted">{timeAgo(r.created_at)}</td>}
+                  <td className="px-3 py-2">
+                    <span className={cn('inline-block w-fit whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadge(r.status).cls)}>{statusBadge(r.status).label}</span>
+                  </td>
                   <td className="px-3 py-2 text-center">
                     {r.artwork_path ? (
                       <button
