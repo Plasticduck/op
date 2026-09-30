@@ -104,7 +104,7 @@ function Inner({ locationId }: { locationId: string }) {
   // Category chosen from a catalog tile, preselected in the order form.
   const [presetCategory, setPresetCategory] = useState<string | null>(null)
   const startOrder = (category: string | null) => { setPresetCategory(category); setCreating(true) }
-  const [tab, setTab] = useState<'catalog' | 'library' | 'history'>('catalog')
+  const [tab, setTab] = useState<'catalog' | 'library' | 'new' | 'shipped' | 'completed'>('catalog')
   // Catalog drill-down: a chosen category shows its gallery; picking a sign opens
   // the quantity-only order confirm.
   const [galleryCat, setGalleryCat] = useState<string | null>(null)
@@ -142,6 +142,34 @@ function Inner({ locationId }: { locationId: string }) {
     await load()
   }
 
+  // Orders are split by status into their own tabs: New Orders (anything not yet
+  // shipped or completed), Shipped, and Completed.
+  const statusOf = (r: Row) => (r.status ?? 'ordered').toLowerCase()
+  const orderCounts = useMemo(() => {
+    let neworders = 0, shipped = 0, completed = 0
+    for (const r of rows) {
+      const s = statusOf(r)
+      if (s === 'shipped') shipped++
+      else if (s === 'completed') completed++
+      else neworders++
+    }
+    return { new: neworders, shipped, completed }
+  }, [rows])
+  const orderRows = useMemo(() => {
+    if (tab === 'shipped') return rows.filter((r) => statusOf(r) === 'shipped')
+    if (tab === 'completed') return rows.filter((r) => statusOf(r) === 'completed')
+    if (tab === 'new') return rows.filter((r) => { const s = statusOf(r); return s !== 'shipped' && s !== 'completed' })
+    return []
+  }, [rows, tab])
+  const onOrdersTab = tab === 'new' || tab === 'shipped' || tab === 'completed'
+  const TABS: [typeof tab, string][] = [
+    ['catalog', 'Catalog'],
+    ['library', 'Artwork Library'],
+    ['new', `New Orders${orderCounts.new ? ` (${orderCounts.new})` : ''}`],
+    ['shipped', `Shipped${orderCounts.shipped ? ` (${orderCounts.shipped})` : ''}`],
+    ['completed', `Completed${orderCounts.completed ? ` (${orderCounts.completed})` : ''}`],
+  ]
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -151,8 +179,8 @@ function Inner({ locationId }: { locationId: string }) {
       />
 
       {/* Tabs */}
-      <div className="flex items-center gap-6 border-b border-border">
-        {([['catalog', 'Catalog'], ['library', 'Artwork Library'], ['history', 'Order History']] as const).map(([key, label]) => (
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-border">
+        {TABS.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -214,13 +242,17 @@ function Inner({ locationId }: { locationId: string }) {
         </section>
       ))}
 
-      {tab === 'history' && (loading ? (
+      {onOrdersTab && (loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
-      ) : rows.length === 0 ? (
+      ) : orderRows.length === 0 ? (
         <EmptyState
           icon={Signpost}
-          title="No signage orders"
-          description="Pick a category on the Catalog tab to submit your first order. It goes straight to the print team."
+          title={tab === 'shipped' ? 'No shipped orders' : tab === 'completed' ? 'No completed orders' : 'No new orders'}
+          description={
+            tab === 'shipped' ? 'Orders marked Shipped will appear here.'
+              : tab === 'completed' ? 'Orders marked Completed will appear here.'
+                : 'New orders that have not shipped yet show here. Pick a category on the Catalog tab to submit one.'
+          }
         />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
@@ -239,7 +271,7 @@ function Inner({ locationId }: { locationId: string }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {orderRows.map((r) => (
                 <tr key={r.id} className="border-t border-border hover:bg-content">
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
@@ -355,7 +387,7 @@ function Inner({ locationId }: { locationId: string }) {
           sign={pickedSign}
           locationId={locationId}
           onClose={() => setPickedSign(null)}
-          onPlaced={() => { setPickedSign(null); setTab('history'); void load() }}
+          onPlaced={() => { setPickedSign(null); setTab('new'); void load() }}
         />
       )}
 
@@ -365,7 +397,7 @@ function Inner({ locationId }: { locationId: string }) {
           sign={pickedSign}
           locationId={locationId}
           onClose={() => setPickedSign(null)}
-          onPlaced={() => { setPickedSign(null); setTab('history'); void load() }}
+          onPlaced={() => { setPickedSign(null); setTab('new'); void load() }}
         />
       )}
 
