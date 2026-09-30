@@ -133,7 +133,7 @@ function Inner({ locationId }: { locationId: string }) {
   // Category chosen from a catalog tile, preselected in the order form.
   const [presetCategory, setPresetCategory] = useState<string | null>(null)
   const startOrder = (category: string | null) => { setPresetCategory(category); setCreating(true) }
-  const [tab, setTab] = useState<'catalog' | 'library' | 'new' | 'shipped' | 'completed' | 'fulfillment'>('catalog')
+  const [tab, setTab] = useState<'catalog' | 'library' | 'new' | 'production' | 'shipped' | 'completed' | 'fulfillment'>('catalog')
   // Catalog drill-down: a chosen category shows its gallery; picking a sign opens
   // the quantity-only order confirm.
   const [galleryCat, setGalleryCat] = useState<string | null>(null)
@@ -171,26 +171,28 @@ function Inner({ locationId }: { locationId: string }) {
     await load()
   }
 
-  // Orders are split by status into their own tabs: New Orders (anything not yet
-  // shipped or completed), Shipped, and Completed.
+  // Orders are split by status into their own tabs: New Orders (Ordered, not yet
+  // in production), In Production, Shipped, and Completed.
   const statusOf = (r: Row) => (r.status ?? 'ordered').toLowerCase()
   const orderCounts = useMemo(() => {
-    let neworders = 0, shipped = 0, completed = 0
+    let neworders = 0, production = 0, shipped = 0, completed = 0
     for (const r of rows) {
       const s = statusOf(r)
       if (s === 'shipped') shipped++
       else if (s === 'completed') completed++
+      else if (s === 'in_production') production++
       else neworders++
     }
-    return { new: neworders, shipped, completed }
+    return { new: neworders, production, shipped, completed }
   }, [rows])
   const orderRows = useMemo(() => {
     if (tab === 'shipped') return rows.filter((r) => statusOf(r) === 'shipped')
     if (tab === 'completed') return rows.filter((r) => statusOf(r) === 'completed')
-    if (tab === 'new') return rows.filter((r) => { const s = statusOf(r); return s !== 'shipped' && s !== 'completed' })
+    if (tab === 'production') return rows.filter((r) => statusOf(r) === 'in_production')
+    if (tab === 'new') return rows.filter((r) => { const s = statusOf(r); return s !== 'shipped' && s !== 'completed' && s !== 'in_production' })
     return []
   }, [rows, tab])
-  const onOrdersTab = tab === 'new' || tab === 'shipped' || tab === 'completed'
+  const onOrdersTab = tab === 'new' || tab === 'production' || tab === 'shipped' || tab === 'completed'
 
   // Fulfillment report (admin only): the unfulfilled orders — anything not yet
   // shipped or completed — grouped by a chosen dimension so they're easy to
@@ -235,6 +237,7 @@ function Inner({ locationId }: { locationId: string }) {
     ['catalog', 'Catalog'],
     ['library', 'Artwork Library'],
     ['new', `New Orders${orderCounts.new ? ` (${orderCounts.new})` : ''}`],
+    ['production', `In Production${orderCounts.production ? ` (${orderCounts.production})` : ''}`],
     ['shipped', `Shipped${orderCounts.shipped ? ` (${orderCounts.shipped})` : ''}`],
     ['completed', `Completed${orderCounts.completed ? ` (${orderCounts.completed})` : ''}`],
     ...(isAdmin ? [['fulfillment', `Fulfillment${orderCounts.new ? ` (${orderCounts.new})` : ''}`]] as [typeof tab, string][] : []),
@@ -317,11 +320,17 @@ function Inner({ locationId }: { locationId: string }) {
       ) : orderRows.length === 0 ? (
         <EmptyState
           icon={Signpost}
-          title={tab === 'shipped' ? 'No shipped orders' : tab === 'completed' ? 'No completed orders' : 'No new orders'}
+          title={
+            tab === 'shipped' ? 'No shipped orders'
+              : tab === 'completed' ? 'No completed orders'
+                : tab === 'production' ? 'Nothing in production'
+                  : 'No new orders'
+          }
           description={
             tab === 'shipped' ? 'Orders marked Shipped will appear here.'
               : tab === 'completed' ? 'Orders marked Completed will appear here.'
-                : 'New orders that have not shipped yet show here. Pick a category on the Catalog tab to submit one.'
+                : tab === 'production' ? 'Orders marked In Production will appear here.'
+                  : 'New orders that have not been placed into production yet show here. Pick a category on the Catalog tab to submit one.'
           }
         />
       ) : (
