@@ -1,6 +1,7 @@
 // signage-status-email — Supabase Edge Function (Deno).
 // Emails the person who placed a signage order when its status changes
-// (Ordered / Shipped / Completed). Shipped emails include the tracking number.
+// (Ordered / In Production / Shipped / Completed). Shipped emails include the
+// tracking number.
 // Triggered by the admin from the Signage order tracker, so it is gated to
 // kevan@washlyfe.com. Required secret: RESEND_API_KEY. Optional: RESEND_FROM.
 
@@ -32,7 +33,12 @@ const json = (body: unknown, status: number, origin: string | null) =>
 function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
-const label = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Updated')
+// Title-case a status value, turning underscores into spaces (e.g. "in_production"
+// -> "In Production", "shipped" -> "Shipped").
+const label = (s: string) => {
+  const t = s.trim().replace(/_/g, ' ')
+  return t ? t.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Updated'
+}
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')

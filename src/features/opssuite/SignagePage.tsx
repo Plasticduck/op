@@ -28,11 +28,13 @@ import {
 
 type Row = SignageRequest & { requested_by: { name: string } | null; location: { name: string } | null }
 
-// Order tracker status -> label + badge classes. Steps: Ordered, Shipped, Completed.
+// Order tracker status -> label + badge classes.
+// Steps: Ordered → In Production → Shipped → Completed.
 function statusBadge(status: string | null | undefined): { label: string; cls: string } {
   const s = (status ?? 'ordered').toLowerCase()
-  if (s === 'completed') return { label: 'Completed', cls: 'bg-ok-soft text-ok' }
-  if (s === 'shipped') return { label: 'Shipped', cls: 'bg-accent-soft text-accent' }
+  if (s === 'completed') return { label: 'Completed', cls: 'bg-ok text-white' }
+  if (s === 'shipped') return { label: 'Shipped', cls: 'bg-ok-soft text-ok' }
+  if (s === 'in_production') return { label: 'In Production', cls: 'bg-accent-soft text-accent' }
   return { label: 'Ordered', cls: 'bg-warn-soft text-warn' }
 }
 
@@ -378,6 +380,7 @@ function Inner({ locationId }: { locationId: string }) {
                           className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
                         >
                           <option value="ordered">Ordered</option>
+                          <option value="in_production">In Production</option>
                           <option value="shipped">Shipped</option>
                           <option value="completed">Completed</option>
                         </select>
@@ -602,6 +605,7 @@ function FulfillmentGroup({
                         className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
                       >
                         <option value="ordered">Ordered</option>
+                        <option value="in_production">In Production</option>
                         <option value="shipped">Shipped</option>
                         <option value="completed">Completed</option>
                       </select>
