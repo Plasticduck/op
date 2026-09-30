@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CreditCard, FileText, Gift, GripVertical, Images, Package, Plus, ShieldAlert, Signpost, Square, StickyNote, Trash2, Upload, Wind, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ClipboardList, CreditCard, Download, FileText, Gift, GripVertical, Images, Package, Plus, ShieldAlert, Signpost, Square, StickyNote, Trash2, Upload, Wind, type LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { timeAgo, shortDate } from '@/lib/format'
+import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
+import { useBrandLogoUrl } from '@/lib/brandLogo'
 import { renderPdfThumb } from '@/lib/pdfThumb'
 import { useArtworkThumbs } from './useArtworkThumbs'
 import { cn } from '@/lib/utils'
@@ -33,6 +35,31 @@ function statusBadge(status: string | null | undefined): { label: string; cls: s
   if (s === 'shipped') return { label: 'Shipped', cls: 'bg-accent-soft text-accent' }
   return { label: 'Ordered', cls: 'bg-warn-soft text-warn' }
 }
+
+// Display helpers shared by the order table and the fulfillment report.
+const siteLabelOf = (r: Row) => (r.location_id === null ? 'All sites' : r.location?.name ?? 'Unknown site')
+const itemLabelOf = (r: Row) => r.title || r.artwork_name || r.sign_category || 'Untitled item'
+const orderedByOf = (r: Row) =>
+  r.first_name || r.last_name ? `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() : r.requested_by?.name ?? '—'
+function sizeText(r: Row): string {
+  if (r.size_option) return `${r.size_option}${r.sided ? ` · ${r.sided === 'double' ? 'Double' : 'Single'} sided` : ''}`
+  if (r.width && r.height) return `${r.width} x ${r.height} ${r.size_unit === 'ft' ? 'ft' : 'in'}`
+  return '—'
+}
+
+// Columns for the Fulfillment report export (Excel + PDF). Site, item, and date
+// are all columns so a single export is useful regardless of the on-screen grouping.
+const FULFILLMENT_COLUMNS: ExportColumn<Row>[] = [
+  { header: 'Ordered on', value: (r) => shortDate(r.created_at) },
+  { header: 'Site', value: (r) => siteLabelOf(r) },
+  { header: 'Item', value: (r) => itemLabelOf(r) },
+  { header: 'Category', value: (r) => r.sign_category },
+  { header: 'Type', value: (r) => r.sign_type ?? '' },
+  { header: 'Size', value: (r) => sizeText(r) },
+  { header: 'Qty', value: (r) => r.quantity },
+  { header: 'Ordered by', value: (r) => orderedByOf(r) },
+  { header: 'Notes', value: (r) => r.notes ?? '' },
+]
 
 // Catalog tiles shown on the signage landing. Names must match SIGN_CATEGORIES so
 // a tile can preset the order form's category. Placeholder icons for now.
@@ -104,7 +131,7 @@ function Inner({ locationId }: { locationId: string }) {
   // Category chosen from a catalog tile, preselected in the order form.
   const [presetCategory, setPresetCategory] = useState<string | null>(null)
   const startOrder = (category: string | null) => { setPresetCategory(category); setCreating(true) }
-  const [tab, setTab] = useState<'catalog' | 'library' | 'new' | 'shipped' | 'completed'>('catalog')
+  const [tab, setTab] = useState<'catalog' | 'library' | 'new' | 'shipped' | 'completed' | 'fulfillment'>('catalog')
   // Catalog drill-down: a chosen category shows its gallery; picking a sign opens
   // the quantity-only order confirm.
   const [galleryCat, setGalleryCat] = useState<string | null>(null)
@@ -162,12 +189,53 @@ function Inner({ locationId }: { locationId: string }) {
     return []
   }, [rows, tab])
   const onOrdersTab = tab === 'new' || tab === 'shipped' || tab === 'completed'
+
+  // Fulfillment report (admin only): the unfulfilled orders — anything not yet
+  // shipped or completed — grouped by a chosen dimension so they're easy to
+  // batch and work through. Toggle groups by site, item, or order date.
+  const brandLogoUrl = useBrandLogoUrl()
+  const [groupBy, setGroupBy] = useState<'site' | 'item' | 'date'>('site')
+  const unfulfilled = useMemo(
+    () => rows.filter((r) => { const s = statusOf(r); return s !== 'shipped' && s !== 'completed' }),
+    [rows],
+  )
+  const totalQty = useMemo(() => unfulfilled.reduce((sum, r) => sum + r.quantity, 0), [unfulfilled])
+  const groups = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; rows: Row[]; qty: number }>()
+    for (const r of unfulfilled) {
+      let key: string, label: string
+      if (groupBy === 'site') { label = siteLabelOf(r); key = label.toLowerCase() }
+      else if (groupBy === 'item') { label = itemLabelOf(r); key = label.toLowerCase() }
+      else { key = r.created_at.slice(0, 10); label = shortDate(r.created_at) }
+      let g = map.get(key)
+      if (!g) { g = { key, label, rows: [], qty: 0 }; map.set(key, g) }
+      g.rows.push(r)
+      g.qty += r.quantity
+    }
+    const arr = [...map.values()]
+    for (const g of arr) g.rows.sort((a, b) => (a.created_at < b.created_at ? -1 : 1)) // oldest first
+    if (groupBy === 'date') arr.sort((a, b) => (a.key < b.key ? 1 : -1)) // newest day first
+    else if (groupBy === 'item') arr.sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label))
+    else arr.sort((a, b) => a.label.localeCompare(b.label))
+    return arr
+  }, [unfulfilled, groupBy])
+  const exportRows = useMemo(() => groups.flatMap((g) => g.rows), [groups])
+  const groupWord = groupBy === 'date' ? 'day' : groupBy
+  const runExport = (kind: 'pdf' | 'excel') => {
+    if (kind === 'excel') { void exportExcel('unfulfilled-signage-orders', FULFILLMENT_COLUMNS, exportRows); return }
+    void exportPdf('Unfulfilled Signage Orders', FULFILLMENT_COLUMNS, exportRows, {
+      subtitle: `Grouped by ${groupBy}`,
+      logoUrl: brandLogoUrl,
+    })
+  }
+
   const TABS: [typeof tab, string][] = [
     ['catalog', 'Catalog'],
     ['library', 'Artwork Library'],
     ['new', `New Orders${orderCounts.new ? ` (${orderCounts.new})` : ''}`],
     ['shipped', `Shipped${orderCounts.shipped ? ` (${orderCounts.shipped})` : ''}`],
     ['completed', `Completed${orderCounts.completed ? ` (${orderCounts.completed})` : ''}`],
+    ...(isAdmin ? [['fulfillment', `Fulfillment${orderCounts.new ? ` (${orderCounts.new})` : ''}`]] as [typeof tab, string][] : []),
   ]
 
   return (
@@ -373,6 +441,47 @@ function Inner({ locationId }: { locationId: string }) {
         </div>
       ))}
 
+      {isAdmin && tab === 'fulfillment' && (loading ? (
+        <p className="text-sm text-ink-muted">Loading…</p>
+      ) : unfulfilled.length === 0 ? (
+        <EmptyState
+          icon={ClipboardList}
+          title="Nothing to fulfill"
+          description="Every order has been shipped or completed. New orders will collect here to work through."
+        />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card p-3">
+            <span className="text-xs font-medium text-ink-subtle">Group by</span>
+            <div className="flex rounded-md border border-border p-0.5">
+              {(['site', 'item', 'date'] as const).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGroupBy(g)}
+                  className={cn(
+                    'rounded px-3 py-1 text-sm font-medium capitalize transition',
+                    groupBy === g ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => runExport('pdf')}><Download className="size-4" /> PDF</Button>
+              <Button variant="secondary" size="sm" onClick={() => runExport('excel')}><Download className="size-4" /> Excel</Button>
+            </div>
+          </div>
+          <p className="text-xs text-ink-muted">
+            {unfulfilled.length} unfulfilled order{unfulfilled.length === 1 ? '' : 's'} · {totalQty} item{totalQty === 1 ? '' : 's'} total · {groups.length} {groupWord}{groups.length === 1 ? '' : 's'}
+          </p>
+          {groups.map((g) => (
+            <FulfillmentGroup key={g.key} group={g} groupBy={groupBy} isAdmin={isAdmin} onChangeStatus={changeStatus} />
+          ))}
+        </div>
+      ))}
+
       {tab === 'library' && !loading && (
         <ArtworkLibrary
           items={library}
@@ -411,6 +520,100 @@ function Inner({ locationId }: { locationId: string }) {
         />
       )}
     </div>
+  )
+}
+
+// One collapsible group in the Fulfillment report. The column that matches the
+// active grouping is dropped (redundant), and admins can mark an order shipped or
+// completed right here — which removes it from the report on the next refresh.
+function FulfillmentGroup({
+  group, groupBy, isAdmin, onChangeStatus,
+}: {
+  group: { key: string; label: string; rows: Row[]; qty: number }
+  groupBy: 'site' | 'item' | 'date'
+  isAdmin: boolean
+  onChangeStatus: (r: Row, status: string) => void
+}) {
+  const [open, setOpen] = useState(true)
+  const showItem = groupBy !== 'item'
+  const showSite = groupBy !== 'site'
+  const showWhen = groupBy !== 'date'
+  return (
+    <section className="overflow-hidden rounded-md border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 bg-content px-4 py-2.5 text-left"
+      >
+        <ChevronDown className={cn('size-4 shrink-0 text-ink-muted transition', !open && '-rotate-90')} />
+        <span className="min-w-0 truncate font-semibold text-ink">{group.label}</span>
+        <span className="ml-auto shrink-0 rounded-full bg-card px-2 py-0.5 text-xs font-medium text-ink-muted">
+          {group.rows.length} order{group.rows.length === 1 ? '' : 's'} · {group.qty} qty
+        </span>
+      </button>
+      {open && (
+        <div className="overflow-x-auto border-t border-border">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-content/50 text-left text-xs uppercase tracking-wide text-ink-muted">
+              <tr>
+                {showItem && <th className="px-3 py-2 font-medium">Item</th>}
+                {showSite && <th className="px-3 py-2 font-medium">Site</th>}
+                <th className="px-3 py-2 font-medium">Size</th>
+                <th className="px-3 py-2 font-medium numeric">Qty</th>
+                <th className="px-3 py-2 font-medium">Ordered by</th>
+                {showWhen && <th className="px-3 py-2 font-medium">When</th>}
+                <th className="px-3 py-2 font-medium text-center">Artwork</th>
+                {isAdmin && <th className="px-3 py-2 font-medium">Fulfill</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {group.rows.map((r) => (
+                <tr key={r.id} className="border-t border-border hover:bg-content">
+                  {showItem && (
+                    <td className="px-3 py-2">
+                      <span className="font-medium text-ink">{itemLabelOf(r)}</span>
+                      <div className="text-xs text-ink-muted">{r.sign_category}{r.sign_type ? ` · ${r.sign_type}` : ''}</div>
+                    </td>
+                  )}
+                  {showSite && <td className="px-3 py-2 text-ink-muted">{siteLabelOf(r)}</td>}
+                  <td className="px-3 py-2 text-ink-muted">{sizeText(r)}</td>
+                  <td className="px-3 py-2 numeric tabular text-ink-muted">{r.quantity}</td>
+                  <td className="px-3 py-2 text-ink-muted">{orderedByOf(r)}</td>
+                  {showWhen && <td className="px-3 py-2 text-ink-muted">{timeAgo(r.created_at)}</td>}
+                  <td className="px-3 py-2 text-center">
+                    {r.artwork_path ? (
+                      <button
+                        type="button"
+                        onClick={() => void openArtwork(r.artwork_path as string)}
+                        title={`View artwork${r.artwork_name ? `: ${r.artwork_name}` : ''}`}
+                        className="mx-auto grid size-8 place-items-center rounded-md border border-border text-accent hover:bg-accent-soft"
+                      >
+                        <FileText className="size-4" />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-ink-subtle">none</span>
+                    )}
+                  </td>
+                  {isAdmin && (
+                    <td className="px-3 py-2">
+                      <select
+                        value={(r.status ?? 'ordered').toLowerCase()}
+                        onChange={(e) => onChangeStatus(r, e.target.value)}
+                        className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
+                      >
+                        <option value="ordered">Ordered</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   )
 }
 
