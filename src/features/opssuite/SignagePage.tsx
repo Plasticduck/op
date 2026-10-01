@@ -194,6 +194,28 @@ function Inner({ locationId }: { locationId: string }) {
   }, [rows, tab])
   const onOrdersTab = tab === 'new' || tab === 'production' || tab === 'shipped' || tab === 'completed'
 
+  // Optional grouping for the order tabs: flat (None), by Site, or by Date. The
+  // choice is shared across all four order tabs.
+  const [orderGroupBy, setOrderGroupBy] = useState<'none' | 'site' | 'date'>('none')
+  const groupedOrderRows = useMemo(() => {
+    if (orderGroupBy === 'none') return null
+    const map = new Map<string, { key: string; label: string; rows: Row[] }>()
+    for (const r of orderRows) {
+      let key: string, label: string
+      if (orderGroupBy === 'site') { label = siteLabelOf(r); key = label.toLowerCase() }
+      else { key = r.created_at.slice(0, 10); label = shortDate(r.created_at) }
+      let g = map.get(key)
+      if (!g) { g = { key, label, rows: [] }; map.set(key, g) }
+      g.rows.push(r)
+    }
+    const arr = [...map.values()]
+    for (const g of arr) g.rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1)) // newest first
+    if (orderGroupBy === 'date') arr.sort((a, b) => (a.key < b.key ? 1 : -1)) // newest day first
+    else arr.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
+    return arr
+  }, [orderRows, orderGroupBy])
+  const orderColCount = isAdmin ? 9 : 8
+
   // Fulfillment report (admin only): the unfulfilled orders — anything not yet
   // shipped or completed — grouped by a chosen dimension so they're easy to
   // batch and work through. Toggle groups by site, item, or order date.
@@ -256,6 +278,96 @@ function Inner({ locationId }: { locationId: string }) {
     ['completed', `Completed${orderCounts.completed ? ` (${orderCounts.completed})` : ''}`],
     ...(isAdmin ? [['fulfillment', `Fulfillment${orderCounts.new ? ` (${orderCounts.new})` : ''}`]] as [typeof tab, string][] : []),
   ]
+
+  // One order row, reused by the flat and the grouped (by site / date) renderings.
+  const renderOrderRow = (r: Row) => (
+    <tr key={r.id} className="border-t border-border hover:bg-content">
+      <td className="px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-ink">{r.title || r.sign_category}</span>
+          {r.location_id === null && (
+            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">All sites</span>
+          )}
+        </div>
+        <div className="text-xs text-ink-muted">
+          {r.sign_category}{r.sign_type ? ` · ${r.sign_type}` : ''}
+        </div>
+      </td>
+      <td className="px-3 py-2.5 text-ink-muted">
+        {r.location_id === null ? 'All sites' : r.location?.name ?? '—'}
+      </td>
+      <td className="px-3 py-2.5 text-ink-muted">{sizeText(r)}</td>
+      <td className="px-3 py-2.5 numeric tabular text-ink-muted">{r.quantity}</td>
+      <td className="px-3 py-2.5 text-ink-muted">{orderedByOf(r)}</td>
+      <td className="px-3 py-2.5 text-ink-muted">{timeAgo(r.created_at)}</td>
+      <td className="px-3 py-2.5">
+        {isAdmin ? (
+          <div className="flex flex-col gap-1">
+            <select
+              value={(r.status ?? 'ordered').toLowerCase()}
+              onChange={(e) => void changeStatus(r, e.target.value)}
+              className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
+            >
+              <option value="ordered">Ordered</option>
+              <option value="in_production">In Production</option>
+              <option value="shipped">Shipped</option>
+              <option value="completed">Completed</option>
+            </select>
+            {(r.status ?? '').toLowerCase() === 'shipped' && (
+              <input
+                type="text"
+                defaultValue={r.tracking_number ?? ''}
+                placeholder="Tracking #"
+                onBlur={(e) => void saveTracking(r, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                className="w-32 rounded-md border border-border bg-card px-2 py-1 text-xs text-ink"
+              />
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            <span className={cn('inline-block w-fit rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadge(r.status).cls)}>{statusBadge(r.status).label}</span>
+            {(r.status ?? '').toLowerCase() === 'shipped' && r.tracking_number && (
+              <span className="text-xs text-ink-muted">Tracking: {r.tracking_number}</span>
+            )}
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-2.5 text-center">
+        {r.artwork_path ? (
+          <button
+            type="button"
+            onClick={() => void openArtwork(r.artwork_path as string)}
+            title={`View artwork${r.artwork_name ? `: ${r.artwork_name}` : ''}`}
+            className="mx-auto grid size-8 place-items-center rounded-md border border-border text-accent hover:bg-accent-soft"
+          >
+            <FileText className="size-4" />
+          </button>
+        ) : (
+          <span className="text-xs text-ink-subtle">none</span>
+        )}
+      </td>
+      {isAdmin && (
+        <td className="px-3 py-2.5 text-center">
+          {confirmDeleteId === r.id ? (
+            <div className="flex items-center justify-center gap-1">
+              <Button variant="danger" size="sm" onClick={() => void deleteOrder(r)}>Delete</Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDeleteId(r.id)}
+              title="Delete order"
+              className="mx-auto grid size-8 place-items-center rounded-md border border-border text-danger hover:bg-danger-soft"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
+        </td>
+      )}
+    </tr>
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -348,7 +460,26 @@ function Inner({ locationId }: { locationId: string }) {
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border bg-card">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-ink-subtle">Group by</span>
+            <div className="flex rounded-md border border-border p-0.5">
+              {([['none', 'None'], ['site', 'Site'], ['date', 'Date']] as const).map(([key, lbl]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setOrderGroupBy(key)}
+                  className={cn(
+                    'rounded px-3 py-1 text-sm font-medium transition',
+                    orderGroupBy === key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded-md border border-border bg-card">
           <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
@@ -364,106 +495,20 @@ function Inner({ locationId }: { locationId: string }) {
               </tr>
             </thead>
             <tbody>
-              {orderRows.map((r) => (
-                <tr key={r.id} className="border-t border-border hover:bg-content">
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-ink">{r.title || r.sign_category}</span>
-                      {r.location_id === null && (
-                        <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">All sites</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-ink-muted">
-                      {r.sign_category}{r.sign_type ? ` · ${r.sign_type}` : ''}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-ink-muted">
-                    {r.location_id === null ? 'All sites' : r.location?.name ?? '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-ink-muted">
-                    {r.size_option
-                      ? `${r.size_option}${r.sided ? ` · ${r.sided === 'double' ? 'Double' : 'Single'} sided` : ''}`
-                      : r.width && r.height
-                        ? `${r.width} x ${r.height} ${r.size_unit === 'ft' ? 'ft' : 'in'}`
-                        : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 numeric tabular text-ink-muted">{r.quantity}</td>
-                  <td className="px-3 py-2.5 text-ink-muted">
-                    {r.first_name || r.last_name
-                      ? `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim()
-                      : r.requested_by?.name ?? '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-ink-muted">{timeAgo(r.created_at)}</td>
-                  <td className="px-3 py-2.5">
-                    {isAdmin ? (
-                      <div className="flex flex-col gap-1">
-                        <select
-                          value={(r.status ?? 'ordered').toLowerCase()}
-                          onChange={(e) => void changeStatus(r, e.target.value)}
-                          className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
-                        >
-                          <option value="ordered">Ordered</option>
-                          <option value="in_production">In Production</option>
-                          <option value="shipped">Shipped</option>
-                          <option value="completed">Completed</option>
-                        </select>
-                        {(r.status ?? '').toLowerCase() === 'shipped' && (
-                          <input
-                            type="text"
-                            defaultValue={r.tracking_number ?? ''}
-                            placeholder="Tracking #"
-                            onBlur={(e) => void saveTracking(r, e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                            className="w-32 rounded-md border border-border bg-card px-2 py-1 text-xs text-ink"
-                          />
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-0.5">
-                        <span className={cn('inline-block w-fit rounded-full px-2 py-0.5 text-[11px] font-medium', statusBadge(r.status).cls)}>{statusBadge(r.status).label}</span>
-                        {(r.status ?? '').toLowerCase() === 'shipped' && r.tracking_number && (
-                          <span className="text-xs text-ink-muted">Tracking: {r.tracking_number}</span>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    {r.artwork_path ? (
-                      <button
-                        type="button"
-                        onClick={() => void openArtwork(r.artwork_path as string)}
-                        title={`View artwork${r.artwork_name ? `: ${r.artwork_name}` : ''}`}
-                        className="mx-auto grid size-8 place-items-center rounded-md border border-border text-accent hover:bg-accent-soft"
-                      >
-                        <FileText className="size-4" />
-                      </button>
-                    ) : (
-                      <span className="text-xs text-ink-subtle">none</span>
-                    )}
-                  </td>
-                  {isAdmin && (
-                    <td className="px-3 py-2.5 text-center">
-                      {confirmDeleteId === r.id ? (
-                        <div className="flex items-center justify-center gap-1">
-                          <Button variant="danger" size="sm" onClick={() => void deleteOrder(r)}>Delete</Button>
-                          <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(r.id)}
-                          title="Delete order"
-                          className="mx-auto grid size-8 place-items-center rounded-md border border-border text-danger hover:bg-danger-soft"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
+              {groupedOrderRows
+                ? groupedOrderRows.flatMap((g) => [
+                    <tr key={`grp-${g.key}`} className="border-t-2 border-border-strong bg-content">
+                      <td colSpan={orderColCount} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                        {g.label}
+                        <span className="ml-2 font-normal normal-case text-ink-subtle">· {g.rows.length} order{g.rows.length === 1 ? '' : 's'}</span>
+                      </td>
+                    </tr>,
+                    ...g.rows.map(renderOrderRow),
+                  ])
+                : orderRows.map(renderOrderRow)}
             </tbody>
           </table>
+          </div>
         </div>
       ))}
 
