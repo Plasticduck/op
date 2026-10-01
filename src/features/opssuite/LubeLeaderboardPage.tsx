@@ -8,24 +8,34 @@ import { fetchLubeStats, type LubeStats, type LubeAddonTech } from '@/lib/querie
 // Add-on contest leaderboard for lube techs. Pick a contest window, a metric to
 // compete on, and (optionally) a single add-on category, and rank the top techs.
 
-type RangeKey = 'today' | 'week' | 'mtd' | 'd30' | 'ytd'
+type RangeKey = 'today' | 'week' | 'mtd' | 'lastmonth' | 'd30' | 'ytd'
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'week', label: 'This week' },
   { key: 'mtd', label: 'This month' },
+  { key: 'lastmonth', label: 'Last month' },
   { key: 'd30', label: 'Last 30 days' },
   { key: 'ytd', label: 'This year' },
 ]
 function rangeDates(key: RangeKey): { start: string; end: string } {
   const now = new Date()
-  const end = now.toISOString().slice(0, 10)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  // Last month is a closed window (1st -> last day of the previous month), unlike
+  // the other ranges which run up to today.
+  if (key === 'lastmonth') {
+    return {
+      start: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+      end: iso(new Date(now.getFullYear(), now.getMonth(), 0)),
+    }
+  }
+  const end = iso(now)
   let start: Date
   if (key === 'today') start = now
   else if (key === 'week') start = new Date(now.getTime() - 6 * 86400_000)
   else if (key === 'mtd') start = new Date(now.getFullYear(), now.getMonth(), 1)
   else if (key === 'ytd') start = new Date(now.getFullYear(), 0, 1)
   else start = new Date(now.getTime() - 29 * 86400_000)
-  return { start: start.toISOString().slice(0, 10), end }
+  return { start: iso(start), end }
 }
 
 const usd = (n: number) => n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -52,7 +62,7 @@ const isExcluded = (name: string) => EXCLUDED_TECHS.has(name.trim().toLowerCase(
 
 export default function LubeLeaderboardPage() {
   const [range, setRange] = useState<RangeKey>('mtd')
-  const [metric, setMetric] = useState<MetricKey>('dollars')
+  const [metric, setMetric] = useState<MetricKey>('avg')
   const [category, setCategory] = useState<string>('__all__')
   const [catMetric, setCatMetric] = useState<'units' | 'dollars'>('units')
   const [data, setData] = useState<LubeStats | null>(null)
