@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Trophy, Medal } from 'lucide-react'
+import { Trophy, Medal, ChevronDown } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
@@ -110,6 +110,28 @@ export default function LubeLeaderboardPage() {
     return { rows, metricLabel: m.label, fmt: m.fmt }
   }, [data, metric, category, catMetric, usingCategory])
 
+  // Per-tech add-on breakdown by item (category), biggest dollars first, so each
+  // person's row can expand to show what made up their add-on sales.
+  const breakdownById = useMemo(() => {
+    const m = new Map<string, { category: string; dollars: number; units: number }[]>()
+    for (const r of data?.techCategoryMatrix ?? []) {
+      if (r.dollars <= 0 && r.units <= 0) continue
+      const arr = m.get(r.employee_id) ?? []
+      arr.push({ category: r.category, dollars: r.dollars, units: r.units })
+      m.set(r.employee_id, arr)
+    }
+    for (const arr of m.values()) arr.sort((a, b) => b.dollars - a.dollars)
+    return m
+  }, [data])
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
   const top3 = rows.slice(0, 3)
   const { start, end } = rangeDates(range)
 
@@ -183,18 +205,52 @@ export default function LubeLeaderboardPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">Full ranking</h2>
             </div>
             <ol className="divide-y divide-border">
-              {rows.map((r, i) => (
-                <li key={r.employee_id} className={cn('flex items-center gap-3 px-4 py-2.5', i < 3 && 'bg-content/40')}>
-                  <div className="w-7 shrink-0 text-center">
-                    {i < 3 ? <Medal className={cn('mx-auto size-5', MEDAL[i])} /> : <span className="text-sm font-semibold text-ink-subtle">{i + 1}</span>}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-ink">{r.name}</div>
-                    <div className="truncate text-xs text-ink-subtle">{r.sub}</div>
-                  </div>
-                  <div className="shrink-0 text-right text-lg font-bold tabular text-ink">{fmt(r.value)}</div>
-                </li>
-              ))}
+              {rows.map((r, i) => {
+                const bd = breakdownById.get(r.employee_id) ?? []
+                const open = expanded.has(r.employee_id)
+                return (
+                  <li key={r.employee_id} className={cn(i < 3 && 'bg-content/40')}>
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(r.employee_id)}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-content"
+                      aria-expanded={open}
+                    >
+                      <div className="w-7 shrink-0 text-center">
+                        {i < 3 ? <Medal className={cn('mx-auto size-5', MEDAL[i])} /> : <span className="text-sm font-semibold text-ink-subtle">{i + 1}</span>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-ink">{r.name}</div>
+                        <div className="truncate text-xs text-ink-subtle">{r.sub}</div>
+                      </div>
+                      <div className="shrink-0 text-right text-lg font-bold tabular text-ink">{fmt(r.value)}</div>
+                      <ChevronDown className={cn('size-4 shrink-0 text-ink-muted transition', open && 'rotate-180')} />
+                    </button>
+                    {open && (
+                      <div className="border-t border-border bg-content/30 px-4 py-2 pl-14">
+                        {bd.length === 0 ? (
+                          <p className="py-1 text-xs text-ink-subtle">No add-on sales in this window.</p>
+                        ) : (
+                          <ul className="divide-y divide-border/60">
+                            <li className="flex items-center gap-3 py-1 text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
+                              <span className="min-w-0 flex-1">Add-on item</span>
+                              <span className="w-16 shrink-0 text-right">Units</span>
+                              <span className="w-24 shrink-0 text-right">Revenue</span>
+                            </li>
+                            {bd.map((c) => (
+                              <li key={c.category} className="flex items-center gap-3 py-1.5 text-sm">
+                                <span className="min-w-0 flex-1 truncate text-ink-muted">{c.category}</span>
+                                <span className="w-16 shrink-0 text-right tabular text-ink-subtle">{int(c.units)}</span>
+                                <span className="w-24 shrink-0 text-right font-medium tabular text-ink">{usd(c.dollars)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
             </ol>
           </section>
 
