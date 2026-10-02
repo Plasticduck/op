@@ -77,13 +77,36 @@ async function getFlexToken(svc: Any, clientId: string, clientSecret: string): P
   return j.accessToken as string
 }
 
-async function flexResolve(token: string, plate: string): Promise<Any> {
-  const res = await fetch(`${FLEX_BASE}/external/resolve-vehicle`, {
+// resolve-vehicle requires an organizationId (query param). Discover the org id(s)
+// from the car-wash list (cached for the warm instance).
+let flexOrgIdsCache: string[] | null = null
+async function getFlexOrgIds(token: string): Promise<string[]> {
+  if (flexOrgIdsCache) return flexOrgIdsCache
+  const res = await fetch(`${FLEX_BASE}/external/car-wash/get-car-washes`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ licensePlate: plate }),
+    body: JSON.stringify({}),
   })
   const data = await res.json().catch(() => null)
-  return { status: res.status, data }
+  const ids = [...new Set(((data?.carWashes ?? []) as Any[]).map((c) => String(c.organizationId ?? '')).filter(Boolean))]
+  flexOrgIdsCache = ids
+  return ids
+}
+
+async function flexResolve(token: string, plate: string): Promise<Any> {
+  const orgIds = await getFlexOrgIds(token)
+  if (!orgIds.length) return { status: 400, data: { error: 'no organization found for these credentials' } }
+  // A plate belongs to one org; try each until one resolves it.
+  let last: Any = { status: 404, data: { error: 'not found' } }
+  for (const orgId of orgIds) {
+    const res = await fetch(`${FLEX_BASE}/external/resolve-vehicle?organizationId=${encodeURIComponent(orgId)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ licensePlate: plate }),
+    })
+    const data = await res.json().catch(() => null)
+    if (res.ok && data?.vehicle) return { status: res.status, data }
+    last = { status: res.status, data }
+  }
+  return last
 }
 
 function flexResult(status: number, data: Any) {
@@ -149,11 +172,13 @@ let plateColsCache: PlateCol[] | null = null
 
 async function discoverPlateCols(base: string, cookie: string): Promise<PlateCol[]> {
   if (plateColsCache) return plateColsCache
-  // Tables/columns whose name contains PLATE (LICENSEPLATE, PLATE, PLATENUMBER…).
+  // Columns whose name looks like a plate: LICENSEPLATE, PLATE, PLATENUMBER,
+  // LICENSE, LPR… (SiteWatch naming isn't documented, so cast a wide net).
   const cat = await runSql(base, cookie,
     `SELECT TRIM(rf.RDB$RELATION_NAME), TRIM(rf.RDB$FIELD_NAME) ` +
     `FROM RDB$RELATION_FIELDS rf ` +
-    `WHERE rf.RDB$FIELD_NAME CONTAINING 'PLATE' AND rf.RDB$RELATION_NAME NOT STARTING WITH 'RDB$' AND rf.RDB$RELATION_NAME NOT STARTING WITH 'MON$'`)
+    `WHERE (rf.RDB$FIELD_NAME CONTAINING 'PLATE' OR rf.RDB$FIELD_NAME CONTAINING 'LICENSE' OR rf.RDB$FIELD_NAME CONTAINING 'LPR') ` +
+    `AND rf.RDB$RELATION_NAME NOT STARTING WITH 'RDB$' AND rf.RDB$RELATION_NAME NOT STARTING WITH 'MON$'`)
   const raw = (cat.rows ?? []).map((r) => ({ table: String(r[0] ?? '').trim(), col: String(r[1] ?? '').trim() })).filter((x) => x.table && x.col)
   if (!raw.length) { plateColsCache = []; return [] }
   // For each candidate table, learn which customer-link columns it has.
@@ -233,12 +258,27 @@ async function drbActiveFor(base: string, cookie: string, customerIds: string[])
   return best
 }
 
+// Best-effort schema probe: list SiteWatch tables and columns that could hold
+// plate/vehicle/LPR data, so an unfamiliar schema can be identified from a lookup.
+async function schemaProbe(base: string, cookie: string): Promise<Any> {
+  const out: Any = {}
+  try {
+    const t = await runSql(base, cookie,
+      `SELECT TRIM(RDB$RELATION_NAME) FROM RDB$RELATIONS ` +
+      `WHERE (RDB$RELATION_NAME CONTAINING 'VEHICLE' OR RDB$RELATION_NAME CONTAINING 'PLATE' OR RDB$RELATION_NAME CONTAINING 'LPR' OR RDB$RELATION_NAME CONTAINING 'TAG' OR RDB$RELATION_NAME CONTAINING 'ARM') ` +
+      `AND RDB$RELATION_NAME NOT STARTING WITH 'RDB$' AND RDB$RELATION_NAME NOT STARTING WITH 'MON$'`)
+    out.tables = (t.rows ?? []).map((r) => String(r[0] ?? '').trim()).filter(Boolean).slice(0, 60)
+  } catch (e) { out.tablesErr = String(e).slice(0, 160) }
+  return out
+}
+
 async function drbLookup(base: string, password: string, plateNorm: string): Promise<Any> {
   const cookie = await drbLogin(base, password)
   const cols = await discoverPlateCols(base, cookie)
   const diagnostics: Any = { plateColumns: cols.map((c) => `${c.table}.${c.col}${c.link ? ` -> ${c.link}` : ''}`) }
   if (!cols.length) {
-    return { found: false, active: false, label: 'No plate data', plan: null, memberSince: null, diagnostics: { ...diagnostics, note: 'No PLATE column found in SiteWatch.' } }
+    diagnostics.schemaProbe = await schemaProbe(base, cookie)
+    return { found: false, active: false, label: 'No plate data', plan: null, memberSince: null, diagnostics: { ...diagnostics, note: 'No plate-like column found in SiteWatch.' } }
   }
   // Try candidate columns in preference order; stop at the first that matches a row.
   let matchedVia: string | null = null
