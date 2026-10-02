@@ -342,6 +342,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Trophy,
         roles: ['owner', 'manager'],
       },
+      {
+        to: '/app/lube-member-lookup',
+        label: 'Active Member Lookup',
+        icon: SearchCheck,
+        roles: ['owner', 'manager'],
+      },
     ],
   },
   {
