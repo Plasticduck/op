@@ -78,23 +78,32 @@ async function getFlexToken(svc: Any, clientId: string, clientSecret: string): P
 }
 
 // resolve-vehicle requires an organizationId (query param). Discover the org id(s)
-// from the car-wash list (cached for the warm instance).
+// from the car-wash list (cached for the warm instance) and, as a fallback, from
+// the account's known FlexWash car_wash_ids.
 let flexOrgIdsCache: string[] | null = null
-async function getFlexOrgIds(token: string): Promise<string[]> {
-  if (flexOrgIdsCache) return flexOrgIdsCache
+let flexOrgDebug: Any = {}
+async function getFlexOrgIds(token: string, carWashIds: string[]): Promise<string[]> {
+  if (flexOrgIdsCache && flexOrgIdsCache.length) return flexOrgIdsCache
   const res = await fetch(`${FLEX_BASE}/external/car-wash/get-car-washes`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({}),
+    body: JSON.stringify(carWashIds.length ? { carWashIds } : {}),
   })
   const data = await res.json().catch(() => null)
   const ids = [...new Set(((data?.carWashes ?? []) as Any[]).map((c) => String(c.organizationId ?? '')).filter(Boolean))]
-  flexOrgIdsCache = ids
+  flexOrgDebug = {
+    carWashStatus: res.status,
+    carWashCount: Array.isArray(data?.carWashes) ? data.carWashes.length : null,
+    carWashError: (data as Any)?.error ?? null,
+    orgIds: ids,
+  }
+  if (ids.length) flexOrgIdsCache = ids
   return ids
 }
 
-async function flexResolve(token: string, plate: string): Promise<Any> {
-  const orgIds = await getFlexOrgIds(token)
-  if (!orgIds.length) return { status: 400, data: { error: 'no organization found for these credentials' } }
+async function flexResolve(token: string, plate: string, carWashIds: string[]): Promise<Any> {
+  const orgIds = await getFlexOrgIds(token, carWashIds)
+  const attempts: Any[] = []
+  if (!orgIds.length) return { status: 400, data: { error: 'could not determine FlexWash organization' }, diag: { ...flexOrgDebug, attempts } }
   // A plate belongs to one org; try each until one resolves it.
   let last: Any = { status: 404, data: { error: 'not found' } }
   for (const orgId of orgIds) {
@@ -103,16 +112,17 @@ async function flexResolve(token: string, plate: string): Promise<Any> {
       body: JSON.stringify({ licensePlate: plate }),
     })
     const data = await res.json().catch(() => null)
-    if (res.ok && data?.vehicle) return { status: res.status, data }
+    attempts.push({ orgId, status: res.status, error: (data as Any)?.error ?? null, hasVehicle: !!data?.vehicle })
+    if (res.ok && data?.vehicle) return { status: res.status, data, diag: { ...flexOrgDebug, attempts } }
     last = { status: res.status, data }
   }
-  return last
+  return { ...last, diag: { ...flexOrgDebug, attempts } }
 }
 
-function flexResult(status: number, data: Any) {
-  if (status === 404) return { found: false, active: false, status: null as string | null, label: 'Not a member', plan: null, memberSince: null, customerId: null }
+function flexResult(status: number, data: Any, diag?: Any) {
+  if (status === 404) return { found: false, active: false, status: null as string | null, label: 'Not a member', plan: null, memberSince: null, customerId: null, diagnostics: diag }
   if (status >= 400 || !data?.vehicle) {
-    return { found: false, active: false, status: null, label: 'Lookup failed', plan: null, memberSince: null, customerId: null, error: data?.error ?? `status ${status}` }
+    return { found: false, active: false, status: null, label: 'Lookup failed', plan: null, memberSince: null, customerId: null, error: data?.error ?? `status ${status}`, diagnostics: diag }
   }
   const v = data.vehicle
   const sub = v.vehicleSubscription
@@ -355,9 +365,12 @@ Deno.serve(async (req) => {
   const flexP = (async () => {
     if (!flexId || !flexSecret) return { found: false, active: false, label: 'Not configured', plan: null, memberSince: null }
     try {
+      // Known FlexWash car-wash ids for this account (fallback for org-id discovery).
+      const { data: sites } = await svc.from('flexwash_sites').select('car_wash_id').eq('active', true)
+      const carWashIds = ((sites as { car_wash_id: string }[] | null) ?? []).map((s) => String(s.car_wash_id)).filter(Boolean)
       const token = await getFlexToken(svc, flexId, flexSecret)
-      const { status, data } = await flexResolve(token, plate)
-      return flexResult(status, data)
+      const { status, data, diag } = await flexResolve(token, plate, carWashIds)
+      return flexResult(status, data, diag)
     } catch (e) { return { found: false, active: false, label: 'Lookup failed', plan: null, memberSince: null, error: String(e).slice(0, 160) } }
   })()
   const drbP = (async () => {
