@@ -142,12 +142,15 @@ Deno.serve(async (req) => {
       return await res.json()
     }
 
-    let pageUrl = `${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${weekStart}&endDate=${today}&pageSize=200&page=1`
-    let pages = 0
-    while (pageUrl && pages < 50) {
-      const d = await getJson(pageUrl)
-      pages++
-      for (const r of d.results ?? []) {
+    // The iSolved timecardData endpoint is 0-INDEXED and its nextPageUrl is
+    // unreliable at large page sizes (starting at page=1 silently drops the whole
+    // first page). Page from 0 with a modest size until an empty page.
+    const PAGE_SIZE = 100
+    for (let page = 0; page < 60; page++) {
+      const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${weekStart}&endDate=${today}&pageSize=${PAGE_SIZE}&page=${page}`)
+      const results = d.results ?? []
+      if (results.length === 0) break
+      for (const r of results) {
         const num = String(r.employeeNumber ?? r.employeeId ?? '')
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || num
         const e = empOf(num, name)
@@ -173,7 +176,6 @@ Deno.serve(async (req) => {
           }
         }
       }
-      pageUrl = d.nextPageUrl ?? ''
     }
   } catch (e) {
     return json({ error: 'isolved_error', message: e instanceof Error ? e.message : String(e) }, 502, origin)

@@ -156,12 +156,15 @@ Deno.serve(async (req) => {
     //    list for overhead costing. Only rate/name/location fields are kept.
     const rateByKey = new Map<string, { rate: number; payType: string }>()
     const roster: Array<{ number: string; name: string; payType: string; rate: number; annual: number; site: string }> = []
-    let empUrl = `${base}/api/clients/${client}/legals/${legal}/employees?pageSize=200&page=1`
-    let ep = 0
-    while (empUrl && ep < 200) {
-      const d = await getJson(empUrl)
-      ep++
-      for (const e of d.results ?? []) {
+    // The iSolved API is 0-INDEXED and its nextPageUrl is unreliable at large page
+    // sizes (starting at page=1 silently drops the entire first page). Page from 0
+    // with a modest size until an empty page.
+    const PAGE_SIZE = 100
+    for (let page = 0; page < 100; page++) {
+      const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/employees?pageSize=${PAGE_SIZE}&page=${page}`)
+      const results = d.results ?? []
+      if (results.length === 0) break
+      for (const e of results) {
         const payType = String(e.payType ?? '')
         const rec = { rate: effRate(e), payType }
         if (e.employeeNumber != null) rateByKey.set(String(e.employeeNumber), rec)
@@ -172,7 +175,6 @@ Deno.serve(async (req) => {
           roster.push({ number: String(e.employeeNumber ?? e.id ?? ''), name, payType, rate: rec.rate, annual: annualSalaryOf(e), site: siteFromWorkLocation(String(e.workLocation ?? '')) })
         }
       }
-      empUrl = d.nextPageUrl ?? ''
     }
 
     const sitesMap = new Map<string, Site>()
@@ -190,12 +192,11 @@ Deno.serve(async (req) => {
 
     // 2) Timecards -> hourly cost. Salaried are always costed from the roster
     //    (step 3), never from punches. Skipped entirely on the salaried-only view.
-    let pageUrl = scope === 'only' ? '' : `${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=200&page=1`
-    let pages = 0
-    while (pageUrl && pages < 200) {
-      const d = await getJson(pageUrl)
-      pages++
-      for (const r of d.results ?? []) {
+    for (let page = 0; scope !== 'only' && page < 200; page++) {
+      const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=${PAGE_SIZE}&page=${page}`)
+      const results = d.results ?? []
+      if (results.length === 0) break
+      for (const r of results) {
         const empId = r.employeeId as number
         const empNum = String(r.employeeNumber ?? empId ?? '')
         const rr = rateByKey.get(empNum) ?? rateByKey.get('id:' + String(empId)) ?? { rate: 0, payType: '' }
@@ -224,7 +225,6 @@ Deno.serve(async (req) => {
           }
         }
       }
-      pageUrl = d.nextPageUrl ?? ''
     }
 
     // 3) Roster pass. Salaried overhead: allocate each active salaried person's
