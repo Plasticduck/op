@@ -348,6 +348,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: SearchCheck,
         roles: ['owner', 'manager'],
       },
+      {
+        to: '/app/lube-house-accounts',
+        label: 'House Accounts',
+        icon: Building2,
+        roles: ['owner', 'manager'],
+      },
     ],
   },
   {

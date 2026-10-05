@@ -135,6 +135,7 @@ const HouseholdFinderPage = lz(() => import('@/features/opssuite/HouseholdFinder
 const LubeShopPage = lz(() => import('@/features/opssuite/LubeShopPage'))
 const LubeLeaderboardPage = lz(() => import('@/features/opssuite/LubeLeaderboardPage'))
 const MemberLookupPage = lz(() => import('@/features/opssuite/MemberLookupPage'))
+const HouseAccountsPage = lz(() => import('@/features/opssuite/HouseAccountsPage'))
 const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
 const TipPage = lz(() => import('@/features/tips/TipPage'))
 const TipThanksPage = lz(() => import('@/features/tips/TipPage').then((m) => ({ default: m.TipThanksPage })))
@@ -259,6 +260,7 @@ export const router = createBrowserRouter([
           { path: 'lube-shop', element: mgr(<LubeShopPage />) },
           { path: 'lube-leaderboard', element: mgr(<LubeLeaderboardPage />) },
           { path: 'lube-member-lookup', element: mgr(<MemberLookupPage />) },
+          { path: 'lube-house-accounts', element: mgr(<HouseAccountsPage />) },
           { path: 'messages', element: s(<MessagesPage />) },
           { path: 'tips', element: mgr(<TipsAdminPage />) },
           { path: 'messages/:conversationId', element: s(<MessagesPage />) },
