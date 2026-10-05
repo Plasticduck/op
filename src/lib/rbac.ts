@@ -1,9 +1,10 @@
 export type Role = 'owner' | 'manager' | 'employee' | 'technician'
 
 // "User categories" layered on the manager role. At the DB/RLS level a Regional
-// Manager / Executive IS a manager (so they inherit exactly a manager's access);
-// the category only gates the deltas (Bonuses, Invoice Approval) and the label.
-export type RoleCategory = 'regional_manager' | 'executive'
+// Manager / Executive / Finance IS a manager (so they inherit exactly a manager's
+// access); the category only gates the deltas (Bonuses, Invoice Approval), the
+// per-account page restrictions, and the label.
+export type RoleCategory = 'regional_manager' | 'executive' | 'finance'
 
 // The effective role used by the permission/nav layer: the category when set,
 // otherwise the base role. RLS and the DB always use the base Role.
@@ -21,6 +22,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 export const CATEGORY_LABEL: Record<RoleCategory, string> = {
   regional_manager: 'Regional Manager',
   executive: 'Executive',
+  finance: 'Finance',
 }
 
 // The effective permission role (category wins over the base manager role).

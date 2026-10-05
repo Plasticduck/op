@@ -501,6 +501,7 @@ function PermissionsEditor() {
             <option value="manager">{ROLE_LABEL.manager}</option>
             <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
             <option value="executive">{CATEGORY_LABEL.executive}</option>
+            <option value="finance">{CATEGORY_LABEL.finance}</option>
             <option value="employee">{ROLE_LABEL.employee}</option>
             <option value="technician">{ROLE_LABEL.technician}</option>
           </Select>
@@ -726,7 +727,7 @@ function EditUserModal({
   // Categories (Regional Manager / Executive) are the manager role + a category.
   const choice: PermRole = category ?? role
   const setChoice = (v: PermRole) => {
-    if (v === 'regional_manager' || v === 'executive') { setRole('manager'); setCategory(v) }
+    if (v === 'regional_manager' || v === 'executive' || v === 'finance') { setRole('manager'); setCategory(v) }
     else { setRole(v as Role); setCategory(null) }
   }
 
@@ -758,6 +759,7 @@ function EditUserModal({
               <option value="manager">Manager</option>
               <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
               <option value="executive">{CATEGORY_LABEL.executive}</option>
+              <option value="finance">{CATEGORY_LABEL.finance}</option>
               <option value="owner">Admin</option>
             </Select>
           )}

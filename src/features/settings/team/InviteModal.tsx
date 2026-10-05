@@ -38,7 +38,7 @@ export function InviteModal({
   const [category, setCategory] = useState<RoleCategory | null>(null)
   const choice: PermRole = category ?? role
   const setChoice = (v: PermRole) => {
-    if (v === 'regional_manager' || v === 'executive') { setRole('manager'); setCategory(v) }
+    if (v === 'regional_manager' || v === 'executive' || v === 'finance') { setRole('manager'); setCategory(v) }
     else { setRole(v as InvitableRole); setCategory(null) }
   }
   const [locIds, setLocIds] = useState<string[]>([])
@@ -228,6 +228,7 @@ export function InviteModal({
                   <option value="manager">Manager</option>
                   <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
                   <option value="executive">{CATEGORY_LABEL.executive}</option>
+                  <option value="finance">{CATEGORY_LABEL.finance}</option>
                   {/* Only an admin (owner) can invite another admin. */}
                   {profile?.role === 'owner' && <option value="owner">Admin</option>}
                 </Select>

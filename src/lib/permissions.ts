@@ -24,12 +24,12 @@ export function pageAllowed(
     optInRoles?: PermRole[]
   },
 ): boolean {
-  // Regional Manager / Executive mirror a manager: any page available to managers
-  // is available to them too. Pages that list the categories explicitly (and drop
-  // 'manager') are how Bonuses / Invoice Approval include the categories but not
-  // plain managers.
+  // Regional Manager / Executive / Finance mirror a manager: any page available to
+  // managers is available to them too (then narrowed per account by rolePerms).
+  // Pages that list the categories explicitly (and drop 'manager') are how Bonuses
+  // / Invoice Approval include specific categories but not plain managers.
   const builtins = builtinRoles.includes('manager')
-    ? [...builtinRoles, 'regional_manager' as const, 'executive' as const]
+    ? [...builtinRoles, 'regional_manager' as const, 'executive' as const, 'finance' as const]
     : builtinRoles
   if (!builtins.includes(role)) return false
   if (role === 'owner') return true
@@ -63,5 +63,5 @@ export function sectionsForPage(page: string): SectionDef[] {
 export function permRoleInList(role: PermRole, list?: PermRole[] | null): boolean {
   if (!list) return true
   if (list.includes(role)) return true
-  return (role === 'regional_manager' || role === 'executive') && list.includes('manager')
+  return (role === 'regional_manager' || role === 'executive' || role === 'finance') && list.includes('manager')
 }
