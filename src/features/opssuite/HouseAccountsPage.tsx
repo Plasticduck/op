@@ -10,19 +10,23 @@ import { houseAccounts, type HouseAccountsResult, type HouseAccount } from '@/li
 // House Account Activity for MW19 (DRB Lube). Charge-account (fleet/commercial)
 // revenue per account for a period vs. the preceding equal-length period.
 
-type RangeKey = 'd30' | 'mtd' | 'lastmonth' | 'd90' | 'ytd'
+type RangeKey = 'd30' | 'mtd' | 'lastmonth' | 'd90' | 'ytd' | 'lastyear'
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: 'd30', label: 'Last 30 days' },
   { key: 'mtd', label: 'This month' },
   { key: 'lastmonth', label: 'Last month' },
   { key: 'd90', label: 'Last 90 days' },
   { key: 'ytd', label: 'This year' },
+  { key: 'lastyear', label: 'Last year' },
 ]
 function rangeDates(key: RangeKey): { start: string; end: string } {
   const now = new Date()
   const iso = (d: Date) => d.toISOString().slice(0, 10)
   if (key === 'lastmonth') {
     return { start: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)), end: iso(new Date(now.getFullYear(), now.getMonth(), 0)) }
+  }
+  if (key === 'lastyear') {
+    return { start: iso(new Date(now.getFullYear() - 1, 0, 1)), end: iso(new Date(now.getFullYear() - 1, 11, 31)) }
   }
   const end = iso(now)
   if (key === 'mtd') return { start: iso(new Date(now.getFullYear(), now.getMonth(), 1)), end }
