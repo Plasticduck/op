@@ -64,9 +64,11 @@ const FRESHNESS: Record<ViewKey, string> = {
 
 // ---------- formatting + heat ----------
 
-const money = (v: number, dp = 0) =>
-  '$' + v.toLocaleString(undefined, { maximumFractionDigits: dp, minimumFractionDigits: dp })
 const DASH = '—'
+const money = (v: number | null | undefined, dp = 0) =>
+  v == null || !Number.isFinite(v)
+    ? DASH
+    : '$' + v.toLocaleString(undefined, { maximumFractionDigits: dp, minimumFractionDigits: dp })
 
 // Data heat scale (not a UI token): red = worse, green = better, tuned to read
 // on the app's light card surface. `t` runs 0 (worst) to 1 (best).
