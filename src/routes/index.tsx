@@ -3,7 +3,7 @@ import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
-import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSuperAdmin, RedirectIfAuthed } from '@/routes/guards'
+import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSuperAdmin, RequireEmails, RedirectIfAuthed } from '@/routes/guards'
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 
@@ -230,7 +230,7 @@ export const router = createBrowserRouter([
           { path: 'signage', element: emp(<SignagePage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
-          { path: 'hr/payroll-labor', element: <RequireSuperAdmin>{s(<LaborDataPage />)}</RequireSuperAdmin> },
+          { path: 'hr/payroll-labor', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com']}>{s(<LaborDataPage />)}</RequireEmails> },
           { path: 'hr/salaried-labor', element: <RequireSuperAdmin>{s(<SalariedLaborPage />)}</RequireSuperAdmin> },
           { path: 'facilities', element: s(<ServiceBoardPage />) },
           { path: 'details', element: mgr(<InteriorDetailsPage />) },

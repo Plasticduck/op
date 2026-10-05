@@ -38,7 +38,7 @@ export function CommandPalette() {
         )
           continue
         if (i.flag === 'gm_bonus' && !profile.gm_bonus_enabled) continue
-        if (i.superAdmin && (profile.email ?? '').toLowerCase() !== 'kevan@washlyfe.com') continue
+        if (i.emails && !i.emails.includes((profile.email ?? '').toLowerCase())) continue
         flat.push({ to: i.to, label: i.label, group: g.label })
       }
     }

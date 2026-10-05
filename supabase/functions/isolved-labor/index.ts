@@ -14,13 +14,16 @@
 // This is a base-rate estimate, NOT the payroll gross (no employer taxes/
 // benefits, differentials, bonuses, retro pay, or mid-period rate changes; rates
 // are current). Credentials live in secrets; only rate/name fields (never SSN/
-// DOB) leave the function. Restricted to a single admin (kevan@washlyfe.com).
+// DOB) leave the function. Restricted to an allowlist (kevan@washlyfe.com +
+// lkeith@mighty-wash.com); the salaried-only view stays limited to kevan.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
-const ADMIN_EMAIL = 'kevan@washlyfe.com'
+const SUPER_ADMIN = 'kevan@washlyfe.com'
+// Who may pull Labor Data. The salaried-only view stays limited to SUPER_ADMIN.
+const LABOR_DATA_EMAILS = new Set(['kevan@washlyfe.com', 'lkeith@mighty-wash.com'])
 const FT_YEAR_HOURS = 2080
 const OT_MULTIPLIER = 1.5
 
@@ -108,7 +111,8 @@ Deno.serve(async (req) => {
   const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
   const { data: u } = await userClient.auth.getUser()
   if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
-  if ((u.user.email ?? '').toLowerCase() !== ADMIN_EMAIL) {
+  const email = (u.user.email ?? '').toLowerCase()
+  if (!LABOR_DATA_EMAILS.has(email)) {
     return json({ error: 'forbidden', message: 'Payroll labor is restricted.' }, 403, origin)
   }
 
@@ -132,6 +136,11 @@ Deno.serve(async (req) => {
   // Which salaried staff to include. Default is the operational Labor Data view.
   const scope: 'exclude-corporate' | 'none' | 'only' =
     body.salariedScope === 'none' || body.salariedScope === 'only' ? body.salariedScope : 'exclude-corporate'
+  // The salaried-only view (Salaried Labor page) stays limited to the super-admin;
+  // other allowed emails only get the operational Labor Data views.
+  if (scope === 'only' && email !== SUPER_ADMIN) {
+    return json({ error: 'forbidden', message: 'Salaried labor is restricted.' }, 403, origin)
+  }
   if (!startDate || !endDate || !re.test(startDate) || !re.test(endDate)) {
     return json({ error: 'bad_request', message: 'startDate and endDate (YYYY-MM-DD) are required.' }, 400, origin)
   }

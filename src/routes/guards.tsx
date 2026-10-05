@@ -95,6 +95,15 @@ export function RequireSuperAdmin({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+// Restrict a route to a specific set of emails (for super-admin HR pages gated
+// outside the role system, since owners can't be restricted by role). Lowercase.
+export function RequireEmails({ allow, children }: { allow: string[]; children: ReactNode }) {
+  const { profile } = useAuth()
+  if (!profile) return null
+  if (!allow.includes((profile.email ?? '').toLowerCase())) return <Navigate to="/app/dashboard" replace />
+  return <>{children}</>
+}
+
 // Public auth pages bounce already-onboarded users into the app. We require a
 // *profile*, not just a session — during signup the session flips to
 // authenticated before the account row exists, and redirecting on session alone

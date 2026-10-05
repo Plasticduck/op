@@ -76,8 +76,9 @@ type NavItem = {
   flag?: 'gm_bonus'
   // Roles that can be granted this page but default to OFF (admin opts them in).
   optIn?: PermRole[]
-  // Item only shows for the single super-admin (kevan@washlyfe.com).
-  superAdmin?: boolean
+  // Item only shows for these emails (super-admin HR pages, gated outside the
+  // role system since owners can't be restricted). Lowercase.
+  emails?: string[]
 }
 
 type NavGroup = {
@@ -273,14 +274,14 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Labor Data',
         icon: Clock,
         roles: ['owner'],
-        superAdmin: true,
+        emails: ['kevan@washlyfe.com', 'lkeith@mighty-wash.com'],
       },
       {
         to: '/app/hr/salaried-labor',
         label: 'Salaried Labor',
         icon: Wallet,
         roles: ['owner'],
-        superAdmin: true,
+        emails: ['kevan@washlyfe.com'],
       },
     ],
   },
@@ -558,7 +559,7 @@ export function SidebarNav({
     }) &&
     (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)) &&
     !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)) &&
-    (!i.superAdmin || (profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com')
+    (!i.emails || i.emails.includes((profile?.email ?? '').toLowerCase()))
 
   // Only the groups + items this role (and account) can see.
   const baseGroups = NAV_GROUPS
