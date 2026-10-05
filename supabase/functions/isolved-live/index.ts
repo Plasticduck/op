@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
     employeeNumber: string; name: string
     onClock: boolean; clockInAt: string | null; clockInSite: string | null; elapsedHours: number
     totalWeekHours: number; totalWeekCost: number
-    bySite: Map<string, { hours: number; cost: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
+    bySite: Map<string, { hours: number; dayHours: number; cost: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
   }
   const emps = new Map<string, Emp>()
   const empOf = (num: string, name: string): Emp => {
@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
   }
   const siteBucket = (e: Emp, site: string) => {
     let b = e.bySite.get(site)
-    if (!b) { b = { hours: 0, cost: 0, onClock: false, clockInAt: null, elapsedHours: 0 }; e.bySite.set(site, b) }
+    if (!b) { b = { hours: 0, dayHours: 0, cost: 0, onClock: false, clockInAt: null, elapsedHours: 0 }; e.bySite.set(site, b) }
     return b
   }
 
@@ -192,6 +192,7 @@ Deno.serve(async (req) => {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
           const site = siteLabel(String(loc))
           const bucket = siteBucket(e, site)
+          const isToday = String(t.timecardDate ?? '').slice(0, 10) === today
           // Paid hours + estimated cost for completed/partial entries.
           let hrs = 0, cost = 0
           for (const p of t.payItems ?? []) {
@@ -202,6 +203,7 @@ Deno.serve(async (req) => {
           }
           bucket.hours += hrs; bucket.cost += cost
           e.totalWeekHours += hrs; e.totalWeekCost += cost
+          if (isToday) bucket.dayHours += hrs
           // Open punch = currently clocked in (real in-time, no out).
           const inEff = String(t.inPunchDateTimeEffective ?? '')
           const open = (t.outPunchId == null || !t.outPunchDateTimeEffective) && inEff && !isMidnight(inEff)
@@ -211,6 +213,7 @@ Deno.serve(async (req) => {
             bucket.onClock = true; bucket.clockInAt = inEff; bucket.elapsedHours = Math.round(elapsed * 100) / 100
             bucket.hours += accr; e.totalWeekHours += accr
             bucket.cost += rate * accr; e.totalWeekCost += rate * accr
+            if (isToday) bucket.dayHours += accr
             // An employee's headline clock-in = their most recent open punch.
             if (!e.clockInAt || inEff > e.clockInAt) { e.onClock = true; e.clockInAt = inEff; e.clockInSite = site; e.elapsedHours = Math.round(elapsed * 100) / 100 }
           }
@@ -222,7 +225,7 @@ Deno.serve(async (req) => {
   }
 
   // Build per-site breakout.
-  type SiteEmp = { employeeNumber: string; name: string; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteWeekHours: number; siteWeekCost: number; totalWeekHours: number }
+  type SiteEmp = { employeeNumber: string; name: string; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteDayHours: number; siteWeekHours: number; siteWeekCost: number; totalWeekHours: number }
   const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; weekCost: number; employees: SiteEmp[] }>()
   const round = (n: number) => Math.round(n * 100) / 100
   for (const e of emps.values()) {
@@ -233,7 +236,7 @@ Deno.serve(async (req) => {
       s.employees.push({
         employeeNumber: e.employeeNumber, name: e.name,
         onClock: b.onClock, clockInAt: b.clockInAt, clockInTime: b.clockInAt ? hhmm(b.clockInAt) : null,
-        elapsedHours: round(b.elapsedHours), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), totalWeekHours: round(e.totalWeekHours),
+        elapsedHours: round(b.elapsedHours), siteDayHours: round(b.dayHours), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), totalWeekHours: round(e.totalWeekHours),
       })
       s.weekHours += b.hours
       s.weekCost += b.cost

@@ -114,7 +114,7 @@ export default function OnTheClock() {
                       <tr>
                         <th className="px-4 py-1.5 font-medium">Employee</th>
                         <th className="px-4 py-1.5 font-medium">Status</th>
-                        <th className="px-4 py-1.5 text-right font-medium">Wk hrs</th>
+                        <th className="px-4 py-1.5 text-right font-medium">Day hrs</th>
                         <th className="px-4 py-1.5 text-right font-medium">Est. cost</th>
                         <th className="px-4 py-1.5 text-right font-medium">Total wk</th>
                       </tr>
@@ -140,7 +140,7 @@ export default function OnTheClock() {
                                 <span className="text-ink-subtle">Off</span>
                               )}
                             </td>
-                            <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{hrs(e.siteWeekHours)}</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{hrs(e.siteDayHours)}</td>
                             <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{usd(e.siteWeekCost)}</td>
                             <td className="px-4 py-1.5 text-right tabular-nums font-semibold text-ink">{hrs(e.totalWeekHours)}</td>
                           </tr>

@@ -35,6 +35,7 @@ export type LiveSiteEmployee = {
   clockInAt: string | null // naive Central ISO of the open punch
   clockInTime: string | null // e.g. "10:58 AM"
   elapsedHours: number
+  siteDayHours: number
   siteWeekHours: number
   siteWeekCost: number
   totalWeekHours: number
