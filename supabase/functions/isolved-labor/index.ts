@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
   if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
   const email = (u.user.email ?? '').toLowerCase()
   if (!LABOR_DATA_EMAILS.has(email)) {
-    return json({ error: 'forbidden', message: 'Payroll labor is restricted.' }, 403, origin)
+    return json({ error: 'forbidden', message: `Labor Data is restricted to approved users (signed in as ${email || 'unknown'}).` }, 403, origin)
   }
 
   const base = Deno.env.get('ISOLVED_BASE_URL')
