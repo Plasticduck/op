@@ -10,6 +10,7 @@ const REFRESH_MS = 60_000
 const STALE_H = 14 // an open punch running this long is probably a missed clock-out
 
 const hrs = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const elapsed = (h: number) => {
   const m = Math.round(h * 60)
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
@@ -63,6 +64,10 @@ export default function OnTheClock() {
           <div className="text-xs text-ink-subtle">total hours this week</div>
         </div>
         <div>
+          <div className="text-lg font-semibold tabular-nums text-ink">{data ? usd(data.totals.weekCost) : '—'}</div>
+          <div className="text-xs text-ink-subtle">est. labor cost</div>
+        </div>
+        <div>
           <div className="text-lg font-semibold tabular-nums text-ink">{data ? data.totals.employees : '—'}</div>
           <div className="text-xs text-ink-subtle">worked this week</div>
         </div>
@@ -102,7 +107,7 @@ export default function OnTheClock() {
                     ) : (
                       <span className="rounded-full bg-content px-2 py-0.5 text-xs font-medium text-ink-subtle">none clocked in</span>
                     )}
-                    <span className="ml-auto flex items-center gap-1 text-xs text-ink-muted"><Users className="size-3.5" />{s.employeeCount} · {hrs(s.weekHours)} hrs</span>
+                    <span className="ml-auto flex items-center gap-1 text-xs text-ink-muted"><Users className="size-3.5" />{s.employeeCount} · {hrs(s.weekHours)} hrs · {usd(s.weekCost)} est.</span>
                   </div>
                   <table className="w-full text-sm">
                     <thead className="text-left text-[11px] uppercase tracking-wide text-ink-subtle">
@@ -110,6 +115,7 @@ export default function OnTheClock() {
                         <th className="px-4 py-1.5 font-medium">Employee</th>
                         <th className="px-4 py-1.5 font-medium">Status</th>
                         <th className="px-4 py-1.5 text-right font-medium">Wk hrs</th>
+                        <th className="px-4 py-1.5 text-right font-medium">Est. cost</th>
                         <th className="px-4 py-1.5 text-right font-medium">Total wk</th>
                       </tr>
                     </thead>
@@ -135,12 +141,13 @@ export default function OnTheClock() {
                               )}
                             </td>
                             <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{hrs(e.siteWeekHours)}</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{usd(e.siteWeekCost)}</td>
                             <td className="px-4 py-1.5 text-right tabular-nums font-semibold text-ink">{hrs(e.totalWeekHours)}</td>
                           </tr>
                         )
                       })}
                       {emps.length === 0 && (
-                        <tr><td colSpan={4} className="px-4 py-3 text-center text-xs text-ink-subtle">No one clocked in.</td></tr>
+                        <tr><td colSpan={5} className="px-4 py-3 text-center text-xs text-ink-subtle">No one clocked in.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -151,7 +158,7 @@ export default function OnTheClock() {
       )}
 
       <p className="mt-4 text-xs text-ink-subtle">
-        Live from iSolved timecard punches. Week hours are paid hours Sunday–Saturday plus time accrued on the current open punch. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Auto-refreshes every minute.
+        Live from iSolved timecard punches. Week hours are paid hours Sunday–Saturday plus time accrued on the current open punch; est. cost is a base-rate estimate (overtime at 1.5x), not payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Auto-refreshes every minute.
       </p>
     </div>
   )

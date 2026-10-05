@@ -18,6 +18,24 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 type Any = any
 const ADMIN_EMAIL = 'kevan@washlyfe.com'
 const OPEN_ACCRUAL_CAP_H = 16 // cap in-progress time added to week totals (guards forgotten punches)
+const FT_YEAR_HOURS = 2080
+const OT_MULTIPLIER = 1.5
+
+// Effective hourly rate for estimating labor cost (base rate, else derived).
+function annualSalaryOf(e: Any): number {
+  const annual = Number(e.annualSalary) || 0
+  if (annual > 0) return annual
+  const perPay = Number(e.perPaySalary) || 0
+  const freq = Number(e.payFrequency) || 0
+  return perPay > 0 && freq > 0 ? perPay * freq : 0
+}
+function effRate(e: Any): number {
+  const hr = Number(e.hourlyRate) || 0
+  if (hr > 0) return hr
+  const annual = annualSalaryOf(e)
+  return annual > 0 ? annual / FT_YEAR_HOURS : 0
+}
+const siteNumOf = (label: string): number => { const m = label.match(/^MW(\d+)$/); return m ? parseInt(m[1], 10) : 9999 }
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -118,18 +136,18 @@ Deno.serve(async (req) => {
   type Emp = {
     employeeNumber: string; name: string
     onClock: boolean; clockInAt: string | null; clockInSite: string | null; elapsedHours: number
-    totalWeekHours: number
-    bySite: Map<string, { hours: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
+    totalWeekHours: number; totalWeekCost: number
+    bySite: Map<string, { hours: number; cost: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
   }
   const emps = new Map<string, Emp>()
   const empOf = (num: string, name: string): Emp => {
     let e = emps.get(num)
-    if (!e) { e = { employeeNumber: num, name, onClock: false, clockInAt: null, clockInSite: null, elapsedHours: 0, totalWeekHours: 0, bySite: new Map() }; emps.set(num, e) }
+    if (!e) { e = { employeeNumber: num, name, onClock: false, clockInAt: null, clockInSite: null, elapsedHours: 0, totalWeekHours: 0, totalWeekCost: 0, bySite: new Map() }; emps.set(num, e) }
     return e
   }
   const siteBucket = (e: Emp, site: string) => {
     let b = e.bySite.get(site)
-    if (!b) { b = { hours: 0, onClock: false, clockInAt: null, elapsedHours: 0 }; e.bySite.set(site, b) }
+    if (!b) { b = { hours: 0, cost: 0, onClock: false, clockInAt: null, elapsedHours: 0 }; e.bySite.set(site, b) }
     return b
   }
 
@@ -142,10 +160,25 @@ Deno.serve(async (req) => {
       return await res.json()
     }
 
-    // The iSolved timecardData endpoint is 0-INDEXED and its nextPageUrl is
-    // unreliable at large page sizes (starting at page=1 silently drops the whole
-    // first page). Page from 0 with a modest size until an empty page.
+    // The iSolved API is 0-INDEXED and its nextPageUrl is unreliable at large page
+    // sizes (starting at page=1 silently drops the whole first page). Page from 0
+    // with a modest size until an empty page.
     const PAGE_SIZE = 100
+
+    // Employee roster -> hourly rate, for an ESTIMATED labor cost (base rate x
+    // hours, overtime at 1.5x). Rates/names only; no SSN/DOB leaves the function.
+    const rateByKey = new Map<string, number>()
+    for (let page = 0; page < 100; page++) {
+      const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/employees?pageSize=${PAGE_SIZE}&page=${page}`)
+      const results = d.results ?? []
+      if (results.length === 0) break
+      for (const e of results) {
+        const r = effRate(e)
+        if (e.employeeNumber != null) rateByKey.set(String(e.employeeNumber), r)
+        if (e.id != null) rateByKey.set('id:' + String(e.id), r)
+      }
+    }
+
     for (let page = 0; page < 60; page++) {
       const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${weekStart}&endDate=${today}&pageSize=${PAGE_SIZE}&page=${page}`)
       const results = d.results ?? []
@@ -153,16 +186,22 @@ Deno.serve(async (req) => {
       for (const r of results) {
         const num = String(r.employeeNumber ?? r.employeeId ?? '')
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || num
+        const rate = rateByKey.get(num) ?? rateByKey.get('id:' + String(r.employeeId)) ?? 0
         const e = empOf(num, name)
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
           const site = siteLabel(String(loc))
           const bucket = siteBucket(e, site)
-          // Paid hours for completed/partial entries.
-          let hrs = 0
-          for (const p of t.payItems ?? []) hrs += Number(p.payItemHours) || 0
-          bucket.hours += hrs
-          e.totalWeekHours += hrs
+          // Paid hours + estimated cost for completed/partial entries.
+          let hrs = 0, cost = 0
+          for (const p of t.payItems ?? []) {
+            const h = Number(p.payItemHours) || 0
+            hrs += h
+            const type = String(p.payItemName || p.payItemCode || '')
+            cost += rate * h * (/overtime/i.test(type) ? OT_MULTIPLIER : 1)
+          }
+          bucket.hours += hrs; bucket.cost += cost
+          e.totalWeekHours += hrs; e.totalWeekCost += cost
           // Open punch = currently clocked in (real in-time, no out).
           const inEff = String(t.inPunchDateTimeEffective ?? '')
           const open = (t.outPunchId == null || !t.outPunchDateTimeEffective) && inEff && !isMidnight(inEff)
@@ -171,6 +210,7 @@ Deno.serve(async (req) => {
             const accr = Math.min(elapsed, OPEN_ACCRUAL_CAP_H)
             bucket.onClock = true; bucket.clockInAt = inEff; bucket.elapsedHours = Math.round(elapsed * 100) / 100
             bucket.hours += accr; e.totalWeekHours += accr
+            bucket.cost += rate * accr; e.totalWeekCost += rate * accr
             // An employee's headline clock-in = their most recent open punch.
             if (!e.clockInAt || inEff > e.clockInAt) { e.onClock = true; e.clockInAt = inEff; e.clockInSite = site; e.elapsedHours = Math.round(elapsed * 100) / 100 }
           }
@@ -182,27 +222,28 @@ Deno.serve(async (req) => {
   }
 
   // Build per-site breakout.
-  type SiteEmp = { employeeNumber: string; name: string; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteWeekHours: number; totalWeekHours: number }
-  const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; employees: SiteEmp[] }>()
+  type SiteEmp = { employeeNumber: string; name: string; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteWeekHours: number; siteWeekCost: number; totalWeekHours: number }
+  const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; weekCost: number; employees: SiteEmp[] }>()
   const round = (n: number) => Math.round(n * 100) / 100
   for (const e of emps.values()) {
     for (const [site, b] of e.bySite) {
       if (b.hours <= 0 && !b.onClock) continue
       let s = sitesMap.get(site)
-      if (!s) { s = { site, clockedIn: 0, weekHours: 0, employees: [] }; sitesMap.set(site, s) }
+      if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, employees: [] }; sitesMap.set(site, s) }
       s.employees.push({
         employeeNumber: e.employeeNumber, name: e.name,
         onClock: b.onClock, clockInAt: b.clockInAt, clockInTime: b.clockInAt ? hhmm(b.clockInAt) : null,
-        elapsedHours: round(b.elapsedHours), siteWeekHours: round(b.hours), totalWeekHours: round(e.totalWeekHours),
+        elapsedHours: round(b.elapsedHours), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), totalWeekHours: round(e.totalWeekHours),
       })
       s.weekHours += b.hours
+      s.weekCost += b.cost
       if (b.onClock) s.clockedIn += 1
     }
   }
   const sites = [...sitesMap.values()].map((s) => ({
-    site: s.site, clockedIn: s.clockedIn, weekHours: round(s.weekHours), employeeCount: s.employees.length,
+    site: s.site, clockedIn: s.clockedIn, weekHours: round(s.weekHours), weekCost: round(s.weekCost), employeeCount: s.employees.length,
     employees: s.employees.sort((a, b) => (Number(b.onClock) - Number(a.onClock)) || (b.siteWeekHours - a.siteWeekHours)),
-  })).sort((a, b) => (b.clockedIn - a.clockedIn) || a.site.localeCompare(b.site, undefined, { numeric: true }))
+  })).sort((a, b) => (siteNumOf(a.site) - siteNumOf(b.site)) || a.site.localeCompare(b.site, undefined, { numeric: true }))
 
   const totalClockedIn = [...emps.values()].filter((e) => e.onClock).length
   return json({
@@ -212,6 +253,7 @@ Deno.serve(async (req) => {
     totals: {
       clockedIn: totalClockedIn,
       weekHours: round([...emps.values()].reduce((s, e) => s + e.totalWeekHours, 0)),
+      weekCost: round([...emps.values()].reduce((s, e) => s + e.totalWeekCost, 0)),
       employees: emps.size,
       sites: sites.length,
     },
