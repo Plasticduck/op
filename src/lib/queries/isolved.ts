@@ -25,3 +25,34 @@ export type LaborResponse = {
 
 export const isolvedLabor = (startDate: string, endDate: string, salariedScope: SalariedScope = 'exclude-corporate') =>
   supabase.functions.invoke<LaborResponse>('isolved-labor', { body: { startDate, endDate, salariedScope } })
+
+// Real-time labor: who is clocked in now, by site, with current pay-week hours
+// (the pay week runs Sunday -> Saturday). Served by the isolved-live function.
+export type LiveSiteEmployee = {
+  employeeNumber: string
+  name: string
+  onClock: boolean
+  clockInAt: string | null // naive Central ISO of the open punch
+  clockInTime: string | null // e.g. "10:58 AM"
+  elapsedHours: number
+  siteWeekHours: number
+  totalWeekHours: number
+}
+export type LiveSite = {
+  site: string
+  clockedIn: number
+  weekHours: number
+  employeeCount: number
+  employees: LiveSiteEmployee[]
+}
+export type LiveResponse = {
+  ok: boolean
+  generatedAt: string
+  central: { now: string; today: string; weekStart: string; weekLabel: string }
+  totals: { clockedIn: number; weekHours: number; employees: number; sites: number }
+  sites: LiveSite[]
+  error?: string
+  message?: string
+}
+
+export const isolvedLive = () => supabase.functions.invoke<LiveResponse>('isolved-live', { body: {} })

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { format, startOfMonth, subDays, subMonths, endOfMonth } from 'date-fns'
-import { Clock, Loader2, RefreshCw, Download, Search, Building2, Users, Wallet } from 'lucide-react'
+import { Clock, Loader2, RefreshCw, Download, Search, Building2, Users, Wallet, Timer } from 'lucide-react'
 import { isolvedLabor, type LaborResponse, type SalariedScope } from '@/lib/queries/isolved'
 import { fnErrorMessage } from '@/lib/fnError'
+import OnTheClock from './OnTheClock'
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd')
 const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -46,7 +47,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   const [data, setData] = useState<LaborResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'sites' | 'employees'>('sites')
+  const [tab, setTab] = useState<'sites' | 'employees' | 'live'>('sites')
   const [empSearch, setEmpSearch] = useState('')
   // Labor Data only: whether salaried (non-Corporate) staff are shown.
   const [showSalaried, setShowSalaried] = useState(true)
@@ -120,11 +121,33 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
           <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>
         </div>
       </div>
-      <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-ink-muted">
-        <strong className="text-ink">Estimate.</strong> Dollar figures are estimated from base pay rates and salaries, not the payroll gross: they exclude employer taxes and benefits, shift differentials, bonuses, retro pay, and mid-period rate changes.
+      {tab !== 'live' && (
+        <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-ink-muted">
+          <strong className="text-ink">Estimate.</strong> Dollar figures are estimated from base pay rates and salaries, not the payroll gross: they exclude employer taxes and benefits, shift differentials, bonuses, retro pay, and mid-period rate changes.
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="mt-5 flex items-center gap-2 border-b border-border">
+        <Tab active={tab === 'sites'} onClick={() => setTab('sites')} icon={<Building2 className="size-4" />} label={`By Site${data ? ` (${data.sites.length})` : ''}`} />
+        <Tab active={tab === 'employees'} onClick={() => setTab('employees')} icon={<Users className="size-4" />} label={`By Employee${data ? ` (${data.employees.length})` : ''}`} />
+        {!salaried && <Tab active={tab === 'live'} onClick={() => setTab('live')} icon={<Timer className="size-4" />} label="On the Clock" />}
+        {tab !== 'live' && data && (
+          <div className="ml-auto pb-2">
+            <button
+              onClick={tab === 'sites' ? exportSites : exportEmployees}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-ink-muted hover:border-accent hover:text-ink"
+            >
+              <Download className="size-3.5" /> Export CSV
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Controls */}
+      {tab === 'live' && <OnTheClock />}
+
+      {/* Controls (cost report only) */}
+      {tab !== 'live' && (
       <div className="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap gap-2">
           {PRESETS.map((p) => (
@@ -179,14 +202,15 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
           </button>
         </div>
       </div>
+      )}
 
-      {error && <div className="mt-4 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
+      {tab !== 'live' && error && <div className="mt-4 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
 
-      {loading && !data && (
+      {tab !== 'live' && loading && !data && (
         <div className="mt-8 flex items-center justify-center gap-2 text-ink-muted"><Loader2 className="size-5 animate-spin" /> Loading labor from iSolved…</div>
       )}
 
-      {data && (
+      {tab !== 'live' && data && (
         <>
           {/* Totals */}
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -200,19 +224,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
             ))}
           </div>
 
-          {/* Tabs */}
-          <div className="mt-6 flex items-center gap-2 border-b border-border">
-            <Tab active={tab === 'sites'} onClick={() => setTab('sites')} icon={<Building2 className="size-4" />} label={`By Site (${data.sites.length})`} />
-            <Tab active={tab === 'employees'} onClick={() => setTab('employees')} icon={<Users className="size-4" />} label={`By Employee (${data.employees.length})`} />
-            <div className="ml-auto pb-2">
-              <button
-                onClick={tab === 'sites' ? exportSites : exportEmployees}
-                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-ink-muted hover:border-accent hover:text-ink"
-              >
-                <Download className="size-3.5" /> Export CSV
-              </button>
-            </div>
-          </div>
+          <div className="mt-6" />
 
           {tab === 'sites' ? (
             <div className="mt-3 overflow-x-auto rounded-xl border border-border">
