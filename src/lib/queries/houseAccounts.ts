@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 export type HouseAccount = {
   customerId: string
   name: string
+  company: string
+  companyKey: string
   phone: string | null
   revenue: number
   priorRevenue: number

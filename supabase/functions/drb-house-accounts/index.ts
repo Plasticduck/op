@@ -77,6 +77,10 @@ const addDays = (d: string, n: number): string => new Date(new Date(d + 'T00:00:
 const num = (v: unknown): number => (v == null ? 0 : Number(v) || 0)
 const nameOf = (first: unknown, last: unknown, id: unknown): string =>
   [String(first ?? '').trim(), String(last ?? '').trim()].filter(Boolean).join(' ').trim() || `#${id}`
+// A grouping key for "same company, slightly different name": the company lives in
+// the first-name field (e.g. "FLEXSTEEL", "FLEX STEEL", "LUCKY HEALTH"); uppercased
+// with all non-alphanumerics stripped so spacing/punctuation variants collapse.
+const normCompany = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '')
 
 // One period's per-account charge aggregate, keyed by CUSTOMER OBJID.
 async function periodAccounts(base: string, cookie: string, startTs: string, endTs: string) {
@@ -145,27 +149,33 @@ Deno.serve(async (req) => {
   }
 
   type Acct = {
-    customerId: string; name: string; phone: string | null
+    customerId: string; name: string; company: string; companyKey: string; phone: string | null
     revenue: number; priorRevenue: number; visits: number; priorVisits: number
     avgTicket: number; lastVisit: string | null; pctChange: number | null
     isNew: boolean; isLapsed: boolean
   }
   const byId = new Map<string, Acct>()
-  const get = (id: string, name: string, phone: string | null): Acct => {
+  const get = (id: string, first: string, last: string, phone: string | null): Acct => {
     let a = byId.get(id)
-    if (!a) { a = { customerId: id, name, phone, revenue: 0, priorRevenue: 0, visits: 0, priorVisits: 0, avgTicket: 0, lastVisit: null, pctChange: null, isNew: false, isLapsed: false }; byId.set(id, a) }
+    if (!a) {
+      const name = nameOf(first, last, id)
+      const company = (first.trim() || last.trim() || name).trim()
+      const key = normCompany(company)
+      a = { customerId: id, name, company, companyKey: key.length >= 2 ? key : 'id:' + id, phone, revenue: 0, priorRevenue: 0, visits: 0, priorVisits: 0, avgTicket: 0, lastVisit: null, pctChange: null, isNew: false, isLapsed: false }
+      byId.set(id, a)
+    }
     return a
   }
   for (const r of curRes.rows ?? []) {
     const id = String(r[0] ?? '')
-    const a = get(id, nameOf(r[1], r[2], id), String(r[3] ?? '').trim() || null)
+    const a = get(id, String(r[1] ?? ''), String(r[2] ?? ''), String(r[3] ?? '').trim() || null)
     a.visits = Math.round(num(r[4]))
     a.revenue = Math.round(-num(r[5]) * 100) / 100 // AMT is negative
     a.lastVisit = r[6] ? String(r[6]).slice(0, 10) : null
   }
   for (const r of priorRes.rows ?? []) {
     const id = String(r[0] ?? '')
-    const a = get(id, nameOf(r[1], r[2], id), String(r[3] ?? '').trim() || null)
+    const a = get(id, String(r[1] ?? ''), String(r[2] ?? ''), String(r[3] ?? '').trim() || null)
     a.priorVisits = Math.round(num(r[4]))
     a.priorRevenue = Math.round(-num(r[5]) * 100) / 100
   }

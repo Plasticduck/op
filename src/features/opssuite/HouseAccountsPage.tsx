@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, Download, Search, ArrowUpDown, TrendingUp, TrendingDown } from 'lucide-react'
+import { Building2, Download, Search, ArrowUpDown, TrendingUp, TrendingDown, ChevronDown } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -72,6 +72,9 @@ function StatCard({ label, value, pct, sub }: { label: string; value: string; pc
 
 type SortKey = 'revenue' | 'pctChange' | 'visits' | 'avgTicket' | 'name'
 type Filter = 'all' | 'new' | 'lapsed' | 'declining' | 'growing'
+// A table row is either a single account or a merged company group (count > 1).
+type DisplayRow = HouseAccount & { count: number; members?: HouseAccount[] }
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 export default function HouseAccountsPage() {
   const [range, setRange] = useState<RangeKey>('d30')
@@ -82,6 +85,9 @@ export default function HouseAccountsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [sortKey, setSortKey] = useState<SortKey>('revenue')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [groupSimilar, setGroupSimilar] = useState(true)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggleExpand = (id: string) => setExpanded((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   useEffect(() => {
     const { start, end } = rangeDates(range)
@@ -104,11 +110,40 @@ export default function HouseAccountsPage() {
     else { setSortKey(k); setSortDir(k === 'name' ? 'asc' : 'desc') }
   }
 
-  const rows = useMemo(() => {
+  // Individual accounts, or accounts merged into company groups (similar names).
+  const baseRows = useMemo<DisplayRow[]>(() => {
     const all = data?.accounts ?? []
+    if (!groupSimilar) return all.map((a) => ({ ...a, count: 1 }))
+    const groups = new Map<string, HouseAccount[]>()
+    for (const a of all) { const arr = groups.get(a.companyKey) ?? []; arr.push(a); groups.set(a.companyKey, arr) }
+    const out: DisplayRow[] = []
+    for (const [key, members] of groups) {
+      if (members.length === 1) { out.push({ ...members[0], count: 1 }); continue }
+      const revenue = round2(members.reduce((s, m) => s + m.revenue, 0))
+      const priorRevenue = round2(members.reduce((s, m) => s + m.priorRevenue, 0))
+      const visits = members.reduce((s, m) => s + m.visits, 0)
+      const priorVisits = members.reduce((s, m) => s + m.priorVisits, 0)
+      const sorted = [...members].sort((a, b) => b.revenue - a.revenue)
+      const lastVisit = members.reduce<string | null>((mx, m) => (m.lastVisit && (!mx || m.lastVisit > mx) ? m.lastVisit : mx), null)
+      out.push({
+        customerId: 'grp:' + key, companyKey: key, company: sorted[0].company, name: sorted[0].company || sorted[0].name, phone: null,
+        revenue, priorRevenue, visits, priorVisits,
+        avgTicket: visits > 0 ? round2(revenue / visits) : 0,
+        pctChange: priorRevenue > 0 ? Math.round(((revenue - priorRevenue) / priorRevenue) * 1000) / 10 : null,
+        isNew: revenue > 0 && priorRevenue === 0, isLapsed: revenue === 0 && priorRevenue > 0,
+        lastVisit, count: members.length, members: sorted,
+      })
+    }
+    return out
+  }, [data, groupSimilar])
+
+  const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    let r = all.filter((a) => {
-      if (needle && !(`${a.name} ${a.phone ?? ''}`.toLowerCase().includes(needle))) return false
+    let r = baseRows.filter((a) => {
+      if (needle) {
+        const hay = `${a.name} ${a.phone ?? ''} ${(a.members ?? []).map((m) => m.name).join(' ')}`.toLowerCase()
+        if (!hay.includes(needle)) return false
+      }
       if (filter === 'new') return a.isNew
       if (filter === 'lapsed') return a.isLapsed
       if (filter === 'declining') return a.pctChange != null && a.pctChange < 0
@@ -126,11 +161,12 @@ export default function HouseAccountsPage() {
       return dir * ((a[sortKey] as number) - (b[sortKey] as number))
     })
     return r
-  }, [data, q, filter, sortKey, sortDir])
+  }, [baseRows, q, filter, sortKey, sortDir])
 
   const exportRows = () => {
-    const cols: ExportColumn<HouseAccount>[] = [
+    const cols: ExportColumn<DisplayRow>[] = [
       { header: 'Account', value: (a) => a.name },
+      { header: 'Accounts', value: (a) => a.count },
       { header: 'Phone', value: (a) => a.phone ?? '' },
       { header: 'Visits', value: (a) => a.visits },
       { header: 'Avg ticket', value: (a) => a.avgTicket },
@@ -200,11 +236,15 @@ export default function HouseAccountsPage() {
                 </button>
               ))}
             </div>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
+              <input type="checkbox" checked={groupSimilar} onChange={(e) => setGroupSimilar(e.target.checked)} className="accent-accent" />
+              Group similar names
+            </label>
             <Button variant="secondary" size="sm" onClick={exportRows} disabled={!rows.length}><Download className="size-4" /> Excel</Button>
           </div>
 
           <p className="-mt-2 text-xs text-ink-subtle">
-            {int(rows.length)} account{rows.length === 1 ? '' : 's'} shown.{data.truncated ? ' Showing the top 1,000 by revenue for this range.' : ''} Revenue = House Acct Charge billed at MW19.
+            {int(rows.length)} {groupSimilar ? 'group' : 'account'}{rows.length === 1 ? '' : 's'} shown{groupSimilar ? ` · ${int(data.accounts.length)} accounts merged by company name` : ''}.{data.truncated ? ' Showing the top 1,000 by revenue for this range.' : ''} Revenue = House Acct Charge billed at MW19.
           </p>
 
           {/* Table */}
@@ -224,24 +264,46 @@ export default function HouseAccountsPage() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr><td colSpan={7} className="px-3 py-10 text-center text-sm text-ink-muted">No accounts match.</td></tr>
-                ) : rows.map((a) => (
-                  <tr key={a.customerId} className="border-t border-border hover:bg-content">
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-ink">{a.name}</span>
-                        {a.isNew && <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">New</span>}
-                        {a.isLapsed && <span className="rounded-full bg-warn-soft px-1.5 py-0.5 text-[10px] font-medium text-warn">Lapsed</span>}
-                      </div>
-                      {a.phone && <div className="text-xs text-ink-muted">{a.phone}</div>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular text-ink-muted">{int(a.visits)}</td>
-                    <td className="px-3 py-2.5 text-right tabular text-ink-muted">{a.avgTicket ? usd2(a.avgTicket) : '—'}</td>
-                    <td className="px-3 py-2.5 text-right tabular text-ink-subtle">{a.priorRevenue ? usd(a.priorRevenue) : '—'}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold tabular text-ink">{usd(a.revenue)}</td>
-                    <td className="px-3 py-2.5 text-right"><PctBadge pct={a.pctChange} /></td>
-                    <td className="px-3 py-2.5 text-ink-muted">{fmtDate(a.lastVisit)}</td>
-                  </tr>
-                ))}
+                ) : rows.flatMap((a) => {
+                  const grouped = a.count > 1
+                  const open = grouped && expanded.has(a.customerId)
+                  const main = (
+                    <tr key={a.customerId} className={cn('border-t border-border hover:bg-content', grouped && 'cursor-pointer')} onClick={grouped ? () => toggleExpand(a.customerId) : undefined}>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          {grouped && <ChevronDown className={cn('size-3.5 shrink-0 text-ink-muted transition', open && 'rotate-180')} />}
+                          <span className="font-medium text-ink">{a.name}</span>
+                          {grouped && <span className="rounded-full bg-content px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">{a.count} accounts</span>}
+                          {a.isNew && <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">New</span>}
+                          {a.isLapsed && <span className="rounded-full bg-warn-soft px-1.5 py-0.5 text-[10px] font-medium text-warn">Lapsed</span>}
+                        </div>
+                        {!grouped && a.phone && <div className="text-xs text-ink-muted">{a.phone}</div>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular text-ink-muted">{int(a.visits)}</td>
+                      <td className="px-3 py-2.5 text-right tabular text-ink-muted">{a.avgTicket ? usd2(a.avgTicket) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right tabular text-ink-subtle">{a.priorRevenue ? usd(a.priorRevenue) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold tabular text-ink">{usd(a.revenue)}</td>
+                      <td className="px-3 py-2.5 text-right"><PctBadge pct={a.pctChange} /></td>
+                      <td className="px-3 py-2.5 text-ink-muted">{fmtDate(a.lastVisit)}</td>
+                    </tr>
+                  )
+                  if (!open || !a.members) return [main]
+                  const subs = a.members.map((m) => (
+                    <tr key={a.customerId + ':' + m.customerId} className="border-t border-border/50 bg-content/40">
+                      <td className="px-3 py-1.5 pl-9">
+                        <span className="text-ink-muted">{m.name}</span>
+                        {m.phone && <span className="ml-2 text-xs text-ink-subtle">{m.phone}</span>}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular text-ink-subtle">{int(m.visits)}</td>
+                      <td className="px-3 py-1.5 text-right tabular text-ink-subtle">{m.avgTicket ? usd2(m.avgTicket) : '—'}</td>
+                      <td className="px-3 py-1.5 text-right tabular text-ink-subtle">{m.priorRevenue ? usd(m.priorRevenue) : '—'}</td>
+                      <td className="px-3 py-1.5 text-right tabular text-ink">{usd(m.revenue)}</td>
+                      <td className="px-3 py-1.5 text-right"><PctBadge pct={m.pctChange} /></td>
+                      <td className="px-3 py-1.5 text-ink-subtle">{fmtDate(m.lastVisit)}</td>
+                    </tr>
+                  ))
+                  return [main, ...subs]
+                })}
               </tbody>
             </table>
           </div>
