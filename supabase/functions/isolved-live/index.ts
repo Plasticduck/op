@@ -16,7 +16,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
-const ADMIN_EMAIL = 'kevan@washlyfe.com'
+// Who may view live labor (matches the Labor Data page allowlist).
+const LABOR_DATA_EMAILS = new Set(['kevan@washlyfe.com', 'lkeith@mighty-wash.com'])
 const OPEN_ACCRUAL_CAP_H = 16 // cap in-progress time added to week totals (guards forgotten punches)
 const FT_YEAR_HOURS = 2080
 const OT_MULTIPLIER = 1.5
@@ -118,7 +119,7 @@ Deno.serve(async (req) => {
     const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
     const { data: u } = await userClient.auth.getUser()
     if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
-    if ((u.user.email ?? '').toLowerCase() !== ADMIN_EMAIL) return json({ error: 'forbidden', message: 'Labor data is restricted.' }, 403, origin)
+    if (!LABOR_DATA_EMAILS.has((u.user.email ?? '').toLowerCase())) return json({ error: 'forbidden', message: 'Labor data is restricted to approved users.' }, 403, origin)
   }
 
   const base = Deno.env.get('ISOLVED_BASE_URL')
