@@ -17,10 +17,11 @@ const CATEGORIES = [
   { value: 'sop', label: 'SOP' },
   { value: 'sds', label: 'SDS' },
   { value: 'policy', label: 'Policy' },
+  { value: 'hr', label: 'Human Resources' },
   { value: 'other', label: 'Other' },
 ]
 
-const TONE = { sop: 'accent', sds: 'warn', policy: 'neutral', other: 'neutral' } as const
+const TONE = { sop: 'accent', sds: 'warn', policy: 'neutral', hr: 'ok', other: 'neutral' } as const
 
 function Inner({ locationId }: { locationId: string }) {
   const { profile } = useAuth()
