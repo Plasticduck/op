@@ -53,12 +53,16 @@ const METRICS: Record<MetricKey, { label: string; blurb: string; value: (t: Lube
   tickets: { label: 'Tickets', blurb: 'Cars worked', value: (t) => t.tickets, fmt: int },
 }
 
-type Row = { employee_id: string; name: string; value: number; sub: string }
+type Row = { employee_id: string; name: string; value: number; sub: string; competing: boolean }
 const MEDAL = ['text-[#d4af37]', 'text-[#9ca3af]', 'text-[#cd7f32]'] // gold / silver / bronze
 
-// Techs kept out of the contest (e.g. managers/leads), matched on name.
+// Techs kept out of the contest entirely (not shown), matched on name.
 const EXCLUDED_TECHS = new Set(['jose gonzales', 'tiffany morris'])
 const isExcluded = (name: string) => EXCLUDED_TECHS.has(name.trim().toLowerCase())
+// Still shown with their totals, but NOT eligible for a 1st/2nd/3rd placement
+// (e.g. the shop manager). Matched on name.
+const NON_COMPETING = new Set(['roger elias'])
+const isNonCompeting = (name: string) => NON_COMPETING.has(name.trim().toLowerCase())
 
 export default function LubeLeaderboardPage() {
   const [range, setRange] = useState<RangeKey>('mtd')
@@ -95,10 +99,10 @@ export default function LubeLeaderboardPage() {
         const t = ticketsById.get(m.employee_id)
         const name = t?.name ?? `#${m.employee_id}`
         const value = catMetric === 'dollars' ? m.dollars : m.units
-        byTech.set(m.employee_id, { employee_id: m.employee_id, name, value, sub: `${int(m.units)} units · ${usd(m.dollars)}` })
+        byTech.set(m.employee_id, { employee_id: m.employee_id, name, value, sub: `${int(m.units)} units · ${usd(m.dollars)}`, competing: !isNonCompeting(name) })
       }
       // Include techs with 0 of this category too (so a contest shows everyone).
-      for (const t of techs) if (!byTech.has(t.employee_id)) byTech.set(t.employee_id, { employee_id: t.employee_id, name: t.name, value: 0, sub: '0 units' })
+      for (const t of techs) if (!byTech.has(t.employee_id)) byTech.set(t.employee_id, { employee_id: t.employee_id, name: t.name, value: 0, sub: '0 units', competing: !isNonCompeting(t.name) })
       const f = catMetric === 'dollars' ? usd : int
       return { rows: [...byTech.values()].sort((a, b) => b.value - a.value), metricLabel: `${category} · ${catMetric === 'dollars' ? 'revenue' : 'units'}`, fmt: f }
     }
@@ -106,6 +110,7 @@ export default function LubeLeaderboardPage() {
     const rows = techs.map((t) => ({
       employee_id: t.employee_id, name: t.name, value: m.value(t),
       sub: `${int(t.tickets)} tickets · ${int(t.units)} add-ons · ${usd(t.dollars)}`,
+      competing: !isNonCompeting(t.name),
     })).sort((a, b) => b.value - a.value)
     return { rows, metricLabel: m.label, fmt: m.fmt }
   }, [data, metric, category, catMetric, usingCategory])
@@ -132,7 +137,11 @@ export default function LubeLeaderboardPage() {
       return next
     })
 
-  const top3 = rows.slice(0, 3)
+  // Podium + ranks consider only competing techs; non-competing (managers) still
+  // appear in the list, at their value position, but carry no rank/medal.
+  const top3 = rows.filter((r) => r.competing).slice(0, 3)
+  let rankCounter = 0
+  const ranked = rows.map((r) => ({ row: r, rank: r.competing ? ++rankCounter : null as number | null }))
   const { start, end } = rangeDates(range)
 
   return (
@@ -205,11 +214,12 @@ export default function LubeLeaderboardPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">Full ranking</h2>
             </div>
             <ol className="divide-y divide-border">
-              {rows.map((r, i) => {
+              {ranked.map(({ row: r, rank }) => {
                 const bd = breakdownById.get(r.employee_id) ?? []
                 const open = expanded.has(r.employee_id)
+                const medaled = rank != null && rank <= 3
                 return (
-                  <li key={r.employee_id} className={cn(i < 3 && 'bg-content/40')}>
+                  <li key={r.employee_id} className={cn(medaled && 'bg-content/40')}>
                     <button
                       type="button"
                       onClick={() => toggleExpanded(r.employee_id)}
@@ -217,10 +227,15 @@ export default function LubeLeaderboardPage() {
                       aria-expanded={open}
                     >
                       <div className="w-7 shrink-0 text-center">
-                        {i < 3 ? <Medal className={cn('mx-auto size-5', MEDAL[i])} /> : <span className="text-sm font-semibold text-ink-subtle">{i + 1}</span>}
+                        {rank != null && rank <= 3 ? <Medal className={cn('mx-auto size-5', MEDAL[rank - 1])} />
+                          : rank != null ? <span className="text-sm font-semibold text-ink-subtle">{rank}</span>
+                            : <span className="text-sm font-semibold text-ink-subtle/40">—</span>}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium text-ink">{r.name}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-medium text-ink">{r.name}</span>
+                          {!r.competing && <span className="shrink-0 rounded-full bg-content px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">Manager · not ranked</span>}
+                        </div>
                         <div className="truncate text-xs text-ink-subtle">{r.sub}</div>
                       </div>
                       <div className="shrink-0 text-right text-lg font-bold tabular text-ink">{fmt(r.value)}</div>
