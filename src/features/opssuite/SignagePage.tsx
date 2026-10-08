@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ClipboardList, CreditCard, Download, FileText, Gift, GripVertical, Images, Package, Plus, ShieldAlert, Signpost, Square, StickyNote, Trash2, Upload, Wind, type LucideIcon } from 'lucide-react'
+import { Ban, ChevronDown, ClipboardList, CreditCard, Download, FileText, Gift, GripVertical, Images, Package, Plus, ShieldAlert, Signpost, Square, StickyNote, Trash2, Upload, Wind, type LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -32,6 +32,7 @@ type Row = SignageRequest & { requested_by: { name: string } | null; location: {
 // Steps: Ordered → In Production → Shipped → Completed.
 function statusBadge(status: string | null | undefined): { label: string; cls: string } {
   const s = (status ?? 'ordered').toLowerCase()
+  if (s === 'cancelled') return { label: 'Cancelled', cls: 'bg-danger-soft text-danger' }
   if (s === 'completed') return { label: 'Completed', cls: 'bg-ok text-white' }
   if (s === 'shipped') return { label: 'Shipped', cls: 'bg-ok-soft text-ok' }
   if (s === 'in_production') return { label: 'In Production', cls: 'bg-accent-soft text-accent' }
@@ -129,11 +130,12 @@ function Inner({ locationId }: { locationId: string }) {
   const [library, setLibrary] = useState<ArtworkItem[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   // Category chosen from a catalog tile, preselected in the order form.
   const [presetCategory, setPresetCategory] = useState<string | null>(null)
   const startOrder = (category: string | null) => { setPresetCategory(category); setCreating(true) }
-  const [tab, setTab] = useState<'catalog' | 'library' | 'new' | 'production' | 'shipped' | 'completed' | 'fulfillment'>('catalog')
+  const [tab, setTab] = useState<'catalog' | 'library' | 'new' | 'production' | 'shipped' | 'completed' | 'fulfillment' | 'cancelled'>('catalog')
   // Catalog drill-down: a chosen category shows its gallery; picking a sign opens
   // the quantity-only order confirm.
   const [galleryCat, setGalleryCat] = useState<string | null>(null)
@@ -170,29 +172,40 @@ function Inner({ locationId }: { locationId: string }) {
     setConfirmDeleteId(null)
     await load()
   }
+  // Cancel a placed order (admin only): a soft cancel that moves it to the
+  // Cancelled tab (kept for the record), rather than deleting it. No email.
+  const cancelOrder = async (r: Row) => {
+    await signage.updateStatus(r.id, { status: 'cancelled', status_updated_at: new Date().toISOString() })
+    setConfirmCancelId(null)
+    await load()
+  }
 
   // Orders are split by status into their own tabs: New Orders (Ordered, not yet
   // in production), In Production, Shipped, and Completed.
   const statusOf = (r: Row) => (r.status ?? 'ordered').toLowerCase()
+  // Anything not in a terminal/known bucket counts as a new (just-placed) order.
+  const isNewStatus = (s: string) => s !== 'shipped' && s !== 'completed' && s !== 'in_production' && s !== 'cancelled'
   const orderCounts = useMemo(() => {
-    let neworders = 0, production = 0, shipped = 0, completed = 0
+    let neworders = 0, production = 0, shipped = 0, completed = 0, cancelled = 0
     for (const r of rows) {
       const s = statusOf(r)
       if (s === 'shipped') shipped++
       else if (s === 'completed') completed++
       else if (s === 'in_production') production++
+      else if (s === 'cancelled') cancelled++
       else neworders++
     }
-    return { new: neworders, production, shipped, completed }
+    return { new: neworders, production, shipped, completed, cancelled }
   }, [rows])
   const orderRows = useMemo(() => {
     if (tab === 'shipped') return rows.filter((r) => statusOf(r) === 'shipped')
     if (tab === 'completed') return rows.filter((r) => statusOf(r) === 'completed')
     if (tab === 'production') return rows.filter((r) => statusOf(r) === 'in_production')
-    if (tab === 'new') return rows.filter((r) => { const s = statusOf(r); return s !== 'shipped' && s !== 'completed' && s !== 'in_production' })
+    if (tab === 'cancelled') return rows.filter((r) => statusOf(r) === 'cancelled')
+    if (tab === 'new') return rows.filter((r) => isNewStatus(statusOf(r)))
     return []
   }, [rows, tab])
-  const onOrdersTab = tab === 'new' || tab === 'production' || tab === 'shipped' || tab === 'completed'
+  const onOrdersTab = tab === 'new' || tab === 'production' || tab === 'shipped' || tab === 'completed' || tab === 'cancelled'
 
   // Optional grouping for the order tabs: flat (None), by Site, or by Date. The
   // choice is shared across all four order tabs.
@@ -225,7 +238,7 @@ function Inner({ locationId }: { locationId: string }) {
   // ("needs" = Ordered) vs. those already In Production, or show all unfulfilled.
   const [prodFilter, setProdFilter] = useState<'all' | 'needs' | 'production'>('all')
   const baseUnfulfilled = useMemo(
-    () => rows.filter((r) => { const s = statusOf(r); return s !== 'shipped' && s !== 'completed' }),
+    () => rows.filter((r) => { const s = statusOf(r); return s !== 'shipped' && s !== 'completed' && s !== 'cancelled' }),
     [rows],
   )
   const prodCounts = useMemo(() => {
@@ -276,7 +289,10 @@ function Inner({ locationId }: { locationId: string }) {
     ['production', `In Production${orderCounts.production ? ` (${orderCounts.production})` : ''}`],
     ['shipped', `Shipped${orderCounts.shipped ? ` (${orderCounts.shipped})` : ''}`],
     ['completed', `Completed${orderCounts.completed ? ` (${orderCounts.completed})` : ''}`],
-    ...(isAdmin ? [['fulfillment', `Fulfillment${orderCounts.new ? ` (${orderCounts.new})` : ''}`]] as [typeof tab, string][] : []),
+    ...(isAdmin ? [
+      ['fulfillment', `Fulfillment${orderCounts.new ? ` (${orderCounts.new})` : ''}`],
+      ['cancelled', `Cancelled${orderCounts.cancelled ? ` (${orderCounts.cancelled})` : ''}`],
+    ] as [typeof tab, string][] : []),
   ]
 
   // One order row, reused by the flat and the grouped (by site / date) renderings.
@@ -312,6 +328,7 @@ function Inner({ locationId }: { locationId: string }) {
               <option value="in_production">In Production</option>
               <option value="shipped">Shipped</option>
               <option value="completed">Completed</option>
+              {(r.status ?? '').toLowerCase() === 'cancelled' && <option value="cancelled">Cancelled</option>}
             </select>
             {(r.status ?? '').toLowerCase() === 'shipped' && (
               <input
@@ -349,20 +366,37 @@ function Inner({ locationId }: { locationId: string }) {
       </td>
       {isAdmin && (
         <td className="px-3 py-2.5 text-center">
-          {confirmDeleteId === r.id ? (
+          {confirmCancelId === r.id ? (
+            <div className="flex items-center justify-center gap-1">
+              <Button variant="danger" size="sm" onClick={() => void cancelOrder(r)}>Cancel order</Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmCancelId(null)}>Keep</Button>
+            </div>
+          ) : confirmDeleteId === r.id ? (
             <div className="flex items-center justify-center gap-1">
               <Button variant="danger" size="sm" onClick={() => void deleteOrder(r)}>Delete</Button>
               <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmDeleteId(r.id)}
-              title="Delete order"
-              className="mx-auto grid size-8 place-items-center rounded-md border border-border text-danger hover:bg-danger-soft"
-            >
-              <Trash2 className="size-4" />
-            </button>
+            <div className="flex items-center justify-center gap-1">
+              {tab === 'new' && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmCancelId(r.id)}
+                  title="Cancel this order"
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-danger hover:bg-danger-soft"
+                >
+                  <Ban className="size-3.5" /> Cancel Order
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteId(r.id)}
+                title="Delete order"
+                className="grid size-8 place-items-center rounded-md border border-border text-danger hover:bg-danger-soft"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </div>
           )}
         </td>
       )}
@@ -450,13 +484,15 @@ function Inner({ locationId }: { locationId: string }) {
             tab === 'shipped' ? 'No shipped orders'
               : tab === 'completed' ? 'No completed orders'
                 : tab === 'production' ? 'Nothing in production'
-                  : 'No new orders'
+                  : tab === 'cancelled' ? 'No cancelled orders'
+                    : 'No new orders'
           }
           description={
             tab === 'shipped' ? 'Orders marked Shipped will appear here.'
               : tab === 'completed' ? 'Orders marked Completed will appear here.'
                 : tab === 'production' ? 'Orders marked In Production will appear here.'
-                  : 'New orders that have not been placed into production yet show here. Pick a category on the Catalog tab to submit one.'
+                  : tab === 'cancelled' ? 'Orders you cancel from New Orders are kept here. Change the status to restore one.'
+                    : 'New orders that have not been placed into production yet show here. Pick a category on the Catalog tab to submit one.'
           }
         />
       ) : (
