@@ -192,6 +192,7 @@ Deno.serve(async (req) => {
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
           const site = siteLabel(String(loc))
+          if (site === 'Corporate') continue // Corporate (office) staff are not part of the On the Clock view
           const bucket = siteBucket(e, site)
           const isToday = String(t.timecardDate ?? '').slice(0, 10) === today
           // Paid hours + estimated cost for completed/partial entries.
@@ -249,16 +250,18 @@ Deno.serve(async (req) => {
     employees: s.employees.sort((a, b) => (Number(b.onClock) - Number(a.onClock)) || (b.siteWeekHours - a.siteWeekHours)),
   })).sort((a, b) => (siteNumOf(a.site) - siteNumOf(b.site)) || a.site.localeCompare(b.site, undefined, { numeric: true }))
 
-  const totalClockedIn = [...emps.values()].filter((e) => e.onClock).length
+  // Only employees with non-Corporate activity (Corporate-only staff were skipped
+  // above and leave no site buckets), so the summary matches the shown sites.
+  const active = [...emps.values()].filter((e) => e.bySite.size > 0)
   return json({
     ok: true,
     generatedAt: now.toISOString(),
     central: { now: cNow.iso, today, weekStart, weekLabel: `${weekStart} to ${addDays(weekStart, 6)}` },
     totals: {
-      clockedIn: totalClockedIn,
-      weekHours: round([...emps.values()].reduce((s, e) => s + e.totalWeekHours, 0)),
-      weekCost: round([...emps.values()].reduce((s, e) => s + e.totalWeekCost, 0)),
-      employees: emps.size,
+      clockedIn: active.filter((e) => e.onClock).length,
+      weekHours: round(active.reduce((s, e) => s + e.totalWeekHours, 0)),
+      weekCost: round(active.reduce((s, e) => s + e.totalWeekCost, 0)),
+      employees: active.length,
       sites: sites.length,
     },
     sites,
