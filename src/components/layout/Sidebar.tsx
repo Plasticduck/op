@@ -261,6 +261,12 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'regional_manager', 'executive', 'technician'],
         optIn: ['technician'],
       },
+      {
+        to: '/app/per-diem',
+        label: 'Per Diem',
+        icon: BadgeDollarSign,
+        roles: ['owner', 'regional_manager', 'executive'],
+      },
       // Chargebacks page hidden pending a real Adyen dispute feed (the FlexWash
       // partner API doesn't expose disputes). Route + page kept in the repo.
     ],

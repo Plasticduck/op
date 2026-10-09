@@ -4212,6 +4212,78 @@ export type Database = {
           },
         ]
       }
+      per_diem_requests: {
+        Row: {
+          account_id: string
+          amount: number
+          business_unit: string | null
+          category: string | null
+          created_at: string
+          currency: string
+          department: string | null
+          description: string | null
+          expense_date: string
+          id: string
+          policy: string | null
+          requested_by: string | null
+          requested_by_name: string | null
+          status: string
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          amount?: number
+          business_unit?: string | null
+          category?: string | null
+          created_at?: string
+          currency?: string
+          department?: string | null
+          description?: string | null
+          expense_date?: string
+          id?: string
+          policy?: string | null
+          requested_by?: string | null
+          requested_by_name?: string | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          business_unit?: string | null
+          category?: string | null
+          created_at?: string
+          currency?: string
+          department?: string | null
+          description?: string | null
+          expense_date?: string
+          id?: string
+          policy?: string | null
+          requested_by?: string | null
+          requested_by_name?: string | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "per_diem_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "per_diem_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pm_plans: {
         Row: {
           account_id: string
