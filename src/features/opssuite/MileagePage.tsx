@@ -52,6 +52,22 @@ async function routeMiles(coords: { lat: number; lon: number }[], roundTrip: boo
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 const stopsOf = (r: MileageRequest): RouteStop[] => (Array.isArray(r.stops) ? (r.stops as unknown as RouteStop[]) : [])
+
+// Shorten a full address to "street, city" for a readable description line.
+const shortStop = (address: string) => {
+  const parts = address.split(',').map((p) => p.trim()).filter(Boolean)
+  return parts.length >= 2 ? `${parts[0]}, ${parts[1]}` : address.trim()
+}
+// Assemble the Description from the trip's date, destinations, and purpose.
+function buildDescription(dateStr: string, stops: RouteStop[], roundTrip: boolean, purpose: string): string {
+  const dests = stops.map((s) => s.address.trim()).filter(Boolean).map(shortStop)
+  if (dests.length === 0 && !purpose.trim()) return ''
+  const segs: string[] = []
+  if (dateStr) segs.push(fmtDate(dateStr))
+  if (dests.length) segs.push(dests.join(' → ') + (roundTrip ? ' (round trip)' : ''))
+  if (purpose.trim()) segs.push(purpose.trim())
+  return segs.join(' · ')
+}
 const routeText = (r: MileageRequest) => stopsOf(r).map((s) => s.address).filter(Boolean).join(' → ') + (r.round_trip ? ' (round trip)' : '')
 
 // --- CSV export (Complete tab) ---
@@ -84,7 +100,10 @@ export default function MileagePage() {
   const [policy, setPolicy] = useState(() => defaultPolicy(profile?.role, profile?.role_category))
   const [expenseDate, setExpenseDate] = useState(today)
   const [currency, setCurrency] = useState('USD')
+  const [purpose, setPurpose] = useState('')
   const [description, setDescription] = useState('')
+  // Description auto-fills from date/destinations/purpose until the user edits it.
+  const [descriptionTouched, setDescriptionTouched] = useState(false)
   const [category, setCategory] = useState('Mileage')
   const [department, setDepartment] = useState('')
   const [businessUnit, setBusinessUnit] = useState('')
@@ -114,6 +133,13 @@ export default function MileagePage() {
     setLoading(false)
   }, [])
   useEffect(() => { void load() }, [load])
+
+  // Keep Description in sync with the date, route, and purpose — unless the user
+  // has hand-edited it (then we leave their text alone until they reset).
+  useEffect(() => {
+    if (descriptionTouched) return
+    setDescription(buildDescription(expenseDate, stops, roundTrip, purpose))
+  }, [expenseDate, stops, roundTrip, purpose, descriptionTouched])
 
   // Any structural change to the route invalidates a previously computed distance.
   const setStopText = (i: number, v: string) => {
@@ -157,7 +183,8 @@ export default function MileagePage() {
   }
 
   const resetForm = () => {
-    setDescription(''); setDepartment(''); setBusinessUnit(''); setCategory('Mileage')
+    setPurpose(''); setDescription(''); setDescriptionTouched(false)
+    setDepartment(''); setBusinessUnit(''); setCategory('Mileage')
     setExpenseDate(today()); setStops([emptyStop(), emptyStop()]); setRoundTrip(false); setMiles('')
     setCalcError(null)
   }
@@ -171,6 +198,7 @@ export default function MileagePage() {
       if (!expenseDate) return setError('Choose a date.')
       if (filledStops.length < 2) return setError('Add at least a start and a destination.')
       if (!(mi > 0)) return setError('Calculate the mileage (or enter the miles) first.')
+      if (!purpose.trim()) return setError('Add the purpose of the trip.')
       if (!description.trim()) return setError('Add a description.')
       if (!category || !department || !businessUnit) return setError('Choose a category, department, and business unit.')
     }
@@ -325,9 +353,24 @@ export default function MileagePage() {
           <p className="mt-1 text-xs text-ink-subtle">Miles is auto-filled by Calculate; you can adjust it if needed. Amount = miles × rate.</p>
         </div>
 
-        <div className="mt-4">
-          <Field label="Description" required>
-            {(id) => <Input id={id} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Site visits — Lubbock to Midland and back" />}
+        <div className="mt-4 grid grid-cols-1 gap-4">
+          <Field label="Purpose of trip" required>
+            {(id) => <Input id={id} value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Quarterly site inspections" />}
+          </Field>
+          <Field label="Description">
+            {(id) => (
+              <>
+                <Input id={id} value={description} onChange={(e) => { setDescriptionTouched(true); setDescription(e.target.value) }} placeholder="Auto-filled from date, destinations, and purpose" />
+                <p className="mt-1 text-xs text-ink-subtle">
+                  Auto-filled from the date, your route, and the purpose.
+                  {descriptionTouched && (
+                    <button type="button" onClick={() => { setDescriptionTouched(false); setDescription(buildDescription(expenseDate, stops, roundTrip, purpose)) }} className="ml-1 font-medium text-accent hover:underline">
+                      Reset to auto
+                    </button>
+                  )}
+                </p>
+              </>
+            )}
           </Field>
         </div>
 
