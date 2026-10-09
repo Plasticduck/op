@@ -16,12 +16,26 @@ import { perDiem, type PerDiemRequest } from '@/lib/queries/perDiem'
 // AP-only Requests queue, AP double-checks it and marks it approved, and approved
 // requests collect in a Complete tab for CSV export into QuickBooks.
 //
-// These option lists are PLACEHOLDERS until the real ones are finalized with AP;
-// Policy will ultimately be assigned per person by role.
+// Policy and Category are still PLACEHOLDERS to finalize with AP; Policy will
+// ultimately be assigned per person by role. Department and Business Unit are the
+// finalized lists from AP.
 const POLICIES = ['MW Executive Team', 'MW Regional Managers', 'MW General Managers', 'MW Support Staff']
 const CATEGORIES = ['Meals', 'Lodging', 'Travel', 'Incidentals', 'Other']
-const DEPARTMENTS = ['Operations', 'Corporate', 'Marketing', 'Maintenance', 'Lube Shop']
-const BUSINESS_UNITS = ['Mighty Wash', 'FlexWash', 'Lube Shop', 'Spotless']
+const DEPARTMENTS = [
+  '#19 General Manager', 'AP', 'Admin', 'Directors', 'Exec Team', 'General Managers',
+  'IT', 'Maintenance', 'Operations', 'Sales & Marketing',
+]
+const BUSINESS_UNITS = [
+  '01-LBK 82nd', '02 - Odessa Kermit', '03 - Midland Loop 250', '04 - Andrews',
+  '05 - LBK 19th St', '06 - Big Spring', '07 - LBK Loop 289', '08 - IBA', '09 - LBK 50th',
+  '10 - LBK 80th University', '11 - LBK 114th Quaker', '12 - Midland 4110 North',
+  '13 - Midland 1103 And.', '14 - Sweetwater', '15 - Odessa 52nd St.', '16 - Carlsbad Canyon St.',
+  '17 - Hobbs Joe Harvey', '18 - Hobbs Bender St', '19 - Hobbs Lube', '20 - IN-BAY', '21 - Lovington',
+  '22 - 87th and Evans Odessa', '23 - Carlsbad 1600 Skyline', '24 - Midland Briarwood',
+  '25 - Grandview', '26 - Artesia', '27 - Valley Mills', '28 - Robinson', '29 - Killeen',
+  '30 - Harker Heights', '31 - 2800 Midland', '33 - Dalhart', '34 - Hereford',
+  'Corporate', 'Misc Reimbursement', 'Spotless',
+]
 const CURRENCIES = ['USD']
 
 // A sensible default policy for the person's role until policies are configured.
@@ -203,7 +217,7 @@ export default function PerDiemPage() {
       />
 
       <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-ink-muted">
-        <strong className="text-ink">Early version.</strong> The Policy, Category, Department, and Business Unit options are placeholders — we'll finalize them with AP, and Policy will be set automatically by each person's role.
+        <strong className="text-ink">Early version.</strong> The Policy and Category options are still placeholders — we'll finalize them with AP, and Policy will be set automatically by each person's role.
       </div>
 
       {/* Submission form */}
