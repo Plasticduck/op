@@ -3611,6 +3611,7 @@ export type Database = {
           currency: string
           department: string | null
           description: string | null
+          end_date: string | null
           expense_date: string
           id: string
           miles: number
@@ -3636,6 +3637,7 @@ export type Database = {
           currency?: string
           department?: string | null
           description?: string | null
+          end_date?: string | null
           expense_date?: string
           id?: string
           miles?: number
@@ -3661,6 +3663,7 @@ export type Database = {
           currency?: string
           department?: string | null
           description?: string | null
+          end_date?: string | null
           expense_date?: string
           id?: string
           miles?: number

@@ -58,12 +58,17 @@ const shortStop = (address: string) => {
   const parts = address.split(',').map((p) => p.trim()).filter(Boolean)
   return parts.length >= 2 ? `${parts[0]}, ${parts[1]}` : address.trim()
 }
-// Assemble the Description from the trip's date, destinations, and purpose.
-function buildDescription(dateStr: string, stops: RouteStop[], roundTrip: boolean, purpose: string): string {
+// Format a single date, or a start–end range for multi-day trips.
+const dateRange = (start: string | null, end: string | null) =>
+  !start ? '' : end && end !== start ? `${fmtDate(start)} – ${fmtDate(end)}` : fmtDate(start)
+
+// Assemble the Description from the trip's date(s), destinations, and purpose.
+function buildDescription(startStr: string, endStr: string, stops: RouteStop[], roundTrip: boolean, purpose: string): string {
   const dests = stops.map((s) => s.address.trim()).filter(Boolean).map(shortStop)
   if (dests.length === 0 && !purpose.trim()) return ''
   const segs: string[] = []
-  if (dateStr) segs.push(fmtDate(dateStr))
+  const d = dateRange(startStr, endStr || null)
+  if (d) segs.push(d)
   if (dests.length) segs.push(dests.join(' → ') + (roundTrip ? ' (round trip)' : ''))
   if (purpose.trim()) segs.push(purpose.trim())
   return segs.join(' · ')
@@ -72,13 +77,13 @@ const routeText = (r: MileageRequest) => stopsOf(r).map((s) => s.address).filter
 
 // --- CSV export (Complete tab) ---
 const CSV_HEADERS = [
-  'Employee', 'Policy', 'Category', 'Department', 'Business Unit', 'Date',
+  'Employee', 'Policy', 'Category', 'Department', 'Business Unit', 'Date', 'End Date',
   'Miles', 'Rate', 'Amount', 'Currency', 'Round Trip', 'Route', 'Description', 'Submitted', 'Approved By', 'Approved Date',
 ] as const
 function mileageCsv(rows: MileageRequest[]): string {
   const lines = rows.map((r) => [
     r.requested_by_name ?? '', r.policy ?? '', r.category ?? '', r.department ?? '', r.business_unit ?? '',
-    mdY(r.expense_date), String(Number(r.miles) || 0), String(Number(r.rate) || MILEAGE_RATE), String(Number(r.amount) || 0),
+    mdY(r.expense_date), mdY(r.end_date), String(Number(r.miles) || 0), String(Number(r.rate) || MILEAGE_RATE), String(Number(r.amount) || 0),
     r.currency ?? 'USD', r.round_trip ? 'Yes' : 'No', stopsOf(r).map((s) => s.address).filter(Boolean).join(' > '),
     r.description ?? '', mdY(r.submitted_at), r.approved_by_name ?? '', mdY(r.approved_at),
   ].map(csvEsc).join(','))
@@ -99,6 +104,8 @@ export default function MileagePage() {
 
   const [policy, setPolicy] = useState(() => defaultPolicy(profile?.role, profile?.role_category))
   const [expenseDate, setExpenseDate] = useState(today)
+  const [multiDay, setMultiDay] = useState(false)
+  const [endDate, setEndDate] = useState('')
   const [currency, setCurrency] = useState('USD')
   const [purpose, setPurpose] = useState('')
   const [description, setDescription] = useState('')
@@ -138,8 +145,8 @@ export default function MileagePage() {
   // has hand-edited it (then we leave their text alone until they reset).
   useEffect(() => {
     if (descriptionTouched) return
-    setDescription(buildDescription(expenseDate, stops, roundTrip, purpose))
-  }, [expenseDate, stops, roundTrip, purpose, descriptionTouched])
+    setDescription(buildDescription(expenseDate, multiDay ? endDate : '', stops, roundTrip, purpose))
+  }, [expenseDate, endDate, multiDay, stops, roundTrip, purpose, descriptionTouched])
 
   // Any structural change to the route invalidates a previously computed distance.
   const setStopText = (i: number, v: string) => {
@@ -153,6 +160,11 @@ export default function MileagePage() {
   const addStop = () => { setMiles(''); setStops((prev) => [...prev, emptyStop()]) }
   const removeStop = (i: number) => { setMiles(''); setStops((prev) => prev.filter((_, idx) => idx !== i)) }
   const toggleRoundTrip = () => { setMiles(''); setRoundTrip((v) => !v) }
+  const toggleMultiDay = () => {
+    const next = !multiDay
+    setMultiDay(next)
+    setEndDate(next ? (endDate || expenseDate) : '')
+  }
 
   const calculate = async () => {
     setCalcError(null)
@@ -185,7 +197,8 @@ export default function MileagePage() {
   const resetForm = () => {
     setPurpose(''); setDescription(''); setDescriptionTouched(false)
     setDepartment(''); setBusinessUnit(''); setCategory('Mileage')
-    setExpenseDate(today()); setStops([emptyStop(), emptyStop()]); setRoundTrip(false); setMiles('')
+    setExpenseDate(today()); setMultiDay(false); setEndDate('')
+    setStops([emptyStop(), emptyStop()]); setRoundTrip(false); setMiles('')
     setCalcError(null)
   }
 
@@ -196,6 +209,8 @@ export default function MileagePage() {
     if (status === 'submitted') {
       if (!policy) return setError('Choose a policy.')
       if (!expenseDate) return setError('Choose a date.')
+      if (multiDay && !endDate) return setError('Choose an end date.')
+      if (multiDay && endDate < expenseDate) return setError('The end date must be on or after the start date.')
       if (filledStops.length < 2) return setError('Add at least a start and a destination.')
       if (!(mi > 0)) return setError('Calculate the mileage (or enter the miles) first.')
       if (!purpose.trim()) return setError('Add the purpose of the trip.')
@@ -207,7 +222,7 @@ export default function MileagePage() {
       account_id: profile?.account_id ?? '',
       requested_by: profile?.id ?? null,
       requested_by_name: profile?.name ?? null,
-      policy, expense_date: expenseDate, currency,
+      policy, expense_date: expenseDate, end_date: multiDay ? endDate : null, currency,
       stops: filledStops as unknown as MileageRequest['stops'],
       round_trip: roundTrip,
       miles: Number.isFinite(mi) ? mi : 0,
@@ -273,7 +288,13 @@ export default function MileagePage() {
       <section className="mt-5 rounded-xl border border-border bg-card p-4 sm:p-5">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-ink"><Car className="size-4 text-accent" /> New mileage request</h2>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-4 flex justify-end">
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-ink-muted">
+            <input type="checkbox" checked={multiDay} onChange={toggleMultiDay} className="size-4 cursor-pointer accent-accent" />
+            Multi-day trip
+          </label>
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Employee">
             {(id) => <Input id={id} value={profile?.name ?? ''} readOnly className="bg-content text-ink-muted" />}
           </Field>
@@ -284,9 +305,20 @@ export default function MileagePage() {
               </Select>
             )}
           </Field>
-          <Field label="Date" required>
-            {(id) => <Input id={id} type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />}
-          </Field>
+          {multiDay ? (
+            <>
+              <Field label="Start date" required>
+                {(id) => <Input id={id} type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />}
+              </Field>
+              <Field label="End date" required>
+                {(id) => <Input id={id} type="date" value={endDate} min={expenseDate || undefined} onChange={(e) => setEndDate(e.target.value)} />}
+              </Field>
+            </>
+          ) : (
+            <Field label="Date" required>
+              {(id) => <Input id={id} type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />}
+            </Field>
+          )}
           <Field label="Currency">
             {(id) => (
               <Select id={id} value={currency} onChange={(e) => setCurrency(e.target.value)}>
@@ -364,7 +396,7 @@ export default function MileagePage() {
                 <p className="mt-1 text-xs text-ink-subtle">
                   Auto-filled from the date, your route, and the purpose.
                   {descriptionTouched && (
-                    <button type="button" onClick={() => { setDescriptionTouched(false); setDescription(buildDescription(expenseDate, stops, roundTrip, purpose)) }} className="ml-1 font-medium text-accent hover:underline">
+                    <button type="button" onClick={() => { setDescriptionTouched(false); setDescription(buildDescription(expenseDate, multiDay ? endDate : '', stops, roundTrip, purpose)) }} className="ml-1 font-medium text-accent hover:underline">
                       Reset to auto
                     </button>
                   )}
@@ -559,7 +591,7 @@ function cellClass(c: Col): string {
 }
 function cell(r: MileageRequest, c: Col): ReactNode {
   switch (c) {
-    case 'date': return fmtDate(r.expense_date)
+    case 'date': return dateRange(r.expense_date, r.end_date)
     case 'employee': return r.requested_by_name ?? '—'
     case 'policy': return r.policy ?? '—'
     case 'route': return <span className="line-clamp-1 max-w-[280px]">{routeText(r) || '—'}</span>
@@ -636,7 +668,7 @@ function ReviewModal({
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
           <Detail label="Employee" value={row.requested_by_name ?? '—'} />
           <Detail label="Policy" value={row.policy ?? '—'} />
-          <Detail label="Date" value={fmtDate(row.expense_date)} />
+          <Detail label={row.end_date ? 'Dates' : 'Date'} value={dateRange(row.expense_date, row.end_date)} />
           <Detail label="Currency" value={row.currency ?? 'USD'} />
           <Detail label="Category" value={row.category ?? '—'} />
           <Detail label="Department" value={row.department ?? '—'} />
