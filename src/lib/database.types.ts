@@ -3598,6 +3598,106 @@ export type Database = {
           },
         ]
       }
+      mileage_requests: {
+        Row: {
+          account_id: string
+          amount: number
+          approved_at: string | null
+          approved_by: string | null
+          approved_by_name: string | null
+          business_unit: string | null
+          category: string | null
+          created_at: string
+          currency: string
+          department: string | null
+          description: string | null
+          expense_date: string
+          id: string
+          miles: number
+          policy: string | null
+          rate: number
+          requested_by: string | null
+          requested_by_name: string | null
+          round_trip: boolean
+          status: string
+          stops: Json
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_by_name?: string | null
+          business_unit?: string | null
+          category?: string | null
+          created_at?: string
+          currency?: string
+          department?: string | null
+          description?: string | null
+          expense_date?: string
+          id?: string
+          miles?: number
+          policy?: string | null
+          rate?: number
+          requested_by?: string | null
+          requested_by_name?: string | null
+          round_trip?: boolean
+          status?: string
+          stops?: Json
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_by_name?: string | null
+          business_unit?: string | null
+          category?: string | null
+          created_at?: string
+          currency?: string
+          department?: string | null
+          description?: string | null
+          expense_date?: string
+          id?: string
+          miles?: number
+          policy?: string | null
+          rate?: number
+          requested_by?: string | null
+          requested_by_name?: string | null
+          round_trip?: boolean
+          status?: string
+          stops?: Json
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mileage_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mileage_requests_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mileage_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string

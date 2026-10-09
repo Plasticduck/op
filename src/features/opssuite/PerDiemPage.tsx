@@ -10,48 +10,16 @@ import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { perDiem, type PerDiemRequest } from '@/lib/queries/perDiem'
+import {
+  POLICIES, CATEGORIES, DEPARTMENTS, BUSINESS_UNITS, CURRENCIES,
+  defaultPolicy, usd, fmtDate, today, csvEsc, mdY, downloadCsv,
+} from '@/lib/finance/expenseOptions'
 
 // Per Diem reimbursement submission (mirrors Corpay's Per Diem expense flow) with
 // an Invoice-Approval-style workflow: a user submits a request, it lands in an
 // AP-only Requests queue, AP double-checks it and marks it approved, and approved
-// requests collect in a Complete tab for CSV export into QuickBooks.
-//
-// Policy and Category are still PLACEHOLDERS to finalize with AP; Policy will
-// ultimately be assigned per person by role. Department and Business Unit are the
-// finalized lists from AP.
-const POLICIES = ['MW Executive Team', 'MW Regional Managers', 'MW General Managers', 'MW Support Staff']
-const CATEGORIES = ['Meals', 'Lodging', 'Travel', 'Incidentals', 'Other']
-const DEPARTMENTS = [
-  '#19 General Manager', 'AP', 'Admin', 'Directors', 'Exec Team', 'General Managers',
-  'IT', 'Maintenance', 'Operations', 'Sales & Marketing',
-]
-const BUSINESS_UNITS = [
-  '01 - LBK 82nd', '02 - Odessa Kermit', '03 - Midland Loop 250', '04 - Andrews',
-  '05 - LBK 19th St', '06 - Big Spring', '07 - LBK Loop 289', '08 - IBA', '09 - LBK 50th',
-  '10 - LBK 80th University', '11 - LBK 114th Quaker', '12 - Midland 4110 North',
-  '13 - Midland 1103 And.', '14 - Sweetwater', '15 - Odessa 52nd St.', '16 - Carlsbad Canyon St.',
-  '17 - Hobbs Joe Harvey', '18 - Hobbs Bender St', '19 - Hobbs Lube', '20 - IN-BAY', '21 - Lovington',
-  '22 - 87th and Evans Odessa', '23 - Carlsbad 1600 Skyline', '24 - Midland Briarwood',
-  '25 - Grandview', '26 - Artesia', '27 - Valley Mills', '28 - Robinson', '29 - Killeen',
-  '30 - Harker Heights', '31 - 2800 Midland', '33 - Dalhart', '34 - Hereford',
-  'Corporate', 'Misc Reimbursement', 'Spotless',
-]
-const CURRENCIES = ['USD']
-
-// A sensible default policy for the person's role until policies are configured.
-function defaultPolicy(role: string | undefined, category: string | null | undefined): string {
-  if (category === 'executive' || role === 'owner') return 'MW Executive Team'
-  if (category === 'regional_manager') return 'MW Regional Managers'
-  return POLICIES[0]
-}
-
-const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmtDate = (s: string | null) => {
-  if (!s) return '—'
-  const d = new Date(s.length <= 10 ? s + 'T00:00:00' : s)
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-const today = () => new Date().toISOString().slice(0, 10)
+// requests collect in a Complete tab for CSV export into QuickBooks. Option lists
+// and shared helpers live in @/lib/finance/expenseOptions.
 
 // --- CSV export (Complete tab) ---------------------------------------------
 // Labeled columns for now; we'll tailor the exact header set to QuickBooks'
@@ -60,12 +28,6 @@ const CSV_HEADERS = [
   'Employee', 'Policy', 'Category', 'Department', 'Business Unit',
   'Date', 'Amount', 'Currency', 'Description', 'Submitted', 'Approved By', 'Approved Date',
 ] as const
-const csvEsc = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-const mdY = (s: string | null) => {
-  if (!s) return ''
-  const d = new Date(s.length <= 10 ? s + 'T00:00:00' : s)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US')
-}
 function perDiemCsv(rows: PerDiemRequest[]): string {
   const lines = rows.map((r) => [
     r.requested_by_name ?? '', r.policy ?? '', r.category ?? '', r.department ?? '', r.business_unit ?? '',
@@ -73,15 +35,6 @@ function perDiemCsv(rows: PerDiemRequest[]): string {
     mdY(r.submitted_at), r.approved_by_name ?? '', mdY(r.approved_at),
   ].map(csvEsc).join(','))
   return [CSV_HEADERS.map(csvEsc).join(','), ...lines].join('\r\n') + '\r\n'
-}
-function downloadCsv(filename: string, text: string) {
-  // UTF-8 BOM so Excel reads it as UTF-8.
-  const url = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
 }
 function csvFilename(): string {
   const now = new Date()

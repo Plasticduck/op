@@ -106,6 +106,7 @@ const SiteReviewsPage = lz(() => import('@/features/opssuite/SiteReviewsPage'))
 const SiteAuditsPage = lz(() => import('@/features/opssuite/SiteAuditsPage'))
 const InvoicesPage = lz(() => import('@/features/opssuite/InvoicesPage'))
 const PerDiemPage = lz(() => import('@/features/opssuite/PerDiemPage'))
+const MileagePage = lz(() => import('@/features/opssuite/MileagePage'))
 const InventoryPage = lz(() => import('@/features/opssuite/InventoryPage'))
 const MarketResearchPage = lz(() => import('@/features/opssuite/MarketResearchPage'))
 const MarketResearchDetailPage = lz(() => import('@/features/opssuite/MarketResearchDetailPage'))
@@ -224,6 +225,7 @@ export const router = createBrowserRouter([
           { path: 'site-audits', element: mgr(<SiteAuditsPage />) },
           { path: 'invoices', element: tech(<InvoicesPage />) },
           { path: 'per-diem', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive', 'finance']}>{s(<PerDiemPage />)}</RequirePermRole> },
+          { path: 'mileage', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive', 'finance']}>{s(<MileagePage />)}</RequirePermRole> },
           { path: 'labor', element: mgr(<LaborDashboardPage />) },
           { path: 'inventory', element: tech(<InventoryPage />) },
           { path: 'market-research', element: mgr(<MarketResearchPage />) },

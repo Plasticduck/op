@@ -23,6 +23,7 @@ import {
   Sparkles,
   CalendarClock,
   CalendarHeart,
+  Car,
   ChartNoAxesCombined,
   ChevronDown,
   Clock,
@@ -265,6 +266,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/per-diem',
         label: 'Per Diem',
         icon: BadgeDollarSign,
+        roles: ['owner', 'regional_manager', 'executive', 'finance'],
+      },
+      {
+        to: '/app/mileage',
+        label: 'Mileage',
+        icon: Car,
         roles: ['owner', 'regional_manager', 'executive', 'finance'],
       },
       // Chargebacks page hidden pending a real Adyen dispute feed (the FlexWash
