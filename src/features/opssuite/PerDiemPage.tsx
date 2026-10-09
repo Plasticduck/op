@@ -26,7 +26,7 @@ const DEPARTMENTS = [
   'IT', 'Maintenance', 'Operations', 'Sales & Marketing',
 ]
 const BUSINESS_UNITS = [
-  '01-LBK 82nd', '02 - Odessa Kermit', '03 - Midland Loop 250', '04 - Andrews',
+  '01 - LBK 82nd', '02 - Odessa Kermit', '03 - Midland Loop 250', '04 - Andrews',
   '05 - LBK 19th St', '06 - Big Spring', '07 - LBK Loop 289', '08 - IBA', '09 - LBK 50th',
   '10 - LBK 80th University', '11 - LBK 114th Quaker', '12 - Midland 4110 North',
   '13 - Midland 1103 And.', '14 - Sweetwater', '15 - Odessa 52nd St.', '16 - Carlsbad Canyon St.',
