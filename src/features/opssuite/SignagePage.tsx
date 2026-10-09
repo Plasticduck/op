@@ -207,23 +207,25 @@ function Inner({ locationId }: { locationId: string }) {
   }, [rows, tab])
   const onOrdersTab = tab === 'new' || tab === 'production' || tab === 'shipped' || tab === 'completed' || tab === 'cancelled'
 
-  // Optional grouping for the order tabs: flat (None), by Site, or by Date. The
-  // choice is shared across all four order tabs.
-  const [orderGroupBy, setOrderGroupBy] = useState<'none' | 'site' | 'date'>('none')
+  // Grouping for the order tabs, matching the Fulfillment report's options: by
+  // Site, Item, or Date. The choice is shared across all order tabs.
+  const [orderGroupBy, setOrderGroupBy] = useState<'site' | 'item' | 'date'>('site')
   const groupedOrderRows = useMemo(() => {
-    if (orderGroupBy === 'none') return null
-    const map = new Map<string, { key: string; label: string; rows: Row[] }>()
+    const map = new Map<string, { key: string; label: string; rows: Row[]; qty: number }>()
     for (const r of orderRows) {
       let key: string, label: string
       if (orderGroupBy === 'site') { label = siteLabelOf(r); key = label.toLowerCase() }
+      else if (orderGroupBy === 'item') { label = itemLabelOf(r); key = label.toLowerCase() }
       else { key = r.created_at.slice(0, 10); label = shortDate(r.created_at) }
       let g = map.get(key)
-      if (!g) { g = { key, label, rows: [] }; map.set(key, g) }
+      if (!g) { g = { key, label, rows: [], qty: 0 }; map.set(key, g) }
       g.rows.push(r)
+      g.qty += r.quantity
     }
     const arr = [...map.values()]
     for (const g of arr) g.rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1)) // newest first
     if (orderGroupBy === 'date') arr.sort((a, b) => (a.key < b.key ? 1 : -1)) // newest day first
+    else if (orderGroupBy === 'item') arr.sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label))
     else arr.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
     return arr
   }, [orderRows, orderGroupBy])
@@ -500,17 +502,17 @@ function Inner({ locationId }: { locationId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-ink-subtle">Group by</span>
             <div className="flex rounded-md border border-border p-0.5">
-              {([['none', 'None'], ['site', 'Site'], ['date', 'Date']] as const).map(([key, lbl]) => (
+              {(['site', 'item', 'date'] as const).map((key) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setOrderGroupBy(key)}
                   className={cn(
-                    'rounded px-3 py-1 text-sm font-medium transition',
+                    'rounded px-3 py-1 text-sm font-medium capitalize transition',
                     orderGroupBy === key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
                   )}
                 >
-                  {lbl}
+                  {key}
                 </button>
               ))}
             </div>
@@ -531,17 +533,15 @@ function Inner({ locationId }: { locationId: string }) {
               </tr>
             </thead>
             <tbody>
-              {groupedOrderRows
-                ? groupedOrderRows.flatMap((g) => [
-                    <tr key={`grp-${g.key}`} className="border-t-2 border-border-strong bg-content">
-                      <td colSpan={orderColCount} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                        {g.label}
-                        <span className="ml-2 font-normal normal-case text-ink-subtle">· {g.rows.length} order{g.rows.length === 1 ? '' : 's'}</span>
-                      </td>
-                    </tr>,
-                    ...g.rows.map(renderOrderRow),
-                  ])
-                : orderRows.map(renderOrderRow)}
+              {groupedOrderRows.flatMap((g) => [
+                <tr key={`grp-${g.key}`} className="border-t-2 border-border-strong bg-content">
+                  <td colSpan={orderColCount} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    {g.label}
+                    <span className="ml-2 font-normal normal-case text-ink-subtle">· {g.rows.length} order{g.rows.length === 1 ? '' : 's'} · {g.qty} qty</span>
+                  </td>
+                </tr>,
+                ...g.rows.map(renderOrderRow),
+              ])}
             </tbody>
           </table>
           </div>
