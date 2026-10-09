@@ -252,7 +252,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Finance',
-    roles: ['owner', 'regional_manager', 'executive', 'technician'],
+    roles: ['owner', 'regional_manager', 'executive', 'technician', 'finance'],
     items: [
       {
         to: '/app/invoices',
@@ -265,7 +265,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/per-diem',
         label: 'Per Diem',
         icon: BadgeDollarSign,
-        roles: ['owner', 'regional_manager', 'executive'],
+        roles: ['owner', 'regional_manager', 'executive', 'finance'],
       },
       // Chargebacks page hidden pending a real Adyen dispute feed (the FlexWash
       // partner API doesn't expose disputes). Route + page kept in the repo.

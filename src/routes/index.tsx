@@ -223,7 +223,7 @@ export const router = createBrowserRouter([
           { path: 'site-reviews', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive']}>{s(<SiteReviewsPage />)}</RequirePermRole> },
           { path: 'site-audits', element: mgr(<SiteAuditsPage />) },
           { path: 'invoices', element: tech(<InvoicesPage />) },
-          { path: 'per-diem', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive']}>{s(<PerDiemPage />)}</RequirePermRole> },
+          { path: 'per-diem', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive', 'finance']}>{s(<PerDiemPage />)}</RequirePermRole> },
           { path: 'labor', element: mgr(<LaborDashboardPage />) },
           { path: 'inventory', element: tech(<InventoryPage />) },
           { path: 'market-research', element: mgr(<MarketResearchPage />) },

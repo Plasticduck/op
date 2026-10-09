@@ -4216,6 +4216,9 @@ export type Database = {
         Row: {
           account_id: string
           amount: number
+          approved_at: string | null
+          approved_by: string | null
+          approved_by_name: string | null
           business_unit: string | null
           category: string | null
           created_at: string
@@ -4234,6 +4237,9 @@ export type Database = {
         Insert: {
           account_id: string
           amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_by_name?: string | null
           business_unit?: string | null
           category?: string | null
           created_at?: string
@@ -4252,6 +4258,9 @@ export type Database = {
         Update: {
           account_id?: string
           amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_by_name?: string | null
           business_unit?: string | null
           category?: string | null
           created_at?: string
@@ -4273,6 +4282,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "per_diem_requests_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
@@ -6892,6 +6908,7 @@ export type Database = {
       auth_is_manager_plus: { Args: never; Returns: boolean }
       auth_location_ids: { Args: never; Returns: string[] }
       auth_role: { Args: never; Returns: string }
+      auth_role_category: { Args: never; Returns: string }
       biometric_consent_status: {
         Args: { p_location_id: string }
         Returns: {
