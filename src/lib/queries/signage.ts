@@ -118,9 +118,9 @@ export function flagSpec(signType: string): FlagSpec | undefined {
 }
 
 export const signage = {
-  // Every signage order the caller can see. RLS already scopes rows to their
-  // account and the sites they have access to, so Order History spans all of a
-  // user's sites (an order isn't hidden just because a different site is active).
+  // Every signage order the caller can see. RLS scopes rows to the caller's own
+  // orders (requested_by); kevan@washlyfe.com is the one admin who sees all of the
+  // account's orders (for the order tracker / fulfillment views).
   list: () =>
     supabase
       .from('signage_requests')
