@@ -147,13 +147,14 @@ function PassFailRow({
               onClick={() => onStatus(selected ? null : s.value)}
               className={cn(
                 'grid size-11 place-items-center rounded-md border-2 transition',
-                !selected && 'opacity-60 hover:opacity-100',
+                // Selected: solid fill in the status color with a white icon.
+                // Unselected: clearly muted/neutral so only one choice ever reads
+                // as active (picking a new one visibly clears the old).
+                selected
+                  ? 'text-white shadow-sm'
+                  : 'border-border bg-card text-ink-subtle hover:text-ink-muted',
               )}
-              style={{
-                borderColor: s.color,
-                color: s.color,
-                backgroundColor: selected ? `${s.color}22` : 'transparent',
-              }}
+              style={selected ? { backgroundColor: s.color, borderColor: s.color } : undefined}
             >
               {s.icon}
             </button>
