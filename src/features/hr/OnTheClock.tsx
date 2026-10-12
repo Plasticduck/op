@@ -4,7 +4,7 @@ import { isolvedLive, type LiveResponse } from '@/lib/queries/isolved'
 import { fnErrorMessage } from '@/lib/fnError'
 
 // Live "who's on the clock" view, broken out by site, with each person's hours for
-// the current pay week (Sunday -> Saturday). Auto-refreshes while mounted.
+// the current pay week (Monday -> Sunday). Auto-refreshes while mounted.
 
 const REFRESH_MS = 60_000
 const STALE_H = 14 // an open punch running this long is probably a missed clock-out
@@ -71,7 +71,7 @@ export default function OnTheClock() {
           <div className="text-lg font-semibold tabular-nums text-ink">{data ? data.totals.employees : '—'}</div>
           <div className="text-xs text-ink-subtle">worked this week</div>
         </div>
-        {data && <div className="text-xs text-ink-muted">Pay week {data.central.weekLabel} (Sun–Sat)</div>}
+        {data && <div className="text-xs text-ink-muted">Pay week {data.central.weekLabel} (Mon–Sun)</div>}
         <div className="ml-auto flex items-center gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
             <input type="checkbox" checked={onlyIn} onChange={(e) => setOnlyIn(e.target.checked)} className="accent-accent" />
@@ -158,7 +158,7 @@ export default function OnTheClock() {
       )}
 
       <p className="mt-4 text-xs text-ink-subtle">
-        Live from iSolved timecard punches. Week hours are paid hours Sunday–Saturday plus time accrued on the current open punch; est. cost is a base-rate estimate (overtime at 1.5x), not payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Auto-refreshes every minute.
+        Live from iSolved timecard punches. Week hours are paid hours Monday–Sunday plus time accrued on the current open punch; est. cost is a base-rate estimate (overtime at 1.5x), not payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Auto-refreshes every minute.
       </p>
     </div>
   )

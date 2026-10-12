@@ -27,7 +27,7 @@ export const isolvedLabor = (startDate: string, endDate: string, salariedScope: 
   supabase.functions.invoke<LaborResponse>('isolved-labor', { body: { startDate, endDate, salariedScope } })
 
 // Real-time labor: who is clocked in now, by site, with current pay-week hours
-// (the pay week runs Sunday -> Saturday). Served by the isolved-live function.
+// (the pay week runs Monday -> Sunday). Served by the isolved-live function.
 export type LiveSiteEmployee = {
   employeeNumber: string
   name: string

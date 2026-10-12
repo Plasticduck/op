@@ -1,7 +1,7 @@
 // isolved-live — Supabase Edge Function (Deno).
 // Real-time labor: who is currently clocked in, broken out by site, with each
-// person's hours for the current pay week. The pay week runs Sunday -> Saturday,
-// so "this week" = Sunday of the current week through today (inclusive).
+// person's hours for the current pay week. The pay week runs Monday -> Sunday,
+// so "this week" = Monday of the current week through today (inclusive).
 //
 // Source: iSolved timecardData. An OPEN punch (clocked in, not out) is an entry
 // with outPunchId null and a real in-time; its clock-in time is
@@ -132,7 +132,8 @@ Deno.serve(async (req) => {
   const now = new Date()
   const cNow = centralParts(now)
   const today = cNow.date
-  const weekStart = addDays(today, -dowOf(today)) // Sunday of the current week
+  // Week starts Monday. dowOf is 0=Sun..6=Sat, so days since Monday = (dow + 6) % 7.
+  const weekStart = addDays(today, -((dowOf(today) + 6) % 7)) // Monday of the current week
 
   type Emp = {
     employeeNumber: string; name: string
