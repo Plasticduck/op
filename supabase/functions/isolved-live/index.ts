@@ -222,6 +222,17 @@ Deno.serve(async (req) => {
         const rate = rateByKey.get(num) ?? rateByKey.get('id:' + String(r.employeeId)) ?? 0
         const e = empOf(num, name)
         e.salaried = salariedByKey.get(num) ?? salariedByKey.get('id:' + String(r.employeeId)) ?? e.salaried
+        // An open punch only means "on the clock" if its in-time is AFTER the
+        // employee's latest clock-OUT. iSolved can leave an orphaned/auto in-punch
+        // (outPunchId null) behind a later completed punch; without this guard that
+        // stale punch keeps showing the person as still clocked in.
+        let latestOut = ''
+        for (const t of r.timecardData ?? []) {
+          if (t.outPunchId != null && t.outPunchDateTimeEffective) {
+            const o = String(t.outPunchDateTimeEffective)
+            if (o > latestOut) latestOut = o
+          }
+        }
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
           const site = siteLabel(String(loc))
@@ -244,7 +255,9 @@ Deno.serve(async (req) => {
           if (isToday) { bucket.dayHours += hrs; bucket.dayCost += cost; bucket.dayPTO += pto }
           // Open punch = currently clocked in (real in-time, no out).
           const inEff = String(t.inPunchDateTimeEffective ?? '')
-          const open = (t.outPunchId == null || !t.outPunchDateTimeEffective) && inEff && !isMidnight(inEff)
+          const open = (t.outPunchId == null || !t.outPunchDateTimeEffective)
+            && inEff && !isMidnight(inEff)
+            && (!latestOut || inEff > latestOut)
           if (open) {
             const elapsed = Math.max(0, diffHours(inEff, cNow.iso))
             const accr = Math.min(elapsed, OPEN_ACCRUAL_CAP_H)

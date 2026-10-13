@@ -139,9 +139,20 @@ Deno.serve(async (req) => {
       if (results.length === 0) break
       for (const r of results) {
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || String(r.employeeNumber ?? '')
+        // Latest clock-OUT for this person; an open punch before it is a stale/
+        // orphaned (auto) punch, not someone still on the clock.
+        let latestOut = ''
+        for (const t of r.timecardData ?? []) {
+          if (t.outPunchId != null && t.outPunchDateTimeEffective) {
+            const o = String(t.outPunchDateTimeEffective)
+            if (o > latestOut) latestOut = o
+          }
+        }
         for (const t of r.timecardData ?? []) {
           const inEff = String(t.inPunchDateTimeEffective ?? '')
-          const open = (t.outPunchId == null || !t.outPunchDateTimeEffective) && inEff && !isMidnight(inEff)
+          const open = (t.outPunchId == null || !t.outPunchDateTimeEffective)
+            && inEff && !isMidnight(inEff)
+            && (!latestOut || inEff > latestOut)
           if (!open) continue
           const elapsed = Math.max(0, diffHours(inEff, cNow.iso))
           if (elapsed < threshold) continue
