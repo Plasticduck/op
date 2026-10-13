@@ -54,7 +54,7 @@ export default function OnTheClock() {
         .flatMap((s) =>
           s.employees
             .filter((e) => e.onClock && e.elapsedHours >= STALE_H)
-            .map((e) => ({ site: s.site, name: e.name, employeeNumber: e.employeeNumber, clockInTime: e.clockInTime, elapsedHours: e.elapsedHours })),
+            .map((e) => ({ site: s.site, name: e.name, salaried: e.salaried, employeeNumber: e.employeeNumber, clockInTime: e.clockInTime, elapsedHours: e.elapsedHours })),
         )
         .sort((a, b) => b.elapsedHours - a.elapsedHours)
     : []
@@ -128,7 +128,7 @@ export default function OnTheClock() {
                 <tbody className="divide-y divide-border">
                   {checkPunches.map((e) => (
                     <tr key={e.site + e.employeeNumber} className="bg-warn-soft/30">
-                      <td className="px-4 py-1.5 font-medium text-ink">{e.name}</td>
+                      <td className="px-4 py-1.5 font-medium text-ink">{e.name}{e.salaried && <span className="ml-2 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent" title="Salaried employee">Salary</span>}</td>
                       <td className="px-4 py-1.5 text-ink-muted">{e.site}</td>
                       <td className="px-4 py-1.5 text-ink-muted">{e.clockInTime ?? '—'}</td>
                       <td className="px-4 py-1.5 text-right tabular-nums font-semibold text-warn">{elapsed(e.elapsedHours)}</td>
@@ -175,7 +175,7 @@ export default function OnTheClock() {
                         const stale = e.onClock && e.elapsedHours >= STALE_H
                         return (
                           <tr key={e.employeeNumber} className={e.onClock ? 'bg-ok-soft/30' : undefined}>
-                            <td className="px-4 py-1.5 font-medium text-ink">{e.name}</td>
+                            <td className="px-4 py-1.5 font-medium text-ink">{e.name}{e.salaried && <span className="ml-2 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent" title="Salaried employee">Salary</span>}</td>
                             <td className="px-4 py-1.5">
                               {e.onClock ? (
                                 stale ? (
@@ -210,7 +210,7 @@ export default function OnTheClock() {
       )}
 
       <p className="mt-4 text-xs text-ink-subtle">
-        Live from iSolved timecard punches. Week hours are paid hours Monday–Sunday plus time accrued on the current open punch; est. cost is a base-rate estimate (overtime at 1.5x), not payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Auto-refreshes every minute.
+        Live from iSolved timecard punches. Week hours are paid hours Monday–Sunday plus time accrued on the current open punch; est. cost is a base-rate estimate (overtime at 1.5x), not payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Salaried staff are tagged “Salary.” Auto-refreshes every minute.
       </p>
     </div>
   )

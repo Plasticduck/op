@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
   const weekStart = addDays(today, -((dowOf(today) + 6) % 7)) // Monday of the current week
 
   type Emp = {
-    employeeNumber: string; name: string
+    employeeNumber: string; name: string; salaried: boolean
     onClock: boolean; clockInAt: string | null; clockInSite: string | null; elapsedHours: number
     totalWeekHours: number; totalWeekCost: number
     bySite: Map<string, { hours: number; dayHours: number; cost: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
   const emps = new Map<string, Emp>()
   const empOf = (num: string, name: string): Emp => {
     let e = emps.get(num)
-    if (!e) { e = { employeeNumber: num, name, onClock: false, clockInAt: null, clockInSite: null, elapsedHours: 0, totalWeekHours: 0, totalWeekCost: 0, bySite: new Map() }; emps.set(num, e) }
+    if (!e) { e = { employeeNumber: num, name, salaried: false, onClock: false, clockInAt: null, clockInSite: null, elapsedHours: 0, totalWeekHours: 0, totalWeekCost: 0, bySite: new Map() }; emps.set(num, e) }
     return e
   }
   const siteBucket = (e: Emp, site: string) => {
@@ -170,14 +170,18 @@ Deno.serve(async (req) => {
     // Employee roster -> hourly rate, for an ESTIMATED labor cost (base rate x
     // hours, overtime at 1.5x). Rates/names only; no SSN/DOB leaves the function.
     const rateByKey = new Map<string, number>()
+    // Salaried vs hourly comes from the roster payType ('Salary'), matching the
+    // Labor Data report. Used only to label people in the view.
+    const salariedByKey = new Map<string, boolean>()
     for (let page = 0; page < 100; page++) {
       const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/employees?pageSize=${PAGE_SIZE}&page=${page}`)
       const results = d.results ?? []
       if (results.length === 0) break
       for (const e of results) {
         const r = effRate(e)
-        if (e.employeeNumber != null) rateByKey.set(String(e.employeeNumber), r)
-        if (e.id != null) rateByKey.set('id:' + String(e.id), r)
+        const salaried = String(e.payType ?? '') === 'Salary'
+        if (e.employeeNumber != null) { rateByKey.set(String(e.employeeNumber), r); salariedByKey.set(String(e.employeeNumber), salaried) }
+        if (e.id != null) { rateByKey.set('id:' + String(e.id), r); salariedByKey.set('id:' + String(e.id), salaried) }
       }
     }
 
@@ -190,6 +194,7 @@ Deno.serve(async (req) => {
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || num
         const rate = rateByKey.get(num) ?? rateByKey.get('id:' + String(r.employeeId)) ?? 0
         const e = empOf(num, name)
+        e.salaried = salariedByKey.get(num) ?? salariedByKey.get('id:' + String(r.employeeId)) ?? e.salaried
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
           const site = siteLabel(String(loc))
@@ -228,7 +233,7 @@ Deno.serve(async (req) => {
   }
 
   // Build per-site breakout.
-  type SiteEmp = { employeeNumber: string; name: string; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteDayHours: number; siteWeekHours: number; siteWeekCost: number; totalWeekHours: number }
+  type SiteEmp = { employeeNumber: string; name: string; salaried: boolean; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteDayHours: number; siteWeekHours: number; siteWeekCost: number; totalWeekHours: number }
   const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; weekCost: number; employees: SiteEmp[] }>()
   const round = (n: number) => Math.round(n * 100) / 100
   for (const e of emps.values()) {
@@ -237,7 +242,7 @@ Deno.serve(async (req) => {
       let s = sitesMap.get(site)
       if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, employees: [] }; sitesMap.set(site, s) }
       s.employees.push({
-        employeeNumber: e.employeeNumber, name: e.name,
+        employeeNumber: e.employeeNumber, name: e.name, salaried: e.salaried,
         onClock: b.onClock, clockInAt: b.clockInAt, clockInTime: b.clockInAt ? hhmm(b.clockInAt) : null,
         elapsedHours: round(b.elapsedHours), siteDayHours: round(b.dayHours), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), totalWeekHours: round(e.totalWeekHours),
       })

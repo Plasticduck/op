@@ -31,6 +31,7 @@ export const isolvedLabor = (startDate: string, endDate: string, salariedScope: 
 export type LiveSiteEmployee = {
   employeeNumber: string
   name: string
+  salaried: boolean
   onClock: boolean
   clockInAt: string | null // naive Central ISO of the open punch
   clockInTime: string | null // e.g. "10:58 AM"
