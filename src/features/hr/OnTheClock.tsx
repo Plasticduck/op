@@ -145,7 +145,7 @@ export default function OnTheClock() {
               const emps = onlyIn ? s.employees.filter((e) => e.onClock) : s.employees
               return (
                 <section key={s.site} className="overflow-hidden rounded-xl border border-border bg-card">
-                  <div className="flex items-center gap-3 border-b border-border bg-content px-4 py-2.5">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-content px-4 py-2.5">
                     <span className="font-semibold text-ink">{s.site}</span>
                     {s.clockedIn > 0 ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-ok-soft px-2 py-0.5 text-xs font-semibold text-ok">
@@ -154,7 +154,11 @@ export default function OnTheClock() {
                     ) : (
                       <span className="rounded-full bg-content px-2 py-0.5 text-xs font-medium text-ink-subtle">none clocked in</span>
                     )}
-                    <span className="ml-auto flex items-center gap-1 text-xs text-ink-muted"><Users className="size-3.5" />{s.employeeCount} · {hrs(s.weekHours)} hrs · {usd(s.weekCost)} est.</span>
+                    <span className="flex items-center gap-1 text-xs text-ink-muted"><Users className="size-3.5" />{s.employeeCount} · {hrs(s.weekHours)} hrs</span>
+                    <span className="ml-auto flex items-baseline gap-1" title="Estimated labor cost this week (base-rate estimate, OT 1.5x)">
+                      <span className="text-base font-bold tabular-nums text-ink">{usd(s.weekCost)}</span>
+                      <span className="text-[11px] text-ink-subtle">est. wk labor</span>
+                    </span>
                   </div>
                   <table className="w-full text-sm">
                     <thead className="text-left text-[11px] uppercase tracking-wide text-ink-subtle">
