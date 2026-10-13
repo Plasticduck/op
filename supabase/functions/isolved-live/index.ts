@@ -234,13 +234,13 @@ Deno.serve(async (req) => {
 
   // Build per-site breakout.
   type SiteEmp = { employeeNumber: string; name: string; salaried: boolean; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteDayHours: number; siteWeekHours: number; siteWeekCost: number; totalWeekHours: number }
-  const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; weekCost: number; employees: SiteEmp[] }>()
+  const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; weekCost: number; weekCostSalary: number; weekCostHourly: number; employees: SiteEmp[] }>()
   const round = (n: number) => Math.round(n * 100) / 100
   for (const e of emps.values()) {
     for (const [site, b] of e.bySite) {
       if (b.hours <= 0 && !b.onClock) continue
       let s = sitesMap.get(site)
-      if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, employees: [] }; sitesMap.set(site, s) }
+      if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, weekCostSalary: 0, weekCostHourly: 0, employees: [] }; sitesMap.set(site, s) }
       s.employees.push({
         employeeNumber: e.employeeNumber, name: e.name, salaried: e.salaried,
         onClock: b.onClock, clockInAt: b.clockInAt, clockInTime: b.clockInAt ? hhmm(b.clockInAt) : null,
@@ -248,11 +248,12 @@ Deno.serve(async (req) => {
       })
       s.weekHours += b.hours
       s.weekCost += b.cost
+      if (e.salaried) s.weekCostSalary += b.cost; else s.weekCostHourly += b.cost
       if (b.onClock) s.clockedIn += 1
     }
   }
   const sites = [...sitesMap.values()].map((s) => ({
-    site: s.site, clockedIn: s.clockedIn, weekHours: round(s.weekHours), weekCost: round(s.weekCost), employeeCount: s.employees.length,
+    site: s.site, clockedIn: s.clockedIn, weekHours: round(s.weekHours), weekCost: round(s.weekCost), weekCostSalary: round(s.weekCostSalary), weekCostHourly: round(s.weekCostHourly), employeeCount: s.employees.length,
     employees: s.employees.sort((a, b) => (Number(b.onClock) - Number(a.onClock)) || (b.siteWeekHours - a.siteWeekHours)),
   })).sort((a, b) => (siteNumOf(a.site) - siteNumOf(b.site)) || a.site.localeCompare(b.site, undefined, { numeric: true }))
 
@@ -267,6 +268,8 @@ Deno.serve(async (req) => {
       clockedIn: active.filter((e) => e.onClock).length,
       weekHours: round(active.reduce((s, e) => s + e.totalWeekHours, 0)),
       weekCost: round(active.reduce((s, e) => s + e.totalWeekCost, 0)),
+      weekCostSalary: round(active.filter((e) => e.salaried).reduce((s, e) => s + e.totalWeekCost, 0)),
+      weekCostHourly: round(active.filter((e) => !e.salaried).reduce((s, e) => s + e.totalWeekCost, 0)),
       employees: active.length,
       sites: sites.length,
     },

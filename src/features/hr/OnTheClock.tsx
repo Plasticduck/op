@@ -155,10 +155,16 @@ export default function OnTheClock() {
                       <span className="rounded-full bg-content px-2 py-0.5 text-xs font-medium text-ink-subtle">none clocked in</span>
                     )}
                     <span className="flex items-center gap-1 text-xs text-ink-muted"><Users className="size-3.5" />{s.employeeCount} · {hrs(s.weekHours)} hrs</span>
-                    <span className="ml-auto flex items-baseline gap-1" title="Estimated labor cost this week (base-rate estimate, OT 1.5x)">
-                      <span className="text-base font-bold tabular-nums text-ink">{usd(s.weekCost)}</span>
-                      <span className="text-[11px] text-ink-subtle">est. wk labor</span>
-                    </span>
+                    <div className="ml-auto flex items-center gap-4" title="Estimated labor cost this week (base-rate estimate, OT 1.5x)">
+                      <div className="text-right leading-tight">
+                        <div className="text-sm font-bold tabular-nums text-ink">{usd(s.weekCostHourly)}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-ink-subtle">hourly</div>
+                      </div>
+                      <div className="text-right leading-tight">
+                        <div className="text-sm font-bold tabular-nums text-ink">{usd(s.weekCostSalary)}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-ink-subtle">salary</div>
+                      </div>
+                    </div>
                   </div>
                   <table className="w-full text-sm">
                     <thead className="text-left text-[11px] uppercase tracking-wide text-ink-subtle">

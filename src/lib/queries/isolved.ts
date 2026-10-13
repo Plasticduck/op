@@ -46,6 +46,8 @@ export type LiveSite = {
   clockedIn: number
   weekHours: number
   weekCost: number
+  weekCostSalary: number
+  weekCostHourly: number
   employeeCount: number
   employees: LiveSiteEmployee[]
 }
@@ -53,7 +55,7 @@ export type LiveResponse = {
   ok: boolean
   generatedAt: string
   central: { now: string; today: string; weekStart: string; weekLabel: string }
-  totals: { clockedIn: number; weekHours: number; weekCost: number; employees: number; sites: number }
+  totals: { clockedIn: number; weekHours: number; weekCost: number; weekCostSalary: number; weekCostHourly: number; employees: number; sites: number }
   sites: LiveSite[]
   error?: string
   message?: string
