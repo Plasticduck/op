@@ -311,6 +311,28 @@ function presetRange(key: string, allDates: string[]): [string, string] {
   return [min, max]
 }
 
+// Add/subtract days on a YYYY-MM-DD string (UTC-safe).
+const addDaysStr = (d: string, n: number): string => {
+  const dt = new Date(d + 'T00:00:00Z')
+  dt.setUTCDate(dt.getUTCDate() + n)
+  return dt.toISOString().slice(0, 10)
+}
+
+// Preset ranges computed by date arithmetic relative to the latest day ("today"),
+// so any range works regardless of how many days the live feed carries. Clamped
+// to the archive's earliest day (histMin).
+function presetRangeByDate(key: string, anchorMax: string, histMin: string): [string, string] {
+  if (!anchorMax) return ['', '']
+  const max = anchorMax
+  const clamp = (s: string) => (histMin && s < histMin ? histMin : s)
+  if (key === 'today') return [max, max]
+  if (key === 'yesterday') { const y = addDaysStr(max, -1); return [clamp(y), y] }
+  if (key === 'month') return [clamp(max.slice(0, 8) + '01'), max]
+  const n = parseInt(key, 10)
+  if (!Number.isNaN(n)) return [clamp(addDaysStr(max, -(n - 1))), max]
+  return [histMin || max, max]
+}
+
 const dateInputCls = 'rounded-md border border-border bg-content px-2 py-1 text-xs text-ink'
 
 type Range = { key: string; start: string; end: string }
@@ -363,28 +385,79 @@ function BySite({ feed, idx }: ViewProps) {
     () => (report ? Array.from(new Set(Object.values(report.sites).flatMap((ds) => ds.map((d) => d.date)))).sort() : []),
     [report],
   )
+  const feedMin = allDates[0] ?? ''
+  const feedMax = allDates[allDates.length - 1] ?? ''
   const [range, setRange] = useState<{ key: string; start: string; end: string }>({ key: '7', start: '', end: '' })
-  if (!report || !Object.keys(report.sites).length) return <Empty />
 
-  const [defStart, defEnd] = presetRange('7', allDates)
+  // Full archive bounds so the date pickers aren't capped to the live feed's ~30
+  // days. Presets anchor to "today" (both the feed and the archive carry it).
+  const [bounds, setBounds] = useState<{ min: string | null; max: string | null }>({ min: null, max: null })
+  useEffect(() => { void fetchSitePerformanceHistoryBounds().then(setBounds).catch(() => {}) }, [])
+  const anchorMax = feedMax || bounds.max || ''
+  const histMin = bounds.min || feedMin || ''
+  const [defStart, defEnd] = presetRangeByDate('7', anchorMax, histMin)
   const start = range.start || defStart
   const end = range.end || defEnd
-  const dates = allDates.filter((d) => d >= start && d <= end)
-  const inRange = (d: SiteDay) => d.date >= start && d.date <= end
+
+  // Dates older than the live feed come from the site_performance_days archive;
+  // fetch only when the selected range reaches before the feed's earliest day.
+  const [archiveRows, setArchiveRows] = useState<SitePerfDayRow[]>([])
+  const [loadingRange, setLoadingRange] = useState(false)
+  useEffect(() => {
+    if (!start || !end || !feedMin || start >= feedMin) { setArchiveRows([]); return }
+    let alive = true
+    setLoadingRange(true)
+    fetchSitePerformanceHistory(start, end)
+      .then((r) => { if (alive) setArchiveRows(r) })
+      .catch(() => { if (alive) setArchiveRows([]) })
+      .finally(() => { if (alive) setLoadingRange(false) })
+    return () => { alive = false }
+  }, [start, end, feedMin])
+
+  if (!report || !Object.keys(report.sites).length) return <Empty />
+
+  const inRange = (d: string) => d >= start && d <= end
+
+  // Merge the live feed (recent, fresh) with the archive (dates older than the
+  // feed), keyed by site number so a site never splits across the two name
+  // formats. The feed owns dates >= its earliest day; the archive fills older ones.
+  const mergedMap = new Map<string, { name: string; days: Map<string, SiteDay> }>()
+  const idOf = (name: string, num: number | null) => (num != null ? 'n' + num : 'x:' + name)
+  for (const [name, ds] of Object.entries(report.sites)) {
+    const id = idOf(name, siteNumber(name))
+    let m = mergedMap.get(id)
+    if (!m) { m = { name, days: new Map() }; mergedMap.set(id, m) }
+    for (const d of ds) if (inRange(d.date)) m.days.set(d.date, d)
+  }
+  for (const r of archiveRows) {
+    if (!inRange(r.date) || r.date >= feedMin) continue
+    const id = idOf(r.site, r.site_number)
+    let m = mergedMap.get(id)
+    if (!m) { m = { name: r.site, days: new Map() }; mergedMap.set(id, m) }
+    m.days.set(r.date, {
+      date: r.date, cars: Number(r.cars) || 0, hours: Number(r.hours) || 0,
+      cars_per_hour: r.cars_per_hour, sales: Number(r.sales) || 0,
+      labor_cost: Number(r.labor_cost) || 0, labor_pct: r.labor_pct,
+    })
+  }
+  const rangeSites: Record<string, SiteDay[]> = {}
+  for (const m of mergedMap.values()) rangeSites[m.name] = [...m.days.values()].sort((a, b) => (a.date < b.date ? -1 : 1))
+  const rangeReport: NonNullable<SitePerformanceFeed['report']> = { end_date: end, generated_at: report.generated_at, sites: rangeSites }
+
+  const dates = Array.from(new Set(Object.values(rangeSites).flatMap((ds) => ds.map((d) => d.date)))).sort()
   const rangeLabel = start === end ? start : `${start} to ${end}`
-  const minDate = allDates[0]
-  const maxDate = allDates[allDates.length - 1]
+  const minDate = histMin
+  const maxDate = anchorMax
 
   const today = Object.entries(report.sites).map(([site, ds]) => ({ site, ...ds[ds.length - 1] }))
   const todayGroups = groupByRegion(today, (r) => r.site, idx)
 
-  // Per-site totals/averages over the selected range.
-  const rangeRows = Object.entries(report.sites).map(([site, ds]) => {
-    const d = ds.filter(inRange)
-    const cars = sum(d, (x) => x.cars)
-    const hours = sum(d, (x) => x.hours)
-    const sales = sum(d, (x) => x.sales)
-    const labor = sum(d, (x) => x.labor_cost)
+  // Per-site totals/averages over the selected range (merged feed + archive).
+  const rangeRows = Object.entries(rangeSites).map(([site, ds]) => {
+    const cars = sum(ds, (x) => x.cars)
+    const hours = sum(ds, (x) => x.hours)
+    const sales = sum(ds, (x) => x.sales)
+    const labor = sum(ds, (x) => x.labor_cost)
     return {
       site,
       cars,
@@ -444,14 +517,14 @@ function BySite({ feed, idx }: ViewProps) {
 
       <Panel
         title="Selected Range"
-        sub={`Totals and averages per site for ${rangeLabel}`}
+        sub={`Totals and averages per site for ${rangeLabel}${loadingRange ? ' · loading history…' : ''}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Seg
               value={range.key}
               tone="neutral"
               options={RANGE_PRESETS.map((p) => ({ key: p.key, label: p.label }))}
-              onChange={(k) => { const [s, e] = presetRange(k, allDates); setRange({ key: k, start: s, end: e }) }}
+              onChange={(k) => { const [s, e] = presetRangeByDate(k, anchorMax, histMin); setRange({ key: k, start: s, end: e }) }}
             />
             <input
               type="date"
@@ -524,7 +597,7 @@ function BySite({ feed, idx }: ViewProps) {
         }
       >
         <Heatmap
-          report={report} idx={idx} dates={dates}
+          report={rangeReport} idx={idx} dates={dates}
           value={(d) => d[metric]}
           format={(v) => (v === null ? DASH : metric === 'labor_pct' ? v + '%' : String(v))}
           color={(v) => heatFor(v, metric === 'labor_pct' ? 'labor' : 'cph')}
@@ -533,7 +606,7 @@ function BySite({ feed, idx }: ViewProps) {
       <Footnote>
         Cars = physical washes rung up. Hours = clocked labor across every employee at the site.
         Labor % = (hours x wage rate) / sales. Region subtotals weight Cars/Man-Hr and Labor % by the region total.
-        Ranges cover the ~30 days the feed carries; older history is not available.
+        The recent window is live from the dashboard; older dates are pulled from the archive{histMin ? ` (back to ${histMin})` : ''}.
       </Footnote>
     </div>
   )
