@@ -47,6 +47,18 @@ export default function OnTheClock() {
     return () => { if (timer.current) window.clearInterval(timer.current) }
   }, [load])
 
+  // Every "check punch" (open punch running STALE_H+ hours) across all sites,
+  // gathered into one card. These also stay flagged inline in each site card.
+  const checkPunches = data
+    ? data.sites
+        .flatMap((s) =>
+          s.employees
+            .filter((e) => e.onClock && e.elapsedHours >= STALE_H)
+            .map((e) => ({ site: s.site, name: e.name, employeeNumber: e.employeeNumber, clockInTime: e.clockInTime, elapsedHours: e.elapsedHours })),
+        )
+        .sort((a, b) => b.elapsedHours - a.elapsedHours)
+    : []
+
   return (
     <div className="mt-3">
       {/* Summary bar */}
@@ -91,7 +103,42 @@ export default function OnTheClock() {
       )}
 
       {data && (
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <>
+          {/* Check punches — every open punch running STALE_H+ hours, gathered
+              from all sites (they also stay flagged inline in each site card). */}
+          <section className={`mt-4 overflow-hidden rounded-xl border bg-card ${checkPunches.length ? 'border-warn/40' : 'border-border'}`}>
+            <div className={`flex flex-wrap items-center gap-3 border-b px-4 py-2.5 ${checkPunches.length ? 'border-warn/30 bg-warn-soft' : 'border-border bg-content'}`}>
+              <AlertTriangle className={`size-4 ${checkPunches.length ? 'text-warn' : 'text-ink-subtle'}`} />
+              <span className="font-semibold text-ink">Check punches</span>
+              <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold ${checkPunches.length ? 'bg-warn text-white' : 'bg-ink/10 text-ink-muted'}`}>{checkPunches.length}</span>
+              <span className="ml-auto text-xs text-ink-muted">Open punches running {STALE_H}h+ — likely missed clock-outs</span>
+            </div>
+            {checkPunches.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-ink-muted">No questionable punches right now.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="text-left text-[11px] uppercase tracking-wide text-ink-subtle">
+                  <tr>
+                    <th className="px-4 py-1.5 font-medium">Employee</th>
+                    <th className="px-4 py-1.5 font-medium">Site</th>
+                    <th className="px-4 py-1.5 font-medium">Clocked in</th>
+                    <th className="px-4 py-1.5 text-right font-medium">Running</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {checkPunches.map((e) => (
+                    <tr key={e.site + e.employeeNumber} className="bg-warn-soft/30">
+                      <td className="px-4 py-1.5 font-medium text-ink">{e.name}</td>
+                      <td className="px-4 py-1.5 text-ink-muted">{e.site}</td>
+                      <td className="px-4 py-1.5 text-ink-muted">{e.clockInTime ?? '—'}</td>
+                      <td className="px-4 py-1.5 text-right tabular-nums font-semibold text-warn">{elapsed(e.elapsedHours)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           {data.sites
             .filter((s) => !onlyIn || s.clockedIn > 0)
             .map((s) => {
@@ -154,7 +201,8 @@ export default function OnTheClock() {
                 </section>
               )
             })}
-        </div>
+          </div>
+        </>
       )}
 
       <p className="mt-4 text-xs text-ink-subtle">
