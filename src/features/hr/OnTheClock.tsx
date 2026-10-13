@@ -186,8 +186,9 @@ export default function OnTheClock() {
                     <tbody className="divide-y divide-border">
                       {emps.map((e) => {
                         const stale = e.onClock && e.elapsedHours >= STALE_H
+                        const onPTO = !e.onClock && e.siteWeekPTO > 0
                         return (
-                          <tr key={e.employeeNumber} className={e.onClock ? 'bg-ok-soft/30' : undefined}>
+                          <tr key={e.employeeNumber} className={e.onClock ? 'bg-ok-soft/30' : undefined} style={onPTO ? { backgroundColor: PTO_COLOR + '14' } : undefined}>
                             <td className="px-4 py-1.5 font-medium text-ink">{e.name}{e.salaried && <span className="ml-2 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent" title="Salaried employee">Salary</span>}</td>
                             <td className="px-4 py-1.5">
                               {e.onClock ? (
@@ -200,6 +201,10 @@ export default function OnTheClock() {
                                     <span className="size-1.5 rounded-full bg-ok" /> On since {e.clockInTime} · {elapsed(e.elapsedHours)}
                                   </span>
                                 )
+                              ) : onPTO ? (
+                                <span className="inline-flex items-center gap-1.5 font-medium" style={{ color: PTO_COLOR }}>
+                                  <span className="size-1.5 rounded-full" style={{ backgroundColor: PTO_COLOR }} /> PTO{e.siteDayPTO > 0 ? ' today' : ''}
+                                </span>
                               ) : (
                                 <span className="text-ink-subtle">Off</span>
                               )}
