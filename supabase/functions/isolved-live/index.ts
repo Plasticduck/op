@@ -62,6 +62,18 @@ function jwtRole(auth: string): string | null {
   try { return JSON.parse(atob(t[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? null } catch { return null }
 }
 
+// Roster workLocation -> site: "#NN" -> MWNN, COR* -> Corporate, SPT/SPO* ->
+// Spotless (matches the Labor Data report).
+function siteFromWorkLocation(wl: string): string {
+  if (!wl) return 'Unassigned'
+  const m = wl.match(/#\s*(\d+)/)
+  if (m) return 'MW' + m[1].padStart(2, '0')
+  const u = wl.trim().toUpperCase()
+  if (u.startsWith('COR')) return 'Corporate'
+  if (u.startsWith('SPT') || u.startsWith('SPO')) return 'Spotless'
+  return 'Unassigned'
+}
+
 // Timecard "Location" labor codes: NN -> MWNN, COR -> Corporate, SPO -> Spotless.
 function siteLabel(code: string): string {
   if (!code) return 'Unassigned'
@@ -153,6 +165,14 @@ Deno.serve(async (req) => {
     return b
   }
 
+  // Weekly salary cost per site from the roster: each ACTIVE salaried person's
+  // annual salary / 52, assigned to their iSolved work location. Salaried staff
+  // don't punch a clock, so their cost comes from the roster, not timecards (same
+  // approach as the Salaried Labor / Labor Data views). Corporate and Unassigned
+  // are excluded — not operational wash sites shown here. Declared outside the try
+  // so the per-site overlay after the fetch can read it.
+  const salaryWeekBySite = new Map<string, number>()
+
   try {
     let token = await getToken(base, cid, secret)
     const getJson = async (pageUrl: string): Promise<Any> => {
@@ -171,7 +191,7 @@ Deno.serve(async (req) => {
     // hours, overtime at 1.5x). Rates/names only; no SSN/DOB leaves the function.
     const rateByKey = new Map<string, number>()
     // Salaried vs hourly comes from the roster payType ('Salary'), matching the
-    // Labor Data report. Used only to label people in the view.
+    // Labor Data report. Used to label people in the view.
     const salariedByKey = new Map<string, boolean>()
     for (let page = 0; page < 100; page++) {
       const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/employees?pageSize=${PAGE_SIZE}&page=${page}`)
@@ -182,6 +202,13 @@ Deno.serve(async (req) => {
         const salaried = String(e.payType ?? '') === 'Salary'
         if (e.employeeNumber != null) { rateByKey.set(String(e.employeeNumber), r); salariedByKey.set(String(e.employeeNumber), salaried) }
         if (e.id != null) { rateByKey.set('id:' + String(e.id), r); salariedByKey.set('id:' + String(e.id), salaried) }
+        if (salaried && String(e.employmentStatus) === 'Active') {
+          const site = siteFromWorkLocation(String(e.workLocation ?? ''))
+          const weekly = annualSalaryOf(e) / 52
+          if (weekly > 0 && site !== 'Corporate' && site !== 'Unassigned') {
+            salaryWeekBySite.set(site, (salaryWeekBySite.get(site) ?? 0) + weekly)
+          }
+        }
       }
     }
 
@@ -247,11 +274,22 @@ Deno.serve(async (req) => {
         elapsedHours: round(b.elapsedHours), siteDayHours: round(b.dayHours), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), totalWeekHours: round(e.totalWeekHours),
       })
       s.weekHours += b.hours
-      s.weekCost += b.cost
-      if (e.salaried) s.weekCostSalary += b.cost; else s.weekCostHourly += b.cost
+      // Hourly cost comes from punches; salaried punch cost is ignored (salary is
+      // costed from the roster below).
+      if (!e.salaried) s.weekCostHourly += b.cost
       if (b.onClock) s.clockedIn += 1
     }
   }
+
+  // Overlay roster-based weekly salary cost onto each site (adding a card for a
+  // site that has active salaried staff but no punches this week), then total.
+  for (const [site, weekly] of salaryWeekBySite) {
+    let s = sitesMap.get(site)
+    if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, weekCostSalary: 0, weekCostHourly: 0, employees: [] }; sitesMap.set(site, s) }
+    s.weekCostSalary += weekly
+  }
+  for (const s of sitesMap.values()) s.weekCost = s.weekCostHourly + s.weekCostSalary
+
   const sites = [...sitesMap.values()].map((s) => ({
     site: s.site, clockedIn: s.clockedIn, weekHours: round(s.weekHours), weekCost: round(s.weekCost), weekCostSalary: round(s.weekCostSalary), weekCostHourly: round(s.weekCostHourly), employeeCount: s.employees.length,
     employees: s.employees.sort((a, b) => (Number(b.onClock) - Number(a.onClock)) || (b.siteWeekHours - a.siteWeekHours)),
@@ -267,9 +305,9 @@ Deno.serve(async (req) => {
     totals: {
       clockedIn: active.filter((e) => e.onClock).length,
       weekHours: round(active.reduce((s, e) => s + e.totalWeekHours, 0)),
-      weekCost: round(active.reduce((s, e) => s + e.totalWeekCost, 0)),
-      weekCostSalary: round(active.filter((e) => e.salaried).reduce((s, e) => s + e.totalWeekCost, 0)),
-      weekCostHourly: round(active.filter((e) => !e.salaried).reduce((s, e) => s + e.totalWeekCost, 0)),
+      weekCost: round(sites.reduce((a, s) => a + s.weekCost, 0)),
+      weekCostSalary: round(sites.reduce((a, s) => a + s.weekCostSalary, 0)),
+      weekCostHourly: round(sites.reduce((a, s) => a + s.weekCostHourly, 0)),
       employees: active.length,
       sites: sites.length,
     },

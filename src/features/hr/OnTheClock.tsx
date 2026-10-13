@@ -155,7 +155,7 @@ export default function OnTheClock() {
                       <span className="rounded-full bg-content px-2 py-0.5 text-xs font-medium text-ink-subtle">none clocked in</span>
                     )}
                     <span className="flex items-center gap-1 text-xs text-ink-muted"><Users className="size-3.5" />{s.employeeCount} · {hrs(s.weekHours)} hrs</span>
-                    <div className="ml-auto flex items-center gap-4" title="Estimated labor cost this week (base-rate estimate, OT 1.5x)">
+                    <div className="ml-auto flex items-center gap-4" title="Estimated weekly labor cost. Hourly: from punches this week (OT 1.5x). Salary: active salaried staff assigned to this site at annual ÷ 52.">
                       <div className="text-right leading-tight">
                         <div className="text-sm font-bold tabular-nums text-ink">{usd(s.weekCostHourly)}</div>
                         <div className="text-[10px] uppercase tracking-wide text-ink-subtle">hourly</div>
@@ -216,7 +216,7 @@ export default function OnTheClock() {
       )}
 
       <p className="mt-4 text-xs text-ink-subtle">
-        Live from iSolved timecard punches. Week hours are paid hours Monday–Sunday plus time accrued on the current open punch; est. cost is a base-rate estimate (overtime at 1.5x), not payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Salaried staff are tagged “Salary.” Auto-refreshes every minute.
+        Live from iSolved timecard punches. Week hours are paid hours Monday–Sunday plus time accrued on the current open punch. Per card, <span className="font-medium text-ink-muted">Hourly</span> cost is estimated from punches (base rate, OT 1.5x) and <span className="font-medium text-ink-muted">Salary</span> is each site's active salaried staff at annual ÷ 52 (they don't punch); neither is payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Salaried staff who punch are tagged “Salary.” Auto-refreshes every minute.
       </p>
     </div>
   )
