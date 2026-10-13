@@ -150,18 +150,18 @@ Deno.serve(async (req) => {
   type Emp = {
     employeeNumber: string; name: string; salaried: boolean
     onClock: boolean; clockInAt: string | null; clockInSite: string | null; elapsedHours: number
-    totalWeekHours: number; totalWeekCost: number
-    bySite: Map<string, { hours: number; dayHours: number; cost: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
+    totalWeekHours: number; totalWeekCost: number; totalWeekPTO: number
+    bySite: Map<string, { hours: number; dayHours: number; cost: number; pto: number; dayPTO: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
   }
   const emps = new Map<string, Emp>()
   const empOf = (num: string, name: string): Emp => {
     let e = emps.get(num)
-    if (!e) { e = { employeeNumber: num, name, salaried: false, onClock: false, clockInAt: null, clockInSite: null, elapsedHours: 0, totalWeekHours: 0, totalWeekCost: 0, bySite: new Map() }; emps.set(num, e) }
+    if (!e) { e = { employeeNumber: num, name, salaried: false, onClock: false, clockInAt: null, clockInSite: null, elapsedHours: 0, totalWeekHours: 0, totalWeekCost: 0, totalWeekPTO: 0, bySite: new Map() }; emps.set(num, e) }
     return e
   }
   const siteBucket = (e: Emp, site: string) => {
     let b = e.bySite.get(site)
-    if (!b) { b = { hours: 0, dayHours: 0, cost: 0, onClock: false, clockInAt: null, elapsedHours: 0 }; e.bySite.set(site, b) }
+    if (!b) { b = { hours: 0, dayHours: 0, cost: 0, pto: 0, dayPTO: 0, onClock: false, clockInAt: null, elapsedHours: 0 }; e.bySite.set(site, b) }
     return b
   }
 
@@ -228,17 +228,20 @@ Deno.serve(async (req) => {
           if (site === 'Corporate') continue // Corporate (office) staff are not part of the On the Clock view
           const bucket = siteBucket(e, site)
           const isToday = String(t.timecardDate ?? '').slice(0, 10) === today
-          // Paid hours + estimated cost for completed/partial entries.
-          let hrs = 0, cost = 0
+          // Worked hours + estimated cost for completed/partial entries. PTO
+          // (payItemName "PTO" / code 03) is tracked separately and is NOT counted
+          // in worked hours or in the daily/weekly cost.
+          let hrs = 0, cost = 0, pto = 0
           for (const p of t.payItems ?? []) {
             const h = Number(p.payItemHours) || 0
-            hrs += h
             const type = String(p.payItemName || p.payItemCode || '')
+            if (/pto/i.test(type) || String(p.payItemCode) === '03') { pto += h; continue }
+            hrs += h
             cost += rate * h * (/overtime/i.test(type) ? OT_MULTIPLIER : 1)
           }
-          bucket.hours += hrs; bucket.cost += cost
-          e.totalWeekHours += hrs; e.totalWeekCost += cost
-          if (isToday) bucket.dayHours += hrs
+          bucket.hours += hrs; bucket.cost += cost; bucket.pto += pto
+          e.totalWeekHours += hrs; e.totalWeekCost += cost; e.totalWeekPTO += pto
+          if (isToday) { bucket.dayHours += hrs; bucket.dayPTO += pto }
           // Open punch = currently clocked in (real in-time, no out).
           const inEff = String(t.inPunchDateTimeEffective ?? '')
           const open = (t.outPunchId == null || !t.outPunchDateTimeEffective) && inEff && !isMidnight(inEff)
@@ -260,22 +263,23 @@ Deno.serve(async (req) => {
   }
 
   // Build per-site breakout.
-  type SiteEmp = { employeeNumber: string; name: string; salaried: boolean; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteDayHours: number; siteWeekHours: number; siteWeekCost: number; totalWeekHours: number }
-  const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; weekCost: number; weekCostSalary: number; weekCostHourly: number; employees: SiteEmp[] }>()
+  type SiteEmp = { employeeNumber: string; name: string; salaried: boolean; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteDayHours: number; siteWeekHours: number; siteWeekCost: number; siteWeekPTO: number; siteDayPTO: number; totalWeekHours: number }
+  const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; weekCost: number; weekCostSalary: number; weekCostHourly: number; weekPTO: number; employees: SiteEmp[] }>()
   const round = (n: number) => Math.round(n * 100) / 100
   for (const e of emps.values()) {
     for (const [site, b] of e.bySite) {
-      if (b.hours <= 0 && !b.onClock) continue
+      if (b.hours <= 0 && !b.onClock && b.pto <= 0) continue
       let s = sitesMap.get(site)
-      if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, weekCostSalary: 0, weekCostHourly: 0, employees: [] }; sitesMap.set(site, s) }
+      if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, weekCostSalary: 0, weekCostHourly: 0, weekPTO: 0, employees: [] }; sitesMap.set(site, s) }
       s.employees.push({
         employeeNumber: e.employeeNumber, name: e.name, salaried: e.salaried,
         onClock: b.onClock, clockInAt: b.clockInAt, clockInTime: b.clockInAt ? hhmm(b.clockInAt) : null,
-        elapsedHours: round(b.elapsedHours), siteDayHours: round(b.dayHours), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), totalWeekHours: round(e.totalWeekHours),
+        elapsedHours: round(b.elapsedHours), siteDayHours: round(b.dayHours), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), siteWeekPTO: round(b.pto), siteDayPTO: round(b.dayPTO), totalWeekHours: round(e.totalWeekHours),
       })
       s.weekHours += b.hours
+      s.weekPTO += b.pto
       // Hourly cost comes from punches; salaried punch cost is ignored (salary is
-      // costed from the roster below).
+      // costed from the roster below). PTO is excluded from cost entirely.
       if (!e.salaried) s.weekCostHourly += b.cost
       if (b.onClock) s.clockedIn += 1
     }
@@ -285,13 +289,13 @@ Deno.serve(async (req) => {
   // site that has active salaried staff but no punches this week), then total.
   for (const [site, weekly] of salaryWeekBySite) {
     let s = sitesMap.get(site)
-    if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, weekCostSalary: 0, weekCostHourly: 0, employees: [] }; sitesMap.set(site, s) }
+    if (!s) { s = { site, clockedIn: 0, weekHours: 0, weekCost: 0, weekCostSalary: 0, weekCostHourly: 0, weekPTO: 0, employees: [] }; sitesMap.set(site, s) }
     s.weekCostSalary += weekly
   }
   for (const s of sitesMap.values()) s.weekCost = s.weekCostHourly + s.weekCostSalary
 
   const sites = [...sitesMap.values()].map((s) => ({
-    site: s.site, clockedIn: s.clockedIn, weekHours: round(s.weekHours), weekCost: round(s.weekCost), weekCostSalary: round(s.weekCostSalary), weekCostHourly: round(s.weekCostHourly), employeeCount: s.employees.length,
+    site: s.site, clockedIn: s.clockedIn, weekHours: round(s.weekHours), weekCost: round(s.weekCost), weekCostSalary: round(s.weekCostSalary), weekCostHourly: round(s.weekCostHourly), weekPTO: round(s.weekPTO), employeeCount: s.employees.length,
     employees: s.employees.sort((a, b) => (Number(b.onClock) - Number(a.onClock)) || (b.siteWeekHours - a.siteWeekHours)),
   })).sort((a, b) => (siteNumOf(a.site) - siteNumOf(b.site)) || a.site.localeCompare(b.site, undefined, { numeric: true }))
 
@@ -308,6 +312,7 @@ Deno.serve(async (req) => {
       weekCost: round(sites.reduce((a, s) => a + s.weekCost, 0)),
       weekCostSalary: round(sites.reduce((a, s) => a + s.weekCostSalary, 0)),
       weekCostHourly: round(sites.reduce((a, s) => a + s.weekCostHourly, 0)),
+      weekPTO: round(sites.reduce((a, s) => a + s.weekPTO, 0)),
       employees: active.length,
       sites: sites.length,
     },

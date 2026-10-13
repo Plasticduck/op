@@ -8,6 +8,7 @@ import { fnErrorMessage } from '@/lib/fnError'
 
 const REFRESH_MS = 60_000
 const STALE_H = 14 // an open punch running this long is probably a missed clock-out
+const PTO_COLOR = '#7c3aed' // violet — PTO is highlighted distinctly from worked time
 
 const hrs = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -83,6 +84,10 @@ export default function OnTheClock() {
           <div className="text-lg font-semibold tabular-nums text-ink">{data ? data.totals.employees : '—'}</div>
           <div className="text-xs text-ink-subtle">worked this week</div>
         </div>
+        <div>
+          <div className="text-lg font-semibold tabular-nums" style={{ color: PTO_COLOR }}>{data ? hrs(data.totals.weekPTO) : '—'}</div>
+          <div className="text-xs text-ink-subtle">PTO hours</div>
+        </div>
         {data && <div className="text-xs text-ink-muted">Pay week {data.central.weekLabel} (Mon–Sun)</div>}
         <div className="ml-auto flex items-center gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
@@ -155,6 +160,7 @@ export default function OnTheClock() {
                       <span className="rounded-full bg-content px-2 py-0.5 text-xs font-medium text-ink-subtle">none clocked in</span>
                     )}
                     <span className="flex items-center gap-1 text-xs text-ink-muted"><Users className="size-3.5" />{s.employeeCount} · {hrs(s.weekHours)} hrs</span>
+                    {s.weekPTO > 0 && <span className="text-xs font-semibold" style={{ color: PTO_COLOR }}>PTO {hrs(s.weekPTO)}h</span>}
                     <div className="ml-auto flex items-center gap-4" title="Estimated weekly labor cost. Hourly: from punches this week (OT 1.5x). Salary: active salaried staff assigned to this site at annual ÷ 52.">
                       <div className="text-right leading-tight">
                         <div className="text-sm font-bold tabular-nums text-ink">{usd(s.weekCostHourly)}</div>
@@ -174,6 +180,7 @@ export default function OnTheClock() {
                         <th className="px-4 py-1.5 text-right font-medium">Day hrs</th>
                         <th className="px-4 py-1.5 text-right font-medium">Est. cost</th>
                         <th className="px-4 py-1.5 text-right font-medium">Total wk</th>
+                        <th className="px-4 py-1.5 text-right font-medium">PTO</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -200,11 +207,14 @@ export default function OnTheClock() {
                             <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{hrs(e.siteDayHours)}</td>
                             <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{usd(e.siteWeekCost)}</td>
                             <td className="px-4 py-1.5 text-right tabular-nums font-semibold text-ink">{hrs(e.totalWeekHours)}</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums font-medium">
+                              {e.siteWeekPTO > 0 ? <span style={{ color: PTO_COLOR }}>{hrs(e.siteWeekPTO)}</span> : <span className="text-ink-subtle">—</span>}
+                            </td>
                           </tr>
                         )
                       })}
                       {emps.length === 0 && (
-                        <tr><td colSpan={5} className="px-4 py-3 text-center text-xs text-ink-subtle">No one clocked in.</td></tr>
+                        <tr><td colSpan={6} className="px-4 py-3 text-center text-xs text-ink-subtle">No one clocked in.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -216,7 +226,7 @@ export default function OnTheClock() {
       )}
 
       <p className="mt-4 text-xs text-ink-subtle">
-        Live from iSolved timecard punches. Week hours are paid hours Monday–Sunday plus time accrued on the current open punch. Per card, <span className="font-medium text-ink-muted">Hourly</span> cost is estimated from punches (base rate, OT 1.5x) and <span className="font-medium text-ink-muted">Salary</span> is each site's active salaried staff at annual ÷ 52 (they don't punch); neither is payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Salaried staff who punch are tagged “Salary.” Auto-refreshes every minute.
+        Live from iSolved timecard punches. Week hours are paid hours Monday–Sunday plus time accrued on the current open punch. Per card, <span className="font-medium text-ink-muted">Hourly</span> cost is estimated from punches (base rate, OT 1.5x) and <span className="font-medium text-ink-muted">Salary</span> is each site's active salaried staff at annual ÷ 52 (they don't punch); neither is payroll gross. An open punch running over {STALE_H}h is flagged as a likely missed clock-out. Salaried staff who punch are tagged “Salary.” <span className="font-medium" style={{ color: PTO_COLOR }}>PTO</span> is shown separately and is excluded from worked hours and cost. Auto-refreshes every minute.
       </p>
     </div>
   )
