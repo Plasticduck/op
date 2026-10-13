@@ -139,19 +139,20 @@ Deno.serve(async (req) => {
       if (results.length === 0) break
       for (const r of results) {
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || String(r.employeeNumber ?? '')
-        // Latest clock-OUT for this person; an open punch before it is a stale/
-        // orphaned (auto) punch, not someone still on the clock.
+        // Latest genuine clock-OUT (out TIME after the in) for this person. iSolved
+        // stores completed blocks with null punch IDs but real times, and leaves
+        // stale in-punches whose out == in; key off the out time, not the punch id.
         let latestOut = ''
         for (const t of r.timecardData ?? []) {
-          if (t.outPunchId != null && t.outPunchDateTimeEffective) {
-            const o = String(t.outPunchDateTimeEffective)
-            if (o > latestOut) latestOut = o
-          }
+          const i = String(t.inPunchDateTimeEffective ?? '')
+          const o = String(t.outPunchDateTimeEffective ?? '')
+          if (o && o > i && o > latestOut) latestOut = o
         }
         for (const t of r.timecardData ?? []) {
           const inEff = String(t.inPunchDateTimeEffective ?? '')
-          const open = (t.outPunchId == null || !t.outPunchDateTimeEffective)
-            && inEff && !isMidnight(inEff)
+          const outEff = String(t.outPunchDateTimeEffective ?? '')
+          const hasOut = !!outEff && outEff > inEff
+          const open = !!inEff && !isMidnight(inEff) && !hasOut
             && (!latestOut || inEff > latestOut)
           if (!open) continue
           const elapsed = Math.max(0, diffHours(inEff, cNow.iso))

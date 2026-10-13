@@ -223,15 +223,15 @@ Deno.serve(async (req) => {
         const e = empOf(num, name)
         e.salaried = salariedByKey.get(num) ?? salariedByKey.get('id:' + String(r.employeeId)) ?? e.salaried
         // An open punch only means "on the clock" if its in-time is AFTER the
-        // employee's latest clock-OUT. iSolved can leave an orphaned/auto in-punch
-        // (outPunchId null) behind a later completed punch; without this guard that
-        // stale punch keeps showing the person as still clocked in.
+        // employee's latest genuine clock-OUT. iSolved stores completed blocks with
+        // NULL punch IDs but real in/out TIMES (manual/adjusted), and leaves stale
+        // in-punches whose out == in; keying off the out TIME (not the punch id)
+        // keeps those from showing the person as still clocked in.
         let latestOut = ''
         for (const t of r.timecardData ?? []) {
-          if (t.outPunchId != null && t.outPunchDateTimeEffective) {
-            const o = String(t.outPunchDateTimeEffective)
-            if (o > latestOut) latestOut = o
-          }
+          const i = String(t.inPunchDateTimeEffective ?? '')
+          const o = String(t.outPunchDateTimeEffective ?? '')
+          if (o && o > i && o > latestOut) latestOut = o
         }
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
@@ -253,10 +253,12 @@ Deno.serve(async (req) => {
           bucket.hours += hrs; bucket.cost += cost; bucket.pto += pto
           e.totalWeekHours += hrs; e.totalWeekCost += cost; e.totalWeekPTO += pto
           if (isToday) { bucket.dayHours += hrs; bucket.dayCost += cost; bucket.dayPTO += pto }
-          // Open punch = currently clocked in (real in-time, no out).
+          // Open = currently clocked in: an in-time with no genuine out (an out
+          // time AFTER the in), and no later clock-out that supersedes it.
           const inEff = String(t.inPunchDateTimeEffective ?? '')
-          const open = (t.outPunchId == null || !t.outPunchDateTimeEffective)
-            && inEff && !isMidnight(inEff)
+          const outEff = String(t.outPunchDateTimeEffective ?? '')
+          const hasOut = !!outEff && outEff > inEff
+          const open = !!inEff && !isMidnight(inEff) && !hasOut
             && (!latestOut || inEff > latestOut)
           if (open) {
             const elapsed = Math.max(0, diffHours(inEff, cNow.iso))
