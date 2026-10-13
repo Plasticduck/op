@@ -37,6 +37,7 @@ export type LiveSiteEmployee = {
   clockInTime: string | null // e.g. "10:58 AM"
   elapsedHours: number
   siteDayHours: number
+  siteDayCost: number
   siteWeekHours: number
   siteWeekCost: number
   siteWeekPTO: number

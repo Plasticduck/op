@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
     employeeNumber: string; name: string; salaried: boolean
     onClock: boolean; clockInAt: string | null; clockInSite: string | null; elapsedHours: number
     totalWeekHours: number; totalWeekCost: number; totalWeekPTO: number
-    bySite: Map<string, { hours: number; dayHours: number; cost: number; pto: number; dayPTO: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
+    bySite: Map<string, { hours: number; dayHours: number; cost: number; dayCost: number; pto: number; dayPTO: number; onClock: boolean; clockInAt: string | null; elapsedHours: number }>
   }
   const emps = new Map<string, Emp>()
   const empOf = (num: string, name: string): Emp => {
@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
   }
   const siteBucket = (e: Emp, site: string) => {
     let b = e.bySite.get(site)
-    if (!b) { b = { hours: 0, dayHours: 0, cost: 0, pto: 0, dayPTO: 0, onClock: false, clockInAt: null, elapsedHours: 0 }; e.bySite.set(site, b) }
+    if (!b) { b = { hours: 0, dayHours: 0, cost: 0, dayCost: 0, pto: 0, dayPTO: 0, onClock: false, clockInAt: null, elapsedHours: 0 }; e.bySite.set(site, b) }
     return b
   }
 
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
           }
           bucket.hours += hrs; bucket.cost += cost; bucket.pto += pto
           e.totalWeekHours += hrs; e.totalWeekCost += cost; e.totalWeekPTO += pto
-          if (isToday) { bucket.dayHours += hrs; bucket.dayPTO += pto }
+          if (isToday) { bucket.dayHours += hrs; bucket.dayCost += cost; bucket.dayPTO += pto }
           // Open punch = currently clocked in (real in-time, no out).
           const inEff = String(t.inPunchDateTimeEffective ?? '')
           const open = (t.outPunchId == null || !t.outPunchDateTimeEffective) && inEff && !isMidnight(inEff)
@@ -251,7 +251,7 @@ Deno.serve(async (req) => {
             bucket.onClock = true; bucket.clockInAt = inEff; bucket.elapsedHours = Math.round(elapsed * 100) / 100
             bucket.hours += accr; e.totalWeekHours += accr
             bucket.cost += rate * accr; e.totalWeekCost += rate * accr
-            if (isToday) bucket.dayHours += accr
+            if (isToday) { bucket.dayHours += accr; bucket.dayCost += rate * accr }
             // An employee's headline clock-in = their most recent open punch.
             if (!e.clockInAt || inEff > e.clockInAt) { e.onClock = true; e.clockInAt = inEff; e.clockInSite = site; e.elapsedHours = Math.round(elapsed * 100) / 100 }
           }
@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
   }
 
   // Build per-site breakout.
-  type SiteEmp = { employeeNumber: string; name: string; salaried: boolean; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteDayHours: number; siteWeekHours: number; siteWeekCost: number; siteWeekPTO: number; siteDayPTO: number; totalWeekHours: number }
+  type SiteEmp = { employeeNumber: string; name: string; salaried: boolean; onClock: boolean; clockInAt: string | null; clockInTime: string | null; elapsedHours: number; siteDayHours: number; siteDayCost: number; siteWeekHours: number; siteWeekCost: number; siteWeekPTO: number; siteDayPTO: number; totalWeekHours: number }
   const sitesMap = new Map<string, { site: string; clockedIn: number; weekHours: number; weekCost: number; weekCostSalary: number; weekCostHourly: number; weekPTO: number; employees: SiteEmp[] }>()
   const round = (n: number) => Math.round(n * 100) / 100
   for (const e of emps.values()) {
@@ -274,7 +274,7 @@ Deno.serve(async (req) => {
       s.employees.push({
         employeeNumber: e.employeeNumber, name: e.name, salaried: e.salaried,
         onClock: b.onClock, clockInAt: b.clockInAt, clockInTime: b.clockInAt ? hhmm(b.clockInAt) : null,
-        elapsedHours: round(b.elapsedHours), siteDayHours: round(b.dayHours), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), siteWeekPTO: round(b.pto), siteDayPTO: round(b.dayPTO), totalWeekHours: round(e.totalWeekHours),
+        elapsedHours: round(b.elapsedHours), siteDayHours: round(b.dayHours), siteDayCost: round(b.dayCost), siteWeekHours: round(b.hours), siteWeekCost: round(b.cost), siteWeekPTO: round(b.pto), siteDayPTO: round(b.dayPTO), totalWeekHours: round(e.totalWeekHours),
       })
       s.weekHours += b.hours
       s.weekPTO += b.pto

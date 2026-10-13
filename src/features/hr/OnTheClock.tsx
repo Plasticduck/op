@@ -178,7 +178,7 @@ export default function OnTheClock() {
                         <th className="px-4 py-1.5 font-medium">Employee</th>
                         <th className="px-4 py-1.5 font-medium">Status</th>
                         <th className="px-4 py-1.5 text-right font-medium">Day hrs</th>
-                        <th className="px-4 py-1.5 text-right font-medium">Est. cost</th>
+                        <th className="px-4 py-1.5 text-right font-medium">Day cost</th>
                         <th className="px-4 py-1.5 text-right font-medium">Total wk</th>
                         <th className="px-4 py-1.5 text-right font-medium">PTO</th>
                       </tr>
@@ -210,7 +210,7 @@ export default function OnTheClock() {
                               )}
                             </td>
                             <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{hrs(e.siteDayHours)}</td>
-                            <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{usd(e.siteWeekCost)}</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums text-ink-muted">{usd(e.siteDayCost)}</td>
                             <td className="px-4 py-1.5 text-right tabular-nums font-semibold text-ink">{hrs(e.totalWeekHours)}</td>
                             <td className="px-4 py-1.5 text-right tabular-nums font-medium">
                               {e.siteWeekPTO > 0 ? <span style={{ color: PTO_COLOR }}>{hrs(e.siteWeekPTO)}</span> : <span className="text-ink-subtle">—</span>}
