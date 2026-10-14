@@ -4,7 +4,9 @@ import { Link } from 'react-router-dom'
 // Standalone, Mighty Wash–specific SMS program legal pages, for the A2P 10DLC
 // campaign registration (Privacy Policy + Terms URLs). Intentionally NOT tied to
 // the WashLyfe/Operator marketing pages — this is for Mighty Wash Operations LLC
-// only. Edit the constants below to update contact details everywhere.
+// only. The program is INTERNAL: operational/account text alerts to authorized
+// staff who opt in; it is not used to message customers and is not marketing.
+// Edit the constants below to update contact details everywhere.
 const COMPANY = 'Mighty Wash Operations LLC'
 const BRAND = 'Mighty Wash'
 const WEBSITE = 'https://www.mighty-wash.com'
@@ -57,24 +59,26 @@ export function SmsPrivacyPage() {
       <Section heading="Overview">
         <p>
           This SMS Privacy Policy explains how {COMPANY} ("{BRAND}," "we," "us," or "our") handles
-          information in connection with our text‑messaging program. It applies specifically to the
-          {' '}{BRAND} text‑messaging program and is in addition to any other privacy notice we provide.
+          information in connection with our internal text‑messaging program. The program sends
+          operational and account alerts to authorized {BRAND} personnel (owners, managers, and staff)
+          who opt in. It is <strong>not used to message customers or the general public, and it is not
+          used for marketing</strong>.
         </p>
       </Section>
       <Section heading="Information we collect">
-        <p>When you opt in to receive text messages from us, we collect:</p>
+        <p>When an authorized user opts in to receive text messages from us, we collect:</p>
         <ul className="ml-5 list-disc space-y-1">
-          <li>the mobile phone number you provide, and the name or membership/account associated with it;</li>
-          <li>your consent record — the date, time, and method by which you opted in; and</li>
-          <li>message and delivery activity, such as whether a message was delivered and whether you replied (for example, with STOP or HELP).</li>
+          <li>the mobile phone number the user provides, and the name/account associated with it;</li>
+          <li>the consent record — the date, time, and method by which the user opted in; and</li>
+          <li>message and delivery activity, such as whether a message was delivered and whether the user replied (for example, with STOP or HELP).</li>
         </ul>
       </Section>
       <Section heading="How we use your information">
         <p>
-          We use your mobile number solely to operate the {BRAND} text‑messaging program — to send the
-          messages you opted in to receive (such as membership and payment/recharge notifications,
-          service updates, reminders, and, where you consented, promotional offers), to respond to HELP
-          requests, to honor opt‑out requests, and to secure and support the program.
+          We use the mobile number solely to operate the internal {BRAND} text‑messaging program — to
+          send operational and account notifications (for example, labor and time‑clock alerts, approval
+          reminders, daily summaries, and account/security notices), to respond to HELP requests, to
+          honor opt‑out requests, and to secure and support the program. We do not use it for marketing.
         </p>
       </Section>
       <Section heading="How we share your information">
@@ -85,15 +89,15 @@ export function SmsPrivacyPage() {
         <p>
           We share mobile information only with vendors who help us operate the messaging program (for
           example, our SMS provider, Twilio), and only to the extent needed to deliver the service; these
-          vendors are contractually limited to that purpose. We do not sell or rent your phone number. We
-          may disclose information if required by law or to protect our legal rights.
+          vendors are contractually limited to that purpose. We do not sell or rent phone numbers. We may
+          disclose information if required by law or to protect our legal rights.
         </p>
       </Section>
       <Section heading="Opting out">
         <p>
-          You can stop receiving messages at any time by replying <strong>STOP</strong> to any message.
-          Reply <strong>HELP</strong> for assistance. Opt‑out requests are processed automatically, and
-          we will send a single confirmation after you opt out.
+          A user can stop receiving messages at any time by replying <strong>STOP</strong> to any message.
+          Reply <strong>HELP</strong> for assistance. Opt‑out requests are processed automatically, and we
+          will send a single confirmation after a user opts out.
         </p>
       </Section>
       <Section heading="Data retention and security">
@@ -103,8 +107,8 @@ export function SmsPrivacyPage() {
           safeguards to protect this information.
         </p>
       </Section>
-      <Section heading="Children">
-        <p>The {BRAND} text‑messaging program is not directed to anyone under 18, and we do not knowingly collect their information.</p>
+      <Section heading="Eligibility">
+        <p>The program is limited to authorized {BRAND} personnel who are at least 18 years old; it is not directed to the general public or to minors.</p>
       </Section>
       <Section heading="Changes to this policy">
         <p>We may update this policy from time to time; the "Last updated" date above reflects the most recent changes.</p>
@@ -128,13 +132,15 @@ export function SmsTermsPage() {
     <SmsLayout title="SMS Terms &amp; Conditions">
       <Section heading="1. The program">
         <p>
-          By opting in, you agree to receive recurring automated text messages from {BRAND} — including
-          account and membership notifications and, where you have consented, marketing messages — at the
-          mobile number you provided. <strong>Consent is not a condition of any purchase.</strong>
+          The {BRAND} text‑messaging program is for internal use by authorized {BRAND} personnel. By
+          opting in, you agree to receive recurring automated operational and account text alerts from
+          {' '}{BRAND} (for example, labor and time‑clock alerts, approval reminders, and account/security
+          notices) at the mobile number you provided. <strong>Consent is not a condition of employment or
+          of using any {BRAND} system.</strong> The program is not used for marketing.
         </p>
       </Section>
       <Section heading="2. Message frequency">
-        <p>Message frequency varies based on your account activity and the messages you have opted in to receive.</p>
+        <p>Message frequency varies based on operational activity and the alerts you have opted in to receive.</p>
       </Section>
       <Section heading="3. Cost">
         <p>
@@ -159,7 +165,7 @@ export function SmsTermsPage() {
         </p>
       </Section>
       <Section heading="7. Eligibility">
-        <p>You must be the account holder or an authorized user of the mobile number you enroll, and at least 18 years old.</p>
+        <p>You must be an authorized {BRAND} user of the mobile number you enroll, and at least 18 years old.</p>
       </Section>
       <Section heading="8. Privacy">
         <p>

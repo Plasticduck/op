@@ -176,7 +176,7 @@ export default function SignupPage() {
         <label className="flex items-start gap-2 text-xs leading-relaxed text-ink-muted">
           <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-accent" {...register('smsConsent')} />
           <span>
-            I agree to receive recurring automated account and informational text messages from Mighty Wash at the mobile number above.
+            I agree to receive recurring automated operational and account text alerts from Mighty Wash (e.g. labor, approval, and account/security notifications) at the mobile number above.
             Consent is not a condition of signing up. Message frequency varies. Message &amp; data rates may apply. Reply STOP to opt out, HELP for help. See our{' '}
             <a href="/mighty-wash/sms-terms" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">SMS Terms</a>
             {' '}&amp;{' '}
