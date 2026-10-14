@@ -120,6 +120,7 @@ const FlexwashSalesPage = lz(() => import('@/features/opssuite/FlexwashSalesPage
 const InteriorReportingPage = lz(() => import('@/features/opssuite/InteriorReportingPage'))
 const CamerasPage = lz(() => import('@/features/cameras/CamerasPage'))
 const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
+const CommissionsPage = lz(() => import('@/features/opssuite/CommissionsPage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
 const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
@@ -246,6 +247,7 @@ export const router = createBrowserRouter([
           { path: 'interior-reporting', element: mgr(<InteriorReportingPage />) },
           { path: 'cameras', element: mgr(<CamerasPage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
+          { path: 'commissions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<CommissionsPage />)}</RequireEmails> },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
           { path: 'employees/:id', element: mgr(<EmployeeDetailPage />) },

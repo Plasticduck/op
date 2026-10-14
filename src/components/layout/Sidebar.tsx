@@ -46,6 +46,7 @@ import {
   Palmtree,
   PanelLeftClose,
   PanelLeftOpen,
+  Percent,
   Search,
   SearchCheck,
   Settings,
@@ -135,6 +136,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: BadgeDollarSign,
         roles: ['owner', 'regional_manager', 'executive'],
         flag: 'gm_bonus',
+      },
+      {
+        to: '/app/commissions',
+        label: 'Commissions',
+        icon: Percent,
+        roles: ['owner'],
+        emails: ['kevan@washlyfe.com'],
       },
       {
         to: '/app/violations',
