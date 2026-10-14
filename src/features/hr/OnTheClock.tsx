@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, RefreshCw, Clock, AlertTriangle, Users } from 'lucide-react'
 import { isolvedLive, type LiveResponse } from '@/lib/queries/isolved'
 import { fnErrorMessage } from '@/lib/fnError'
+import { cn } from '@/lib/utils'
 
 // Live "who's on the clock" view, broken out by site, with each person's hours for
 // the current pay week (Monday -> Sunday). Auto-refreshes while mounted.
@@ -15,6 +16,16 @@ const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', curren
 const elapsed = (h: number) => {
   const m = Math.round(h * 60)
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
+}
+
+// Allowed (budgeted) WORKED hours for a site for the day. Placeholder for now —
+// returns null (= not set) until admins can set per-site/day allowed hours from
+// the Labor Dashboard. Once a value exists, each card compares the day's running
+// total against it: under = green, over = red with an alert.
+// TODO: wire to the per-site/day allowed-hours config (Labor Dashboard).
+function allowedHoursFor(site: string): number | null {
+  void site // placeholder: will look up the per-site/day allowed hours
+  return null
 }
 export default function OnTheClock() {
   const [data, setData] = useState<LiveResponse | null>(null)
@@ -148,6 +159,10 @@ export default function OnTheClock() {
             .filter((s) => !onlyIn || s.clockedIn > 0)
             .map((s) => {
               const emps = onlyIn ? s.employees.filter((e) => e.onClock) : s.employees
+              // Running daily worked-hours total vs the site's allowed hours.
+              const dayHours = s.employees.reduce((a, e) => a + e.siteDayHours, 0)
+              const allowed = allowedHoursFor(s.site)
+              const overAllowed = allowed != null && dayHours > allowed
               return (
                 <section key={s.site} className="overflow-hidden rounded-xl border border-border bg-card">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-content px-4 py-2.5">
@@ -160,6 +175,20 @@ export default function OnTheClock() {
                       <span className="rounded-full bg-content px-2 py-0.5 text-xs font-medium text-ink-subtle">none clocked in</span>
                     )}
                     <span className="flex items-center gap-1 text-xs text-ink-muted"><Users className="size-3.5" />{s.employeeCount} · {hrs(s.weekHours)} hrs</span>
+                    <span
+                      title={allowed == null
+                        ? 'Allowed hours not set yet — this turns green while the day stays under the allowed total and red when it goes over.'
+                        : `Today's worked hours vs allowed (${hrs(allowed)} hrs)`}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold',
+                        allowed == null
+                          ? 'border border-border bg-card text-ink-muted'
+                          : overAllowed ? 'bg-danger-soft text-danger' : 'bg-ok-soft text-ok',
+                      )}
+                    >
+                      {overAllowed && <AlertTriangle className="size-3.5" />}
+                      Day {hrs(dayHours)} / {allowed == null ? '—' : hrs(allowed)} allowed
+                    </span>
                     {s.weekPTO > 0 && <span className="text-xs font-semibold" style={{ color: PTO_COLOR }}>PTO {hrs(s.weekPTO)}h</span>}
                     <div className="ml-auto flex items-center gap-4" title="Estimated weekly labor cost. Hourly: from punches this week (OT 1.5x). Salary: active salaried staff assigned to this site at annual ÷ 52.">
                       <div className="text-right leading-tight">
