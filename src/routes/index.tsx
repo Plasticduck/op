@@ -131,6 +131,7 @@ const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
 const MarketExplorerPage = lz(() => import('@/features/opssuite/MarketExplorerPage'))
 const LaborDataPage = lz(() => import('@/features/hr/LaborDataPage'))
+const OnTheClockPage = lz(() => import('@/features/hr/OnTheClockPage'))
 const SalariedLaborPage = lz(() => import('@/features/hr/SalariedLaborPage'))
 const ServiceBoardPage = lz(() => import('@/features/facilities/ServiceBoardPage'))
 const HouseholdFinderPage = lz(() => import('@/features/opssuite/HouseholdFinderPage'))
@@ -235,6 +236,7 @@ export const router = createBrowserRouter([
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
           { path: 'hr/payroll-labor', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com']}>{s(<LaborDataPage />)}</RequireEmails> },
+          { path: 'hr/on-the-clock', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com']}>{s(<OnTheClockPage />)}</RequireEmails> },
           { path: 'hr/salaried-labor', element: <RequireSuperAdmin>{s(<SalariedLaborPage />)}</RequireSuperAdmin> },
           { path: 'facilities', element: s(<ServiceBoardPage />) },
           { path: 'details', element: mgr(<InteriorDetailsPage />) },
