@@ -192,6 +192,8 @@ export default function InvoicesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [busy, setBusy] = useState(false)
   const [warnOpen, setWarnOpen] = useState(false)
+  // Which file format the Exported-tab re-download produces (csv or QuickBooks iif).
+  const [exportFmt, setExportFmt] = useState<'csv' | 'iif'>('iif')
   // Approved tab: invoices ticked for export. Cleared whenever the tab changes.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   useEffect(() => { setSelectedIds(new Set()) }, [activeKey])
@@ -392,13 +394,14 @@ export default function InvoicesPage() {
       return next
     })
 
-  // Approved tab: download the QuickBooks CSV for the shown approved invoices,
-  // then mark them exported so they move to the Exported tab.
-  const exportApproved = async () => {
+  // Approved tab: download the QuickBooks file (CSV or IIF — same data) for the
+  // shown approved invoices, then mark them exported so they move to Exported.
+  const exportApproved = async (fmt: 'csv' | 'iif') => {
     if (filteredInvoices.length === 0) return
     // Memo is now captured while the invoice is unassigned (required before it can
     // be sent for approval), so approved invoices already carry one.
-    downloadCsv(qbFilename(), quickbooksCsv(filteredInvoices))
+    if (fmt === 'iif') downloadIif(iifFilename(), quickbooksIif(filteredInvoices))
+    else downloadCsv(qbFilename(), quickbooksCsv(filteredInvoices))
     const ids = filteredInvoices.map((i) => i.id)
     const idSet = new Set(ids)
     const at = nowIso()
@@ -415,13 +418,14 @@ export default function InvoicesPage() {
     setBusy(false)
   }
 
-  // Exported tab: re-download the CSV for the ticked invoices (all shown when
-  // none are ticked), after the double-entry warning.
+  // Exported tab: re-download the ticked invoices (all shown when none are ticked)
+  // in the chosen format, after the double-entry warning.
   const downloadExported = () => {
     setWarnOpen(false)
     const toExport = selectedIds.size ? filteredInvoices.filter((i) => selectedIds.has(i.id)) : filteredInvoices
     if (toExport.length === 0) return
-    downloadCsv(qbFilename(), quickbooksCsv(toExport))
+    if (exportFmt === 'iif') downloadIif(iifFilename(), quickbooksIif(toExport))
+    else downloadCsv(qbFilename(), quickbooksCsv(toExport))
   }
 
   return (
@@ -531,24 +535,45 @@ export default function InvoicesPage() {
             Clear
           </button>
           {activeKeyEff === 'approved' && canManage && (
-            <button
-              type="button"
-              onClick={() => void exportApproved()}
-              disabled={filtered.length === 0 || busy}
-              className="inline-flex h-10 items-center gap-1.5 rounded-md bg-accent px-4 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-50"
-            >
-              <Download className="size-4" /> {selectedIds.size ? `Export ${selectedIds.size} to CSV` : 'Export to CSV'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => void exportApproved('iif')}
+                disabled={filtered.length === 0 || busy}
+                title="QuickBooks Enterprise / Desktop import file (File > Utilities > Import > IIF Files)"
+                className="inline-flex h-10 items-center gap-1.5 rounded-md bg-accent px-4 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-50"
+              >
+                <Download className="size-4" /> {selectedIds.size ? `Export ${selectedIds.size} to QuickBooks` : 'Export to QuickBooks (.iif)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportApproved('csv')}
+                disabled={filtered.length === 0 || busy}
+                className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
+              >
+                <Download className="size-4" /> CSV
+              </button>
+            </>
           )}
           {activeKeyEff === 'exported' && (
-            <button
-              type="button"
-              onClick={() => setWarnOpen(true)}
-              disabled={filtered.length === 0}
-              className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
-            >
-              <Download className="size-4" /> {selectedIds.size ? `Export ${selectedIds.size}` : 'Export CSV'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => { setExportFmt('iif'); setWarnOpen(true) }}
+                disabled={filtered.length === 0}
+                className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
+              >
+                <Download className="size-4" /> {selectedIds.size ? `Export ${selectedIds.size} (.iif)` : 'QuickBooks (.iif)'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setExportFmt('csv'); setWarnOpen(true) }}
+                disabled={filtered.length === 0}
+                className="inline-flex h-10 items-center gap-1.5 rounded-md border border-border bg-card px-4 text-sm font-medium text-ink-muted transition hover:bg-content hover:text-ink disabled:opacity-50"
+              >
+                <Download className="size-4" /> CSV
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1439,45 +1464,76 @@ function billNoOf(inv: OpsInvoice): string {
 // Expense Class); the rest stay blank, exactly like the template. An invoice
 // split across sites produces one line per site (its own amount + Class) so the
 // per-site cost allocation carries into accounting.
+// One invoice's expense lines (one per GL / site split), each keyed by QB_HEADERS.
+// Shared by the CSV and the QuickBooks IIF exports so both carry identical data.
+function qbLinesOf(inv: OpsInvoice): Record<string, string>[] {
+  const base: Record<string, string> = {
+    'Bill No': billNoOf(inv),
+    Vendor: inv.vendor_name ?? '',
+    Date: mdY(inv.invoice_date) || mdY(inv.submitted_at),
+    'Due Date': mdY(inv.due_date),
+    Memo: inv.memo ?? '',
+    Currency: 'USD',
+  }
+  const glAllocs = (inv.gl_allocations as GlAlloc[] | null) ?? []
+  const siteAllocs = (inv.site_allocations as Alloc[] | null) ?? []
+  if (Array.isArray(glAllocs) && glAllocs.length > 1) {
+    // Multiple GL codes: one line per code (its account + allocated amount). A
+    // single site is the Class for every line. When the site split lines up 1:1
+    // with the GL split (same count and matching amounts), each GL line takes
+    // its paired site's Class, so a multi-site invoice still carries the class.
+    const singleCls = inv.class_names?.length === 1 ? String(inv.class_names[0]) : ''
+    const paired =
+      Array.isArray(siteAllocs) && siteAllocs.length === glAllocs.length && siteAllocs.length > 1 &&
+      glAllocs.every((g, i) => Math.abs((Number(g.amount) || 0) - (Number(siteAllocs[i]?.amount) || 0)) < 0.005)
+    return glAllocs.map((g, i) => ({
+      ...base,
+      'Expense Account': String(g.gl_code ?? ''),
+      'Expense Amount': String(Number(g.amount) || 0),
+      'Expense Class': paired ? String(siteAllocs[i]?.name ?? '') : singleCls,
+    }))
+  }
+  const acct = glAllocs.length ? String(glAllocs[0].gl_code ?? '') : (inv.gl_code ?? '')
+  const b2 = { ...base, 'Expense Account': acct }
+  return Array.isArray(siteAllocs) && siteAllocs.length
+    ? siteAllocs.map((a) => ({ ...b2, 'Expense Amount': String(Number(a.amount) || 0), 'Expense Class': String(a.name ?? '') }))
+    : [{ ...b2, 'Expense Amount': String(Number(inv.amount) || 0) }]
+}
+
 function quickbooksCsv(invs: OpsInvoice[]): string {
   const rows: string[] = []
-  for (const inv of invs) {
-    const base: Record<string, string> = {
-      'Bill No': billNoOf(inv),
-      Vendor: inv.vendor_name ?? '',
-      Date: mdY(inv.invoice_date) || mdY(inv.submitted_at),
-      'Due Date': mdY(inv.due_date),
-      Memo: inv.memo ?? '',
-      Currency: 'USD',
-    }
-    const glAllocs = (inv.gl_allocations as GlAlloc[] | null) ?? []
-    const siteAllocs = (inv.site_allocations as Alloc[] | null) ?? []
-    let lines: Record<string, string>[]
-    if (Array.isArray(glAllocs) && glAllocs.length > 1) {
-      // Multiple GL codes: one line per code (its account + allocated amount). A
-      // single site is the Class for every line. When the site split lines up 1:1
-      // with the GL split (same count and matching amounts), each GL line takes
-      // its paired site's Class, so a multi-site invoice still carries the class.
-      const singleCls = inv.class_names?.length === 1 ? String(inv.class_names[0]) : ''
-      const paired =
-        Array.isArray(siteAllocs) && siteAllocs.length === glAllocs.length && siteAllocs.length > 1 &&
-        glAllocs.every((g, i) => Math.abs((Number(g.amount) || 0) - (Number(siteAllocs[i]?.amount) || 0)) < 0.005)
-      lines = glAllocs.map((g, i) => ({
-        ...base,
-        'Expense Account': String(g.gl_code ?? ''),
-        'Expense Amount': String(Number(g.amount) || 0),
-        'Expense Class': paired ? String(siteAllocs[i]?.name ?? '') : singleCls,
-      }))
-    } else {
-      const acct = glAllocs.length ? String(glAllocs[0].gl_code ?? '') : (inv.gl_code ?? '')
-      const b2 = { ...base, 'Expense Account': acct }
-      lines = Array.isArray(siteAllocs) && siteAllocs.length
-        ? siteAllocs.map((a) => ({ ...b2, 'Expense Amount': String(Number(a.amount) || 0), 'Expense Class': String(a.name ?? '') }))
-        : [{ ...b2, 'Expense Amount': String(Number(inv.amount) || 0) }]
-    }
-    for (const cell of lines) rows.push(QB_HEADERS.map((h) => csvEsc(cell[h] ?? '')).join(','))
-  }
+  for (const inv of invs) for (const cell of qbLinesOf(inv)) rows.push(QB_HEADERS.map((h) => csvEsc(cell[h] ?? '')).join(','))
   return [QB_HEADERS.map(csvEsc).join(','), ...rows].join('\r\n') + '\r\n'
+}
+
+// QuickBooks Enterprise (Desktop) IIF import for the SAME bills. Each invoice is
+// one BILL transaction: a TRNS line to Accounts Payable (negative total) plus one
+// SPL line per expense split (GL account, positive amount, site Class), closed by
+// ENDTRNS. Tab-delimited, dates M/D/YYYY. The "Accounts Payable" name, the GL
+// account names, and the Class names must already exist in the QuickBooks company
+// file (import maps by exact name). File > Utilities > Import > IIF Files.
+const AP_ACCOUNT = 'Accounts Payable'
+function quickbooksIif(invs: OpsInvoice[]): string {
+  const T = '\t'
+  const c = (v: string | undefined) => String(v ?? '').replace(/[\t\r\n]/g, ' ').trim()
+  const money = (n: number) => (Math.round(n * 100) / 100).toFixed(2)
+  const out: string[] = [
+    ['!TRNS', 'TRNSTYPE', 'DATE', 'ACCNT', 'NAME', 'CLASS', 'AMOUNT', 'DOCNUM', 'DUEDATE', 'MEMO'].join(T),
+    ['!SPL', 'TRNSTYPE', 'DATE', 'ACCNT', 'NAME', 'CLASS', 'AMOUNT', 'DOCNUM', 'MEMO'].join(T),
+    '!ENDTRNS',
+  ]
+  for (const inv of invs) {
+    const lines = qbLinesOf(inv)
+    if (!lines.length) continue
+    const b = lines[0]
+    const total = lines.reduce((s, l) => s + (Number(l['Expense Amount']) || 0), 0)
+    out.push(['TRNS', 'BILL', c(b.Date), AP_ACCOUNT, c(b.Vendor), '', money(-total), c(b['Bill No']), c(b['Due Date']), c(b.Memo)].join(T))
+    for (const l of lines) {
+      out.push(['SPL', 'BILL', c(l.Date), c(l['Expense Account']), c(l.Vendor), c(l['Expense Class']), money(Number(l['Expense Amount']) || 0), c(l['Bill No']), c(l.Memo)].join(T))
+    }
+    out.push('ENDTRNS')
+  }
+  return out.join('\r\n') + '\r\n'
 }
 
 // Filename shaped like the template: INV-QUICKBOOKSDESKTOP-<batch>-<MMYYYY>.csv
@@ -1486,6 +1542,21 @@ function qbFilename(): string {
   const mm = String(now.getMonth() + 1).padStart(2, '0')
   const batch = String(now.getTime()).slice(-6)
   return `INV-QUICKBOOKSDESKTOP-${batch}-${mm}${now.getFullYear()}.csv`
+}
+function iifFilename(): string {
+  const now = new Date()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const batch = String(now.getTime()).slice(-6)
+  return `INV-QUICKBOOKS-${batch}-${mm}${now.getFullYear()}.iif`
+}
+function downloadIif(filename: string, text: string) {
+  // No BOM — QuickBooks' IIF import expects plain tab-delimited text.
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function downloadCsv(filename: string, text: string) {
