@@ -5966,8 +5966,11 @@ export type Database = {
           last_seen_at: string | null
           location_ids: string[]
           name: string
+          phone: string | null
           role: string
           role_category: string | null
+          sms_opt_in: boolean
+          sms_opt_in_at: string | null
         }
         Insert: {
           account_id: string
@@ -5978,8 +5981,11 @@ export type Database = {
           last_seen_at?: string | null
           location_ids?: string[]
           name: string
+          phone?: string | null
           role: string
           role_category?: string | null
+          sms_opt_in?: boolean
+          sms_opt_in_at?: string | null
         }
         Update: {
           account_id?: string
@@ -5990,8 +5996,11 @@ export type Database = {
           last_seen_at?: string | null
           location_ids?: string[]
           name?: string
+          phone?: string | null
           role?: string
           role_category?: string | null
+          sms_opt_in?: boolean
+          sms_opt_in_at?: string | null
         }
         Relationships: [
           {

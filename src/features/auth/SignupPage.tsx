@@ -13,13 +13,21 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
-const schema = z.object({
-  name: z.string().min(1, 'Enter your name'),
-  accountName: z.string().min(1, 'Enter your company name'),
-  locationName: z.string().min(1, 'Enter your first location'),
-  email: z.string().email('Enter a valid email'),
-  password: z.string().min(8, 'At least 8 characters'),
-})
+const schema = z
+  .object({
+    name: z.string().min(1, 'Enter your name'),
+    accountName: z.string().min(1, 'Enter your company name'),
+    locationName: z.string().min(1, 'Enter your first location'),
+    email: z.string().email('Enter a valid email'),
+    password: z.string().min(8, 'At least 8 characters'),
+    phone: z.string().optional(),
+    smsConsent: z.boolean().optional(),
+  })
+  // If they tick the SMS consent box, a valid mobile number is required.
+  .refine((v) => !v.smsConsent || (!!v.phone && v.phone.replace(/\D/g, '').length >= 10), {
+    message: 'Enter a valid mobile number to receive texts.',
+    path: ['phone'],
+  })
 type Values = z.infer<typeof schema>
 
 export default function SignupPage() {
@@ -69,6 +77,19 @@ export default function SignupPage() {
         await setSitePlan(accountId as string, sitePlan)
       } catch {
         /* ignore — defaults to multi until set */
+      }
+    }
+
+    // Record the SMS opt-in (consent record for A2P 10DLC) if they opted in.
+    if (values.smsConsent && values.phone && data.user?.id) {
+      const e164 = '+1' + values.phone.replace(/\D/g, '').slice(-10)
+      try {
+        await supabase
+          .from('users')
+          .update({ phone: e164, sms_opt_in: true, sms_opt_in_at: new Date().toISOString() })
+          .eq('id', data.user.id)
+      } catch {
+        /* best effort — the account is already created */
       }
     }
 
@@ -147,6 +168,21 @@ export default function SignupPage() {
             <Input id={id} type="password" autoComplete="new-password" invalid={!!errors.password} {...register('password')} />
           )}
         </Field>
+        <Field label="Mobile number" hint="Optional — only needed if you want text alerts" error={errors.phone?.message}>
+          {(id) => (
+            <Input id={id} type="tel" autoComplete="tel" placeholder="(806) 555-1234" invalid={!!errors.phone} {...register('phone')} />
+          )}
+        </Field>
+        <label className="flex items-start gap-2 text-xs leading-relaxed text-ink-muted">
+          <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-accent" {...register('smsConsent')} />
+          <span>
+            I agree to receive recurring automated account and informational text messages from Mighty Wash at the mobile number above.
+            Consent is not a condition of signing up. Message frequency varies. Message &amp; data rates may apply. Reply STOP to opt out, HELP for help. See our{' '}
+            <a href="/mighty-wash/sms-terms" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">SMS Terms</a>
+            {' '}&amp;{' '}
+            <a href="/mighty-wash/sms-privacy" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Privacy Policy</a>.
+          </span>
+        </label>
         {formError && (
           <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
             {formError}
