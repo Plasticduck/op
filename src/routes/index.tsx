@@ -65,6 +65,8 @@ const DemoLauncher = lz(() => import('@/features/marketing/DemoLauncher'))
 const DemoAccess = lz(() => import('@/features/marketing/DemoAccess'))
 const TermsPage = lz(() => import('@/features/marketing/Legal').then((m) => ({ default: m.TermsPage })))
 const PrivacyPage = lz(() => import('@/features/marketing/Legal').then((m) => ({ default: m.PrivacyPage })))
+const MwSmsPrivacy = lz(() => import('@/features/marketing/MightyWashSms').then((m) => ({ default: m.SmsPrivacyPage })))
+const MwSmsTerms = lz(() => import('@/features/marketing/MightyWashSms').then((m) => ({ default: m.SmsTermsPage })))
 const LoginPage = lz(() => import('@/features/auth/LoginPage'))
 const SignupPage = lz(() => import('@/features/auth/SignupPage'))
 const ForgotPasswordPage = lz(() => import('@/features/auth/ForgotPasswordPage'))
@@ -168,6 +170,10 @@ export const router = createBrowserRouter([
   { path: '/demo/access', element: s(<DemoAccess />) },
   { path: '/terms', element: s(<TermsPage />) },
   { path: '/privacy', element: s(<PrivacyPage />) },
+
+  // Mighty Wash SMS program (A2P 10DLC) — public Privacy Policy + Terms URLs
+  { path: '/mighty-wash/sms-privacy', element: s(<MwSmsPrivacy />) },
+  { path: '/mighty-wash/sms-terms', element: s(<MwSmsTerms />) },
 
   // Public per-site tip pages (reached by QR code — no login)
   { path: '/request/:token', element: s(<RequestPortalPage />) },
