@@ -146,12 +146,12 @@ Deno.serve(async (req) => {
         for (const t of r.timecardData ?? []) {
           const i = String(t.inPunchDateTimeEffective ?? '')
           const o = String(t.outPunchDateTimeEffective ?? '')
-          if (o && o > i && o > latestOut) latestOut = o
+          if (o && (t.outPunchId != null || o > i) && o > latestOut) latestOut = o
         }
         for (const t of r.timecardData ?? []) {
           const inEff = String(t.inPunchDateTimeEffective ?? '')
           const outEff = String(t.outPunchDateTimeEffective ?? '')
-          const hasOut = !!outEff && outEff > inEff
+          const hasOut = !!outEff && (t.outPunchId != null || outEff > inEff)
           const open = !!inEff && !isMidnight(inEff) && !hasOut
             && (!latestOut || inEff > latestOut)
           if (!open) continue

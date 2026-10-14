@@ -227,11 +227,14 @@ Deno.serve(async (req) => {
         // NULL punch IDs but real in/out TIMES (manual/adjusted), and leaves stale
         // in-punches whose out == in; keying off the out TIME (not the punch id)
         // keeps those from showing the person as still clocked in.
+        // A genuine clock-OUT is an out time that is either from a real out punch
+        // (outPunchId present — e.g. an auto "Out" logged at the same minute as its
+        // placeholder in) or simply after the in. Both encodings mean "clocked out".
         let latestOut = ''
         for (const t of r.timecardData ?? []) {
           const i = String(t.inPunchDateTimeEffective ?? '')
           const o = String(t.outPunchDateTimeEffective ?? '')
-          if (o && o > i && o > latestOut) latestOut = o
+          if (o && (t.outPunchId != null || o > i) && o > latestOut) latestOut = o
         }
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
@@ -253,11 +256,11 @@ Deno.serve(async (req) => {
           bucket.hours += hrs; bucket.cost += cost; bucket.pto += pto
           e.totalWeekHours += hrs; e.totalWeekCost += cost; e.totalWeekPTO += pto
           if (isToday) { bucket.dayHours += hrs; bucket.dayCost += cost; bucket.dayPTO += pto }
-          // Open = currently clocked in: an in-time with no genuine out (an out
-          // time AFTER the in), and no later clock-out that supersedes it.
+          // Open = currently clocked in: an in-time with no genuine out (no real
+          // out punch and no out time after the in), and no later clock-out supersedes it.
           const inEff = String(t.inPunchDateTimeEffective ?? '')
           const outEff = String(t.outPunchDateTimeEffective ?? '')
-          const hasOut = !!outEff && outEff > inEff
+          const hasOut = !!outEff && (t.outPunchId != null || outEff > inEff)
           const open = !!inEff && !isMidnight(inEff) && !hasOut
             && (!latestOut || inEff > latestOut)
           if (open) {
