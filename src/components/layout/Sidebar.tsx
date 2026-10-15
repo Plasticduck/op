@@ -411,6 +411,12 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager', 'technician'],
       },
       {
+        to: '/app/work-orders-new',
+        label: 'Work Orders NEW',
+        icon: ListChecks,
+        roles: ['owner', 'manager', 'technician'],
+      },
+      {
         to: '/app/reports',
         label: 'Maintenance Reports',
         icon: ChartNoAxesCombined,

@@ -30,6 +30,7 @@ const FULL_BLEED_PATTERNS = [
   /^\/app\/market-explorer($|\/)/,
   /^\/app\/messages($|\/)/,
   /^\/app\/work-orders($|\/)/,
+  /^\/app\/work-orders-new($|\/)/,
   /^\/app\/assets($|\/)/,
   /^\/app\/parts($|\/)/,
   /^\/app\/categories($|\/)/,

@@ -82,12 +82,16 @@ type Detail = {
 }
 
 export function WorkOrderDetail({
-  workOrderId, onBack, onChanged,
+  workOrderId, onBack, onChanged, statusEditEnabled,
 }: {
   workOrderId: string
   onBack: () => void
   onChanged: () => void
+  // The legacy Work Orders page keeps status editing off (MaintainX view-only).
+  // The comprehensive "Work Orders NEW" page passes true to allow it.
+  statusEditEnabled?: boolean
 }) {
+  const statusEditOn = statusEditEnabled ?? STATUS_EDIT_ENABLED
   const { profile } = useAuth()
   const [d, setD] = useState<Detail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -167,7 +171,7 @@ export function WorkOrderDetail({
           </div>
           <h1 className="truncate text-[17px] font-semibold text-ink">{d.title}</h1>
         </div>
-        {STATUS_EDIT_ENABLED && (
+        {statusEditOn && (
           <Button
             variant={d.status === 'done' ? 'secondary' : 'primary'}
             onClick={() => void markDone()}
@@ -178,7 +182,7 @@ export function WorkOrderDetail({
             {d.status === 'done' ? 'Reopen' : 'Mark as Done'}
           </Button>
         )}
-        {STATUS_EDIT_ENABLED && (
+        {statusEditOn && (
           <div className="relative">
             <button
               type="button"
@@ -208,7 +212,7 @@ export function WorkOrderDetail({
             shown but cannot be changed from Operator. */}
         <section className="mb-4">
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">Status</div>
-          {STATUS_EDIT_ENABLED ? (
+          {statusEditOn ? (
             <div className="flex flex-wrap gap-1.5">
               {STATUS_OPTIONS.filter((s) => s.value !== 'skipped').map((s) => (
                 <StatusButton

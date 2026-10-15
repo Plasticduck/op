@@ -81,6 +81,7 @@ const BillingPage = lz(() => import('@/features/settings/billing/BillingPage').t
 const AssetsPage = lz(() => import('@/features/ops/assets/AssetsPage'))
 const PartsPage = lz(() => import('@/features/ops/parts/PartsPage'))
 const WorkOrdersPage = lz(() => import('@/features/ops/work-orders/WorkOrdersPage'))
+const WorkOrdersNewPage = lz(() => import('@/features/ops/work-orders/WorkOrdersNewPage'))
 const CategoriesPage = lz(() => import('@/features/ops/categories/CategoriesPage'))
 const VendorsPage = lz(() => import('@/features/ops/vendors/VendorsPage'))
 const DowntimePage = lz(() => import('@/features/ops/downtime/DowntimePage'))
@@ -215,6 +216,8 @@ export const router = createBrowserRouter([
           { path: 'checklists/templates/:id', element: mgr(<ChecklistDetailPage />) },
           { path: 'work-orders', element: tech(<WorkOrdersPage />) },
           { path: 'work-orders/:id', element: tech(<WorkOrdersPage />) },
+          { path: 'work-orders-new', element: tech(<WorkOrdersNewPage />) },
+          { path: 'work-orders-new/:id', element: tech(<WorkOrdersNewPage />) },
           { path: 'categories', element: tech(<CategoriesPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },
           { path: 'assets', element: tech(<AssetsPage />) },
