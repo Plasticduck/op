@@ -415,6 +415,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Work Orders NEW',
         icon: ListChecks,
         roles: ['owner', 'manager', 'technician'],
+        emails: ['kevan@washlyfe.com'], // restricted to Kevan for now
       },
       {
         to: '/app/reports',
