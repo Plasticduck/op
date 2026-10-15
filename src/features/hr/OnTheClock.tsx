@@ -39,6 +39,7 @@ const REGION_SITES: Record<string, string[]> = {
   'Permian Basin Region (A)': ['MW02', 'MW04', 'MW06', 'MW08', 'MW13', 'MW15', 'MW22', 'MW24', 'MW25'],
   'Permian Basin Region (B)': ['MW03', 'MW12', 'MW31'],
   'New Mexico Region': ['MW16', 'MW17', 'MW18', 'MW19', 'MW20', 'MW21', 'MW23', 'MW26'],
+  'Central Region': ['MW27', 'MW28', 'MW29', 'MW30', 'Spotless'],
 }
 // Email -> the single region that account is scoped to. Anyone not listed here
 // (owners, other admins) sees every site.
@@ -56,6 +57,7 @@ export default function OnTheClock() {
   const [error, setError] = useState<string | null>(null)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [onlyIn, setOnlyIn] = useState(false)
+  const [regionFilter, setRegionFilter] = useState<string>('all')
   const timer = useRef<number | null>(null)
 
   const load = useCallback(async () => {
@@ -82,11 +84,14 @@ export default function OnTheClock() {
     return () => { if (timer.current) window.clearInterval(timer.current) }
   }, [load])
 
-  // Region scope for the signed-in user (null = see every site).
+  // Region scope for the signed-in user (null = may see every site). Scoped
+  // users are locked to their region; everyone else may filter the admin view
+  // by region, which defaults to all sites.
   const scopedRegion = SITE_SCOPE_BY_EMAIL[(profile?.email ?? '').toLowerCase()] ?? null
+  const activeRegion = scopedRegion ?? (regionFilter === 'all' ? null : regionFilter)
   const allowedSites = useMemo(
-    () => (scopedRegion ? new Set(REGION_SITES[scopedRegion] ?? []) : null),
-    [scopedRegion],
+    () => (activeRegion ? new Set(REGION_SITES[activeRegion] ?? []) : null),
+    [activeRegion],
   )
 
   // The sites this user may see, and the headline totals rolled up from just
@@ -142,10 +147,24 @@ export default function OnTheClock() {
           <div className="text-lg font-semibold tabular-nums" style={{ color: PTO_COLOR }}>{totals ? hrs(totals.weekPTO) : '—'}</div>
           <div className="text-xs text-ink-subtle">PTO hours</div>
         </div>
-        {scopedRegion && (
+        {scopedRegion ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent" title="You are viewing a single region">
             <MapPin className="size-3.5" /> {scopedRegion}
           </span>
+        ) : (
+          <label className="inline-flex items-center gap-1.5 text-sm text-ink-muted" title="Filter the view to a single region">
+            <MapPin className="size-4 text-ink-subtle" />
+            <select
+              value={regionFilter}
+              onChange={(e) => setRegionFilter(e.target.value)}
+              className="h-8 rounded-lg border border-border bg-content px-2 text-sm font-medium text-ink hover:border-accent focus:border-accent focus:outline-none"
+            >
+              <option value="all">All sites</option>
+              {Object.keys(REGION_SITES).map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </label>
         )}
         {data && <div className="text-xs text-ink-muted">Pay week {data.central.weekLabel} (Mon–Sun)</div>}
         <div className="ml-auto flex items-center gap-3">
