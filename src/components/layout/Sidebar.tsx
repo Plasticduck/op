@@ -288,8 +288,11 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    // Group roles include 'manager' so regional managers can reach On the Clock.
+    // Every item here is also email-gated, so a manager with no matching item
+    // sees zero items and the empty-group filter hides the group for them.
     label: 'Human Resources',
-    roles: ['owner'],
+    roles: ['owner', 'manager'],
     items: [
       {
         to: '/app/hr/payroll-labor',
@@ -302,8 +305,18 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/hr/on-the-clock',
         label: 'On the Clock',
         icon: Timer,
-        roles: ['owner'],
-        emails: ['kevan@washlyfe.com', 'lkeith@mighty-wash.com'],
+        roles: ['owner', 'manager'],
+        emails: [
+          'kevan@washlyfe.com',
+          'lkeith@mighty-wash.com',
+          'kellyspiller@mighty-wash.com',
+          'zachary@mighty-wash.com',
+          'mcanales@mighty-wash.com',
+          'isabel@mighty-wash.com',
+          'rbreed@mighty-wash.com',
+          'lester@mighty-wash.com',
+          'djones@mighty-wash.com',
+        ],
       },
       {
         to: '/app/hr/salaried-labor',

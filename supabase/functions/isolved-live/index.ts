@@ -16,8 +16,19 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
-// Who may view live labor (matches the Labor Data page allowlist).
-const LABOR_DATA_EMAILS = new Set(['kevan@washlyfe.com', 'lkeith@mighty-wash.com'])
+// Who may view live labor. Covers the Labor Data page allowlist plus the wider
+// set granted the dedicated On the Clock page (regional managers + owners).
+const LABOR_DATA_EMAILS = new Set([
+  'kevan@washlyfe.com',
+  'lkeith@mighty-wash.com',
+  'kellyspiller@mighty-wash.com',
+  'zachary@mighty-wash.com',
+  'mcanales@mighty-wash.com',
+  'isabel@mighty-wash.com',
+  'rbreed@mighty-wash.com',
+  'lester@mighty-wash.com',
+  'djones@mighty-wash.com',
+])
 const OPEN_ACCRUAL_CAP_H = 16 // cap in-progress time added to week totals (guards forgotten punches)
 const FT_YEAR_HOURS = 2080
 const OT_MULTIPLIER = 1.5
