@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, RefreshCw, Clock, AlertTriangle, Users } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2, RefreshCw, Clock, AlertTriangle, Users, MapPin } from 'lucide-react'
 import { isolvedLive, type LiveResponse } from '@/lib/queries/isolved'
+import { useAuth } from '@/lib/auth'
 import { fnErrorMessage } from '@/lib/fnError'
 import { cn } from '@/lib/utils'
 
@@ -27,7 +28,29 @@ function allowedHoursFor(site: string): number | null {
   void site // placeholder: will look up the per-site/day allowed hours
   return null
 }
+
+// Per-account region scoping. Some regional managers only need their own
+// region's sites on this page. Site strings here are the iSolved MW codes
+// (MWNN), which match each location's name. Region -> site membership mirrors
+// accounts.company_settings.regions; MW33/MW34 are folded into Lubbock here per
+// ops request even though they are not yet in that saved config.
+const REGION_SITES: Record<string, string[]> = {
+  'Lubbock Region': ['MW01', 'MW05', 'MW07', 'MW09', 'MW10', 'MW11', 'MW14', 'MW33', 'MW34'],
+  'Permian Basin Region (A)': ['MW02', 'MW04', 'MW06', 'MW08', 'MW13', 'MW15', 'MW22', 'MW24', 'MW25'],
+  'Permian Basin Region (B)': ['MW03', 'MW12', 'MW31'],
+  'New Mexico Region': ['MW16', 'MW17', 'MW18', 'MW19', 'MW20', 'MW21', 'MW23', 'MW26'],
+}
+// Email -> the single region that account is scoped to. Anyone not listed here
+// (owners, other admins) sees every site.
+const SITE_SCOPE_BY_EMAIL: Record<string, string> = {
+  'mcanales@mighty-wash.com': 'Lubbock Region',
+  'isabel@mighty-wash.com': 'Permian Basin Region (A)',
+  'lester@mighty-wash.com': 'Permian Basin Region (B)',
+  'rbreed@mighty-wash.com': 'New Mexico Region',
+}
+
 export default function OnTheClock() {
+  const { profile } = useAuth()
   const [data, setData] = useState<LiveResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,17 +82,37 @@ export default function OnTheClock() {
     return () => { if (timer.current) window.clearInterval(timer.current) }
   }, [load])
 
-  // Every "check punch" (open punch running STALE_H+ hours) across all sites,
-  // gathered into one card. These also stay flagged inline in each site card.
-  const checkPunches = data
-    ? data.sites
-        .flatMap((s) =>
-          s.employees
-            .filter((e) => e.onClock && e.elapsedHours >= STALE_H)
-            .map((e) => ({ site: s.site, name: e.name, salaried: e.salaried, employeeNumber: e.employeeNumber, clockInTime: e.clockInTime, elapsedHours: e.elapsedHours })),
-        )
-        .sort((a, b) => b.elapsedHours - a.elapsedHours)
-    : []
+  // Region scope for the signed-in user (null = see every site).
+  const scopedRegion = SITE_SCOPE_BY_EMAIL[(profile?.email ?? '').toLowerCase()] ?? null
+  const allowedSites = useMemo(
+    () => (scopedRegion ? new Set(REGION_SITES[scopedRegion] ?? []) : null),
+    [scopedRegion],
+  )
+
+  // The sites this user may see, and the headline totals rolled up from just
+  // those sites so the summary matches the cards shown.
+  const sites = data ? (allowedSites ? data.sites.filter((s) => allowedSites.has(s.site)) : data.sites) : []
+  const totals = !data
+    ? null
+    : allowedSites
+      ? {
+          clockedIn: sites.reduce((a, s) => a + s.clockedIn, 0),
+          weekHours: sites.reduce((a, s) => a + s.weekHours, 0),
+          weekCost: sites.reduce((a, s) => a + s.weekCost, 0),
+          weekPTO: sites.reduce((a, s) => a + s.weekPTO, 0),
+          employees: new Set(sites.flatMap((s) => s.employees.map((e) => e.employeeNumber))).size,
+        }
+      : data.totals
+
+  // Every "check punch" (open punch running STALE_H+ hours) across the visible
+  // sites, gathered into one card. These also stay flagged inline in each card.
+  const checkPunches = sites
+    .flatMap((s) =>
+      s.employees
+        .filter((e) => e.onClock && e.elapsedHours >= STALE_H)
+        .map((e) => ({ site: s.site, name: e.name, salaried: e.salaried, employeeNumber: e.employeeNumber, clockInTime: e.clockInTime, elapsedHours: e.elapsedHours })),
+    )
+    .sort((a, b) => b.elapsedHours - a.elapsedHours)
 
   return (
     <div className="mt-3">
@@ -78,27 +121,32 @@ export default function OnTheClock() {
         <div className="flex items-center gap-2">
           <span className="grid size-9 place-items-center rounded-full bg-ok-soft text-ok"><Clock className="size-5" /></span>
           <div>
-            <div className="text-2xl font-bold tabular-nums text-ink">{data ? data.totals.clockedIn : '—'}</div>
+            <div className="text-2xl font-bold tabular-nums text-ink">{totals ? totals.clockedIn : '—'}</div>
             <div className="text-xs text-ink-subtle">on the clock now</div>
           </div>
         </div>
         <div className="h-9 w-px bg-border" />
         <div>
-          <div className="text-lg font-semibold tabular-nums text-ink">{data ? hrs(data.totals.weekHours) : '—'}</div>
+          <div className="text-lg font-semibold tabular-nums text-ink">{totals ? hrs(totals.weekHours) : '—'}</div>
           <div className="text-xs text-ink-subtle">total hours this week</div>
         </div>
         <div>
-          <div className="text-lg font-semibold tabular-nums text-ink">{data ? usd(data.totals.weekCost) : '—'}</div>
+          <div className="text-lg font-semibold tabular-nums text-ink">{totals ? usd(totals.weekCost) : '—'}</div>
           <div className="text-xs text-ink-subtle">est. labor cost</div>
         </div>
         <div>
-          <div className="text-lg font-semibold tabular-nums text-ink">{data ? data.totals.employees : '—'}</div>
+          <div className="text-lg font-semibold tabular-nums text-ink">{totals ? totals.employees : '—'}</div>
           <div className="text-xs text-ink-subtle">worked this week</div>
         </div>
         <div>
-          <div className="text-lg font-semibold tabular-nums" style={{ color: PTO_COLOR }}>{data ? hrs(data.totals.weekPTO) : '—'}</div>
+          <div className="text-lg font-semibold tabular-nums" style={{ color: PTO_COLOR }}>{totals ? hrs(totals.weekPTO) : '—'}</div>
           <div className="text-xs text-ink-subtle">PTO hours</div>
         </div>
+        {scopedRegion && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent" title="You are viewing a single region">
+            <MapPin className="size-3.5" /> {scopedRegion}
+          </span>
+        )}
         {data && <div className="text-xs text-ink-muted">Pay week {data.central.weekLabel} (Mon–Sun)</div>}
         <div className="ml-auto flex items-center gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
@@ -155,7 +203,7 @@ export default function OnTheClock() {
             )}
           </section>
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {data.sites
+          {sites
             .filter((s) => !onlyIn || s.clockedIn > 0)
             .map((s) => {
               const emps = onlyIn ? s.employees.filter((e) => e.onClock) : s.employees
