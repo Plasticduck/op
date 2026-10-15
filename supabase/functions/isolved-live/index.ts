@@ -22,6 +22,7 @@ const LABOR_DATA_EMAILS = new Set([
   'kevan@washlyfe.com',
   'lkeith@mighty-wash.com',
   'kellyspiller@mighty-wash.com',
+  'kspiller@mighty-wash.com',
   'zachary@mighty-wash.com',
   'mcanales@mighty-wash.com',
   'isabel@mighty-wash.com',

@@ -243,7 +243,7 @@ export const router = createBrowserRouter([
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
           { path: 'hr/payroll-labor', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com']}>{s(<LaborDataPage />)}</RequireEmails> },
-          { path: 'hr/on-the-clock', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com', 'kellyspiller@mighty-wash.com', 'zachary@mighty-wash.com', 'mcanales@mighty-wash.com', 'isabel@mighty-wash.com', 'rbreed@mighty-wash.com', 'lester@mighty-wash.com', 'djones@mighty-wash.com']}>{s(<OnTheClockPage />)}</RequireEmails> },
+          { path: 'hr/on-the-clock', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com', 'kellyspiller@mighty-wash.com', 'kspiller@mighty-wash.com', 'zachary@mighty-wash.com', 'mcanales@mighty-wash.com', 'isabel@mighty-wash.com', 'rbreed@mighty-wash.com', 'lester@mighty-wash.com', 'djones@mighty-wash.com']}>{s(<OnTheClockPage />)}</RequireEmails> },
           { path: 'hr/salaried-labor', element: <RequireSuperAdmin>{s(<SalariedLaborPage />)}</RequireSuperAdmin> },
           { path: 'facilities', element: s(<ServiceBoardPage />) },
           { path: 'details', element: mgr(<InteriorDetailsPage />) },
