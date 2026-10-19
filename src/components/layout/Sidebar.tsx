@@ -42,6 +42,7 @@ import {
   Tags as TagsIcon,
   MessageCircle,
   MessageSquareWarning,
+  Droplets,
   PackageOpen,
   ShoppingCart,
   Palmtree,
@@ -432,6 +433,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ShoppingCart,
         roles: ['owner', 'manager', 'employee', 'technician'],
         emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
+      },
+      {
+        to: '/app/chemicals',
+        label: 'Chemicals',
+        icon: Droplets,
+        roles: ['owner', 'manager'],
       },
       {
         to: '/app/reports',
