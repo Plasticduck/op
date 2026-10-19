@@ -83,9 +83,10 @@ const SALES_BRANCHES = "(rc.BRANCH STARTING WITH '001001' OR rc.BRANCH STARTING 
 // Lube "add-ons" = upsell parts/accessories beyond the base oil change: air /
 // cabin / fuel filters, wiper blades, headlights/bulbs, battery (001003008 parts,
 // minus standard oil filters 001003008001) plus accessories (001003014*). Base
-// service (labor, oil, oil filters, packages) is NOT an add-on.
+// service (labor, oil, oil filters, packages) is NOT an add-on. "Auto Accesories"
+// (001003014004) is excluded from add-ons per request — it is not a contest item.
 const ADDON_PRED =
-  "(rc.BRANCH IN ('001003008002','001003008005','001003008007','001003008008','001003008010','001003008012') OR rc.BRANCH STARTING WITH '001003014')"
+  "(rc.BRANCH IN ('001003008002','001003008005','001003008007','001003008008','001003008010','001003008012') OR (rc.BRANCH STARTING WITH '001003014' AND NOT (rc.BRANCH STARTING WITH '001003014004')))"
 // The employee credited with the add-on = the "Lube Top Tech" on the ticket.
 const TOP_TECH_ROLE = 1500002
 

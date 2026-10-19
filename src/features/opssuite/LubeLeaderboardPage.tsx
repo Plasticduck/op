@@ -53,7 +53,7 @@ const METRICS: Record<MetricKey, { label: string; blurb: string; value: (t: Lube
   tickets: { label: 'Tickets', blurb: 'Cars worked', value: (t) => t.tickets, fmt: int },
 }
 
-type Row = { employee_id: string; name: string; value: number; sub: string; competing: boolean }
+type Row = { employee_id: string; name: string; value: number; sub: string; competing: boolean; note?: string }
 const MEDAL = ['text-[#d4af37]', 'text-[#9ca3af]', 'text-[#cd7f32]'] // gold / silver / bronze
 
 // Techs kept out of the contest entirely (not shown), matched on name.
@@ -63,6 +63,17 @@ const isExcluded = (name: string) => EXCLUDED_TECHS.has(name.trim().toLowerCase(
 // (e.g. the shop manager). Matched on name.
 const NON_COMPETING = new Set(['roger elias'])
 const isNonCompeting = (name: string) => NON_COMPETING.has(name.trim().toLowerCase())
+
+// Minimum tickets worked in the contest window to be eligible to place. Techs
+// below this are still shown with their totals but carry no rank/medal.
+const MIN_TICKETS = 200
+
+// Whether a tech can place, plus the reason they can't (for the "not ranked" tag).
+function eligibility(name: string, tickets: number): { competing: boolean; note?: string } {
+  if (isNonCompeting(name)) return { competing: false, note: 'Manager · not ranked' }
+  if (tickets < MIN_TICKETS) return { competing: false, note: `Under ${MIN_TICKETS} tickets` }
+  return { competing: true }
+}
 
 export default function LubeLeaderboardPage() {
   const [range, setRange] = useState<RangeKey>('mtd')
@@ -99,19 +110,26 @@ export default function LubeLeaderboardPage() {
         const t = ticketsById.get(m.employee_id)
         const name = t?.name ?? `#${m.employee_id}`
         const value = catMetric === 'dollars' ? m.dollars : m.units
-        byTech.set(m.employee_id, { employee_id: m.employee_id, name, value, sub: `${int(m.units)} units · ${usd(m.dollars)}`, competing: !isNonCompeting(name) })
+        const elig = eligibility(name, t?.tickets ?? 0)
+        byTech.set(m.employee_id, { employee_id: m.employee_id, name, value, sub: `${int(t?.tickets ?? 0)} tickets · ${int(m.units)} units · ${usd(m.dollars)}`, competing: elig.competing, note: elig.note })
       }
       // Include techs with 0 of this category too (so a contest shows everyone).
-      for (const t of techs) if (!byTech.has(t.employee_id)) byTech.set(t.employee_id, { employee_id: t.employee_id, name: t.name, value: 0, sub: '0 units', competing: !isNonCompeting(t.name) })
+      for (const t of techs) if (!byTech.has(t.employee_id)) {
+        const elig = eligibility(t.name, t.tickets)
+        byTech.set(t.employee_id, { employee_id: t.employee_id, name: t.name, value: 0, sub: `${int(t.tickets)} tickets · 0 units`, competing: elig.competing, note: elig.note })
+      }
       const f = catMetric === 'dollars' ? usd : int
       return { rows: [...byTech.values()].sort((a, b) => b.value - a.value), metricLabel: `${category} · ${catMetric === 'dollars' ? 'revenue' : 'units'}`, fmt: f }
     }
     const m = METRICS[metric]
-    const rows = techs.map((t) => ({
-      employee_id: t.employee_id, name: t.name, value: m.value(t),
-      sub: `${int(t.tickets)} tickets · ${int(t.units)} add-ons · ${usd(t.dollars)}`,
-      competing: !isNonCompeting(t.name),
-    })).sort((a, b) => b.value - a.value)
+    const rows = techs.map((t) => {
+      const elig = eligibility(t.name, t.tickets)
+      return {
+        employee_id: t.employee_id, name: t.name, value: m.value(t),
+        sub: `${int(t.tickets)} tickets · ${int(t.units)} add-ons · ${usd(t.dollars)}`,
+        competing: elig.competing, note: elig.note,
+      }
+    }).sort((a, b) => b.value - a.value)
     return { rows, metricLabel: m.label, fmt: m.fmt }
   }, [data, metric, category, catMetric, usingCategory])
 
@@ -234,7 +252,7 @@ export default function LubeLeaderboardPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="truncate font-medium text-ink">{r.name}</span>
-                          {!r.competing && <span className="shrink-0 rounded-full bg-content px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">Manager · not ranked</span>}
+                          {r.note && <span className="shrink-0 rounded-full bg-content px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">{r.note}</span>}
                         </div>
                         <div className="truncate text-xs text-ink-subtle">{r.sub}</div>
                       </div>
@@ -271,7 +289,8 @@ export default function LubeLeaderboardPage() {
 
           <p className="px-1 text-xs text-ink-subtle">
             {METRICS[metric] && !usingCategory ? METRICS[metric].blurb + '. ' : ''}
-            Add-ons = upsell parts/accessories credited to the Lube Top Tech on the ticket.
+            Add-ons = upsell parts/accessories credited to the Lube Top Tech on the ticket (Auto Accessories excluded).
+            Techs need at least {MIN_TICKETS} tickets in the window to place.
           </p>
         </>
       )}
