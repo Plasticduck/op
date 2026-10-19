@@ -280,7 +280,7 @@ export default function WorkOrdersNewPage() {
             </FilterGroup>
             <label className="flex items-center gap-1.5 text-xs text-ink-muted">
               <span className="text-[11px] uppercase tracking-wider text-ink-subtle">Assignee</span>
-              <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="h-8 rounded-lg border border-border bg-content pl-2.5 pr-8 text-sm text-ink">
+              <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className="rounded-lg border border-border bg-content py-1.5 pl-2.5 pr-8 text-sm leading-normal text-ink">
                 <option value="all">Anyone</option>
                 <option value="me">Me</option>
                 <option value="unassigned">Unassigned</option>
@@ -289,7 +289,7 @@ export default function WorkOrdersNewPage() {
             </label>
             <label className="flex items-center gap-1.5 text-xs text-ink-muted">
               <span className="text-[11px] uppercase tracking-wider text-ink-subtle">Type</span>
-              <select value={workType} onChange={(e) => setWorkType(e.target.value)} className="h-8 rounded-lg border border-border bg-content pl-2.5 pr-8 text-sm text-ink">
+              <select value={workType} onChange={(e) => setWorkType(e.target.value)} className="rounded-lg border border-border bg-content py-1.5 pl-2.5 pr-8 text-sm leading-normal text-ink">
                 <option value="all">All</option>
                 {WORK_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
@@ -297,7 +297,7 @@ export default function WorkOrdersNewPage() {
             {view !== 'board' && (
               <label className="flex items-center gap-1.5 text-xs text-ink-muted">
                 <span className="text-[11px] uppercase tracking-wider text-ink-subtle">Sort</span>
-                <select value={sortKey} onChange={(e) => setSort(e.target.value as SortKey)} className="h-8 rounded-lg border border-border bg-content pl-2.5 pr-8 text-sm text-ink">
+                <select value={sortKey} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg border border-border bg-content py-1.5 pl-2.5 pr-8 text-sm leading-normal text-ink">
                   <option value="updated">Last updated</option>
                   <option value="due">Due date</option>
                   <option value="priority">Priority</option>
