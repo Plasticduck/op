@@ -376,6 +376,11 @@ verify_jwt = false
 [functions.invoice-inbound]
 verify_jwt = false
 
+# Opened from an emailed opt-in link by people who may never have logged in —
+# no Supabase JWT. The per-user, expiring token in the link is the credential.
+[functions.sms-optin]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

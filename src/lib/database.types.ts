@@ -5301,6 +5301,48 @@ export type Database = {
           },
         ]
       }
+      sms_optin_tokens: {
+        Row: {
+          account_id: string
+          created_at: string
+          expires_at: string
+          token_hash: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          expires_at: string
+          token_hash: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          expires_at?: string
+          token_hash?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_optin_tokens_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_optin_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       social_posts: {
         Row: {
           account_id: string
@@ -5971,6 +6013,7 @@ export type Database = {
           role_category: string | null
           sms_opt_in: boolean
           sms_opt_in_at: string | null
+          sms_opt_in_source: string | null
         }
         Insert: {
           account_id: string
@@ -5986,6 +6029,7 @@ export type Database = {
           role_category?: string | null
           sms_opt_in?: boolean
           sms_opt_in_at?: string | null
+          sms_opt_in_source?: string | null
         }
         Update: {
           account_id?: string
@@ -6001,6 +6045,7 @@ export type Database = {
           role_category?: string | null
           sms_opt_in?: boolean
           sms_opt_in_at?: string | null
+          sms_opt_in_source?: string | null
         }
         Relationships: [
           {

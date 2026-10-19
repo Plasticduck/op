@@ -67,6 +67,7 @@ const TermsPage = lz(() => import('@/features/marketing/Legal').then((m) => ({ d
 const PrivacyPage = lz(() => import('@/features/marketing/Legal').then((m) => ({ default: m.PrivacyPage })))
 const MwSmsPrivacy = lz(() => import('@/features/marketing/MightyWashSms').then((m) => ({ default: m.SmsPrivacyPage })))
 const MwSmsTerms = lz(() => import('@/features/marketing/MightyWashSms').then((m) => ({ default: m.SmsTermsPage })))
+const TextAlertsPage = lz(() => import('@/features/marketing/TextAlertsPage'))
 const LoginPage = lz(() => import('@/features/auth/LoginPage'))
 const SignupPage = lz(() => import('@/features/auth/SignupPage'))
 const ForgotPasswordPage = lz(() => import('@/features/auth/ForgotPasswordPage'))
@@ -175,6 +176,8 @@ export const router = createBrowserRouter([
   // Mighty Wash SMS program (A2P 10DLC) — public Privacy Policy + Terms URLs
   { path: '/mighty-wash/sms-privacy', element: s(<MwSmsPrivacy />) },
   { path: '/mighty-wash/sms-terms', element: s(<MwSmsTerms />) },
+  // Personal opt-in link from the "Turn on text alerts" email (no login).
+  { path: '/text-alerts/:token', element: s(<TextAlertsPage />) },
 
   // Public per-site tip pages (reached by QR code — no login)
   { path: '/request/:token', element: s(<RequestPortalPage />) },
