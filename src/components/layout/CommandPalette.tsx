@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { pageAllowed, permRoleInList } from '@/lib/permissions'
 import { permRole } from '@/lib/rbac'
-import { NAV_GROUPS } from '@/components/layout/Sidebar'
+import { NAV_GROUPS, navItemLabel } from '@/components/layout/Sidebar'
 import { cn } from '@/lib/utils'
 
 // Cmd+K / Ctrl+K global jump-to-page. Searches across every nav item the
@@ -39,7 +39,7 @@ export function CommandPalette() {
           continue
         if (i.flag === 'gm_bonus' && !profile.gm_bonus_enabled) continue
         if (i.emails && !i.emails.includes((profile.email ?? '').toLowerCase())) continue
-        flat.push({ to: i.to, label: i.label, group: g.label })
+        flat.push({ to: i.to, label: navItemLabel(i, profile.account_id), group: g.label })
       }
     }
     return flat

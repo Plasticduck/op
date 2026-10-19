@@ -127,7 +127,7 @@ function Inner({ locationId }: { locationId: string }) {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Training"
+        title={isMightyWash ? 'Mighty Wash Academy' : 'Training'}
         subtitle={
           isManager
             ? 'Training material, new-hire onboarding, and certifications for your team.'

@@ -91,6 +91,14 @@ type NavGroup = {
   roles?: PermRole[]
 }
 
+// Per-account display-name overrides for specific nav items. The label stored in
+// NAV_GROUPS is the default for every other account.
+const ACADEMY_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6' // Mighty Wash
+export function navItemLabel(item: Pick<NavItem, 'to' | 'label'>, accountId: string | null | undefined): string {
+  if (item.to === '/app/training' && accountId === ACADEMY_ACCOUNT_ID) return 'Mighty Wash Academy'
+  return item.label
+}
+
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Overview',
@@ -634,7 +642,7 @@ export function SidebarNav({
           const groupHit = g.label.toLowerCase().includes(q)
           const filteredItems = groupHit
             ? g.items
-            : g.items.filter((i) => i.label.toLowerCase().includes(q))
+            : g.items.filter((i) => navItemLabel(i, profile?.account_id).toLowerCase().includes(q))
           return { ...g, items: filteredItems }
         })
         .filter((g) => g.items.length > 0)
@@ -687,8 +695,8 @@ export function SidebarNav({
                 to={item.to}
                 end={item.to === '/app/dashboard'}
                 onClick={onNavigate}
-                title={item.label}
-                aria-label={item.label}
+                title={navItemLabel(item, profile?.account_id)}
+                aria-label={navItemLabel(item, profile?.account_id)}
               >
                 {({ isActive }) => (
                   <span
@@ -781,7 +789,7 @@ export function SidebarNav({
                           >
                             <item.icon className="size-[18px]" strokeWidth={2.25} />
                           </span>
-                          {item.label}
+                          {navItemLabel(item, profile?.account_id)}
                         </span>
                       )}
                     </NavLink>
@@ -836,7 +844,7 @@ export function useVisibleNavItems(role: PermRole): VisibleNavItem[] {
     (!i.emails || i.emails.includes((profile?.email ?? '').toLowerCase()))
   return NAV_GROUPS
     .filter((g) => permRoleInList(role, g.roles))
-    .flatMap((g) => g.items.filter(visible).map((i) => ({ to: i.to, label: i.label, icon: i.icon, group: g.label })))
+    .flatMap((g) => g.items.filter(visible).map((i) => ({ to: i.to, label: navItemLabel(i, profile?.account_id), icon: i.icon, group: g.label })))
 }
 
 const COLLAPSE_KEY = 'tunnelsync.sidebarCollapsed'
