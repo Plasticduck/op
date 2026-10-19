@@ -808,6 +808,29 @@ export function SidebarNav({
   )
 }
 
+export type VisibleNavItem = { to: string; label: string; icon: LucideIcon; group: string }
+
+// Flat list of every nav destination the given role/account/user can see — used
+// by the mobile bottom bar (its shortcuts + the "customize" picker). Mirrors the
+// `canSee` logic in SidebarNav; keep the two in sync.
+export function useVisibleNavItems(role: PermRole): VisibleNavItem[] {
+  const { profile } = useAuth()
+  const { settings } = useCompany()
+  const visible = (i: NavItem) =>
+    pageAllowed(role, i.to, i.roles, {
+      rolePerms: settings.pagePermissions,
+      userId: profile?.id,
+      userPerms: settings.userPermissions,
+      optInRoles: i.optIn,
+    }) &&
+    (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)) &&
+    !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)) &&
+    (!i.emails || i.emails.includes((profile?.email ?? '').toLowerCase()))
+  return NAV_GROUPS
+    .filter((g) => permRoleInList(role, g.roles))
+    .flatMap((g) => g.items.filter(visible).map((i) => ({ to: i.to, label: i.label, icon: i.icon, group: g.label })))
+}
+
 const COLLAPSE_KEY = 'tunnelsync.sidebarCollapsed'
 
 export function Sidebar({ role }: { role: PermRole }) {

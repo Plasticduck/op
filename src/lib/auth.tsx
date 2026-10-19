@@ -21,6 +21,8 @@ export type Profile = {
   gm_bonus_enabled: boolean
   site_performance_enabled: boolean
   brand_logo_url: string | null
+  // Per-user mobile bottom-bar shortcuts (nav routes). Empty/null = app default.
+  nav_favorites: string[]
 }
 
 type AuthState = {
@@ -36,7 +38,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined)
 async function loadProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, account_id, location_ids, role, role_category, name, email, avatar_url, account:account_id(gm_bonus_enabled, site_performance_enabled, brand_logo_url)')
+    .select('id, account_id, location_ids, role, role_category, name, email, avatar_url, nav_favorites, account:account_id(gm_bonus_enabled, site_performance_enabled, brand_logo_url)')
     .eq('id', userId)
     .maybeSingle()
   if (error) {
@@ -57,6 +59,7 @@ async function loadProfile(userId: string): Promise<Profile | null> {
     name: row.name as string,
     email: row.email as string,
     avatar_url: (row.avatar_url as string | null) ?? null,
+    nav_favorites: (row.nav_favorites as string[] | null) ?? [],
     gm_bonus_enabled: acct?.gm_bonus_enabled ?? false,
     site_performance_enabled: acct?.site_performance_enabled ?? false,
     brand_logo_url: acct?.brand_logo_url ?? null,

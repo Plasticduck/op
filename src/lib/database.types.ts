@@ -6008,6 +6008,7 @@ export type Database = {
           last_seen_at: string | null
           location_ids: string[]
           name: string
+          nav_favorites: string[] | null
           phone: string | null
           role: string
           role_category: string | null
@@ -6024,6 +6025,7 @@ export type Database = {
           last_seen_at?: string | null
           location_ids?: string[]
           name: string
+          nav_favorites?: string[] | null
           phone?: string | null
           role: string
           role_category?: string | null
@@ -6040,6 +6042,7 @@ export type Database = {
           last_seen_at?: string | null
           location_ids?: string[]
           name?: string
+          nav_favorites?: string[] | null
           phone?: string | null
           role?: string
           role_category?: string | null
