@@ -43,6 +43,7 @@ import {
   MessageCircle,
   MessageSquareWarning,
   PackageOpen,
+  ShoppingCart,
   Palmtree,
   PanelLeftClose,
   PanelLeftOpen,
@@ -416,6 +417,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ListChecks,
         // Everyone can submit tickets and see their own; reviewers get the queues.
         roles: ['owner', 'manager', 'employee', 'technician'],
+      },
+      {
+        to: '/app/maintenance-orders',
+        label: 'Maintenance Orders',
+        icon: ShoppingCart,
+        roles: ['owner', 'manager', 'employee', 'technician'],
+        emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
       },
       {
         to: '/app/reports',

@@ -83,6 +83,7 @@ const AssetsPage = lz(() => import('@/features/ops/assets/AssetsPage'))
 const PartsPage = lz(() => import('@/features/ops/parts/PartsPage'))
 const WorkOrdersPage = lz(() => import('@/features/ops/work-orders/WorkOrdersPage'))
 const WorkOrdersNewPage = lz(() => import('@/features/ops/work-orders/WorkOrdersNewPage'))
+const MaintenanceOrdersPage = lz(() => import('@/features/maintenance/MaintenanceOrdersPage'))
 const CategoriesPage = lz(() => import('@/features/ops/categories/CategoriesPage'))
 const VendorsPage = lz(() => import('@/features/ops/vendors/VendorsPage'))
 const DowntimePage = lz(() => import('@/features/ops/downtime/DowntimePage'))
@@ -223,6 +224,7 @@ export const router = createBrowserRouter([
           // reviewer queues are gated by role inside the page and by RLS.
           { path: 'work-orders-new', element: s(<WorkOrdersNewPage />) },
           { path: 'work-orders-new/:id', element: s(<WorkOrdersNewPage />) },
+          { path: 'maintenance-orders', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<MaintenanceOrdersPage />)}</RequireEmails> },
           { path: 'categories', element: tech(<CategoriesPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },
           { path: 'assets', element: tech(<AssetsPage />) },

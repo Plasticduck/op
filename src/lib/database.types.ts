@@ -39,6 +39,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      maintenance_orders: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          item: string
+          location_id: string | null
+          notes: string | null
+          quantity: number
+          requested_by: string | null
+          requester_name: string | null
+          status: string
+          status_updated_at: string | null
+          tracking_number: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          item: string
+          location_id?: string | null
+          notes?: string | null
+          quantity?: number
+          requested_by?: string | null
+          requester_name?: string | null
+          status?: string
+          status_updated_at?: string | null
+          tracking_number?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          item?: string
+          location_id?: string | null
+          notes?: string | null
+          quantity?: number
+          requested_by?: string | null
+          requester_name?: string | null
+          status?: string
+          status_updated_at?: string | null
+          tracking_number?: string | null
+        }
+        Relationships: []
+      }
       accounts: {
         Row: {
           account_type: string
