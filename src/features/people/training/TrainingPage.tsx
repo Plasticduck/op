@@ -75,6 +75,9 @@ const TABS: { key: Tab; label: string; icon: typeof GraduationCap }[] = [
 function Inner({ locationId }: { locationId: string }) {
   const { profile } = useAuth()
   const isManager = profile?.role === 'owner' || profile?.role === 'manager'
+  // The Mighty Wash Academy mascot is MW-specific branding, so it only shows for
+  // the Mighty Wash account (other tenants keep a plain header).
+  const isMightyWash = profile?.account_id === '54f3e299-1f61-4ed2-9921-3d02160b72e6'
   const [tab, setTab] = useState<Tab>('training')
 
   const [emps, setEmps] = useState<Emp[]>([])
@@ -130,6 +133,9 @@ function Inner({ locationId }: { locationId: string }) {
             ? 'Training material, new-hire onboarding, and certifications for your team.'
             : 'Your assigned training, onboarding, and certifications.'
         }
+        actions={isMightyWash
+          ? <img src="/mw-academy-mascot.png" alt="Mighty Wash Academy" className="h-16 w-auto shrink-0 sm:h-20" />
+          : undefined}
       />
 
       <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-content p-1">
