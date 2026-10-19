@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Package, Plus, Wrench } from 'lucide-react'
+import { ImagePlus, Loader2, Package, Plus, Wrench, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -36,6 +36,7 @@ export default function MaintenanceOrdersPage() {
   const isAdmin = (profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'
 
   const [rows, setRows] = useState<MaintenanceOrderRow[]>([])
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [tab, setTab] = useState<'open' | 'completed' | 'cancelled'>('open')
@@ -43,7 +44,10 @@ export default function MaintenanceOrdersPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const { data } = await maintenanceOrders.list()
-    setRows((data as unknown as MaintenanceOrderRow[]) ?? [])
+    const list = (data as unknown as MaintenanceOrderRow[]) ?? []
+    setRows(list)
+    const paths = list.flatMap((r) => r.photo_paths ?? [])
+    setPhotoUrls(paths.length ? await maintenanceOrders.photoUrls(paths) : {})
     setLoading(false)
   }, [])
 
@@ -143,6 +147,15 @@ export default function MaintenanceOrdersPage() {
                     <td className="px-4 py-2.5">
                       <div className="font-medium text-ink">{r.item}</div>
                       {r.notes && <div className="mt-0.5 text-xs text-ink-subtle">{r.notes}</div>}
+                      {(r.photo_paths?.length ?? 0) > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {r.photo_paths!.map((p) => (photoUrls[p] ? (
+                            <a key={p} href={photoUrls[p]} target="_blank" rel="noopener noreferrer" title="Open photo">
+                              <img src={photoUrls[p]} alt="" className="size-10 rounded-md border border-border object-cover" />
+                            </a>
+                          ) : null))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{r.quantity}</td>
                     <td className="px-4 py-2.5 text-ink-muted">{r.location?.name ?? 'All sites'}</td>
@@ -200,13 +213,31 @@ function NewOrderModal({
   const [quantity, setQuantity] = useState('1')
   const [locationId, setLocationId] = useState(defaultLocationId)
   const [notes, setNotes] = useState('')
+  const [photos, setPhotos] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Object-URL previews for the chosen photos, revoked when they change / unmount.
+  const previews = useMemo(() => photos.map((f) => URL.createObjectURL(f)), [photos])
+  useEffect(() => () => { previews.forEach((u) => URL.revokeObjectURL(u)) }, [previews])
+
+  const addPhotos = (list: FileList | null) => {
+    if (!list) return
+    const picked = Array.from(list).filter((f) => f.type.startsWith('image/'))
+    setPhotos((prev) => [...prev, ...picked].slice(0, 10))
+  }
 
   const submit = async () => {
     if (!item.trim()) { setError('Enter the item you need to order.'); return }
     setBusy(true)
     setError(null)
+    // Upload photos first (the order UPDATE policy is manager-only, so paths must
+    // be set at INSERT time), then create the order with their paths.
+    const paths: string[] = []
+    for (const f of photos) {
+      const { path } = await maintenanceOrders.uploadPhoto(accountId, f)
+      if (path) paths.push(path)
+    }
     const { data, error: err } = await maintenanceOrders.create({
       account_id: accountId,
       location_id: locationId || null,
@@ -215,6 +246,7 @@ function NewOrderModal({
       item: item.trim(),
       quantity: Number(quantity) || 1,
       notes: notes.trim() || null,
+      photo_paths: paths.length ? paths : null,
     })
     if (err || !data) {
       setError(err?.message ?? 'Could not place the order.')
@@ -254,6 +286,32 @@ function NewOrderModal({
           {(id) => (
             <textarea id={id} value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
               className="w-full rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink" />
+          )}
+        </Field>
+        <Field label="Photos" hint="Attach up to 10 photos of the equipment or the issue (optional)">
+          {() => (
+            <div className="flex flex-wrap items-center gap-2">
+              {previews.map((url, i) => (
+                <div key={url} className="relative">
+                  <img src={url} alt="" className="size-16 rounded-md border border-border object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-danger text-white shadow"
+                    aria-label="Remove photo"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+              {photos.length < 10 && (
+                <label className="flex size-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border text-ink-subtle hover:border-accent hover:text-accent">
+                  <ImagePlus className="size-5" />
+                  <span className="text-[10px]">Add</span>
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { addPhotos(e.target.files); e.target.value = '' }} />
+                </label>
+              )}
+            </div>
           )}
         </Field>
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}

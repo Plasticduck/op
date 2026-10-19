@@ -34,4 +34,24 @@ export const maintenanceOrders = {
   // a new order is placed.
   emailOrder: (orderId: string) =>
     supabase.functions.invoke('maintenance-order-email', { body: { order_id: orderId } }),
+
+  // Upload one photo to the private bucket under the account folder, returning its
+  // storage path. Uploaded BEFORE the order row is inserted (order UPDATE is
+  // manager-only), so the path can be saved on the row at creation.
+  uploadPhoto: async (accountId: string, file: File): Promise<{ path: string | null; error: { message: string } | null }> => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${accountId}/${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage
+      .from('maintenance-order-photos')
+      .upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false })
+    return { path: error ? null : path, error: error ? { message: error.message } : null }
+  },
+  // Signed URLs for a set of photo paths, returned as a path -> url map.
+  photoUrls: async (paths: string[], expiresIn = 3600): Promise<Record<string, string>> => {
+    if (!paths.length) return {}
+    const { data } = await supabase.storage.from('maintenance-order-photos').createSignedUrls(paths, expiresIn)
+    const map: Record<string, string> = {}
+    for (const d of data ?? []) if (d.path && d.signedUrl) map[d.path] = d.signedUrl
+    return map
+  },
 }

@@ -47,6 +47,7 @@ export type Database = {
           item: string
           location_id: string | null
           notes: string | null
+          photo_paths: string[] | null
           quantity: number
           requested_by: string | null
           requester_name: string | null
@@ -61,6 +62,7 @@ export type Database = {
           item: string
           location_id?: string | null
           notes?: string | null
+          photo_paths?: string[] | null
           quantity?: number
           requested_by?: string | null
           requester_name?: string | null
@@ -75,6 +77,7 @@ export type Database = {
           item?: string
           location_id?: string | null
           notes?: string | null
+          photo_paths?: string[] | null
           quantity?: number
           requested_by?: string | null
           requester_name?: string | null

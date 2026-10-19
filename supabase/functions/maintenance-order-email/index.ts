@@ -35,6 +35,13 @@ function corsHeaders(origin: string | null): Record<string, string> {
 const json = (body: unknown, status: number, origin: string | null) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } })
 
+function toBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  return btoa(binary)
+}
+
 function esc(s: unknown): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -107,12 +114,27 @@ Deno.serve(async (req) => {
 
   const resend = new Resend(resendKey)
 
+  // Attach any photos the placer added (download from the private bucket).
+  // deno-lint-ignore no-explicit-any
+  const attachments: any[] = []
+  const photoPaths: string[] = Array.isArray(o.photo_paths) ? o.photo_paths : []
+  for (let i = 0; i < photoPaths.length && i < 10; i++) {
+    const p = photoPaths[i]
+    const { data: blob } = await svc.storage.from('maintenance-order-photos').download(p)
+    if (blob) {
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      const ext = (p.split('.').pop() || 'jpg').toLowerCase()
+      attachments.push({ filename: `photo-${i + 1}.${ext}`, content: toBase64(bytes) })
+    }
+  }
+  const photoNote = attachments.length ? ` ${attachments.length} photo${attachments.length > 1 ? 's' : ''} attached.` : ''
+
   // 1) Internal notification to the maintenance team.
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">
       <h2 style="margin:0 0 16px;font-size:20px;">New Maintenance Order${siteName && siteName !== '—' ? ' — ' + esc(siteName) : ''}</h2>
       ${detailTable(rows)}
-      <p style="margin:20px 0 0;color:#888;font-size:12px;">Submitted from WashLyfe Operator.</p>
+      <p style="margin:20px 0 0;color:#888;font-size:12px;">Submitted from WashLyfe Operator.${esc(photoNote)}</p>
     </div>`
   let internalError: string | null = null
   try {
@@ -121,6 +143,7 @@ Deno.serve(async (req) => {
       to: MAINTENANCE_TEAM,
       subject: `Maintenance Order: ${o.item ?? 'equipment'}${siteName && siteName !== '—' ? ' — ' + siteName : ''}`,
       html,
+      attachments: attachments.length ? attachments : undefined,
     })
     if (error) internalError = (error as { message?: string }).message ?? 'send_failed'
   } catch (e) {
