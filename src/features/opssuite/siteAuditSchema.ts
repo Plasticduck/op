@@ -33,6 +33,7 @@ export const DEFAULT_SITE_AUDIT_SCHEMA: SiteAuditSchema = {
           label: 'Paint, Signage, Trash, Team Appearance/Hustle',
           type: 'comments',
         },
+        { id: 'dress_code', label: 'Dress Code', type: 'pass_fail' },
       ],
     },
     {
@@ -40,12 +41,16 @@ export const DEFAULT_SITE_AUDIT_SCHEMA: SiteAuditSchema = {
       title: 'Primary (Washing your Car)',
       items: [
         { id: 'pay_stations', label: 'Pay Stations', type: 'pass_fail', helpText: 'Attended? Clean? Free of Sticky Notes? Etc.' },
+        { id: 'vac_attendant_present', label: 'VAC Attendant Present', type: 'pass_fail' },
         { id: 'prep', label: 'Prep', type: 'pass_fail', helpText: 'Friendly? Neat Appearance? Efficient? Timely?' },
         { id: 'tunnel', label: 'Tunnel', type: 'pass_fail', helpText: 'Clean? Uncluttered?' },
+        { id: 'grating', label: 'Grating', type: 'pass_fail' },
         { id: 'equipment', label: 'Equipment', type: 'pass_fail', helpText: 'Clean? Working/Spinning? Touching the car?' },
         { id: 'chemical', label: 'Chemical', type: 'pass_fail', helpText: 'Working? Good Coverage?' },
         { id: 'blowers', label: 'Blowers', type: 'pass_fail', helpText: 'Clean? Functioning? Free of Debris?' },
         { id: 'qc', label: 'QC', type: 'pass_fail', helpText: 'Friendly? Neat Appearance? Efficient? Complete?' },
+        { id: 'bam', label: 'BAM', type: 'pass_fail' },
+        { id: 'smile_and_wave', label: 'Smile and Wave', type: 'pass_fail' },
         { id: 'primary_comments', label: 'Section comments (optional)', type: 'comments' },
       ],
     },
@@ -54,6 +59,7 @@ export const DEFAULT_SITE_AUDIT_SCHEMA: SiteAuditSchema = {
       title: 'Secondary (Behind the Scenes)',
       items: [
         { id: 'mechanical_room', label: 'Mechanical Room', type: 'pass_fail', helpText: 'Clean? Neat? Organized?' },
+        { id: 'soft_water_logs', label: 'Soft Water Logs Present and Updated', type: 'pass_fail' },
         { id: 'office', label: 'Office', type: 'pass_fail', helpText: 'Clean? Neat? Organized?' },
         { id: 'restrooms', label: 'Restrooms', type: 'pass_fail', helpText: 'Clean? Neat? Supplies?' },
         { id: 'vac_shed', label: 'Vac Shed', type: 'pass_fail', helpText: 'Uncluttered? Organized?' },

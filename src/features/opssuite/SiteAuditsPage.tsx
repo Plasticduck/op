@@ -377,6 +377,16 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
       if (Object.keys(slice).length > 0) extraComments[section.id] = slice
     }
 
+    // Initial Observations carries scored items (e.g. Dress Code) alongside its
+    // curb-appeal comments; the comments text goes to its own column, so persist
+    // the scored items in section_comments too so they round-trip into the PDF.
+    const initialObsSection = schema.sections.find((s) => s.id === 'initial_observations')
+    if (initialObsSection) {
+      const scored = sliceAnswers(schema, answers, 'initial_observations')
+      for (const it of initialObsSection.items) if (it.type === 'comments') delete scored[it.id]
+      if (Object.keys(scored).length > 0) extraComments['initial_observations'] = scored
+    }
+
     // Photos are already uploaded to storage while filling the form; their paths
     // ride along on each item's answer through sliceAnswers into the columns.
     setBusy(true)
