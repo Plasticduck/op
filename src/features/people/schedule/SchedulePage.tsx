@@ -8,6 +8,7 @@ import {
   ClipboardPaste,
   Loader2,
   Plus,
+  RefreshCw,
   Sparkles,
   Trash2,
   X,
@@ -37,6 +38,8 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { updateCompany, type ShiftTemplate } from '@/lib/queries/companySettings'
+import { isolvedRosterSync } from '@/lib/queries/isolved'
+import { fnErrorMessage } from '@/lib/fnError'
 import {
   employees as empQ,
   schedules,
@@ -44,6 +47,10 @@ import {
   type Shift,
   type TimeOffRequest,
 } from '@/lib/queries/people'
+
+// Mighty Wash account: its schedulable staff come from iSolved (synced into
+// `employees`), so the "Sync from iSolved" action only shows for this account.
+const ISOLVED_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 
 const fmtDay = (d: Date) => format(d, 'yyyy-MM-dd')
 const hoursBetween = (s: string, e: string) => {
@@ -145,6 +152,9 @@ function WeekBlock({
   const [aiError, setAiError] = useState<string | null>(null)
   const [copyBusy, setCopyBusy] = useState(false)
   const [clearBusy, setClearBusy] = useState(false)
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const isIsolvedAccount = profile?.account_id === ISOLVED_ACCOUNT_ID
   // Drag-and-drop state. `drag` describes what's being dragged (an existing
   // shift, or an employee from the row header). `dragOver` lets us highlight
   // the target cell while a drag is in progress.
@@ -260,6 +270,23 @@ function WeekBlock({
     if (!scheduleId) return
     await schedules.publish(scheduleId, !published)
     setPublished((p) => !p)
+  }
+
+  // Pull the active iSolved roster into `employees` so staff become schedulable
+  // without manual profiles, then reload this week's board.
+  const syncRoster = async () => {
+    setSyncBusy(true)
+    setSyncMsg(null)
+    const { data, error } = await isolvedRosterSync()
+    if (error || data?.error) {
+      setSyncMsg(await fnErrorMessage(error, (data ?? null) as { message?: string; error?: string } | null, 'Could not sync staff from iSolved.'))
+      setSyncBusy(false)
+      return
+    }
+    await load()
+    const d = data ?? {}
+    setSyncMsg(`Synced ${d.synced ?? 0} staff from iSolved${d.deactivated ? ` · ${d.deactivated} deactivated` : ''}.`)
+    setSyncBusy(false)
   }
 
   const copyPreviousWeek = async () => {
@@ -500,14 +527,42 @@ function WeekBlock({
             {clearBusy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
             Clear week
           </Button>
+          {isIsolvedAccount && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void syncRoster()}
+              disabled={syncBusy}
+              title="Pull active staff from iSolved so they can be scheduled at their site"
+            >
+              {syncBusy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              Sync from iSolved
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={togglePublish}>{published ? 'Unpublish' : 'Publish'}</Button>
         </div>
       </div>
 
+      {syncMsg && (
+        <div className="rounded-md border border-border bg-content px-3 py-2 text-xs text-ink-muted">{syncMsg}</div>
+      )}
+
       {loading ? (
         <p className="text-sm text-ink-muted">Loading...</p>
       ) : emps.length === 0 ? (
-        <p className="text-sm text-ink-muted">Add active employees first to build a schedule.</p>
+        <div className="flex flex-col items-start gap-2 text-sm text-ink-muted">
+          <p>
+            {isIsolvedAccount
+              ? 'No staff at this site yet. Sync from iSolved to pull this location’s active employees in as schedulable labor.'
+              : 'Add active employees first to build a schedule.'}
+          </p>
+          {isIsolvedAccount && (
+            <Button size="sm" onClick={() => void syncRoster()} disabled={syncBusy}>
+              {syncBusy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              Sync from iSolved
+            </Button>
+          )}
+        </div>
       ) : (
         <>
         <div className="rounded-md border border-accent/20 bg-accent-soft/40 px-3 py-2 text-xs text-ink-muted">

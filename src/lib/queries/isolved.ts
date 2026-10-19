@@ -66,3 +66,19 @@ export type LiveResponse = {
 }
 
 export const isolvedLive = () => supabase.functions.invoke<LiveResponse>('isolved-live', { body: {} })
+
+// Sync the active iSolved roster into the `employees` table so staff show up as
+// schedulable labor at their site (no manual profiles). Mighty Wash only; the
+// edge function is gated to MW owners/managers. Returns per-run counts.
+export type RosterSyncResponse = {
+  ok?: boolean
+  synced?: number
+  active_roster?: number
+  deactivated?: number
+  skipped?: { corporate: number; unassigned: number; unmapped: number; noName: number }
+  synced_at?: string
+  error?: string
+  message?: string
+}
+export const isolvedRosterSync = () =>
+  supabase.functions.invoke<RosterSyncResponse>('isolved-roster-sync', { body: {} })

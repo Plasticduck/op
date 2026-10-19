@@ -1960,6 +1960,7 @@ export type Database = {
           first_name: string
           hourly_rate: number | null
           id: string
+          isolved_number: string | null
           last_name: string
           location_id: string
           phone: string | null
@@ -1978,6 +1979,7 @@ export type Database = {
           first_name: string
           hourly_rate?: number | null
           id?: string
+          isolved_number?: string | null
           last_name: string
           location_id: string
           phone?: string | null
@@ -1996,6 +1998,7 @@ export type Database = {
           first_name?: string
           hourly_rate?: number | null
           id?: string
+          isolved_number?: string | null
           last_name?: string
           location_id?: string
           phone?: string | null
