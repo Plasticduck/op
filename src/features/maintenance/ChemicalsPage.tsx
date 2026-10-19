@@ -16,7 +16,7 @@ const monthLabel = (ym: string) =>
   new Date(ym + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
 // Package tiers in the order the Chemical Manager reads them, with brand colors.
-const TIERS: Array<{ key: keyof PackageCounts; label: string; accent: string; soft: string }> = [
+const TIERS: Array<{ key: 'wonder' | 'superShine' | 'mighty'; label: string; accent: string; soft: string }> = [
   { key: 'wonder', label: 'Wonder', accent: 'text-accent', soft: 'bg-accent-soft' },
   { key: 'superShine', label: 'Super Shine', accent: 'text-warn', soft: 'bg-warn-soft' },
   { key: 'mighty', label: 'Mighty Protector', accent: 'text-danger', soft: 'bg-danger-soft' },
@@ -101,13 +101,18 @@ export default function ChemicalsPage() {
                 <span className="text-sm font-medium text-ink-muted">Total (3 packages)</span>
                 <span className="text-2xl font-bold tabular-nums text-ink">{nf(data.total)}</span>
               </div>
+              {!data.flexIncluded && (
+                <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-2.5 text-xs text-warn">
+                  FlexWash sites (MW17, MW18) couldn’t be loaded this time, so they’re not in these totals. Refresh to try again.
+                </div>
+              )}
             </>
           ) : null}
 
           <p className="mt-4 text-xs text-ink-subtle">
-            Counts every time each package was used — retail washes plus member redemptions — across all sites, from the
-            POS wash ledger (the same source as the dashboards). FlexWash sites (MW17, MW18) run a separate system and
-            aren't included yet.
+            Counts every time each package was used — retail washes plus member redemptions — across all sites. DRB sites
+            come from the POS wash ledger (the same source as the dashboards); the FlexWash sites (MW17, MW18) come from
+            the FlexWash API, counted the same way as the FlexWash Sales report.
           </p>
         </div>
       </section>
