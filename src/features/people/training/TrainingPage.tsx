@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   BadgeCheck,
   ExternalLink,
+  Eye,
   GraduationCap,
   ListChecks,
   Medal,
@@ -219,10 +220,20 @@ function TrainingTab({
 }) {
   const [itemModal, setItemModal] = useState<TrainingItem | 'new' | null>(null)
   const [assignModal, setAssignModal] = useState(false)
+  const [viewing, setViewing] = useState<TrainingItem | null>(null)
 
   const toggleComplete = async (a: AssignRow) => {
     await training.setComplete(a.id, !a.completed_at, userId)
     reload()
+  }
+
+  // Open a training item: embedded pages render in the in-app viewer, plain links
+  // open in a new tab, and written items show their text in the viewer.
+  const openItem = (it?: TrainingItem | null) => {
+    if (!it) return
+    if (it.content_type === 'embed' && it.url) { setViewing(it); return }
+    if (it.url) { window.open(it.url, '_blank', 'noopener,noreferrer'); return }
+    if (it.body) { setViewing(it); return }
   }
 
   return (
@@ -249,14 +260,15 @@ function TrainingTab({
                     </div>
                     <p className="truncate text-xs text-ink-muted">
                       {it.category ?? 'Uncategorized'}
-                      {it.url ? ' · has link' : it.body ? ' · written' : ''}
+                      {it.content_type === 'embed' ? ' · embedded' : it.url ? ' · has link' : it.body ? ' · written' : ''}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    {it.url && (
-                      <a href={it.url} target="_blank" rel="noreferrer" className="text-accent hover:underline" title="Open">
-                        <ExternalLink className="size-4" />
-                      </a>
+                    {(it.url || it.body) && (
+                      <Button variant="secondary" size="sm" onClick={() => openItem(it)}>
+                        {it.content_type === 'embed' || !it.url ? <Eye className="size-4" /> : <ExternalLink className="size-4" />}
+                        {it.content_type === 'embed' || !it.url ? 'View' : 'Open'}
+                      </Button>
                     )}
                     <Button variant="secondary" size="sm" onClick={() => setItemModal(it)}>Edit</Button>
                   </div>
@@ -299,6 +311,7 @@ function TrainingTab({
               <tbody>
                 {assigns.map((a) => {
                   const overdue = !a.completed_at && a.due_date && a.due_date < new Date().toISOString().slice(0, 10)
+                  const fullItem = items.find((i) => i.id === a.training_item?.id)
                   return (
                     <tr key={a.id} className="border-t border-border">
                       {isManager && (
@@ -322,6 +335,12 @@ function TrainingTab({
                       </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {fullItem && (fullItem.url || fullItem.body) && (
+                            <Button variant="secondary" size="sm" onClick={() => openItem(fullItem)}>
+                              {fullItem.content_type === 'embed' || !fullItem.url ? <Eye className="size-4" /> : <ExternalLink className="size-4" />}
+                              {fullItem.content_type === 'embed' || !fullItem.url ? 'View' : 'Open'}
+                            </Button>
+                          )}
                           <Button variant="secondary" size="sm" onClick={() => void toggleComplete(a)}>
                             {a.completed_at ? 'Reopen' : 'Mark complete'}
                           </Button>
@@ -366,6 +385,54 @@ function TrainingTab({
           onSaved={() => { setAssignModal(false); reload() }}
         />
       )}
+      {viewing && <TrainingViewer item={viewing} onClose={() => setViewing(null)} />}
+    </div>
+  )
+}
+
+// Full-screen in-app viewer for a training item: embedded pages render in an
+// iframe; written items show their text. Esc or the backdrop closes it.
+function TrainingViewer({ item, onClose }: { item: TrainingItem; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  const isEmbed = item.content_type === 'embed' && !!item.url
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose}>
+      <div
+        className="absolute inset-2 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl sm:inset-4 lg:inset-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-ink">{item.title}</div>
+            {item.category && <div className="truncate text-xs text-ink-subtle">{item.category}</div>}
+          </div>
+          <div className="flex items-center gap-2">
+            {isEmbed && (
+              <a href={item.url!} target="_blank" rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-muted hover:bg-content hover:text-ink">
+                <ExternalLink className="size-4" /> New tab
+              </a>
+            )}
+            <button onClick={onClose}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-muted hover:bg-content hover:text-ink">
+              <X className="size-4" /> Close
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden bg-content">
+          {isEmbed ? (
+            <iframe src={item.url!} title={item.title} className="h-full w-full border-0" />
+          ) : (
+            <div className="h-full overflow-y-auto bg-card px-5 py-4">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{item.body}</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -383,6 +450,7 @@ function ItemModal({
   const [category, setCategory] = useState(item?.category ?? '')
   const [url, setUrl] = useState(item?.url ?? '')
   const [body, setBody] = useState(item?.body ?? '')
+  const [embed, setEmbed] = useState(item?.content_type === 'embed')
   const [required, setRequired] = useState(item?.required ?? false)
   const [active, setActive] = useState(item?.active ?? true)
   const [busy, setBusy] = useState(false)
@@ -394,7 +462,9 @@ function ItemModal({
       account_id: accountId,
       title: title.trim(),
       category: category.trim() || null,
-      content_type: url.trim() ? 'link' : 'text',
+      // A URL can either open in a new tab ('link') or render inside the app in a
+      // viewer ('embed'); with no URL it's a written ('text') item.
+      content_type: url.trim() ? (embed ? 'embed' : 'link') : 'text',
       url: url.trim() || null,
       body: body.trim() || null,
       required,
@@ -418,8 +488,12 @@ function ItemModal({
           <input value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls} placeholder="Safety, Equipment, Customer service..." />
         </div>
         <div>
-          <label className={labelCls}>Link (document or video)</label>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} className={inputCls} placeholder="https://..." />
+          <label className={labelCls}>Link, video, or embedded page</label>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} className={inputCls} placeholder="https://…  or  /training/your-page.html" />
+          <label className="mt-1.5 flex items-start gap-2 text-xs text-ink-muted">
+            <input type="checkbox" className="mt-0.5" checked={embed} onChange={(e) => setEmbed(e.target.checked)} />
+            <span>Show inside the app (embed). The page opens in a viewer on this page instead of a new tab — use this for a hosted course page like <span className="font-mono">/training/…</span>.</span>
+          </label>
         </div>
         <div>
           <label className={labelCls}>Or written instructions</label>
