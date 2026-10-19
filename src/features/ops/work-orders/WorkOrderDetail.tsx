@@ -8,6 +8,7 @@ import {
   Paperclip,
   Plus,
   Send,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react'
@@ -19,7 +20,9 @@ import { Select } from '@/components/ui/Select'
 import { Field } from '@/components/forms/Field'
 import { Modal } from '@/components/ui/Modal'
 import { WorkOrderProcedures } from './WorkOrderProcedures'
+import { TicketReviewPanel } from './TicketReviewPanel'
 import { useAuth } from '@/lib/auth'
+import { canReviewTicket, departmentLabel, isTicketReviewer } from '@/lib/workOrderIntake'
 import { currency } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -34,6 +37,7 @@ import {
   type WorkOrderFile,
   type WorkOrderTimeEntry,
   type WorkOrderOtherCost,
+  type WorkOrderIntake,
   PRIORITY_OPTIONS,
   WORK_TYPE_OPTIONS,
   RECURRENCE_OPTIONS,
@@ -47,7 +51,7 @@ import {
 // re-enable. Mirrors CREATE_ENABLED on WorkOrdersPage.
 const STATUS_EDIT_ENABLED: boolean = false
 
-type Detail = {
+type Detail = WorkOrderIntake & {
   id: string
   account_id: string
   location_id: string
@@ -146,6 +150,17 @@ export function WorkOrderDetail({
     )
   }
 
+  // Department tickets (submitted through intake) belong to their reviewers:
+  // status only moves once a reviewer has accepted the ticket, and only an admin
+  // may delete one. The submitter's view is read-only. Row-level security
+  // enforces the same rules; this just hides controls that would fail. Legacy
+  // and MaintainX rows stay editable only for reviewers now that every staff
+  // member can open this page.
+  const isTicket = !!d.department
+  const canReview = isTicket ? canReviewTicket(profile, d.department!, d.location_id) : false
+  const canEditStatus = statusEditOn && (isTicket ? canReview && !!d.reviewed_at : isTicketReviewer(profile))
+  const canDelete = canEditStatus && (!isTicket || profile?.role === 'owner')
+
   const partsCost = d.parts.reduce((a, p) => a + Number(p.quantity) * Number(p.unit_cost ?? 0), 0)
   const laborCost = d.time_entries.reduce((a, t) => a + (Number(t.minutes) / 60) * Number(t.hourly_rate ?? 0), 0)
   const otherCost = d.other_costs.reduce((a, c) => a + Number(c.amount), 0)
@@ -171,7 +186,7 @@ export function WorkOrderDetail({
           </div>
           <h1 className="truncate text-[17px] font-semibold text-ink">{d.title}</h1>
         </div>
-        {statusEditOn && (
+        {canEditStatus && (
           <Button
             variant={d.status === 'done' ? 'secondary' : 'primary'}
             onClick={() => void markDone()}
@@ -182,7 +197,7 @@ export function WorkOrderDetail({
             {d.status === 'done' ? 'Reopen' : 'Mark as Done'}
           </Button>
         )}
-        {statusEditOn && (
+        {canDelete && (
           <div className="relative">
             <button
               type="button"
@@ -212,7 +227,9 @@ export function WorkOrderDetail({
             shown but cannot be changed from Operator. */}
         <section className="mb-4">
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">Status</div>
-          {statusEditOn ? (
+          {isTicket && !d.reviewed_at ? (
+            <Badge tone="warn">Awaiting review</Badge>
+          ) : canEditStatus ? (
             <div className="flex flex-wrap gap-1.5">
               {STATUS_OPTIONS.filter((s) => s.value !== 'skipped').map((s) => (
                 <StatusButton
@@ -236,6 +253,16 @@ export function WorkOrderDetail({
             </Badge>
           )}
         </section>
+
+        {isTicket && canReview && <TicketReviewPanel key={d.updated_at} ticket={d} onSaved={() => { void load(); onChanged() }} />}
+        {isTicket && !canReview && (
+          <p className="mb-4 rounded-md border border-border bg-content/40 px-3 py-2 text-sm text-ink-muted">
+            Submitted to {departmentLabel(d.department)}.{' '}
+            {d.reviewed_at
+              ? `Accepted${d.reviewed_by_name ? ` by ${d.reviewed_by_name}` : ''} on ${format(new Date(d.reviewed_at), 'MM/dd/yyyy')}.`
+              : 'Waiting for the team to review it.'}
+          </p>
+        )}
 
         {/* Photos */}
         <FilesSection
@@ -263,7 +290,15 @@ export function WorkOrderDetail({
               {d.priority === 'none' ? 'None' : d.priority[0].toUpperCase() + d.priority.slice(1)}
             </Badge>
           } />
-          <FieldRow label="Work Type" value={WORK_TYPE_OPTIONS.find((w) => w.value === d.work_type)?.label ?? d.work_type} />
+          {isTicket && <FieldRow label="Department" value={departmentLabel(d.department)} />}
+          <FieldRow label="Work Type" value={
+            isTicket && d.work_type_source === 'default' ? 'Not classified yet' : (
+              <span className="inline-flex items-center gap-1">
+                {WORK_TYPE_OPTIONS.find((w) => w.value === d.work_type)?.label ?? d.work_type}
+                {d.work_type_source === 'ai' && <Sparkles className="size-3 text-ink-subtle" aria-label="Suggested by AI" />}
+              </span>
+            )
+          } />
           <FieldRow label="Recurrence" value={RECURRENCE_OPTIONS.find((r) => r.value === d.recurrence)?.label ?? d.recurrence} />
           <FieldRow label="Due Date" value={d.due_at ? format(new Date(d.due_at), 'MM/dd/yyyy') : '—'} />
           <FieldRow label="Start Date" value={d.start_at ? format(new Date(d.start_at), 'MM/dd/yyyy') : '—'} />

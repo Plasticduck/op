@@ -387,7 +387,7 @@ function PhotoPickerBlock({ photos, onPick, onRemove }: {
 
 // ---- Simple multi-select with chips --------------------------------------
 
-function MultiPicker({
+export function MultiPicker({
   label, placeholder, options, selectedIds, onChange,
 }: {
   label: string

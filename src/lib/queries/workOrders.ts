@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { fnErrorMessage } from '@/lib/fnError'
 import type { Database } from '@/lib/database.types'
+import type { Department } from '@/lib/workOrderIntake'
 
 // Mighty Wash uses MaintainX as its work-order system of record; its work
 // orders are created/edited through the maintainx-workorder edge function so
@@ -25,11 +26,22 @@ export type WorkOrderStatus = 'open' | 'on_hold' | 'in_progress' | 'done' | 'ski
 export type WorkOrderPriority = 'none' | 'low' | 'medium' | 'high'
 export type WorkOrderWorkType = 'reactive' | 'preventive' | 'inspection' | 'project' | 'other'
 export type WorkOrderRecurrence = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom'
+export type WorkTypeSource = 'default' | 'ai' | 'manual'
+
+// Intake columns from migration 0155, narrowed from the generated `string` types
+// to the values their check constraints allow.
+export type WorkOrderIntake = {
+  department: Department | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  reviewed_by_name: string | null
+  work_type_source: WorkTypeSource
+}
 
 // Hydrated row used by the list view: includes the related assignee names,
 // category labels, the equipment name, and counts of photos / comments for
 // row decorations.
-export type WorkOrderRow = WorkOrder & {
+export type WorkOrderRow = WorkOrder & WorkOrderIntake & {
   location: { id: string; name: string } | null
   equipment: { id: string; name: string } | null
   assignees: Array<{ user_id: string; user_name: string }>
@@ -115,6 +127,25 @@ export const workOrders = {
   update: (id: string, patch: WorkOrderUpdate) =>
     supabase.from('work_orders').update(patch).eq('id', id).select().single(),
 
+  // --- Intake (migration 0155) -------------------------------------------
+  // A staff submission. Lands in its department's New queue; the classifier
+  // then replaces the placeholder work type and title.
+  submitTicket: (row: Pick<WorkOrderInsert, 'account_id' | 'location_id' | 'title' | 'description' | 'priority' | 'requested_by' | 'requested_by_name' | 'created_by' | 'created_by_name'> & { department: Department }) =>
+    supabase
+      .from('work_orders')
+      .insert({ ...row, work_type: 'reactive', work_type_source: 'default' })
+      .select()
+      .single(),
+
+  // Reviewer triage edits. Setting reviewed_at moves the ticket from the New
+  // queue into Work Orders.
+  reviewTicket: (id: string, patch: WorkOrderUpdate & Partial<WorkOrderIntake>) =>
+    supabase.from('work_orders').update(patch).eq('id', id),
+
+  // Fire-and-forget: classification is best-effort and never blocks submission.
+  classifyTicket: (id: string) =>
+    supabase.functions.invoke('classify-work-order', { body: { work_order_id: id } }),
+
   setStatus: (id: string, status: WorkOrderStatus) =>
     supabase.from('work_orders').update({ status }).eq('id', id),
 
@@ -167,7 +198,7 @@ export const workOrders = {
     supabase.from('work_order_other_costs').insert(row).select().single(),
   removeOtherCost: (id: string) => supabase.from('work_order_other_costs').delete().eq('id', id),
 
-  uploadFile: async (accountId: string, workOrderId: string, file: File, kind: 'photo' | 'file') => {
+  uploadFile: async (accountId: string, workOrderId: string, file: File, kind: 'photo' | 'video' | 'file') => {
     const ext = file.name.split('.').pop()?.toLowerCase() || 'bin'
     const path = `${accountId}/${workOrderId}/${crypto.randomUUID()}.${ext}`
     const { error: upErr } = await supabase.storage

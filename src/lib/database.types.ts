@@ -6650,6 +6650,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           created_by_name: string | null
+          department: string | null
           description: string | null
           due_at: string | null
           equipment_id: string | null
@@ -6667,11 +6668,15 @@ export type Database = {
           recurrence_unit: string | null
           requested_by: string | null
           requested_by_name: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewed_by_name: string | null
           start_at: string | null
           status: string
           title: string
           updated_at: string
           work_type: string
+          work_type_source: string
         }
         Insert: {
           account_id: string
@@ -6681,6 +6686,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           created_by_name?: string | null
+          department?: string | null
           description?: string | null
           due_at?: string | null
           equipment_id?: string | null
@@ -6698,11 +6704,15 @@ export type Database = {
           recurrence_unit?: string | null
           requested_by?: string | null
           requested_by_name?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewed_by_name?: string | null
           start_at?: string | null
           status?: string
           title: string
           updated_at?: string
           work_type?: string
+          work_type_source?: string
         }
         Update: {
           account_id?: string
@@ -6712,6 +6722,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           created_by_name?: string | null
+          department?: string | null
           description?: string | null
           due_at?: string | null
           equipment_id?: string | null
@@ -6729,11 +6740,15 @@ export type Database = {
           recurrence_unit?: string | null
           requested_by?: string | null
           requested_by_name?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewed_by_name?: string | null
           start_at?: string | null
           status?: string
           title?: string
           updated_at?: string
           work_type?: string
+          work_type_source?: string
         }
         Relationships: [
           {
@@ -6788,6 +6803,13 @@ export type Database = {
           {
             foreignKeyName: "work_orders_requested_by_fkey"
             columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_reviewed_by_fkey"
+            columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -7018,6 +7040,10 @@ export type Database = {
       auth_has_location: { Args: { loc: string }; Returns: boolean }
       auth_in_conversation: { Args: { conv: string }; Returns: boolean }
       auth_is_manager_plus: { Args: never; Returns: boolean }
+      auth_is_wo_reviewer: {
+        Args: { dept: string; loc: string }
+        Returns: boolean
+      }
       auth_location_ids: { Args: never; Returns: string[] }
       auth_role: { Args: never; Returns: string }
       auth_role_category: { Args: never; Returns: string }

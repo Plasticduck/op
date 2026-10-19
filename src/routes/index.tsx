@@ -216,8 +216,10 @@ export const router = createBrowserRouter([
           { path: 'checklists/templates/:id', element: mgr(<ChecklistDetailPage />) },
           { path: 'work-orders', element: tech(<WorkOrdersPage />) },
           { path: 'work-orders/:id', element: tech(<WorkOrdersPage />) },
-          { path: 'work-orders-new', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<WorkOrdersNewPage />)}</RequireEmails> },
-          { path: 'work-orders-new/:id', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<WorkOrdersNewPage />)}</RequireEmails> },
+          // Open to all staff: anyone can submit and track their own tickets;
+          // reviewer queues are gated by role inside the page and by RLS.
+          { path: 'work-orders-new', element: s(<WorkOrdersNewPage />) },
+          { path: 'work-orders-new/:id', element: s(<WorkOrdersNewPage />) },
           { path: 'categories', element: tech(<CategoriesPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },
           { path: 'assets', element: tech(<AssetsPage />) },

@@ -414,8 +414,8 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/work-orders-new',
         label: 'Work Orders NEW',
         icon: ListChecks,
-        roles: ['owner', 'manager', 'technician'],
-        emails: ['kevan@washlyfe.com'], // restricted to Kevan for now
+        // Everyone can submit tickets and see their own; reviewers get the queues.
+        roles: ['owner', 'manager', 'employee', 'technician'],
       },
       {
         to: '/app/reports',

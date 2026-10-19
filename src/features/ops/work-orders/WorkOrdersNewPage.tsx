@@ -21,7 +21,15 @@ import {
   type WorkOrderPriority,
   type WorkOrderUpdate,
 } from '@/lib/queries/workOrders'
-import { NewWorkOrderModal } from './NewWorkOrderModal'
+import {
+  DEPARTMENT_OPTIONS,
+  canReviewTicket,
+  departmentLabel,
+  departmentOf,
+  isTicketReviewer,
+  type Department,
+} from '@/lib/workOrderIntake'
+import { SubmitWorkOrderModal } from './SubmitWorkOrderModal'
 import { WorkOrderDetail } from './WorkOrderDetail'
 
 // "Work Orders NEW" — a comprehensive, MaintainX-style work-order platform built
@@ -34,6 +42,12 @@ type ViewMode = 'list' | 'table' | 'board'
 type DueFilter = 'all' | 'overdue' | 'today' | 'week'
 type SortKey = 'updated' | 'due' | 'priority' | 'number' | 'title' | 'status' | 'site'
 type SortDir = 'asc' | 'desc'
+// Which tab: accepted work ("Work Orders"), tickets awaiting triage ("New"), or
+// the signed-in person's own submissions. Mirrors Invoice Approval's tabs.
+type Scope = 'all' | 'new' | 'mine'
+
+// A department ticket a reviewer hasn't accepted yet (see migration 0155).
+const isUntriaged = (w: WorkOrderRow) => !!w.department && !w.reviewed_at
 
 const PRIORITY_RANK: Record<WorkOrderPriority, number> = { high: 0, medium: 1, low: 2, none: 3 }
 const STATUS_RANK: Record<WorkOrderStatus, number> = { open: 0, in_progress: 1, on_hold: 2, done: 3, skipped: 4 }
@@ -45,6 +59,7 @@ const STATUS_TONE: Record<WorkOrderStatus, string> = {
   done: 'bg-ok-soft text-ok border-ok/30',
   skipped: 'bg-danger-soft text-danger border-danger/30',
 }
+const AWAITING_TONE = 'bg-warn-soft text-warn border-warn/30'
 const PRIORITY_TONE: Record<WorkOrderPriority, string> = {
   none: 'text-ink-subtle',
   low: 'text-ok',
@@ -94,6 +109,12 @@ export default function WorkOrdersNewPage() {
   const [sortKey, setSortKey] = useState<SortKey>('updated')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
+  // Staff who don't review any department only ever see their own submissions.
+  const reviewer = isTicketReviewer(profile)
+  const [scope, setScope] = useState<Scope>(() => (isTicketReviewer(profile) ? 'all' : 'mine'))
+  const scopeEff: Scope = reviewer ? scope : 'mine'
+  const [dept, setDept] = useState<'all' | Department>('all')
+
   const load = useCallback(async () => {
     setLoading(true)
     const { data } = await workOrders.list({ locationId: activeLocation?.id ?? null })
@@ -118,11 +139,26 @@ export default function WorkOrdersNewPage() {
   const myId = profile?.id ?? ''
   const now = Date.now()
 
-  // KPIs across every loaded work order (before filtering).
+  // Row-level security already limits what loads; these split it into tabs.
+  // "Work Orders" also keeps MaintainX/legacy rows (no department).
+  const partitions = useMemo(() => {
+    const reviews = (w: WorkOrderRow) => !w.department || canReviewTicket(profile, w.department, w.location_id)
+    return {
+      all: rows.filter((w) => !isUntriaged(w) && reviews(w)),
+      new: rows.filter((w) => isUntriaged(w) && reviews(w)),
+      mine: rows.filter((w) => w.requested_by === myId),
+    }
+  }, [rows, profile, myId])
+  const scopedRows = useMemo(
+    () => (dept === 'all' ? partitions[scopeEff] : partitions[scopeEff].filter((w) => departmentOf(w.department) === dept)),
+    [partitions, scopeEff, dept],
+  )
+
+  // KPIs across the tab's work orders (before the toolbar filters).
   const kpis = useMemo(() => {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()
     let open = 0, overdue = 0, dueWeek = 0, doneMonth = 0, highOpen = 0
-    for (const w of rows) {
+    for (const w of scopedRows) {
       const openish = isOpenish(w.status)
       if (openish) open++
       if (openish && w.priority === 'high') highOpen++
@@ -137,14 +173,14 @@ export default function WorkOrdersNewPage() {
       }
     }
     return { open, overdue, dueWeek, doneMonth, highOpen }
-  }, [rows, now])
+  }, [scopedRows, now])
 
   // Assignees present in the data, for the assignee filter dropdown.
   const assigneeOptions = useMemo(() => {
     const m = new Map<string, string>()
-    for (const w of rows) for (const a of w.assignees) m.set(a.user_id, a.user_name)
+    for (const w of scopedRows) for (const a of w.assignees) m.set(a.user_id, a.user_name)
     return [...m.entries()].map(([user_id, user_name]) => ({ user_id, user_name })).sort((a, b) => a.user_name.localeCompare(b.user_name))
-  }, [rows])
+  }, [scopedRows])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -161,7 +197,7 @@ export default function WorkOrdersNewPage() {
       }
       return sortDir === 'asc' ? n : -n
     }
-    return rows
+    return scopedRows
       .filter((w) => {
         if (q && !w.title.toLowerCase().includes(q) && !String(w.number).includes(q) && !(w.description ?? '').toLowerCase().includes(q)) return false
         if (statuses.size > 0 && !statuses.has(w.status as WorkOrderStatus)) return false
@@ -180,15 +216,16 @@ export default function WorkOrdersNewPage() {
         return true
       })
       .sort(compare)
-  }, [rows, search, statuses, priorities, workType, assignee, due, sortKey, sortDir, myId, now])
+  }, [scopedRows, search, statuses, priorities, workType, assignee, due, sortKey, sortDir, myId, now])
 
   const activeFilterCount =
     (statuses.size) + (priorities.size) + (workType !== 'all' ? 1 : 0) +
-    (assignee !== 'all' ? 1 : 0) + (due !== 'all' ? 1 : 0) + (search.trim() ? 1 : 0)
+    (assignee !== 'all' ? 1 : 0) + (due !== 'all' ? 1 : 0) + (search.trim() ? 1 : 0) +
+    (dept !== 'all' ? 1 : 0)
 
   const clearFilters = () => {
     setSearch(''); setStatuses(new Set()); setPriorities(new Set())
-    setWorkType('all'); setAssignee('all'); setDue('all')
+    setWorkType('all'); setAssignee('all'); setDue('all'); setDept('all')
   }
 
   const toggleStatus = (s: WorkOrderStatus) =>
@@ -223,16 +260,50 @@ export default function WorkOrdersNewPage() {
 
   const openWo = (id: string) => navigate(`/app/work-orders-new/${id}`)
 
+  // The board drags work between statuses, so it's only offered for accepted
+  // work: New tickets must be accepted first, and submitters can't edit.
+  const viewEff: ViewMode = view === 'board' && scopeEff !== 'all' ? 'list' : view
+
+  const tabs: Array<[Scope, string, number]> = [
+    ['all', 'Work Orders', partitions.all.length],
+    ['new', 'New', partitions.new.length],
+    ['mine', 'My Submissions', partitions.mine.length],
+  ]
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 px-4 pt-4 lg:px-8">
         <PageHeader
           title="Work Orders NEW"
-          subtitle="Comprehensive work-order management — assign, schedule, track, and complete."
-          actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> New Work Order</Button>}
+          subtitle={reviewer
+            ? 'Triage submitted tickets, then assign, schedule, and track the work.'
+            : 'Submit a work order and follow its progress.'}
+          actions={<Button onClick={() => setCreating(true)}><Plus className="size-4" /> Submit Work Order</Button>}
         />
 
+        {reviewer && (
+          <div className="mt-3 flex items-center gap-6 border-b border-border">
+            {tabs.map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setScope(key)}
+                className={cn(
+                  '-mb-px inline-flex items-center gap-1.5 border-b-2 pb-2 pt-1 text-sm font-medium transition',
+                  scopeEff === key ? 'border-accent text-ink' : 'border-transparent text-ink-muted hover:text-ink',
+                )}
+              >
+                {label}
+                <span className={cn('rounded-full px-1.5 text-[11px]', key === 'new' && count > 0 ? 'bg-warn-soft text-warn' : 'bg-content text-ink-subtle')}>
+                  {count}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* KPI header */}
+        {scopeEff === 'all' && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <KpiCard icon={<ListChecks className="size-4" />} label="Open" value={kpis.open} tone="accent"
             onClick={() => { clearFilters(); setStatuses(new Set(['open', 'in_progress', 'on_hold'])) }} />
@@ -245,6 +316,7 @@ export default function WorkOrdersNewPage() {
           <KpiCard icon={<CheckCircle2 className="size-4" />} label="Done this month" value={kpis.doneMonth} tone="ok"
             onClick={() => { clearFilters(); setStatuses(new Set(['done'])) }} />
         </div>
+        )}
 
         {/* Toolbar */}
         <div className="mt-3 flex flex-col gap-2">
@@ -254,9 +326,11 @@ export default function WorkOrdersNewPage() {
               <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title, number, or description…" className="h-9 pl-8 text-sm" />
             </div>
             <div className="flex items-center gap-1 rounded-lg border border-border bg-content p-0.5">
-              <ViewTab active={view === 'list'} onClick={() => setView('list')} icon={<LayoutList className="size-4" />} label="List" />
-              <ViewTab active={view === 'table'} onClick={() => setView('table')} icon={<Table2 className="size-4" />} label="Table" />
-              <ViewTab active={view === 'board'} onClick={() => setView('board')} icon={<Columns3 className="size-4" />} label="Board" />
+              <ViewTab active={viewEff === 'list'} onClick={() => setView('list')} icon={<LayoutList className="size-4" />} label="List" />
+              <ViewTab active={viewEff === 'table'} onClick={() => setView('table')} icon={<Table2 className="size-4" />} label="Table" />
+              {scopeEff === 'all' && (
+                <ViewTab active={viewEff === 'board'} onClick={() => setView('board')} icon={<Columns3 className="size-4" />} label="Board" />
+              )}
             </div>
           </div>
 
@@ -294,7 +368,16 @@ export default function WorkOrdersNewPage() {
                 {WORK_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </label>
-            {view !== 'board' && (
+            {reviewer && (
+              <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+                <span className="text-[11px] uppercase tracking-wider text-ink-subtle">Department</span>
+                <select value={dept} onChange={(e) => setDept(e.target.value as 'all' | Department)} className="rounded-lg border border-border bg-content py-1.5 pl-2.5 pr-8 text-sm leading-normal text-ink">
+                  <option value="all">All</option>
+                  {DEPARTMENT_OPTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select>
+              </label>
+            )}
+            {viewEff !== 'board' && (
               <label className="flex items-center gap-1.5 text-xs text-ink-muted">
                 <span className="text-[11px] uppercase tracking-wider text-ink-subtle">Sort</span>
                 <select value={sortKey} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg border border-border bg-content py-1.5 pl-2.5 pr-8 text-sm leading-normal text-ink">
@@ -322,11 +405,17 @@ export default function WorkOrdersNewPage() {
           <p className="px-1 py-6 text-sm text-ink-muted">Loading work orders…</p>
         ) : filtered.length === 0 ? (
           <div className="grid h-full place-items-center px-4 text-center text-sm text-ink-muted">
-            No work orders match these filters.
+            {scopedRows.length > 0
+              ? 'No work orders match these filters.'
+              : scopeEff === 'new'
+                ? 'Nothing is waiting for review.'
+                : scopeEff === 'mine'
+                  ? "You haven't submitted any work orders yet."
+                  : 'No work orders yet.'}
           </div>
-        ) : view === 'list' ? (
+        ) : viewEff === 'list' ? (
           <ListView rows={filtered} now={now} onOpen={openWo} />
-        ) : view === 'table' ? (
+        ) : viewEff === 'table' ? (
           <TableView rows={filtered} now={now} onOpen={openWo} sortKey={sortKey} sortDir={sortDir} onSort={setSort} />
         ) : (
           <BoardView rows={filtered} now={now} onOpen={openWo} onMove={changeStatus} />
@@ -357,9 +446,9 @@ export default function WorkOrdersNewPage() {
       )}
 
       {creating && (
-        <NewWorkOrderModal
+        <SubmitWorkOrderModal
           onClose={() => setCreating(false)}
-          onCreated={(id) => { setCreating(false); void load(); navigate(`/app/work-orders-new/${id}`) }}
+          onCreated={(id) => { setCreating(false); setScope('mine'); void load(); navigate(`/app/work-orders-new/${id}`) }}
         />
       )}
     </div>
@@ -461,15 +550,19 @@ function MetaRow({ wo }: { wo: WorkOrderRow }) {
 // ---------- List view ------------------------------------------------------
 
 function ListView({ rows, now, onOpen }: { rows: WorkOrderRow[]; now: number; onOpen: (id: string) => void }) {
-  // Group by status in a sensible order.
-  const groups = BOARD_COLUMNS.concat('skipped' as WorkOrderStatus)
-    .map((s) => ({ status: s, items: rows.filter((r) => r.status === s) }))
-    .filter((g) => g.items.length > 0)
+  // Untriaged tickets first, then accepted work grouped by status.
+  const awaiting = rows.filter(isUntriaged)
+  const groups = [
+    ...(awaiting.length > 0 ? [{ key: 'awaiting', title: 'Awaiting review', tone: AWAITING_TONE, items: awaiting }] : []),
+    ...BOARD_COLUMNS.concat('skipped' as WorkOrderStatus)
+      .map((s) => ({ key: s, title: STATUS_LABEL(s), tone: STATUS_TONE[s], items: rows.filter((r) => !isUntriaged(r) && r.status === s) }))
+      .filter((g) => g.items.length > 0),
+  ]
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl space-y-4">
         {groups.map((g) => (
-          <Section key={g.status} title={STATUS_LABEL(g.status)} count={g.items.length} status={g.status}>
+          <Section key={g.key} title={g.title} count={g.items.length} tone={g.tone}>
             <div className="divide-y divide-border rounded-xl border border-border bg-card">
               {g.items.map((w) => (
                 <button key={w.id} onClick={() => onOpen(w.id)} className="flex w-full items-start gap-3 px-3 py-3 text-left transition hover:bg-content">
@@ -482,6 +575,7 @@ function ListView({ rows, now, onOpen }: { rows: WorkOrderRow[]; now: number; on
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-subtle">
                       {w.location && <span className="truncate">{w.location.name}</span>}
                       {w.equipment && <><span>·</span><span className="truncate">{w.equipment.name}</span></>}
+                      {w.department && <><span>·</span><span>{departmentLabel(w.department)}</span></>}
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2">
                       <DueBadge due_at={w.due_at} status={w.status} now={now} />
@@ -499,13 +593,13 @@ function ListView({ rows, now, onOpen }: { rows: WorkOrderRow[]; now: number; on
   )
 }
 
-function Section({ title, count, status, children }: { title: string; count: number; status: WorkOrderStatus; children: React.ReactNode }) {
+function Section({ title, count, tone, children }: { title: string; count: number; tone: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(true)
   return (
     <div>
       <button onClick={() => setOpen((v) => !v)} className="mb-1.5 flex w-full items-center gap-2 text-left">
         <ChevronDown className={cn('size-4 text-ink-subtle transition', open ? '' : '-rotate-90')} />
-        <span className={cn('rounded border px-1.5 py-0.5 text-[11px] font-semibold', STATUS_TONE[status])}>{title}</span>
+        <span className={cn('rounded border px-1.5 py-0.5 text-[11px] font-semibold', tone)}>{title}</span>
         <span className="text-xs text-ink-subtle">{count}</span>
       </button>
       {open && children}
@@ -556,7 +650,11 @@ function TableView({ rows, now, onOpen, sortKey, sortDir, onSort }: {
             <tr key={w.id} onClick={() => onOpen(w.id)} className="cursor-pointer transition hover:bg-content">
               <td className="px-3 py-2 text-[11px] text-ink-subtle tabular-nums">#{w.number}</td>
               <td className="px-3 py-2"><div className="flex items-center gap-2"><PriorityDot p={w.priority as WorkOrderPriority} /><span className="font-medium text-ink">{w.title}</span></div></td>
-              <td className="px-3 py-2"><span className={cn('rounded border px-1.5 py-0.5 text-[10px] font-medium', STATUS_TONE[w.status as WorkOrderStatus])}>{STATUS_LABEL(w.status as WorkOrderStatus)}</span></td>
+              <td className="px-3 py-2">
+                {isUntriaged(w)
+                  ? <span className={cn('rounded border px-1.5 py-0.5 text-[10px] font-medium', AWAITING_TONE)}>Awaiting review</span>
+                  : <span className={cn('rounded border px-1.5 py-0.5 text-[10px] font-medium', STATUS_TONE[w.status as WorkOrderStatus])}>{STATUS_LABEL(w.status as WorkOrderStatus)}</span>}
+              </td>
               <td className={cn('px-3 py-2 text-[12px] font-medium', PRIORITY_TONE[w.priority as WorkOrderPriority])}>{PRIORITY_LABEL(w.priority as WorkOrderPriority)}</td>
               <td className="px-3 py-2 text-ink-muted">{w.location?.name ?? '—'}</td>
               <td className="px-3 py-2 text-ink-muted">{w.equipment?.name ?? '—'}</td>
