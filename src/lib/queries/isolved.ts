@@ -67,6 +67,20 @@ export type LiveResponse = {
 
 export const isolvedLive = () => supabase.functions.invoke<LiveResponse>('isolved-live', { body: {} })
 
+// iSolved worked hours per employee for one site over a date range (Tips NEW).
+export type TipsHoursEmployee = { number: string; name: string; hours: number }
+export type TipsHoursResponse = {
+  ok?: boolean
+  site?: string
+  employees?: TipsHoursEmployee[]
+  totalHours?: number
+  days?: number
+  error?: string
+  message?: string
+}
+export const tipsHours = (start: string, end: string, site: string) =>
+  supabase.functions.invoke<TipsHoursResponse>('tips-hours', { body: { start, end, site } })
+
 // Sync the active iSolved roster into the `employees` table so staff show up as
 // schedulable labor at their site (no manual profiles). Mighty Wash only; the
 // edge function is gated to MW owners/managers. Returns per-run counts.

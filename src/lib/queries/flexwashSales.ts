@@ -134,6 +134,18 @@ const CLASS_LABEL: Record<string, string> = {
 const CLASS_ORDER = ['membershipsSoldNew', 'membershipsRebilled', 'memberWashes', 'fleetWashes', 'singleWashes', 'otherWashes', 'miscellaneous']
 
 export const flexwashSales = {
+  // Total tips collected (dollars) for one or more FlexWash sites over a date
+  // range, from the accounting endpoint (tipAmount, in cents). Used by Tips NEW.
+  tips: async (carWashIds: string[], start: string, end: string): Promise<number> => {
+    const data = await flexApi('/external/accounting/get-accounting', { carWashIds, dateRange: { start, end } })
+    let cents = 0
+    for (const cw of (data?.accounting ?? []) as Any[])
+      for (const pg of (cw.payoutGroups ?? []) as Any[])
+        for (const dt of (pg.dates ?? []) as Any[])
+          cents += Number((dt.accounting ?? {}).tipAmount) || 0
+    return cents / 100
+  },
+
   // The FlexWash sites for this account (manager+ only, per RLS).
   sites: async (): Promise<FlexSite[]> => {
     const { data } = await supabase

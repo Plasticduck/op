@@ -506,6 +506,13 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
+        to: '/app/tips-new',
+        label: 'Tips NEW',
+        icon: Banknote,
+        roles: ['owner', 'manager'],
+        emails: ['kevan@washlyfe.com'],
+      },
+      {
         to: '/app/contacts',
         label: 'Contacts',
         icon: BookUser,

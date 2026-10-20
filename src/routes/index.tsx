@@ -151,6 +151,7 @@ const MessagesPage = lz(() => import('@/features/messages/MessagesPage'))
 const TipPage = lz(() => import('@/features/tips/TipPage'))
 const TipThanksPage = lz(() => import('@/features/tips/TipPage').then((m) => ({ default: m.TipThanksPage })))
 const TipsAdminPage = lz(() => import('@/features/tips/TipsAdminPage'))
+const TipsNewPage = lz(() => import('@/features/tips/TipsNewPage'))
 
 const s = (el: ReactNode) => <Suspense fallback={<RouteProgress />}>{el}</Suspense>
 const mgr = (el: ReactNode) => (
@@ -291,6 +292,7 @@ export const router = createBrowserRouter([
           { path: 'lube-house-accounts', element: mgr(<HouseAccountsPage />) },
           { path: 'messages', element: s(<MessagesPage />) },
           { path: 'tips', element: mgr(<TipsAdminPage />) },
+          { path: 'tips-new', element: mgr(<TipsNewPage />) },
           { path: 'messages/:conversationId', element: s(<MessagesPage />) },
           { path: 'breaks', element: tech(<BreaksPage />) },
 
