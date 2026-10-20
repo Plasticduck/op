@@ -1,8 +1,10 @@
 // tips-hours — Supabase Edge Function (Deno).
 // Returns iSolved WORKED hours per employee for one site over a date range, for
 // the "Tips NEW" page (hours-weighted tip distribution). Worked hours = all
-// timecard pay items except PTO. Only name + hours leave the function. Mighty
-// Wash only. Auth: service-role (cron/test) or a MW owner/manager.
+// timecard pay items except PTO. SALARIED staff are excluded — the tip pool
+// replenishes an hourly pay reduction, so salaried employees are not part of it;
+// payType comes from the employee roster. Only name + hours leave the function.
+// Mighty Wash only. Auth: service-role (cron/test) or a MW owner/manager.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -103,17 +105,52 @@ Deno.serve(async (req) => {
         token = await getToken(base, cid, secret)
         res = await fetch(pageUrl, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } })
       }
-      if (!res.ok) throw new Error(`isolved ${res.status}`)
+      if (!res.ok) throw new Error(`isolved ${res.status} ${(await res.text()).slice(0, 180)}`)
       return await res.json()
     }
+    // iSolved returns 404 (not an empty page) when you page past the last page at
+    // some page sizes, so a 404 after page 0 means "no more pages"; a 404 on page
+    // 0 is a real error. Page at 100 to match the Labor Data function, which is
+    // proven in production (larger sizes are unreliable).
+    const PAGE_SIZE = 100
+    const isEndOf404 = (e: unknown, page: number) =>
+      page > 0 && e instanceof Error && /^isolved 404/.test(e.message)
+
+    // Roster first: collect salaried employees so they can be excluded from the
+    // tip pool. payType is keyed by both employeeNumber and id (the timecard can
+    // carry either), matching the Labor Data function's salaried detection. A
+    // roster failure is non-fatal: hours are still returned (salaried just aren't
+    // filtered out) and the problem is reported in rosterError.
+    const salaried = new Set<string>()
+    let rosterError: string | null = null
+    try {
+      for (let page = 0; page < 200; page++) {
+        let d: Any
+        try { d = await getJson(`${base}/api/clients/${client}/legals/${legal}/employees?pageSize=${PAGE_SIZE}&page=${page}`) }
+        catch (e) { if (isEndOf404(e, page)) break; throw e }
+        const results = (d.results ?? []) as Any[]
+        if (results.length === 0) break
+        for (const e of results) {
+          if (String(e.payType ?? '') !== 'Salary') continue
+          if (e.employeeNumber != null) salaried.add(String(e.employeeNumber))
+          if (e.id != null) salaried.add('id:' + String(e.id))
+        }
+      }
+    } catch (e) {
+      rosterError = e instanceof Error ? e.message : String(e)
+    }
+    const isSalaried = (r: Any) =>
+      salaried.has(String(r.employeeNumber ?? '\u0000')) || salaried.has('id:' + String(r.employeeId ?? '\u0000'))
 
     const emps = new Map<string, { number: string; name: string; hours: number }>()
-    const PAGE_SIZE = 200
-    for (let page = 0; page < 200; page++) {
-      const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${start}&endDate=${end}&pageSize=${PAGE_SIZE}&page=${page}`)
+    for (let page = 0; page < 400; page++) {
+      let d: Any
+      try { d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${start}&endDate=${end}&pageSize=${PAGE_SIZE}&page=${page}`) }
+      catch (e) { if (isEndOf404(e, page)) break; throw e }
       const results = (d.results ?? []) as Any[]
       if (results.length === 0) break
       for (const r of results) {
+        if (isSalaried(r)) continue
         const number = String(r.employeeNumber ?? r.employeeId ?? '')
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || number
         for (const t of r.timecardData ?? []) {
@@ -136,7 +173,7 @@ Deno.serve(async (req) => {
       .filter((e) => e.hours > 0)
       .sort((a, b) => b.hours - a.hours)
     const totalHours = Math.round(employees.reduce((a, e) => a + e.hours, 0) * 100) / 100
-    return json({ ok: true, site: targetSite, employees, totalHours, days }, 200, origin)
+    return json({ ok: true, site: targetSite, employees, totalHours, days, salariedExcluded: salaried.size, rosterError }, 200, origin)
   } catch (e) {
     return json({ error: 'fetch_failed', message: e instanceof Error ? e.message : String(e) }, 500, origin)
   }

@@ -75,6 +75,8 @@ export type TipsHoursResponse = {
   employees?: TipsHoursEmployee[]
   totalHours?: number
   days?: number
+  salariedExcluded?: number
+  rosterError?: string | null
   error?: string
   message?: string
 }
