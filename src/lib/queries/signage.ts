@@ -166,7 +166,7 @@ export const signage = {
     supabase.functions.invoke('signage-request-email', { body: { request_id: requestId } }),
 
   // Update an order's status (and tracking number). Admin tracker only.
-  updateStatus: (id: string, patch: { status?: string; tracking_number?: string | null; status_updated_at?: string }) =>
+  updateStatus: (id: string, patch: { status?: string; tracking_number?: string | null; status_updated_at?: string; quantity_completed?: number }) =>
     supabase.from('signage_requests').update(patch).eq('id', id),
 
   // Delete an order (admin tracker only; RLS also gates to manager+).

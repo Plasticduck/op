@@ -44,6 +44,11 @@ const siteLabelOf = (r: Row) => (r.location_id === null ? 'All sites' : r.locati
 const itemLabelOf = (r: Row) => r.title || r.artwork_name || r.sign_category || 'Untitled item'
 const orderedByOf = (r: Row) =>
   r.first_name || r.last_name ? `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim() : r.requested_by?.name ?? '—'
+// Partial fulfillment: how many units of an order are done (capped at the
+// ordered quantity) and how many are still left to make.
+const doneOf = (r: Row) => Math.min(Math.max(Number(r.quantity_completed ?? 0), 0), Number(r.quantity))
+const leftOf = (r: Row) => Math.max(Number(r.quantity) - doneOf(r), 0)
+const isPartial = (r: Row) => doneOf(r) > 0 && doneOf(r) < Number(r.quantity)
 function sizeText(r: Row): string {
   if (r.size_option) return `${r.size_option}${r.sided ? ` · ${r.sided === 'double' ? 'Double' : 'Single'} sided` : ''}`
   if (r.width && r.height) return `${r.width} x ${r.height} ${r.size_unit === 'ft' ? 'ft' : 'in'}`
@@ -60,6 +65,8 @@ const FULFILLMENT_COLUMNS: ExportColumn<Row>[] = [
   { header: 'Type', value: (r) => r.sign_type ?? '' },
   { header: 'Size', value: (r) => sizeText(r) },
   { header: 'Qty', value: (r) => r.quantity },
+  { header: 'Done', value: (r) => doneOf(r) },
+  { header: 'Left', value: (r) => leftOf(r) },
   { header: 'Ordered by', value: (r) => orderedByOf(r) },
   { header: 'Notes', value: (r) => r.notes ?? '' },
 ]
@@ -154,9 +161,30 @@ function Inner({ locationId }: { locationId: string }) {
   // requester.
   const isAdmin = (profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'
   const changeStatus = async (r: Row, status: string) => {
-    await signage.updateStatus(r.id, { status, status_updated_at: new Date().toISOString() })
+    await signage.updateStatus(r.id, {
+      status,
+      status_updated_at: new Date().toISOString(),
+      // Completing an order from the dropdown counts every unit as done.
+      ...(status === 'completed' ? { quantity_completed: Number(r.quantity) } : {}),
+    })
     await load()
     void signage.statusEmail(r.id)
+  }
+  // Partial fulfillment: record how many units are done. The order stays put
+  // (and in the Fulfillment report) until every unit is done, then moves to
+  // Completed and the requester gets the usual status email. Partial progress
+  // doesn't email, to avoid a message per batch.
+  const markCompleted = async (r: Row, count: number) => {
+    const total = Number(r.quantity)
+    const n = Math.min(Math.max(Math.floor(count), 0), total)
+    if (n === doneOf(r)) return
+    const finished = n >= total
+    await signage.updateStatus(r.id, {
+      quantity_completed: n,
+      ...(finished ? { status: 'completed', status_updated_at: new Date().toISOString() } : {}),
+    })
+    await load()
+    if (finished) void signage.statusEmail(r.id)
   }
   const saveTracking = async (r: Row, value: string) => {
     const t = value.trim()
@@ -251,7 +279,8 @@ function Inner({ locationId }: { locationId: string }) {
     if (prodFilter === 'production') return baseUnfulfilled.filter((r) => statusOf(r) === 'in_production')
     return baseUnfulfilled
   }, [baseUnfulfilled, prodFilter])
-  const totalQty = useMemo(() => unfulfilled.reduce((sum, r) => sum + r.quantity, 0), [unfulfilled])
+  // The report is a to-do list, so totals count what's left, not what was ordered.
+  const totalQty = useMemo(() => unfulfilled.reduce((sum, r) => sum + leftOf(r), 0), [unfulfilled])
   const groups = useMemo(() => {
     const map = new Map<string, { key: string; label: string; rows: Row[]; qty: number }>()
     for (const r of unfulfilled) {
@@ -262,7 +291,7 @@ function Inner({ locationId }: { locationId: string }) {
       let g = map.get(key)
       if (!g) { g = { key, label, rows: [], qty: 0 }; map.set(key, g) }
       g.rows.push(r)
-      g.qty += r.quantity
+      g.qty += leftOf(r)
     }
     const arr = [...map.values()]
     for (const g of arr) g.rows.sort((a, b) => (a.created_at < b.created_at ? -1 : 1)) // oldest first
@@ -313,7 +342,10 @@ function Inner({ locationId }: { locationId: string }) {
         {r.location_id === null ? 'All sites' : r.location?.name ?? '—'}
       </td>
       <td className="px-3 py-2.5 text-ink-muted">{sizeText(r)}</td>
-      <td className="px-3 py-2.5 numeric tabular text-ink-muted">{r.quantity}</td>
+      <td className="px-3 py-2.5 numeric tabular text-ink-muted">
+        {r.quantity}
+        {isPartial(r) && <div className="whitespace-nowrap text-[11px] font-medium text-accent">{doneOf(r)} done · {leftOf(r)} left</div>}
+      </td>
       <td className="px-3 py-2.5 text-ink-muted">{orderedByOf(r)}</td>
       <td className="px-3 py-2.5 text-ink-muted">{timeAgo(r.created_at)}</td>
       <td className="px-3 py-2.5">
@@ -615,10 +647,10 @@ function Inner({ locationId }: { locationId: string }) {
           ) : (
             <>
               <p className="text-xs text-ink-muted">
-                {unfulfilled.length} order{unfulfilled.length === 1 ? '' : 's'} · {totalQty} item{totalQty === 1 ? '' : 's'} total · {groups.length} {groupWord}{groups.length === 1 ? '' : 's'} · <span className="font-medium text-ink">{prodFilterLabel}</span>
+                {unfulfilled.length} order{unfulfilled.length === 1 ? '' : 's'} · {totalQty} item{totalQty === 1 ? '' : 's'} left · {groups.length} {groupWord}{groups.length === 1 ? '' : 's'} · <span className="font-medium text-ink">{prodFilterLabel}</span>
               </p>
               {groups.map((g) => (
-                <FulfillmentGroup key={g.key} group={g} groupBy={groupBy} isAdmin={isAdmin} onChangeStatus={changeStatus} />
+                <FulfillmentGroup key={g.key} group={g} groupBy={groupBy} isAdmin={isAdmin} onChangeStatus={changeStatus} onMarkCompleted={markCompleted} />
               ))}
             </>
           )}
@@ -670,12 +702,13 @@ function Inner({ locationId }: { locationId: string }) {
 // active grouping is dropped (redundant), and admins can mark an order shipped or
 // completed right here — which removes it from the report on the next refresh.
 function FulfillmentGroup({
-  group, groupBy, isAdmin, onChangeStatus,
+  group, groupBy, isAdmin, onChangeStatus, onMarkCompleted,
 }: {
   group: { key: string; label: string; rows: Row[]; qty: number }
   groupBy: 'site' | 'item' | 'date'
   isAdmin: boolean
   onChangeStatus: (r: Row, status: string) => void
+  onMarkCompleted: (r: Row, count: number) => void
 }) {
   const [open, setOpen] = useState(true)
   const showItem = groupBy !== 'item'
@@ -691,7 +724,7 @@ function FulfillmentGroup({
         <ChevronDown className={cn('size-4 shrink-0 text-ink-muted transition', !open && '-rotate-90')} />
         <span className="min-w-0 truncate font-semibold text-ink">{group.label}</span>
         <span className="ml-auto shrink-0 rounded-full bg-card px-2 py-0.5 text-xs font-medium text-ink-muted">
-          {group.rows.length} order{group.rows.length === 1 ? '' : 's'} · {group.qty} qty
+          {group.rows.length} order{group.rows.length === 1 ? '' : 's'} · {group.qty} left
         </span>
       </button>
       {open && (
@@ -721,7 +754,10 @@ function FulfillmentGroup({
                   )}
                   {showSite && <td className="px-3 py-2 text-ink-muted">{siteLabelOf(r)}</td>}
                   <td className="px-3 py-2 text-ink-muted">{sizeText(r)}</td>
-                  <td className="px-3 py-2 numeric tabular text-ink-muted">{r.quantity}</td>
+                  <td className="px-3 py-2 numeric tabular text-ink-muted">
+                    {r.quantity}
+                    {isPartial(r) && <div className="whitespace-nowrap text-[11px] font-medium text-accent">{doneOf(r)} done · {leftOf(r)} left</div>}
+                  </td>
                   <td className="px-3 py-2 text-ink-muted">{orderedByOf(r)}</td>
                   {showWhen && <td className="px-3 py-2 text-ink-muted">{timeAgo(r.created_at)}</td>}
                   <td className="px-3 py-2">
@@ -743,16 +779,19 @@ function FulfillmentGroup({
                   </td>
                   {isAdmin && (
                     <td className="px-3 py-2">
-                      <select
-                        value={(r.status ?? 'ordered').toLowerCase()}
-                        onChange={(e) => onChangeStatus(r, e.target.value)}
-                        className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
-                      >
-                        <option value="ordered">Ordered</option>
-                        <option value="in_production">In Production</option>
-                        <option value="shipped">Shipped</option>
-                        <option value="completed">Completed</option>
-                      </select>
+                      <div className="flex flex-col gap-1.5">
+                        <select
+                          value={(r.status ?? 'ordered').toLowerCase()}
+                          onChange={(e) => onChangeStatus(r, e.target.value)}
+                          className="w-fit rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
+                        >
+                          <option value="ordered">Ordered</option>
+                          <option value="in_production">In Production</option>
+                          <option value="shipped">Shipped</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                        {Number(r.quantity) > 1 && <DoneCount key={`${r.id}-${doneOf(r)}`} row={r} onSave={onMarkCompleted} />}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -762,6 +801,38 @@ function FulfillmentGroup({
         </div>
       )}
     </section>
+  )
+}
+
+// "Done [n] of N" for partial fulfillment. Saves on blur or Enter; reaching N
+// completes the order. The parent keys it by the saved count so it resets
+// after a reload.
+function DoneCount({ row, onSave }: { row: Row; onSave: (r: Row, count: number) => void }) {
+  const total = Number(row.quantity)
+  const [value, setValue] = useState(String(doneOf(row)))
+  const commit = () => {
+    const n = Number(value)
+    const clamped = Number.isFinite(n) ? Math.min(Math.max(Math.floor(n), 0), total) : doneOf(row)
+    setValue(String(clamped))
+    if (clamped !== doneOf(row)) onSave(row, clamped)
+  }
+  return (
+    <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-ink-muted">
+      Done
+      <input
+        type="number"
+        min={0}
+        max={total}
+        step={1}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        className="w-16 rounded-md border border-border bg-card px-2 py-1 text-xs text-ink"
+        aria-label={`Units done out of ${total}`}
+      />
+      of {total}
+    </label>
   )
 }
 

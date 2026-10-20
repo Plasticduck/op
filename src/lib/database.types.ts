@@ -39,54 +39,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      maintenance_orders: {
-        Row: {
-          account_id: string
-          created_at: string
-          id: string
-          item: string
-          location_id: string | null
-          notes: string | null
-          photo_paths: string[] | null
-          quantity: number
-          requested_by: string | null
-          requester_name: string | null
-          status: string
-          status_updated_at: string | null
-          tracking_number: string | null
-        }
-        Insert: {
-          account_id: string
-          created_at?: string
-          id?: string
-          item: string
-          location_id?: string | null
-          notes?: string | null
-          photo_paths?: string[] | null
-          quantity?: number
-          requested_by?: string | null
-          requester_name?: string | null
-          status?: string
-          status_updated_at?: string | null
-          tracking_number?: string | null
-        }
-        Update: {
-          account_id?: string
-          created_at?: string
-          id?: string
-          item?: string
-          location_id?: string | null
-          notes?: string | null
-          photo_paths?: string[] | null
-          quantity?: number
-          requested_by?: string | null
-          requester_name?: string | null
-          status?: string
-          status_updated_at?: string | null
-          tracking_number?: string | null
-        }
-        Relationships: []
-      }
       accounts: {
         Row: {
           account_type: string
@@ -3307,6 +3259,76 @@ export type Database = {
         }
         Relationships: []
       }
+      maintenance_orders: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          item: string
+          location_id: string | null
+          notes: string | null
+          photo_paths: string[] | null
+          quantity: number
+          requested_by: string | null
+          requester_name: string | null
+          status: string
+          status_updated_at: string | null
+          tracking_number: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          item: string
+          location_id?: string | null
+          notes?: string | null
+          photo_paths?: string[] | null
+          quantity?: number
+          requested_by?: string | null
+          requester_name?: string | null
+          status?: string
+          status_updated_at?: string | null
+          tracking_number?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          item?: string
+          location_id?: string | null
+          notes?: string | null
+          photo_paths?: string[] | null
+          quantity?: number
+          requested_by?: string | null
+          requester_name?: string | null
+          status?: string
+          status_updated_at?: string | null
+          tracking_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_orders_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_orders_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_orders_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       market_research: {
         Row: {
           account_id: string
@@ -4986,6 +5008,7 @@ export type Database = {
           location_id: string | null
           notes: string | null
           quantity: number
+          quantity_completed: number
           requested_by: string | null
           sided: string | null
           sign_category: string
@@ -5010,6 +5033,7 @@ export type Database = {
           location_id?: string | null
           notes?: string | null
           quantity?: number
+          quantity_completed?: number
           requested_by?: string | null
           sided?: string | null
           sign_category: string
@@ -5034,6 +5058,7 @@ export type Database = {
           location_id?: string | null
           notes?: string | null
           quantity?: number
+          quantity_completed?: number
           requested_by?: string | null
           sided?: string | null
           sign_category?: string
