@@ -15,6 +15,12 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 // deno-lint-ignore no-explicit-any
 type Any = any
 
+// Mighty Wash gets its own mascot logo on the public page; other accounts use the
+// default WashLyfe logo (logoUrl stays null).
+const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
+const logoUrlFor = (accountId: string): string | null =>
+  accountId === MW_ACCOUNT ? '/mighty-max-in-flight.png' : null
+
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
   'http://localhost:5173',
@@ -78,7 +84,7 @@ Deno.serve(async (req) => {
       for (const s of (scheds as Array<{ location_id: string }> | null) ?? []) withPublished.add(s.location_id)
     }
     const sites = locations.filter((l) => withPublished.has(l.id))
-    return json({ ok: true, account: (acct as { name?: string } | null)?.name ?? 'Schedules', sites }, 200, origin)
+    return json({ ok: true, account: (acct as { name?: string } | null)?.name ?? 'Schedules', logoUrl: logoUrlFor(accountId), sites }, 200, origin)
   }
 
   if (body.action === 'weeks') {

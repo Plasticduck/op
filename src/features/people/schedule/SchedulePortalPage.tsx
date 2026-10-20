@@ -13,6 +13,7 @@ import { publicSchedules, type PublicShift, type PublicSite, type PublicWeek } f
 export default function SchedulePortalPage() {
   const { token = '' } = useParams()
   const [account, setAccount] = useState('Schedules')
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [sites, setSites] = useState<PublicSite[]>([])
   const [siteId, setSiteId] = useState('')
   const [weeks, setWeeks] = useState<PublicWeek[]>([])
@@ -26,11 +27,12 @@ export default function SchedulePortalPage() {
   useEffect(() => {
     void (async () => {
       const { data, error } = await publicSchedules.sites(token)
-      const res = data as { ok?: boolean; account?: string; sites?: PublicSite[]; message?: string } | null
+      const res = data as { ok?: boolean; account?: string; logoUrl?: string | null; sites?: PublicSite[]; message?: string } | null
       if (error || !res?.ok) {
         setLoadErr(res?.message || 'This schedule link is not active.')
       } else {
         setAccount(res.account ?? 'Schedules')
+        setLogoUrl(res.logoUrl ?? null)
         setSites(res.sites ?? [])
         if ((res.sites ?? []).length === 1) setSiteId(res.sites![0].id)
       }
@@ -76,7 +78,11 @@ export default function SchedulePortalPage() {
   return (
     <div className="min-h-dvh bg-content px-3 py-6 sm:px-4 sm:py-10">
       <div className="mx-auto w-full max-w-6xl">
-        <div className="mb-5 flex justify-center"><Logo brand="washlyfe" /></div>
+        <div className="mb-5 flex justify-center">
+          {logoUrl
+            ? <img src={logoUrl} alt={account} className="h-20 w-auto" />
+            : <Logo brand="washlyfe" />}
+        </div>
 
         {loading ? (
           <p className="text-center text-sm text-ink-muted">Loading…</p>
