@@ -46,6 +46,9 @@ export type CompanySettings = {
   userPermissions?: UserPermissions
   // First day of the work week for scheduling: 0 = Sunday … 6 = Saturday.
   scheduleWeekStart?: number
+  // Job positions (e.g. Cashier, Attendant) assignable as each employee's default
+  // in the schedule builder; a shift's position defaults to the employee's.
+  positions?: string[]
   // Custom shift presets shown in the schedule builder's shift palette.
   shiftTemplates?: ShiftTemplate[]
   // Tunable weather effect on the Labor Dashboard forecast (rain + temperature).

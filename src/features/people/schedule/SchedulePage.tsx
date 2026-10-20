@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   CalendarCog,
+  UsersRound,
   ChevronLeft,
   ChevronRight,
   ClipboardCopy,
@@ -37,19 +38,21 @@ import { currency, timeOfDay } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
-import { updateCompany, type ShiftTemplate } from '@/lib/queries/companySettings'
+import { updateCompany } from '@/lib/queries/companySettings'
 import { isolvedRosterSync } from '@/lib/queries/isolved'
 import { fnErrorMessage } from '@/lib/fnError'
 import {
   employees as empQ,
   schedules,
+  shiftFavorites as shiftFavoritesQ,
   type Employee,
   type Shift,
+  type ShiftFavorite,
   type TimeOffRequest,
 } from '@/lib/queries/people'
 
 // Mighty Wash account: its schedulable staff come from iSolved (synced into
-// `employees`), so the "Sync from iSolved" action only shows for this account.
+// `employees`), so the "Sync Employee Info" action only shows for this account.
 const ISOLVED_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 
 const fmtDay = (d: Date) => format(d, 'yyyy-MM-dd')
@@ -59,42 +62,19 @@ const hoursBetween = (s: string, e: string) => {
   return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60)
 }
 
-const PRESETS: { label: string; start: string; end: string }[] = [
-  { label: 'Open 6 to 2', start: '06:00', end: '14:00' },
-  { label: 'Mid 10 to 6', start: '10:00', end: '18:00' },
-  { label: 'Close 2 to 10', start: '14:00', end: '22:00' },
-  { label: 'Full 6 to 10', start: '06:00', end: '22:00' },
-]
-
-// Drag payload type for a shift preset dragged from the palette onto a cell.
+// Drag payload type for a shift dragged from the palette onto a cell.
 const SHIFT_DND_TYPE = 'application/shift-template'
 
-// Lunch shifts are marked with this role_label sentinel. They are unpaid breaks:
-// present on the schedule but excluded from all hour and labor totals.
+// Legacy lunch shifts (created before lunches were removed) stay unpaid so old
+// schedules still total correctly; nothing creates lunch shifts anymore.
 const LUNCH_LABEL = 'Lunch'
 const isLunchShift = (s: { role_label?: string | null }) =>
   (s.role_label ?? '').trim().toLowerCase() === LUNCH_LABEL.toLowerCase()
-// Hours a shift contributes to totals: zero for lunch/unpaid breaks.
+// Hours a shift contributes to totals: zero for legacy lunch/unpaid breaks.
 const paidHours = (s: Shift) => (isLunchShift(s) ? 0 : hoursBetween(s.start_time, s.end_time))
 
-// Built-in shift presets shown in the palette. Anything beyond these is a custom
-// shift the user creates. Times are 24h "HH:MM". Lunch presets don't count hours.
-const DEFAULT_SHIFTS: { start: string; end: string; lunch?: boolean }[] = [
-  { start: '08:00', end: '14:00' }, // 8-2
-  { start: '14:00', end: '20:00' }, // 2-8
-  { start: '07:00', end: '15:00' }, // 7-3
-  { start: '15:00', end: '20:00' }, // 3-8
-  { start: '07:00', end: '19:00' }, // 7-7
-  { start: '08:00', end: '20:00' }, // 8-8
-  { start: '14:00', end: '19:00' }, // 2-7
-  { start: '07:00', end: '12:00' }, // 7-12
-  { start: '12:00', end: '19:00' }, // 12-7
-  { start: '12:00', end: '20:00' }, // 12-8
-  { start: '11:00', end: '12:00', lunch: true }, // LUNCH 11-12
-  { start: '12:00', end: '13:00', lunch: true }, // LUNCH 12-1
-  { start: '13:00', end: '14:00', lunch: true }, // LUNCH 1-2
-  { start: '14:00', end: '15:00', lunch: true }, // LUNCH 2-3
-]
+// Normalize a time to "HH:MM" so remembered shifts dedupe cleanly.
+const hhmm = (t: string) => t.slice(0, 5)
 
 // Compact label matching the user's shorthand: 08:00 -> 14:00 becomes "8-2".
 const hour12 = (t: string) => {
@@ -131,11 +111,15 @@ function WeekBlock({
   weekStart,
   clipboard,
   setClipboard,
+  positions,
+  recordShift,
 }: {
   locationId: string
   weekStart: Date
   clipboard: DayClipboard | null
   setClipboard: (c: DayClipboard | null) => void
+  positions: string[]
+  recordShift: (start: string, end: string) => void
 }) {
   const { profile } = useAuth()
   const [emps, setEmps] = useState<Employee[]>([])
@@ -401,8 +385,20 @@ function WeekBlock({
     if (error) void load()
   }
 
+  // The employee's default position (stored on employees.role_title) — new shifts
+  // for them pre-fill with it.
+  const defaultPositionFor = (employeeId: string) =>
+    emps.find((e) => e.id === employeeId)?.role_title ?? null
+
+  // Set/clear an employee's default position (persists to employees.role_title).
+  const setEmployeePosition = async (employeeId: string, position: string) => {
+    const value = position.trim() || null
+    setEmps((arr) => arr.map((e) => (e.id === employeeId ? { ...e, role_title: value } : e)))
+    await empQ.update(employeeId, { role_title: value })
+  }
+
   // Dropping an employee chip onto a day creates a new shift with a sane default
-  // length. Picks the most popular existing duration this employee has, else 8 to 4.
+  // length (their most recent shift, else 8 to 4) and their default position.
   const createShiftFromEmployee = async (employeeId: string, date: string) => {
     if (!scheduleId) return
     const empShifts = shifts.filter((s) => s.employee_id === employeeId)
@@ -415,20 +411,19 @@ function WeekBlock({
       date,
       start_time: start,
       end_time: end,
-      role_label: null,
+      role_label: defaultPositionFor(employeeId),
       notes: null,
     })
-    if (data) setShifts((arr) => [...arr, data as Shift])
+    if (data) { setShifts((arr) => [...arr, data as Shift]); recordShift(hhmm(start), hhmm(end)) }
   }
 
-  // Dropping a shift preset from the palette creates a shift with that preset's
-  // exact start/end time.
+  // Dropping a remembered shift from the palette creates a shift with that exact
+  // start/end time and the employee's default position.
   const createShiftFromTemplate = async (
     employeeId: string,
     date: string,
     start: string,
     end: string,
-    lunch: boolean,
   ) => {
     if (!scheduleId) return
     const { data } = await schedules.addShift({
@@ -437,21 +432,21 @@ function WeekBlock({
       date,
       start_time: start,
       end_time: end,
-      role_label: lunch ? LUNCH_LABEL : null,
+      role_label: defaultPositionFor(employeeId),
       notes: null,
     })
-    if (data) setShifts((arr) => [...arr, data as Shift])
+    if (data) { setShifts((arr) => [...arr, data as Shift]); recordShift(hhmm(start), hhmm(end)) }
   }
 
   const onDropCell = (employeeId: string, date: string) => async (e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(null)
-    // A shift preset dragged from the palette carries its time in dataTransfer.
+    // A remembered shift dragged from the palette carries its time in dataTransfer.
     const tplRaw = e.dataTransfer.getData(SHIFT_DND_TYPE)
     if (tplRaw) {
       try {
-        const tpl = JSON.parse(tplRaw) as { start: string; end: string; lunch?: boolean }
-        await createShiftFromTemplate(employeeId, date, tpl.start, tpl.end, !!tpl.lunch)
+        const tpl = JSON.parse(tplRaw) as { start: string; end: string }
+        await createShiftFromTemplate(employeeId, date, tpl.start, tpl.end)
       } catch {
         /* malformed payload, ignore */
       }
@@ -536,7 +531,7 @@ function WeekBlock({
               title="Pull active staff from iSolved so they can be scheduled at their site"
             >
               {syncBusy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-              Sync from iSolved
+              Sync Employee Info
             </Button>
           )}
           <Button variant="secondary" size="sm" onClick={togglePublish}>{published ? 'Unpublish' : 'Publish'}</Button>
@@ -553,20 +548,20 @@ function WeekBlock({
         <div className="flex flex-col items-start gap-2 text-sm text-ink-muted">
           <p>
             {isIsolvedAccount
-              ? 'No staff at this site yet. Sync from iSolved to pull this location’s active employees in as schedulable labor.'
+              ? 'No staff at this site yet. Use “Sync Employee Info” to pull this location’s active employees in as schedulable labor.'
               : 'Add active employees first to build a schedule.'}
           </p>
           {isIsolvedAccount && (
             <Button size="sm" onClick={() => void syncRoster()} disabled={syncBusy}>
               {syncBusy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-              Sync from iSolved
+              Sync Employee Info
             </Button>
           )}
         </div>
       ) : (
         <>
         <div className="rounded-md border border-accent/20 bg-accent-soft/40 px-3 py-2 text-xs text-ink-muted">
-          <span className="font-medium text-accent">Tip:</span> Drag a shift preset from the left onto a cell to schedule it. Drag an existing shift to move it, or an employee's name onto a day to create one.
+          <span className="font-medium text-accent">Tip:</span> Add a shift with the + on any day — Operator remembers it so you can drag it from the Shifts palette next time. Drag an existing shift to move it, or an employee's name onto a day to create one. New shifts use the employee's position.
         </div>
         <div className="overflow-x-auto rounded-md border border-border bg-card">
           <table className="w-full min-w-[920px] border-collapse text-sm">
@@ -602,8 +597,23 @@ function WeekBlock({
                     >
                       <div className="cursor-grab active:cursor-grabbing select-none">
                         <div className="font-medium text-ink">{emp.first_name} {emp.last_name}</div>
-                        <div className="text-xs text-ink-muted">{emp.role_title ?? ''}</div>
                       </div>
+                      {/* Default position — not draggable so it can be changed inline. */}
+                      <select
+                        draggable={false}
+                        value={emp.role_title ?? ''}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => void setEmployeePosition(emp.id, e.target.value)}
+                        title="Default position"
+                        className="mt-1 w-full max-w-[9rem] rounded border border-border bg-content px-1 py-0.5 text-[11px] text-ink-muted"
+                      >
+                        <option value="">No position</option>
+                        {emp.role_title && !positions.includes(emp.role_title) && (
+                          <option value={emp.role_title}>{emp.role_title}</option>
+                        )}
+                        {positions.map((p) => <option key={p} value={p}>{p}</option>)}
+                      </select>
                     </td>
                     {days.map((d) => {
                       const dayStr = fmtDay(d)
@@ -746,8 +756,14 @@ function WeekBlock({
           scheduleId={scheduleId}
           employeeId={addFor.employeeId}
           date={addFor.date}
+          positions={positions}
+          defaultPosition={defaultPositionFor(addFor.employeeId)}
           onClose={() => setAddFor(null)}
-          onSaved={(shift) => { setShifts((arr) => [...arr, shift]); setAddFor(null) }}
+          onSaved={(shift) => {
+            setShifts((arr) => [...arr, shift])
+            recordShift(hhmm(shift.start_time), hhmm(shift.end_time))
+            setAddFor(null)
+          }}
         />
       )}
 
@@ -758,6 +774,8 @@ function WeekBlock({
           employeeId={editShift.employee_id}
           date={editShift.date}
           shift={editShift}
+          positions={positions}
+          defaultPosition={editShift.role_label ?? defaultPositionFor(editShift.employee_id)}
           onClose={() => setEditShift(null)}
           onSaved={(shift) => {
             setShifts((arr) => arr.map((s) => (s.id === shift.id ? shift : s)))
@@ -851,6 +869,8 @@ function ShiftModal({
   employeeId,
   date,
   shift,
+  positions,
+  defaultPosition,
   onClose,
   onSaved,
   onDeleted,
@@ -860,21 +880,19 @@ function ShiftModal({
   employeeId: string
   date: string
   shift?: Shift
+  positions: string[]
+  defaultPosition?: string | null
   onClose: () => void
   onSaved: (s: Shift) => void
   onDeleted?: (id: string) => void
 }) {
   const [start, setStart] = useState(shift?.start_time?.slice(0, 5) ?? '08:00')
   const [end, setEnd] = useState(shift?.end_time?.slice(0, 5) ?? '16:00')
-  const [role, setRole] = useState(shift?.role_label ?? '')
+  // Position defaults to the shift's own, else the employee's default position.
+  const [role, setRole] = useState(shift?.role_label ?? defaultPosition ?? '')
   const [notes, setNotes] = useState(shift?.notes ?? '')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  const applyPreset = (p: typeof PRESETS[number]) => {
-    setStart(p.start)
-    setEnd(p.end)
-  }
 
   const save = async () => {
     setError(null)
@@ -917,35 +935,17 @@ function ShiftModal({
       size="sm"
     >
       <div className="flex flex-col gap-4">
-        <div>
-          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">Quick presets</div>
-          <div className="flex flex-wrap gap-1.5">
-            {PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => applyPreset(p)}
-                className="rounded-md border border-border bg-card px-2 py-1 text-xs text-ink-muted hover:border-accent hover:text-accent"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Start">{(id) => <TimeSelect id={id} value={start} onChange={setStart} />}</Field>
           <Field label="End">{(id) => <TimeSelect id={id} value={end} onChange={setEnd} />}</Field>
         </div>
         <div className="text-xs text-ink-muted">Duration: <span className="font-medium text-ink">{hours.toFixed(1)} hrs</span></div>
-        <Field label="Role label">
+        <Field label="Position">
           {(id) => (
             <Select id={id} value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="">None</option>
-              <option>Wash</option>
-              <option>Detail</option>
-              <option>Cashier</option>
-              <option>Manager</option>
-              <option value="Lunch">Lunch (unpaid, not counted)</option>
+              <option value="">No position</option>
+              {role && !positions.includes(role) && <option value={role}>{role}</option>}
+              {positions.map((p) => <option key={p} value={p}>{p}</option>)}
             </Select>
           )}
         </Field>
@@ -986,148 +986,112 @@ function readPeriod(): Period {
   return 'weekly'
 }
 
-// Left-hand palette of draggable shift presets (built-in + custom). Dragging a
-// chip onto a schedule cell creates a shift with that exact time.
+// Left-hand palette of the user's remembered shifts. Operator learns the shifts a
+// user creates (by use count); drag a chip onto a cell to schedule it.
 function ShiftPalette({
-  custom,
-  onCreate,
-  onDelete,
+  favorites,
+  onForget,
 }: {
-  custom: ShiftTemplate[]
-  onCreate: () => void
-  onDelete: (id: string) => void
+  favorites: ShiftFavorite[]
+  onForget: (start: string, end: string) => void
 }) {
-  const chips = [
-    ...DEFAULT_SHIFTS.map((s) => ({
-      key: `${s.start}-${s.end}-${s.lunch ? 'L' : ''}`,
-      start: s.start,
-      end: s.end,
-      lunch: !!s.lunch,
-      label: shiftChipLabel(s.start, s.end, s.lunch),
-      customId: null as string | null,
-    })),
-    ...custom.map((s) => ({
-      key: s.id,
-      start: s.start,
-      end: s.end,
-      lunch: !!s.lunch,
-      label: s.label?.trim() || shiftChipLabel(s.start, s.end, s.lunch),
-      customId: s.id,
-    })),
-  ]
+  const chips = [...favorites]
+    .sort((a, b) => b.count - a.count || (b.last_used > a.last_used ? 1 : -1))
+    .slice(0, 12)
   return (
     <div className="rounded-lg border border-border bg-card p-3 lg:sticky lg:top-4 lg:w-52 lg:shrink-0">
-      <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ink">Shifts</h3>
-        <Button size="sm" variant="secondary" onClick={onCreate}>
-          <Plus className="size-4" /> Create
-        </Button>
-      </div>
-      <p className="mb-2.5 text-xs text-ink-muted">Drag a shift onto the schedule.</p>
-      <div className="flex flex-wrap gap-1.5 lg:flex-col">
-        {chips.map((c) => (
-          <div
-            key={c.key}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData(
-                SHIFT_DND_TYPE,
-                JSON.stringify({ start: c.start, end: c.end, lunch: c.lunch }),
-              )
-              e.dataTransfer.effectAllowed = 'copy'
-            }}
-            title={`${timeOfDay(c.start)} to ${timeOfDay(c.end)}${c.lunch ? ' (unpaid, not counted)' : ''}`}
-            className={cn(
-              'group flex cursor-grab items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm hover:border-accent active:cursor-grabbing',
-              c.lunch
-                ? 'border-warn/40 bg-warn-soft text-warn'
-                : 'border-border bg-content text-ink',
-            )}
-          >
-            <span className="font-medium tabular">{c.label}</span>
-            {c.customId && (
-              <button
-                type="button"
-                onClick={() => onDelete(c.customId!)}
-                title="Delete custom shift"
-                className="rounded p-0.5 text-ink-subtle hover:text-danger lg:hidden lg:group-hover:block"
+      <h3 className="mb-1 text-sm font-semibold text-ink">Shifts</h3>
+      {chips.length === 0 ? (
+        <p className="text-xs text-ink-muted">Shifts you create show up here, with your most-used first, so you can drag them onto the schedule.</p>
+      ) : (
+        <>
+          <p className="mb-2.5 text-xs text-ink-muted">Drag a shift onto the schedule.</p>
+          <div className="flex flex-wrap gap-1.5 lg:flex-col">
+            {chips.map((c) => (
+              <div
+                key={`${c.start}-${c.end}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(SHIFT_DND_TYPE, JSON.stringify({ start: c.start, end: c.end }))
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
+                title={`${timeOfDay(c.start)} to ${timeOfDay(c.end)} · used ${c.count}×`}
+                className="group flex cursor-grab items-center justify-between gap-2 rounded-md border border-border bg-content px-2.5 py-1.5 text-sm text-ink hover:border-accent active:cursor-grabbing"
               >
-                <X className="size-3" />
-              </button>
-            )}
+                <span className="font-medium tabular">{shiftChipLabel(c.start, c.end)}</span>
+                <button
+                  type="button"
+                  onClick={() => onForget(c.start, c.end)}
+                  title="Remove from palette"
+                  className="rounded p-0.5 text-ink-subtle hover:text-danger lg:hidden lg:group-hover:block"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </div>
   )
 }
 
-function CreateShiftModal({
+// Manage the account's job positions (each employee gets a default position used
+// to pre-fill their new shifts).
+function PositionsModal({
+  positions,
   onClose,
   onSave,
 }: {
+  positions: string[]
   onClose: () => void
-  onSave: (t: { start: string; end: string; label?: string; lunch?: boolean }) => Promise<void> | void
+  onSave: (next: string[]) => Promise<void> | void
 }) {
-  const [start, setStart] = useState('08:00')
-  const [end, setEnd] = useState('16:00')
-  const [label, setLabel] = useState('')
-  const [lunch, setLunch] = useState(false)
+  const [list, setList] = useState<string[]>(positions)
+  const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const dur = hoursBetween(start, end)
+
+  const add = () => {
+    const v = input.trim()
+    if (!v || list.some((p) => p.toLowerCase() === v.toLowerCase())) { setInput(''); return }
+    setList((l) => [...l, v])
+    setInput('')
+  }
 
   return (
-    <Modal open onClose={onClose} title="Create a shift" size="sm">
+    <Modal open onClose={onClose} title="Positions" size="sm">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-ink-muted">
-          Add a reusable shift preset. It appears in the palette so you can drag it onto the schedule.
+          Create the positions you schedule for (e.g. Cashier, Attendant, Detailer). Set each employee's default
+          position on their row — new shifts use it, and you can still change a shift's position.
         </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Start">{(id) => <TimeSelect id={id} value={start} onChange={setStart} />}</Field>
-          <Field label="End">{(id) => <TimeSelect id={id} value={end} onChange={setEnd} />}</Field>
-        </div>
-        <div className="text-xs text-ink-muted">
-          Duration: <span className="font-medium text-ink">{dur.toFixed(1)} hrs</span>
-        </div>
-        <label className="flex items-start gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={lunch}
-            onChange={(e) => setLunch(e.target.checked)}
+        <div className="flex gap-2">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+            placeholder="Add a position…"
           />
-          <span>
-            Lunch break
-            <span className="block text-xs text-ink-muted">
-              Unpaid. Shows on the schedule but does not count toward hours or labor.
-            </span>
-          </span>
-        </label>
-        <Field label="Label (optional)" hint={lunch ? 'Defaults to a label like LUNCH 12-1.' : 'Defaults to a short time label like 8-2.'}>
-          {(id) => (
-            <Input
-              id={id}
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder={shiftChipLabel(start, end, lunch)}
-            />
-          )}
-        </Field>
-        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+          <Button variant="secondary" onClick={add}>Add</Button>
+        </div>
+        {list.length === 0 ? (
+          <p className="text-sm text-ink-subtle">No positions yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {list.map((p) => (
+              <li key={p} className="flex items-center justify-between rounded-md border border-border bg-content px-3 py-1.5 text-sm text-ink">
+                {p}
+                <button type="button" onClick={() => setList((l) => l.filter((x) => x !== p))} title="Remove" className="rounded p-0.5 text-ink-subtle hover:text-danger">
+                  <X className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              if (dur <= 0) return setError('End time must be after start time')
-              setBusy(true)
-              await onSave({ start, end, label: label.trim() || undefined, lunch: lunch || undefined })
-              setBusy(false)
-            }}
-          >
-            {busy && <Loader2 className="size-4 animate-spin" />}
-            Add shift
+          <Button disabled={busy} onClick={async () => { setBusy(true); await onSave(list); setBusy(false) }}>
+            {busy && <Loader2 className="size-4 animate-spin" />} Save
           </Button>
         </div>
       </div>
@@ -1146,15 +1110,50 @@ function Scheduler({ locationId }: { locationId: string }) {
   const [period, setPeriod] = useState<Period>(readPeriod)
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [showWorkWeek, setShowWorkWeek] = useState(false)
-  const [showCreateShift, setShowCreateShift] = useState(false)
+  const [showPositions, setShowPositions] = useState(false)
   // Shared across all week blocks so a copied day can be pasted into any week.
   const [clipboard, setClipboard] = useState<DayClipboard | null>(null)
-  const templates = settings.shiftTemplates ?? []
 
-  const persistTemplates = async (next: ShiftTemplate[]) => {
+  // Account positions (used as each employee's default when scheduling).
+  const positions = settings.positions ?? []
+  const savePositions = async (next: string[]) => {
     if (!profile?.account_id) return
-    await updateCompany(profile.account_id, { settings: { ...settings, shiftTemplates: next } })
+    await updateCompany(profile.account_id, { settings: { ...settings, positions: next } })
     await reloadCompany()
+    setShowPositions(false)
+  }
+
+  // Per-user remembered shifts — learned from the shifts this user creates, shown
+  // in the palette. Loaded once; updated optimistically and persisted on change.
+  const [favorites, setFavorites] = useState<ShiftFavorite[]>([])
+  useEffect(() => {
+    const uid = profile?.id
+    if (!uid) return
+    void shiftFavoritesQ.get(uid).then(setFavorites)
+  }, [profile?.id])
+
+  const persistFavorites = (next: ShiftFavorite[]) => {
+    const uid = profile?.id
+    if (uid) void shiftFavoritesQ.set(uid, next)
+  }
+  const recordShift = (start: string, end: string) => {
+    setFavorites((prev) => {
+      const next = prev.map((f) => ({ ...f }))
+      const i = next.findIndex((f) => f.start === start && f.end === end)
+      if (i >= 0) { next[i].count += 1; next[i].last_used = new Date().toISOString() }
+      else next.push({ start, end, count: 1, last_used: new Date().toISOString() })
+      next.sort((a, b) => b.count - a.count || (b.last_used > a.last_used ? 1 : -1))
+      const trimmed = next.slice(0, 20)
+      persistFavorites(trimmed)
+      return trimmed
+    })
+  }
+  const forgetShift = (start: string, end: string) => {
+    setFavorites((prev) => {
+      const next = prev.filter((f) => !(f.start === start && f.end === end))
+      persistFavorites(next)
+      return next
+    })
   }
 
   const changePeriod = (p: Period) => {
@@ -1205,6 +1204,9 @@ function Scheduler({ locationId }: { locationId: string }) {
         subtitle="Shift planning. Set the work week and plan weekly, bi-weekly, or monthly."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowPositions(true)}>
+              <UsersRound className="size-4" /> Positions
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowWorkWeek(true)}>
               <CalendarCog className="size-4" /> Set work week
             </Button>
@@ -1242,11 +1244,7 @@ function Scheduler({ locationId }: { locationId: string }) {
       )}
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <ShiftPalette
-          custom={templates}
-          onCreate={() => setShowCreateShift(true)}
-          onDelete={(id) => void persistTemplates(templates.filter((t) => t.id !== id))}
-        />
+        <ShiftPalette favorites={favorites} onForget={forgetShift} />
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {weeks.map((w) => (
             <WeekBlock
@@ -1255,6 +1253,8 @@ function Scheduler({ locationId }: { locationId: string }) {
               weekStart={w}
               clipboard={clipboard}
               setClipboard={setClipboard}
+              positions={positions}
+              recordShift={recordShift}
             />
           ))}
         </div>
@@ -1276,16 +1276,11 @@ function Scheduler({ locationId }: { locationId: string }) {
         />
       )}
 
-      {showCreateShift && (
-        <CreateShiftModal
-          onClose={() => setShowCreateShift(false)}
-          onSave={async (t) => {
-            await persistTemplates([
-              ...templates,
-              { id: crypto.randomUUID(), start: t.start, end: t.end, label: t.label, lunch: t.lunch },
-            ])
-            setShowCreateShift(false)
-          }}
+      {showPositions && (
+        <PositionsModal
+          positions={positions}
+          onClose={() => setShowPositions(false)}
+          onSave={savePositions}
         />
       )}
     </div>

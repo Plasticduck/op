@@ -41,6 +41,20 @@ export function currentlyWorking(locationId: string) {
   return supabase.rpc('currently_working', { p_location_id: locationId })
 }
 
+// Per-user remembered shifts for the schedule builder's palette. Operator learns
+// the shifts a user creates (by start/end) with a use count; the palette shows the
+// most-used. Stored on the user's own row (users.shift_favorites jsonb).
+export type ShiftFavorite = { start: string; end: string; count: number; last_used: string }
+export const shiftFavorites = {
+  get: async (userId: string): Promise<ShiftFavorite[]> => {
+    const { data } = await supabase.from('users').select('shift_favorites').eq('id', userId).maybeSingle()
+    const raw = (data as { shift_favorites?: unknown } | null)?.shift_favorites
+    return Array.isArray(raw) ? (raw as ShiftFavorite[]) : []
+  },
+  set: (userId: string, favs: ShiftFavorite[]) =>
+    supabase.from('users').update({ shift_favorites: favs as never }).eq('id', userId),
+}
+
 export const schedules = {
   getWeek: (loc: string, weekStart: string) =>
     supabase

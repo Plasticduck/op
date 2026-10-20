@@ -6094,6 +6094,7 @@ export type Database = {
           location_ids: string[]
           name: string
           nav_favorites: string[] | null
+          shift_favorites: Json | null
           phone: string | null
           role: string
           role_category: string | null
@@ -6111,6 +6112,7 @@ export type Database = {
           location_ids?: string[]
           name: string
           nav_favorites?: string[] | null
+          shift_favorites?: Json | null
           phone?: string | null
           role: string
           role_category?: string | null
@@ -6128,6 +6130,7 @@ export type Database = {
           location_ids?: string[]
           name?: string
           nav_favorites?: string[] | null
+          shift_favorites?: Json | null
           phone?: string | null
           role?: string
           role_category?: string | null
