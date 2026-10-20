@@ -208,7 +208,9 @@ Deno.serve(async (req) => {
       const rosterSite = siteByKey.get(e.number) ?? (e.empId ? siteByKey.get('id:' + e.empId) : undefined) ?? ''
       const dominant = Object.entries(e.siteHours).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Unassigned'
       const site = rosterSite && rosterSite !== 'Unassigned' ? rosterSite : dominant
-      if (companyMode && excludeSet.has(site)) { excludedEmployees++; continue }
+      // Normalize both sides so excludeSites can be numbers ("17"), MW labels, or
+      // named sites ("Corporate", "Spotless").
+      if (companyMode && excludeSet.has(toSiteLabel(site))) { excludedEmployees++; continue }
       const hours = Math.round(e.hours * 100) / 100
       if (hours > 0) employees.push({ number: e.number, name: e.name, hours, site })
     }

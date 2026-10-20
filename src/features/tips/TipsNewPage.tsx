@@ -25,6 +25,8 @@ import { flexwashSales, type FlexSite } from '@/lib/queries/flexwashSales'
 // New Mexico locations, excluded from both the pool and the true-up.
 const NM_SITES = [16, 17, 18, 19, 20, 21, 23, 26]
 const NM = new Set(NM_SITES)
+// Sites whose staff don't share in car-wash tips: New Mexico + Corporate + Spotless.
+const EXCLUDE_SITES: Array<string | number> = [...NM_SITES, 'Corporate', 'Spotless']
 
 const norm = (s: string) => s.trim().toLowerCase()
 const fmtPct = (f: number) => `${(f * 100).toFixed(1)}%`
@@ -36,7 +38,6 @@ export default function TipsNewPage() {
 
   const [hoursEmps, setHoursEmps] = useState<TipsHoursEmployee[] | null>(null)
   const [flexTips, setFlexTips] = useState<number | null>(null)
-  const [excluded, setExcluded] = useState<{ salaried?: number; employees?: number } | null>(null)
   const [tipPool, setTipPool] = useState('')
   const [reduction, setReduction] = useState('4.00')
   const [uploaded, setUploaded] = useState<Map<string, number> | null>(null)
@@ -55,7 +56,7 @@ export default function TipsNewPage() {
     setBusy(true)
     setError(null)
     const [hoursRes, tips] = await Promise.all([
-      tipsHours(start, end, { excludeSites: NM_SITES }),
+      tipsHours(start, end, { excludeSites: EXCLUDE_SITES }),
       nonNmFlex.length ? flexwashSales.tips(nonNmFlex.map((s) => s.car_wash_id), start, end).catch(() => null) : Promise.resolve(0),
     ])
     const hr = hoursRes.data
@@ -65,7 +66,6 @@ export default function TipsNewPage() {
       return
     }
     setHoursEmps(hr?.employees ?? [])
-    setExcluded({ salaried: hr?.salariedExcluded, employees: hr?.excludedEmployees })
     setRosterWarn(!!hr?.rosterError)
     setFlexTips(tips)
     setTipPool(tips != null ? tips.toFixed(2) : '')
@@ -171,7 +171,7 @@ export default function TipsNewPage() {
             {busy ? <Loader2 className="size-4 animate-spin" /> : null} Pull from iSolved + FlexWash
           </Button>
         </div>
-        <p className="mt-2 text-xs text-ink-subtle">Company-wide. New Mexico sites are excluded: {NM_SITES.join(', ')}.</p>
+        <p className="mt-2 text-xs text-ink-subtle">Company-wide. Excluded: New Mexico sites ({NM_SITES.join(', ')}), plus Corporate and Spotless staff.</p>
         {error && <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
       </section>
 
@@ -218,7 +218,7 @@ export default function TipsNewPage() {
 
           {/* The three headline calcs */}
           <section className="mt-4 grid gap-3 sm:grid-cols-3">
-            <Stat label="Hourly staff hours" value={t.hours.toFixed(1)} sub={`${rows.length} employees · salaried${excluded?.employees ? ` + ${excluded.employees} NM` : ''} excluded`} />
+            <Stat label="Hourly staff hours" value={t.hours.toFixed(1)} sub={`${rows.length} employees · salaried, NM, Corporate & Spotless excluded`} />
             <Stat label="Wages to build back" value={currency(t.buildBack)} sub={`${currency(reductionNum)}/hr × ${t.hours.toFixed(1)} hrs`} />
             <Stat label="Tip pool" value={currency(t.pool)} sub={`${currency(t.perHourTips)}/hr across all hours`} />
           </section>
@@ -298,7 +298,7 @@ export default function TipsNewPage() {
           </section>
 
           <p className="mt-3 text-xs text-ink-subtle">
-            Hours are worked hours from iSolved timecards (PTO, salaried staff, and New Mexico employees excluded). <b>Wage offset</b> =
+            Hours are worked hours from iSolved timecards (PTO, salaried staff, New Mexico employees, and Corporate/Spotless staff excluded). <b>Wage offset</b> =
             offset/hr × the employee's hours (the part of their wage that tips are meant to cover). <b>Tip share</b> = their hours ÷ total
             hours × the tip pool. In a shortfall the <b>True-Up</b> column is what Mighty Wash owes each person on top of their tips to
             restore their pay; in a surplus it is the extra each person keeps beyond the restored amount.
