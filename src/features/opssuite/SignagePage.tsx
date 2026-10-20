@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Ban, ChevronDown, ClipboardList, CreditCard, Download, FileText, Gift, GripVertical, Images, Package, Plus, ShieldAlert, Signpost, Square, StickyNote, Trash2, Upload, Wind, type LucideIcon } from 'lucide-react'
+import { Ban, ChevronDown, ClipboardList, CreditCard, Download, FileText, Gift, GripVertical, Images, Package, Plus, Signpost, StickyNote, Trash2, Upload, type LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -67,9 +67,7 @@ const FULFILLMENT_COLUMNS: ExportColumn<Row>[] = [
 // Catalog tiles shown on the signage landing. Names must match SIGN_CATEGORIES so
 // a tile can preset the order form's category. Placeholder icons for now.
 const SIGNAGE_CATALOG: { name: string; icon: LucideIcon }[] = [
-  { name: 'Aluminum Signs', icon: Square },
-  { name: 'Safety Signs', icon: ShieldAlert },
-  { name: 'Wind Signs and A-Frames', icon: Wind },
+  { name: 'General Site Signage', icon: Signpost },
   { name: 'Business Cards', icon: CreditCard },
   { name: 'Menu Boards, Rack Cards, and Brochures', icon: Gift },
   { name: 'Note Pads', icon: StickyNote },
@@ -87,7 +85,7 @@ const MW_TILE_IMAGES: Record<string, string> = {
   'Menu Boards, Rack Cards, and Brochures': '/signage-menu-rack-brochures.jpg',
   'Business Cards': '/signage-business-cards.jpg',
   'Note Pads': '/signage-note-pads.jpg',
-  'Wind Signs and A-Frames': '/signage-wind-signs.jpg',
+  'General Site Signage': '/signage-wind-signs.jpg',
 }
 // Library artwork that belongs in a category's gallery (deduped by path). Other
 // Items catches anything uncategorized or tagged to a name we no longer show.
