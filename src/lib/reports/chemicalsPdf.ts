@@ -29,7 +29,7 @@ export async function exportChemicalsPdf(opts: {
   doc.text('Wash Package Report', 14, 16)
   doc.setFontSize(10)
   doc.setTextColor(120)
-  doc.text(`${opts.monthLabel} · every wash by package, all sites · Generated ${format(new Date(), 'PP')}`, 14, 22)
+  doc.text(`${opts.monthLabel} · every wash by package, excluding MW19 and Headquarters · Generated ${format(new Date(), 'PP')}`, 14, 22)
   doc.setTextColor(0)
 
   autoTable(doc, {

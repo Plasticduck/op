@@ -115,7 +115,7 @@ export default function ChemicalsPage() {
                   <div key={t.key} className="rounded-xl border border-border bg-content/40 p-4">
                     <div className="text-xs font-medium uppercase tracking-wide text-ink-subtle">{t.label}</div>
                     <div className={`mt-1 text-3xl font-extrabold tabular-nums ${t.accent}`}>{nf(data.grand[t.key])}</div>
-                    <div className="mt-0.5 text-[11px] text-ink-subtle">washes · all sites</div>
+                    <div className="mt-0.5 text-[11px] text-ink-subtle">washes · excludes MW19 and HQ</div>
                   </div>
                 ))}
               </div>

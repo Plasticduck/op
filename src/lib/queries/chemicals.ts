@@ -3,7 +3,7 @@ import { flexwashSales } from '@/lib/queries/flexwashSales'
 
 // Monthly wash-package usage for the Chemicals hub, broken down by site. Counts
 // EVERY wash that used each package (retail sales + member redemptions), across
-// ALL sites:
+// all wash sites except EXCLUDED_SITES:
 //  - DRB SiteWatch sites: from the POS ledger (same source as the dashboards) via
 //    the site-performance custom-query proxy. Packages live under the "Carwashes"
 //    report category (BRANCH 001001001); each wash posts exactly one package line
@@ -35,6 +35,12 @@ export function lastCompleteMonth(now = new Date()): string {
 // FlexWash sites to take from FlexWash instead of SiteWatch (their DRB rows are
 // stale residuals). Matched on the SiteWatch SITENAME.
 const FLEX_SITENAMES = ["'MightyWash 017'", "'MightyWash 018'"].join(', ')
+
+// Left out of the report and its grand total (requested 2026-10-20): MW19 is the
+// lube shop and Headquarters isn't a wash site. Matched on the SiteWatch SITENAME
+// the rows carry. Filtered after the fetch rather than in the SQL so the
+// dashboard's query endpoint sees the same query it already accepts.
+const EXCLUDED_SITES = new Set(['MightyWash 019', 'Mighty Wash Headquarters'])
 
 // Sort key: the trailing site number ("MightyWash 001" -> 1); names without a
 // number (e.g. Headquarters) sort last.
@@ -113,7 +119,9 @@ export async function fetchPackageReport(ym: string): Promise<PackageReport> {
     /* keep SiteWatch-only, flexIncluded stays false */
   }
 
-  const sites = [...sw, ...flex].sort((a, b) => siteNum(a.site) - siteNum(b.site) || a.site.localeCompare(b.site))
+  const sites = [...sw, ...flex]
+    .filter((r) => !EXCLUDED_SITES.has(r.site))
+    .sort((a, b) => siteNum(a.site) - siteNum(b.site) || a.site.localeCompare(b.site))
   const grand = sites.reduce<PackageTotals>(
     (a, r) => ({ wonder: a.wonder + r.wonder, superShine: a.superShine + r.superShine, mighty: a.mighty + r.mighty, total: a.total + r.total }),
     { wonder: 0, superShine: 0, mighty: 0, total: 0 },
