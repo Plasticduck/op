@@ -164,6 +164,10 @@ const TABS: TabDef[] = [
 export default function InvoicesPage() {
   const [activeKey, setActiveKey] = useState<TabKey>('unassigned')
   const [vendorQuery, setVendorQuery] = useState('')
+  // The Exported tab filters by picking a vendor from the official list (exact
+  // match) instead of typing; kept separate so it doesn't fight the free-text
+  // search the other tabs use.
+  const [exportedVendor, setExportedVendor] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
 
@@ -351,8 +355,11 @@ export default function InvoicesPage() {
 
   const inTab = scoped(rows.filter((r) => (activeKeyEff === 'history' ? HISTORY_STATUSES.has(r.status) : r.status === activeKeyEff)))
 
+  const onExported = activeKeyEff === 'exported'
   const filtered = inTab.filter((r) => {
-    if (vendorQuery && !(r.vendor ?? '').toLowerCase().includes(vendorQuery.toLowerCase())) {
+    if (onExported) {
+      if (exportedVendor && (r.vendor ?? '').trim().toLowerCase() !== exportedVendor.toLowerCase()) return false
+    } else if (vendorQuery && !(r.vendor ?? '').toLowerCase().includes(vendorQuery.toLowerCase())) {
       return false
     }
     if (from && (!r.submitted_at || r.submitted_at < from)) return false
@@ -365,6 +372,7 @@ export default function InvoicesPage() {
   const todayStr = new Date().toLocaleDateString('en-CA')
   const clearFilters = () => {
     setVendorQuery('')
+    setExportedVendor('')
     setFrom('')
     setTo('')
   }
@@ -519,13 +527,24 @@ export default function InvoicesPage() {
       {/* Filters */}
       <div className="grid grid-cols-1 items-end gap-4 rounded-lg border border-border bg-card p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
         <FilterField label="Vendor">
-          <input
-            type="text"
-            value={vendorQuery}
-            onChange={(e) => setVendorQuery(e.target.value)}
-            placeholder="Search vendor..."
-            className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-accent"
-          />
+          {onExported ? (
+            <select
+              value={exportedVendor}
+              onChange={(e) => setExportedVendor(e.target.value)}
+              className="h-10 w-full rounded-md border border-border bg-card pl-3 pr-8 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">All vendors</option>
+              {vendorNames.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={vendorQuery}
+              onChange={(e) => setVendorQuery(e.target.value)}
+              placeholder="Search vendor..."
+              className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          )}
         </FilterField>
         <FilterField label="From">
           <input
