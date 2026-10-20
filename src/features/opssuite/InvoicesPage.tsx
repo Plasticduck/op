@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck, UserCog } from 'lucide-react'
+import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck, UserCog, Plus } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { InvoiceApproversModal } from './InvoiceApproversModal'
+import { AddInvoiceModal } from './AddInvoiceModal'
 import { useLocations } from '@/lib/locations'
 import { useSearchParams } from 'react-router-dom'
 import { billing, type Account } from '@/lib/queries/billing'
@@ -174,6 +175,7 @@ export default function InvoicesPage() {
     [settings.invoiceApproverEmails],
   )
   const [editingApprovers, setEditingApprovers] = useState(false)
+  const [addingInvoice, setAddingInvoice] = useState(false)
 
   // Emailed-in invoices, filed by the invoice-inbound pipeline. Live-updates as
   // new mail arrives or an invoice moves through the workflow.
@@ -426,13 +428,29 @@ export default function InvoicesPage() {
           <h1 className="text-xl font-semibold tracking-tight text-ink">Invoice Approval</h1>
           <p className="mt-1 text-sm text-ink-muted">{active.subtitle}</p>
         </div>
-        {profile?.role === 'owner' && (
-          <Button variant="secondary" onClick={() => setEditingApprovers(true)}>
-            <UserCog className="size-4" /> Approvers
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {profile?.role === 'owner' && (
+            <Button variant="secondary" onClick={() => setEditingApprovers(true)}>
+              <UserCog className="size-4" /> Approvers
+            </Button>
+          )}
+          {/* Manual invoices land in Unassigned, so only people who manage that
+              tab can add them (RLS also requires manager or above). */}
+          {fullAccess && canManage && (
+            <Button onClick={() => setAddingInvoice(true)}>
+              <Plus className="size-4" /> Add invoice
+            </Button>
+          )}
+        </div>
       </div>
       {editingApprovers && <InvoiceApproversModal users={users} onClose={() => setEditingApprovers(false)} />}
+      {addingInvoice && (
+        <AddInvoiceModal
+          vendors={vendorNames}
+          onClose={() => setAddingInvoice(false)}
+          onCreated={(id) => { setAddingInvoice(false); setActiveKey('unassigned'); setOpenId(id) }}
+        />
+      )}
 
       {/* This wash's unique invoice inbox address (intake, hidden from approvers) */}
       {fullAccess && inboxEmail && (

@@ -1,14 +1,50 @@
 // Invoice Approval data. Rows are created by the invoice-inbound edge function
-// (emailed-in invoices) and land here scoped to the caller's account by RLS.
+// (emailed-in invoices) or added by hand from the page, and land here scoped to
+// the caller's account by RLS.
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/lib/database.types'
 
 export type OpsInvoice = Database['public']['Tables']['ops_invoices']['Row']
+export type OpsInvoiceInsert = Database['public']['Tables']['ops_invoices']['Insert']
 export type OpsInvoiceUpdate = Database['public']['Tables']['ops_invoices']['Update']
+
+// Same matching the invoice-inbound function uses to flag duplicates.
+const normName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+const normNumber = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '')
 
 export const opsInvoices = {
   list: () =>
     supabase.from('ops_invoices').select('*').order('submitted_at', { ascending: false }),
+
+  // A manually added invoice. Mirrors what invoice-inbound files for an emailed
+  // one, so it starts in Unassigned and runs through the same workflow.
+  create: (row: OpsInvoiceInsert) =>
+    supabase.from('ops_invoices').insert(row).select().single(),
+
+  // Store the invoice document at the same path layout invoice-inbound uses:
+  // {account_id}/{invoice_id}/{file name}.
+  uploadFile: async (accountId: string, invoiceId: string, file: File) => {
+    const path = `${accountId}/${invoiceId}/${file.name}`
+    const { error } = await supabase.storage
+      .from('ops-invoices')
+      .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })
+    return { error, path: error ? null : path }
+  },
+
+  // Earliest prior invoice with the same vendor + invoice number, if any.
+  findDuplicate: async (invoiceNumber: string | null, vendorName: string): Promise<string | null> => {
+    if (!invoiceNumber?.trim()) return null
+    const { data } = await supabase
+      .from('ops_invoices')
+      .select('id, invoice_number, vendor_name')
+      .not('invoice_number', 'is', null)
+      .neq('status', 'cancelled')
+      .order('submitted_at', { ascending: true })
+    const hit = (data ?? []).find((p) =>
+      normNumber(String(p.invoice_number ?? '')) === normNumber(invoiceNumber) &&
+      normName(String(p.vendor_name ?? '')) === normName(vendorName))
+    return hit?.id ?? null
+  },
 
   update: (id: string, patch: OpsInvoiceUpdate) =>
     supabase.from('ops_invoices').update(patch).eq('id', id).select().single(),
