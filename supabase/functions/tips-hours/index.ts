@@ -1,10 +1,13 @@
 // tips-hours — Supabase Edge Function (Deno).
-// Returns iSolved WORKED hours per employee for one site over a date range, for
-// the "Tips NEW" page (hours-weighted tip distribution). Worked hours = all
-// timecard pay items except PTO. SALARIED staff are excluded — the tip pool
-// replenishes an hourly pay reduction, so salaried employees are not part of it;
-// payType comes from the employee roster. Only name + hours leave the function.
-// Mighty Wash only. Auth: service-role (cron/test) or a MW owner/manager.
+// Returns iSolved WORKED hours per employee for the "Tips NEW" page. Worked
+// hours = all timecard pay items except PTO. SALARIED staff are always excluded
+// (payType from the roster), since the tip pool replenishes an hourly wage
+// offset. Two modes over a date range:
+//   • company-wide (default): every hourly employee, EXCLUDING anyone whose
+//     roster work location is in `excludeSites` (e.g. the New Mexico sites).
+//   • single site: pass `site` (e.g. "MW17") to get just that location.
+// Only name + hours + site leave the function. Mighty Wash only.
+// Auth: service-role (cron/test) or a MW owner/manager.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -44,6 +47,25 @@ function siteLabel(code: string): string {
   if (u === 'COR') return 'Corporate'
   if (u === 'SPO') return 'Spotless'
   return code
+}
+// Roster workLocation ("MightyWash #17") -> "MW17".
+function siteFromWorkLocation(wl: string): string {
+  if (!wl) return 'Unassigned'
+  const m = wl.match(/#\s*(\d+)/)
+  if (m) return 'MW' + m[1].padStart(2, '0')
+  const u = wl.trim().toUpperCase()
+  if (u.startsWith('COR')) return 'Corporate'
+  if (u.startsWith('SPT') || u.startsWith('SPO')) return 'Spotless'
+  return 'Unassigned'
+}
+// Normalize a site reference (16, "16", "MW16", "MightyWash #16") to "MW16".
+function toSiteLabel(x: unknown): string {
+  const s = String(x).trim().toUpperCase()
+  if (/^\d+$/.test(s)) return 'MW' + s.padStart(2, '0')
+  const m = s.match(/(\d+)/)
+  if (m && s.includes('MW')) return 'MW' + m[1].padStart(2, '0')
+  if (m && s.includes('#')) return 'MW' + m[1].padStart(2, '0')
+  return s
 }
 const isPTO = (name: string, code: string) => /pto/i.test(name) || code === '03'
 
@@ -87,13 +109,15 @@ Deno.serve(async (req) => {
     return json({ error: 'no_key', message: 'iSolved is not configured.' }, 503, origin)
   }
 
-  let body: { start?: string; end?: string; site?: string } = {}
+  let body: { start?: string; end?: string; site?: string; excludeSites?: Array<string | number> } = {}
   try { body = await req.json() } catch { /* empty */ }
   const re = /^\d{4}-\d{2}-\d{2}$/
   const { start, end } = body
-  const targetSite = String(body.site ?? '').trim() // e.g. "MW17"
-  if (!start || !end || !re.test(start) || !re.test(end) || !targetSite) {
-    return json({ error: 'bad_request', message: 'start, end (YYYY-MM-DD) and site are required.' }, 400, origin)
+  const targetSite = String(body.site ?? '').trim() // e.g. "MW17"; empty = company-wide
+  const companyMode = !targetSite
+  const excludeSet = new Set((body.excludeSites ?? []).map(toSiteLabel))
+  if (!start || !end || !re.test(start) || !re.test(end)) {
+    return json({ error: 'bad_request', message: 'start and end (YYYY-MM-DD) are required.' }, 400, origin)
   }
   const days = Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1)
 
@@ -116,12 +140,13 @@ Deno.serve(async (req) => {
     const isEndOf404 = (e: unknown, page: number) =>
       page > 0 && e instanceof Error && /^isolved 404/.test(e.message)
 
-    // Roster first: collect salaried employees so they can be excluded from the
-    // tip pool. payType is keyed by both employeeNumber and id (the timecard can
-    // carry either), matching the Labor Data function's salaried detection. A
-    // roster failure is non-fatal: hours are still returned (salaried just aren't
-    // filtered out) and the problem is reported in rosterError.
+    // Roster first: salaried employees (excluded) + each employee's work-location
+    // site (used to drop New Mexico staff in company mode). Keyed by both
+    // employeeNumber and id since the timecard can carry either. A roster failure
+    // is non-fatal: hours are still returned (salaried/NM just aren't filtered)
+    // and the problem is reported in rosterError.
     const salaried = new Set<string>()
+    const siteByKey = new Map<string, string>()
     let rosterError: string | null = null
     try {
       for (let page = 0; page < 200; page++) {
@@ -131,6 +156,9 @@ Deno.serve(async (req) => {
         const results = (d.results ?? []) as Any[]
         if (results.length === 0) break
         for (const e of results) {
+          const wlSite = siteFromWorkLocation(String(e.workLocation ?? ''))
+          if (e.employeeNumber != null) siteByKey.set(String(e.employeeNumber), wlSite)
+          if (e.id != null) siteByKey.set('id:' + String(e.id), wlSite)
           if (String(e.payType ?? '') !== 'Salary') continue
           if (e.employeeNumber != null) salaried.add(String(e.employeeNumber))
           if (e.id != null) salaried.add('id:' + String(e.id))
@@ -142,7 +170,9 @@ Deno.serve(async (req) => {
     const isSalaried = (r: Any) =>
       salaried.has(String(r.employeeNumber ?? '\u0000')) || salaried.has('id:' + String(r.employeeId ?? '\u0000'))
 
-    const emps = new Map<string, { number: string; name: string; hours: number }>()
+    // Accumulate worked hours per employee, with a per-site tally so we can resolve
+    // each person's effective work location (roster first, else where they worked most).
+    const emps = new Map<string, { number: string; empId: string; name: string; hours: number; siteHours: Record<string, number> }>()
     for (let page = 0; page < 400; page++) {
       let d: Any
       try { d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${start}&endDate=${end}&pageSize=${PAGE_SIZE}&page=${page}`) }
@@ -152,28 +182,49 @@ Deno.serve(async (req) => {
       for (const r of results) {
         if (isSalaried(r)) continue
         const number = String(r.employeeNumber ?? r.employeeId ?? '')
+        const empId = String(r.employeeId ?? '')
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || number
-        for (const t of r.timecardData ?? []) {
-          const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
-          if (siteLabel(String(loc)) !== targetSite) continue
-          for (const p of t.payItems ?? []) {
+        for (const tc of r.timecardData ?? []) {
+          const loc = (tc.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
+          const sLabel = siteLabel(String(loc))
+          if (!companyMode && sLabel !== targetSite) continue
+          for (const p of tc.payItems ?? []) {
             const hrs = Number(p.payItemHours) || 0
             if (!hrs) continue
             if (isPTO(String(p.payItemName ?? ''), String(p.payItemCode ?? ''))) continue
-            const e = emps.get(number) ?? { number, name, hours: 0 }
+            const e = emps.get(number) ?? { number, empId, name, hours: 0, siteHours: {} }
             e.hours += hrs
+            e.siteHours[sLabel] = (e.siteHours[sLabel] ?? 0) + hrs
             emps.set(number, e)
           }
         }
       }
     }
 
-    const employees = [...emps.values()]
-      .map((e) => ({ ...e, hours: Math.round(e.hours * 100) / 100 }))
-      .filter((e) => e.hours > 0)
-      .sort((a, b) => b.hours - a.hours)
+    // Resolve each employee's site and, in company mode, drop excluded (NM) staff.
+    let excludedEmployees = 0
+    const employees: Array<{ number: string; name: string; hours: number; site: string }> = []
+    for (const e of emps.values()) {
+      const rosterSite = siteByKey.get(e.number) ?? (e.empId ? siteByKey.get('id:' + e.empId) : undefined) ?? ''
+      const dominant = Object.entries(e.siteHours).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Unassigned'
+      const site = rosterSite && rosterSite !== 'Unassigned' ? rosterSite : dominant
+      if (companyMode && excludeSet.has(site)) { excludedEmployees++; continue }
+      const hours = Math.round(e.hours * 100) / 100
+      if (hours > 0) employees.push({ number: e.number, name: e.name, hours, site })
+    }
+    employees.sort((a, b) => b.hours - a.hours)
     const totalHours = Math.round(employees.reduce((a, e) => a + e.hours, 0) * 100) / 100
-    return json({ ok: true, site: targetSite, employees, totalHours, days, salariedExcluded: salaried.size, rosterError }, 200, origin)
+    return json({
+      ok: true,
+      scope: companyMode ? 'company' : targetSite,
+      excludedSites: [...excludeSet],
+      employees,
+      totalHours,
+      days,
+      salariedExcluded: salaried.size,
+      excludedEmployees,
+      rosterError,
+    }, 200, origin)
   } catch (e) {
     return json({ error: 'fetch_failed', message: e instanceof Error ? e.message : String(e) }, 500, origin)
   }

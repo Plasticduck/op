@@ -67,21 +67,27 @@ export type LiveResponse = {
 
 export const isolvedLive = () => supabase.functions.invoke<LiveResponse>('isolved-live', { body: {} })
 
-// iSolved worked hours per employee for one site over a date range (Tips NEW).
-export type TipsHoursEmployee = { number: string; name: string; hours: number }
+// iSolved worked hours per employee over a date range (Tips NEW). Company-wide
+// by default (pass excludeSites to drop e.g. New Mexico staff), or one site.
+export type TipsHoursEmployee = { number: string; name: string; hours: number; site?: string }
 export type TipsHoursResponse = {
   ok?: boolean
-  site?: string
+  scope?: string
+  excludedSites?: string[]
   employees?: TipsHoursEmployee[]
   totalHours?: number
   days?: number
   salariedExcluded?: number
+  excludedEmployees?: number
   rosterError?: string | null
   error?: string
   message?: string
 }
-export const tipsHours = (start: string, end: string, site: string) =>
-  supabase.functions.invoke<TipsHoursResponse>('tips-hours', { body: { start, end, site } })
+export const tipsHours = (
+  start: string,
+  end: string,
+  opts: { site?: string; excludeSites?: Array<string | number> } = {},
+) => supabase.functions.invoke<TipsHoursResponse>('tips-hours', { body: { start, end, ...opts } })
 
 // Sync the active iSolved roster into the `employees` table so staff show up as
 // schedulable labor at their site (no manual profiles). Mighty Wash only; the

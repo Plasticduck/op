@@ -9,30 +9,34 @@ import { currency } from '@/lib/format'
 import { tipsHours, type TipsHoursEmployee } from '@/lib/queries/isolved'
 import { flexwashSales, type FlexSite } from '@/lib/queries/flexwashSales'
 
-// "Tips NEW": tip pool used to replenish an hourly wage offset.
+// "Tips NEW": a company-wide tip pool replenishes an hourly wage offset.
 //
-// The model: every hourly employee's rate is cut by $X/hr (default $4). Tips
-// collected are pooled and used to build pay back to the previous rate, split by
-// hours worked. So:
-//   • Amount to build back  = reduction/hr x total hours worked
-//   • Each person's tip share = (their hours / total hours) x tip pool
-//   • If the pool covers the build-back, everyone is made whole and the surplus
-//     is shared by hours. If it falls short, the gap is the "True-Up" that Mighty
-//     Wash must cover so every rate is still restored.
-// Salaried staff are excluded upstream (tips-hours edge function). Hours come
-// from iSolved; tips from FlexWash. Either can be overridden to cross-check.
+// Every hourly employee's rate is cut by $X/hr (default $4). Company-wide tips
+// are pooled and used to build pay back to the previous rate, split by hours
+// worked. New Mexico locations are carved out entirely — their tips don't feed
+// the pool and their employees aren't trued up. So:
+//   • Pool          = FlexWash tips across all FlexWash sites EXCEPT New Mexico
+//   • Build-back    = offset/hr x total hours of all included hourly staff
+//   • Tip share     = (employee hours / total hours) x pool
+//   • Covered -> surplus shared by hours; short -> "True-Up" Mighty Wash covers.
+// Salaried staff and NM employees are excluded upstream (tips-hours edge fn).
+// Hours from iSolved; tips from FlexWash. Either can be overridden to cross-check.
+
+// New Mexico locations, excluded from both the pool and the true-up.
+const NM_SITES = [16, 17, 18, 19, 20, 21, 23, 26]
+const NM = new Set(NM_SITES)
 
 const norm = (s: string) => s.trim().toLowerCase()
 const fmtPct = (f: number) => `${(f * 100).toFixed(1)}%`
 
 export default function TipsNewPage() {
   const [sites, setSites] = useState<FlexSite[]>([])
-  const [siteNum, setSiteNum] = useState<number | ''>('')
   const [start, setStart] = useState(format(subDays(new Date(), 13), 'yyyy-MM-dd'))
   const [end, setEnd] = useState(format(new Date(), 'yyyy-MM-dd'))
 
   const [hoursEmps, setHoursEmps] = useState<TipsHoursEmployee[] | null>(null)
   const [flexTips, setFlexTips] = useState<number | null>(null)
+  const [excluded, setExcluded] = useState<{ salaried?: number; employees?: number } | null>(null)
   const [tipPool, setTipPool] = useState('')
   const [reduction, setReduction] = useState('4.00')
   const [uploaded, setUploaded] = useState<Map<string, number> | null>(null)
@@ -43,23 +47,16 @@ export default function TipsNewPage() {
   const [error, setError] = useState<string | null>(null)
   const [rosterWarn, setRosterWarn] = useState(false)
 
-  useEffect(() => {
-    void flexwashSales.sites().then((s) => {
-      setSites(s)
-      if (s.length) setSiteNum(s[0].site_number)
-    })
-  }, [])
+  useEffect(() => { void flexwashSales.sites().then(setSites) }, [])
 
-  const selectedSite = sites.find((s) => s.site_number === siteNum)
-  const siteCode = selectedSite ? `MW${String(selectedSite.site_number).padStart(2, '0')}` : ''
+  const nonNmFlex = useMemo(() => sites.filter((s) => !NM.has(s.site_number)), [sites])
 
   const pull = useCallback(async () => {
-    if (!selectedSite) { setError('Pick a site.'); return }
     setBusy(true)
     setError(null)
     const [hoursRes, tips] = await Promise.all([
-      tipsHours(start, end, siteCode),
-      flexwashSales.tips([selectedSite.car_wash_id], start, end).catch(() => null),
+      tipsHours(start, end, { excludeSites: NM_SITES }),
+      nonNmFlex.length ? flexwashSales.tips(nonNmFlex.map((s) => s.car_wash_id), start, end).catch(() => null) : Promise.resolve(0),
     ])
     const hr = hoursRes.data
     if (hoursRes.error || hr?.error) {
@@ -68,11 +65,12 @@ export default function TipsNewPage() {
       return
     }
     setHoursEmps(hr?.employees ?? [])
+    setExcluded({ salaried: hr?.salariedExcluded, employees: hr?.excludedEmployees })
     setRosterWarn(!!hr?.rosterError)
     setFlexTips(tips)
     setTipPool(tips != null ? tips.toFixed(2) : '')
     setBusy(false)
-  }, [selectedSite, siteCode, start, end])
+  }, [start, end, nonNmFlex])
 
   const onUpload = async (file: File | null) => {
     if (!file) return
@@ -104,21 +102,21 @@ export default function TipsNewPage() {
     const list = hoursEmps.map((e) => {
       const up = uploaded?.get(norm(e.name)) ?? null
       const hoursUsed = hoursSource === 'uploaded' ? (up ?? 0) : e.hours
-      return { number: e.number, name: e.name, isolvedHours: e.hours, uploadedHours: up, hoursUsed }
+      return { number: e.number, name: e.name, site: e.site ?? '', isolvedHours: e.hours, uploadedHours: up, hoursUsed }
     })
     const totalUsed = list.reduce((a, r) => a + r.hoursUsed, 0)
     return list
       .map((r) => {
-        const payCut = reductionNum * r.hoursUsed
+        const offset = reductionNum * r.hoursUsed
         const tipShare = totalUsed > 0 ? (r.hoursUsed / totalUsed) * pool : 0
-        return { ...r, share: totalUsed > 0 ? r.hoursUsed / totalUsed : 0, payCut, tipShare, net: tipShare - payCut }
+        return { ...r, share: totalUsed > 0 ? r.hoursUsed / totalUsed : 0, offset, tipShare, net: tipShare - offset }
       })
       .sort((a, b) => b.hoursUsed - a.hoursUsed)
   }, [hoursEmps, uploaded, hoursSource, reductionNum, pool])
 
   const t = useMemo(() => {
     const hours = rows.reduce((a, r) => a + r.hoursUsed, 0)
-    const buildBack = reductionNum * hours // amount needed to restore pay
+    const buildBack = reductionNum * hours
     const net = pool - buildBack
     return {
       hours: Math.round(hours * 100) / 100,
@@ -135,37 +133,32 @@ export default function TipsNewPage() {
   const netLabel = shortfall ? 'True-Up' : 'Surplus'
 
   const exportCsv = () => {
-    const head = ['Employee', 'iSolved hours', 'Uploaded hours', 'Hours used', 'Share', `Wage offset (${currency(reductionNum)}/hr)`, 'Tip share', netLabel]
+    const head = ['Employee', 'Site', 'iSolved hours', 'Uploaded hours', 'Hours used', 'Share', `Wage offset (${currency(reductionNum)}/hr)`, 'Tip share', netLabel]
     const lines = [head.join(',')]
     for (const r of rows) {
       lines.push([
-        `"${r.name}"`, r.isolvedHours, r.uploadedHours ?? '', r.hoursUsed,
-        (r.share * 100).toFixed(2) + '%', r.payCut.toFixed(2), r.tipShare.toFixed(2),
+        `"${r.name}"`, r.site, r.isolvedHours, r.uploadedHours ?? '', r.hoursUsed,
+        (r.share * 100).toFixed(2) + '%', r.offset.toFixed(2), r.tipShare.toFixed(2),
         (shortfall ? Math.max(0, -r.net) : Math.max(0, r.net)).toFixed(2),
       ].join(','))
     }
-    lines.push(['Total', '', '', t.hours, '', t.buildBack.toFixed(2), t.pool.toFixed(2), (shortfall ? t.trueUp : t.surplus).toFixed(2)].join(','))
+    lines.push(['Total', '', '', '', t.hours, '', t.buildBack.toFixed(2), t.pool.toFixed(2), (shortfall ? t.trueUp : t.surplus).toFixed(2)].join(','))
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `tips-${siteCode}-${start}-to-${end}.csv`
+    a.download = `tips-company-${start}-to-${end}.csv`
     a.click()
     URL.revokeObjectURL(a.href)
   }
 
+  const colCount = uploaded ? 9 : 8
+
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-4 lg:px-8">
-      <PageHeader title="Tips NEW" subtitle="Use the tip pool to replenish an hourly wage offset, split by hours worked." />
+      <PageHeader title="Tips NEW" subtitle="Company-wide tip pool replenishing an hourly wage offset, split by hours worked." />
 
       <section className="mt-4 rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
-            Site
-            <Select value={siteNum === '' ? '' : String(siteNum)} onChange={(e) => setSiteNum(e.target.value ? Number(e.target.value) : '')} className="h-9 w-48">
-              <option value="">Select…</option>
-              {sites.map((s) => <option key={s.site_number} value={s.site_number}>{s.name ?? `MW${String(s.site_number).padStart(2, '0')}`}</option>)}
-            </Select>
-          </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
             From
             <Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} className="h-9 w-40" />
@@ -174,10 +167,11 @@ export default function TipsNewPage() {
             To
             <Input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} className="h-9 w-40" />
           </label>
-          <Button onClick={() => void pull()} disabled={busy || !selectedSite}>
+          <Button onClick={() => void pull()} disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : null} Pull from iSolved + FlexWash
           </Button>
         </div>
+        <p className="mt-2 text-xs text-ink-subtle">Company-wide. New Mexico sites are excluded: {NM_SITES.join(', ')}.</p>
         {error && <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
       </section>
 
@@ -185,7 +179,7 @@ export default function TipsNewPage() {
         <>
           {rosterWarn && (
             <p className="mt-4 flex items-center gap-2 rounded-md bg-warn-soft px-3 py-2 text-sm text-warn">
-              <AlertTriangle className="size-4 shrink-0" /> Could not read the iSolved roster this time, so salaried staff may not be filtered out. Pull again to retry.
+              <AlertTriangle className="size-4 shrink-0" /> Could not read the iSolved roster this time, so salaried and New Mexico staff may not be filtered out. Pull again to retry.
             </p>
           )}
 
@@ -198,10 +192,11 @@ export default function TipsNewPage() {
               </label>
               <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
                 Tip pool ($)
-                <Input value={tipPool} onChange={(e) => setTipPool(e.target.value)} className="h-9 w-32" inputMode="decimal" />
+                <Input value={tipPool} onChange={(e) => setTipPool(e.target.value)} className="h-9 w-36" inputMode="decimal" />
               </label>
               <p className="pb-1.5 text-xs text-ink-subtle">
-                FlexWash reported <span className="font-medium text-ink">{flexTips != null ? currency(flexTips) : '—'}</span> in tips.
+                FlexWash (excl. NM) reported <span className="font-medium text-ink">{flexTips != null ? currency(flexTips) : '—'}</span> in tips
+                {nonNmFlex.length === 0 && <span className="text-warn"> — no non-NM FlexWash sites yet, so enter the pool manually.</span>}
               </p>
               <div className="ml-auto flex items-end gap-2">
                 <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
@@ -223,7 +218,7 @@ export default function TipsNewPage() {
 
           {/* The three headline calcs */}
           <section className="mt-4 grid gap-3 sm:grid-cols-3">
-            <Stat label="Hourly staff hours" value={t.hours.toFixed(1)} sub={`${rows.length} employees, salaried excluded`} />
+            <Stat label="Hourly staff hours" value={t.hours.toFixed(1)} sub={`${rows.length} employees · salaried${excluded?.employees ? ` + ${excluded.employees} NM` : ''} excluded`} />
             <Stat label="Wages to build back" value={currency(t.buildBack)} sub={`${currency(reductionNum)}/hr × ${t.hours.toFixed(1)} hrs`} />
             <Stat label="Tip pool" value={currency(t.pool)} sub={`${currency(t.perHourTips)}/hr across all hours`} />
           </section>
@@ -247,10 +242,11 @@ export default function TipsNewPage() {
 
           {/* Per-employee breakdown */}
           <section className="mt-4 overflow-x-auto rounded-xl border border-border">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-content text-left text-[11px] uppercase tracking-wide text-ink-subtle">
                 <tr>
                   <th className="px-3 py-2 font-medium">Employee</th>
+                  <th className="px-3 py-2 font-medium">Site</th>
                   <th className="px-3 py-2 text-right font-medium">iSolved hrs</th>
                   {uploaded && <th className="px-3 py-2 text-right font-medium">Uploaded hrs</th>}
                   <th className="px-3 py-2 text-right font-medium">Hours used</th>
@@ -266,6 +262,7 @@ export default function TipsNewPage() {
                   return (
                     <tr key={r.number}>
                       <td className="px-3 py-2 font-medium text-ink">{r.name}</td>
+                      <td className="px-3 py-2 text-ink-muted">{r.site}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{r.isolvedHours.toFixed(1)}</td>
                       {uploaded && (
                         <td className={`px-3 py-2 text-right tabular-nums ${r.uploadedHours == null ? 'text-danger' : Math.abs((r.uploadedHours ?? 0) - r.isolvedHours) > 0.05 ? 'text-warn' : 'text-ink-muted'}`}>
@@ -274,19 +271,20 @@ export default function TipsNewPage() {
                       )}
                       <td className="px-3 py-2 text-right tabular-nums text-ink">{r.hoursUsed.toFixed(1)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{fmtPct(r.share)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{currency(r.payCut)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{currency(r.offset)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-ink">{currency(r.tipShare)}</td>
                       <td className={`px-3 py-2 text-right tabular-nums font-semibold ${shortfall ? 'text-danger' : 'text-ok'}`}>{currency(netVal)}</td>
                     </tr>
                   )
                 })}
                 {rows.length === 0 && (
-                  <tr><td colSpan={uploaded ? 8 : 7} className="px-3 py-6 text-center text-ink-subtle">No worked hours for this site and period.</td></tr>
+                  <tr><td colSpan={colCount} className="px-3 py-6 text-center text-ink-subtle">No worked hours for this period.</td></tr>
                 )}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border bg-content/60 font-semibold text-ink">
                   <td className="px-3 py-2">Total</td>
+                  <td className="px-3 py-2" />
                   <td className="px-3 py-2 text-right tabular-nums">{hoursEmps.reduce((a, e) => a + e.hours, 0).toFixed(1)}</td>
                   {uploaded && <td className="px-3 py-2" />}
                   <td className="px-3 py-2 text-right tabular-nums">{t.hours.toFixed(1)}</td>
@@ -300,10 +298,10 @@ export default function TipsNewPage() {
           </section>
 
           <p className="mt-3 text-xs text-ink-subtle">
-            Hours are worked hours from iSolved timecards (PTO and salaried staff excluded). <b>Wage offset</b> = offset/hr × the
-            employee's hours (the part of their wage that tips are meant to cover). <b>Tip share</b> = their hours ÷ total hours × the tip pool. In a
-            shortfall the <b>True-Up</b> column is what Mighty Wash owes each person on top of their tips to restore their pay; in a
-            surplus it is the extra each person keeps beyond the restored amount.
+            Hours are worked hours from iSolved timecards (PTO, salaried staff, and New Mexico employees excluded). <b>Wage offset</b> =
+            offset/hr × the employee's hours (the part of their wage that tips are meant to cover). <b>Tip share</b> = their hours ÷ total
+            hours × the tip pool. In a shortfall the <b>True-Up</b> column is what Mighty Wash owes each person on top of their tips to
+            restore their pay; in a surplus it is the extra each person keeps beyond the restored amount.
           </p>
         </>
       )}
