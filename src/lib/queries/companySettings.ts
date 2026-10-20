@@ -54,6 +54,11 @@ export type CompanySettings = {
   // set, it replaces the generated <token>@invoices.washlyfe.com inbox, e.g. a
   // real mailbox the wash already receives at.
   invoiceInboxEmail?: string
+  // Invoice Approval's approver list, edited by admins on that page (lowercased
+  // emails). Only these people appear in the Approver dropdown; anyone listed
+  // without a login appears once their account exists. Unset falls back to all
+  // admins and managers.
+  invoiceApproverEmails?: string[]
 }
 
 export type SitePlan = 'single' | 'multi'

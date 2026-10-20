@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck } from 'lucide-react'
+import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck, UserCog } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
+import { useCompany } from '@/lib/company'
+import { InvoiceApproversModal } from './InvoiceApproversModal'
 import { useLocations } from '@/lib/locations'
 import { useSearchParams } from 'react-router-dom'
 import { billing, type Account } from '@/lib/queries/billing'
@@ -25,23 +27,6 @@ import { cn } from '@/lib/utils'
 // local-part token (see account_for_invoice_token in migration 0050). This
 // screen surfaces the address + shows the invoices it produces.
 const INVOICE_INBOX_DOMAIN = 'invoices.washlyfe.com'
-
-// The approver dropdown is restricted to MW's official "Invoice Approvers List"
-// (matched by email, case-insensitive). Anyone not on this list is hidden even
-// if they're an owner/manager. People on the list who don't yet have a login
-// simply won't appear until their account exists. Accounts with no matching
-// user (e.g. non-MW washes, demo) fall back to all owners/managers so the
-// dropdown is never empty. (Staci Wyatt is staci@mymightywash.com per the list;
-// her account email must match this for her to appear.)
-const INVOICE_APPROVER_EMAILS = new Set([
-  'berhl@mighty-wash.com', 'hmurry@mighty-wash.com', 'kstaton@mighty-wash.com',
-  'ernest@mighty-wash.com', 'justin.gamboa@mighty-wash.com', 'mcanales@mighty-wash.com',
-  'rbreed@mighty-wash.com', 'lester@mighty-wash.com', 'isabel@mighty-wash.com',
-  'djones@mighty-wash.com', 'josh.roberts@mighty-wash.com', 'kellyspiller@mighty-wash.com',
-  'gwatson@mighty-wash.com', 'shelbi@mighty-wash.com', 'kjowers@mighty-wash.com',
-  'ncarter@mighty-wash.com', 'staci@mymightywash.com',
-  'kwatson@mighty-wash.com', 'debra@mighty-wash.com',
-])
 
 // Invoice-approval tab access is scoped to the Mighty Wash account. Within MW,
 // only these people see every tab; everyone else who can reach the page is an
@@ -183,6 +168,12 @@ export default function InvoicesPage() {
 
   const { profile } = useAuth()
   const { locations } = useLocations()
+  const { settings } = useCompany()
+  const approverEmails = useMemo(
+    () => (settings.invoiceApproverEmails ? new Set(settings.invoiceApproverEmails.map((e) => e.toLowerCase())) : null),
+    [settings.invoiceApproverEmails],
+  )
+  const [editingApprovers, setEditingApprovers] = useState(false)
 
   // Emailed-in invoices, filed by the invoice-inbound pipeline. Live-updates as
   // new mail arrives or an invoice moves through the workflow.
@@ -430,10 +421,18 @@ export default function InvoicesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">Invoice Approval</h1>
-        <p className="mt-1 text-sm text-ink-muted">{active.subtitle}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Invoice Approval</h1>
+          <p className="mt-1 text-sm text-ink-muted">{active.subtitle}</p>
+        </div>
+        {profile?.role === 'owner' && (
+          <Button variant="secondary" onClick={() => setEditingApprovers(true)}>
+            <UserCog className="size-4" /> Approvers
+          </Button>
+        )}
       </div>
+      {editingApprovers && <InvoiceApproversModal users={users} onClose={() => setEditingApprovers(false)} />}
 
       {/* This wash's unique invoice inbox address (intake, hidden from approvers) */}
       {fullAccess && inboxEmail && (
@@ -699,6 +698,7 @@ export default function InvoicesPage() {
           duplicateOfInvoice={openInvoice.duplicate_of ? (invoices.find((i) => i.id === openInvoice.duplicate_of) ?? null) : null}
           users={users}
           vendors={vendorNames}
+          approverEmails={approverEmails}
           glCodes={glCodes}
           classes={classes}
           currentUserId={profile?.id ?? null}
@@ -739,12 +739,15 @@ export default function InvoicesPage() {
 // ---- Workflow modal --------------------------------------------------------
 
 function InvoiceModal({
-  invoice, duplicateOfInvoice, users, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, isDeleteAdmin, busy, onClose, onFile, onDownload, act, onDelete, onRequestDelete,
+  invoice, duplicateOfInvoice, users, approverEmails, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, isDeleteAdmin, busy, onClose, onFile, onDownload, act, onDelete, onRequestDelete,
 }: {
   invoice: OpsInvoice
   duplicateOfInvoice: OpsInvoice | null
   users: AccountUser[]
   vendors: string[]
+  // The admin-edited approver list (lowercased emails); null when the account
+  // hasn't set one, which falls back to every admin and manager.
+  approverEmails: Set<string> | null
   glCodes: string[]
   classes: string[]
   currentUserId: string | null
@@ -764,7 +767,12 @@ function InvoiceModal({
   const editable = canManage && (status === 'unassigned' || status === 'needs_attention')
   // Restrict to the official approver list; fall back to owners/managers when no
   // listed user exists on this account (non-MW washes, demo) so it's never empty.
-  const listedApprovers = users.filter((u) => u.email && INVOICE_APPROVER_EMAILS.has(u.email.toLowerCase()))
+  // Only people on the approver list appear; listed people without a login show
+  // up once their account exists. An empty or missing list (or one where nobody
+  // has a login yet) falls back to admins/managers so the dropdown is never empty.
+  const listedApprovers = approverEmails
+    ? users.filter((u) => u.email && approverEmails.has(u.email.toLowerCase()))
+    : []
   const approverUsers = listedApprovers.length ? listedApprovers : users.filter((u) => u.role === 'owner' || u.role === 'manager')
 
   // Sites are QuickBooks classes (from the Class List), stored on class_names.
