@@ -9,7 +9,7 @@ import { currency } from '@/lib/format'
 import { tipsHours, type TipsHoursEmployee } from '@/lib/queries/isolved'
 import { flexwashSales, type FlexSite } from '@/lib/queries/flexwashSales'
 
-// "Tips NEW": tip pool used to replenish an hourly pay reduction.
+// "Tips NEW": tip pool used to replenish an hourly wage offset.
 //
 // The model: every hourly employee's rate is cut by $X/hr (default $4). Tips
 // collected are pooled and used to build pay back to the previous rate, split by
@@ -135,7 +135,7 @@ export default function TipsNewPage() {
   const netLabel = shortfall ? 'True-Up' : 'Surplus'
 
   const exportCsv = () => {
-    const head = ['Employee', 'iSolved hours', 'Uploaded hours', 'Hours used', 'Share', `Pay cut (${currency(reductionNum)}/hr)`, 'Tip share', netLabel]
+    const head = ['Employee', 'iSolved hours', 'Uploaded hours', 'Hours used', 'Share', `Wage offset (${currency(reductionNum)}/hr)`, 'Tip share', netLabel]
     const lines = [head.join(',')]
     for (const r of rows) {
       lines.push([
@@ -155,7 +155,7 @@ export default function TipsNewPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-4 lg:px-8">
-      <PageHeader title="Tips NEW" subtitle="Use the tip pool to replenish an hourly pay reduction, split by hours worked." />
+      <PageHeader title="Tips NEW" subtitle="Use the tip pool to replenish an hourly wage offset, split by hours worked." />
 
       <section className="mt-4 rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -193,7 +193,7 @@ export default function TipsNewPage() {
           <section className="mt-4 rounded-xl border border-border bg-card p-4">
             <div className="flex flex-wrap items-end gap-4">
               <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
-                Hourly reduction ($/hr)
+                Wage offset ($/hr)
                 <Input value={reduction} onChange={(e) => setReduction(e.target.value)} className="h-9 w-28" inputMode="decimal" />
               </label>
               <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
@@ -224,7 +224,7 @@ export default function TipsNewPage() {
           {/* The three headline calcs */}
           <section className="mt-4 grid gap-3 sm:grid-cols-3">
             <Stat label="Hourly staff hours" value={t.hours.toFixed(1)} sub={`${rows.length} employees, salaried excluded`} />
-            <Stat label="Pay to build back" value={currency(t.buildBack)} sub={`${currency(reductionNum)}/hr × ${t.hours.toFixed(1)} hrs`} />
+            <Stat label="Wages to build back" value={currency(t.buildBack)} sub={`${currency(reductionNum)}/hr × ${t.hours.toFixed(1)} hrs`} />
             <Stat label="Tip pool" value={currency(t.pool)} sub={`${currency(t.perHourTips)}/hr across all hours`} />
           </section>
 
@@ -239,8 +239,8 @@ export default function TipsNewPage() {
               </p>
               <p className="mt-1 text-xs text-ink-muted">
                 {shortfall
-                  ? `Tips (${currency(t.pool)}) cover part of the ${currency(t.buildBack)} pay reduction; Mighty Wash tops up the remaining ${currency(t.trueUp)} so every rate is still restored to the previous level.`
-                  : `Tips (${currency(t.pool)}) cover the full ${currency(t.buildBack)} pay reduction with ${currency(t.surplus)} left over, distributed to employees by hours worked.`}
+                  ? `Tips (${currency(t.pool)}) cover part of the ${currency(t.buildBack)} wage offset; Mighty Wash tops up the remaining ${currency(t.trueUp)} so every rate is still restored to the previous level.`
+                  : `Tips (${currency(t.pool)}) cover the full ${currency(t.buildBack)} wage offset with ${currency(t.surplus)} left over, distributed to employees by hours worked.`}
               </p>
             </div>
           </section>
@@ -255,7 +255,7 @@ export default function TipsNewPage() {
                   {uploaded && <th className="px-3 py-2 text-right font-medium">Uploaded hrs</th>}
                   <th className="px-3 py-2 text-right font-medium">Hours used</th>
                   <th className="px-3 py-2 text-right font-medium">Share</th>
-                  <th className="px-3 py-2 text-right font-medium">Pay cut</th>
+                  <th className="px-3 py-2 text-right font-medium">Wage offset</th>
                   <th className="px-3 py-2 text-right font-medium">Tip share</th>
                   <th className="px-3 py-2 text-right font-medium">{netLabel}</th>
                 </tr>
@@ -300,8 +300,8 @@ export default function TipsNewPage() {
           </section>
 
           <p className="mt-3 text-xs text-ink-subtle">
-            Hours are worked hours from iSolved timecards (PTO and salaried staff excluded). <b>Pay cut</b> = reduction/hr × the
-            employee's hours (what their pay was lowered by). <b>Tip share</b> = their hours ÷ total hours × the tip pool. In a
+            Hours are worked hours from iSolved timecards (PTO and salaried staff excluded). <b>Wage offset</b> = offset/hr × the
+            employee's hours (the part of their wage that tips are meant to cover). <b>Tip share</b> = their hours ÷ total hours × the tip pool. In a
             shortfall the <b>True-Up</b> column is what Mighty Wash owes each person on top of their tips to restore their pay; in a
             surplus it is the extra each person keeps beyond the restored amount.
           </p>
