@@ -44,6 +44,8 @@ export default function SiteAuditsPage() {
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<Row | null>(null)
   const [adding, setAdding] = useState(false)
+  const [drafts, setDrafts] = useState<Row[]>([])
+  const [resuming, setResuming] = useState<Row | null>(null)
   const [schema, setSchema] = useState<SiteAuditSchema>(DEFAULT_SITE_AUDIT_SCHEMA)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [siteFilter, setSiteFilter] = useState('all')
@@ -55,6 +57,20 @@ export default function SiteAuditsPage() {
       setLoading(false)
     })
   useEffect(() => { void load() }, [])
+
+  // The current user's own in-progress drafts (resume later).
+  const loadDrafts = () => {
+    const uid = profile?.id
+    if (!uid) { setDrafts([]); return }
+    void siteAudits.listDrafts(uid).then(({ data }) => setDrafts((data as unknown as Row[]) ?? []))
+  }
+  useEffect(() => { loadDrafts() }, [profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const discardDraft = async (d: Row) => {
+    if (!window.confirm('Discard this saved draft? This cannot be undone.')) return
+    await siteAudits.removeDraft(d.id)
+    loadDrafts()
+  }
   useEffect(() => {
     void customForms.get('site_audit').then(({ data }) => {
       if (data?.schema) setSchema(data.schema as SiteAuditSchema)
@@ -154,6 +170,29 @@ export default function SiteAuditsPage() {
         onExportPdf={() => exportPdf('Site Audits', EXPORT_COLUMNS, table.rows, { logoUrl: isMightyWash ? '/mw-logo.png' : null })}
         onExportExcel={() => exportExcel('site-audits', EXPORT_COLUMNS, table.rows)}
       />
+
+      {drafts.length > 0 && (
+        <div className="rounded-md border border-warn/40 bg-warn-soft/50 p-3">
+          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-warn">
+            <ClipboardCheck className="size-3.5" /> In progress — saved drafts
+          </h3>
+          <ul className="flex flex-col gap-2">
+            {drafts.map((d) => (
+              <li key={d.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">{d.location?.name ?? 'Unassigned site'}</p>
+                  <p className="text-xs text-ink-muted">Saved {d.updated_at ? shortDate(d.updated_at) : shortDate(d.created_at)}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button size="sm" onClick={() => setResuming(d)}>Resume</Button>
+                  <Button variant="ghost" size="sm" onClick={() => void discardDraft(d)}>Discard</Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : table.rows.length === 0 ? (
@@ -226,14 +265,15 @@ export default function SiteAuditsPage() {
           </div>
         </Modal>
       )}
-      {adding && (
+      {(adding || resuming) && (
         <AddAudit
           accountId={profile?.account_id ?? ''}
           submitterId={profile?.id ?? null}
           submitterName={profile?.name ?? null}
           schema={schema}
-          onClose={() => setAdding(false)}
-          onSaved={() => { setAdding(false); void load() }}
+          draft={resuming ? { id: resuming.id, locationId: resuming.location_id ?? '', answers: (resuming.draft_answers as unknown as SiteAuditAnswers) ?? {} } : null}
+          onClose={() => { setAdding(false); setResuming(null) }}
+          onSaved={() => { setAdding(false); setResuming(null); void load(); loadDrafts() }}
         />
       )}
       {builderOpen && (
@@ -347,18 +387,42 @@ function firstCommentsText(schema: SiteAuditSchema, answers: SiteAuditAnswers, s
   return null
 }
 
-function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSaved }: {
+function AddAudit({ accountId, submitterId, submitterName, schema, draft, onClose, onSaved }: {
   accountId: string
   submitterId: string | null
   submitterName: string | null
   schema: SiteAuditSchema
+  // When set, we're resuming a saved draft (its id, site, and answers).
+  draft?: { id: string; locationId: string; answers: SiteAuditAnswers } | null
   onClose: () => void
   onSaved: () => void
 }) {
   const { locations } = useLocations()
-  const [locationId, setLocationId] = useState('')
+  const [locationId, setLocationId] = useState(draft?.locationId ?? '')
+  const draftId = draft?.id ?? null
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
+
+  // Save the in-progress answers as a draft and close, so it can be resumed later.
+  const saveDraft = async (answers: SiteAuditAnswers) => {
+    setError(null)
+    if (!locationId) { setError('Pick a site first, then save your progress.'); return }
+    setSavingDraft(true)
+    const base = {
+      account_id: accountId,
+      location_id: locationId,
+      submitted_by: submitterId,
+      submitted_by_name: submitterName,
+      draft_answers: answers as never,
+    }
+    const { error: err } = draftId
+      ? await siteAudits.updateDraft(draftId, base)
+      : await siteAudits.saveDraft(base)
+    setSavingDraft(false)
+    if (err) { setError(err.message); return }
+    onSaved()
+  }
 
   const save = async (answers: SiteAuditAnswers) => {
     setError(null)
@@ -414,12 +478,15 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
     const auditId = (data as { id?: string } | null)?.id
     if (auditId) void siteAudits.emailReport(auditId)
 
+    // If this was resumed from a draft, remove the draft now that it's submitted.
+    if (draftId) void siteAudits.removeDraft(draftId)
+
     setBusy(false)
     onSaved()
   }
 
   return (
-    <Modal open onClose={onClose} title="Submit site audit" size="lg">
+    <Modal open onClose={onClose} title={draft ? 'Resume site audit' : 'Submit site audit'} size="lg">
       <div className="flex flex-col gap-4">
         <Field label="Site" required>
           {(id) => (
@@ -432,7 +499,15 @@ function AddAudit({ accountId, submitterId, submitterName, schema, onClose, onSa
 
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
-        <SiteAuditForm accountId={accountId} schema={schema} onSubmit={save} submitting={busy} />
+        <SiteAuditForm
+          accountId={accountId}
+          schema={schema}
+          initialAnswers={draft?.answers}
+          onSubmit={save}
+          onSaveDraft={saveDraft}
+          submitting={busy}
+          savingDraft={savingDraft}
+        />
 
         <div className="flex justify-end">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>

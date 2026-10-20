@@ -5099,6 +5099,7 @@ export type Database = {
         Row: {
           account_id: string
           created_at: string
+          draft_answers: Json | null
           explanation: string | null
           final_thoughts: Json | null
           id: string
@@ -5109,12 +5110,15 @@ export type Database = {
           priority_section: Json | null
           secondary_section: Json | null
           section_comments: Json | null
+          status: string
           submitted_by: string | null
           submitted_by_name: string | null
+          updated_at: string | null
         }
         Insert: {
           account_id: string
           created_at?: string
+          draft_answers?: Json | null
           explanation?: string | null
           final_thoughts?: Json | null
           id?: string
@@ -5125,12 +5129,15 @@ export type Database = {
           priority_section?: Json | null
           secondary_section?: Json | null
           section_comments?: Json | null
+          status?: string
           submitted_by?: string | null
           submitted_by_name?: string | null
+          updated_at?: string | null
         }
         Update: {
           account_id?: string
           created_at?: string
+          draft_answers?: Json | null
           explanation?: string | null
           final_thoughts?: Json | null
           id?: string
@@ -5141,8 +5148,10 @@ export type Database = {
           priority_section?: Json | null
           secondary_section?: Json | null
           section_comments?: Json | null
+          status?: string
           submitted_by?: string | null
           submitted_by_name?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {

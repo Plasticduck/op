@@ -47,12 +47,29 @@ export const siteReviewPhotos = {
   },
 }
 export const siteAudits = {
-  list: () => supabase.from('site_audits').select(withLoc).order('created_at', { ascending: false }),
+  // Completed (submitted) audits only — drafts are kept separate.
+  list: () =>
+    supabase.from('site_audits').select(withLoc).eq('status', 'submitted').order('created_at', { ascending: false }),
   create: (row: T['site_audits']['Insert']) => supabase.from('site_audits').insert(row).select().single(),
   // Emails the audit PDF (photos included) to leadership, the site, and its RM.
   // The PDF is built server-side from the audit id.
   emailReport: (auditId: string) =>
     supabase.functions.invoke('email-site-audit', { body: { audit_id: auditId } }),
+
+  // ---- in-progress drafts (resume later) ----
+  // A user's own saved drafts, newest first.
+  listDrafts: (userId: string) =>
+    supabase
+      .from('site_audits')
+      .select(withLoc)
+      .eq('status', 'draft')
+      .eq('submitted_by', userId)
+      .order('updated_at', { ascending: false }),
+  saveDraft: (row: T['site_audits']['Insert']) =>
+    supabase.from('site_audits').insert({ ...row, status: 'draft', updated_at: new Date().toISOString() }).select().single(),
+  updateDraft: (id: string, patch: T['site_audits']['Update']) =>
+    supabase.from('site_audits').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select().single(),
+  removeDraft: (id: string) => supabase.from('site_audits').delete().eq('id', id),
 }
 
 // Photos attached to individual site-audit items. Stored in the private

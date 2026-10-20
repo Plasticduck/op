@@ -30,13 +30,18 @@ export default function SiteAuditForm({
   schema,
   initialAnswers,
   onSubmit,
+  onSaveDraft,
   submitting,
+  savingDraft,
 }: {
   accountId: string
   schema: SiteAuditSchema
   initialAnswers?: SiteAuditAnswers
   onSubmit: (answers: SiteAuditAnswers) => void | Promise<void>
+  // Optional: save the current answers as a draft to resume later.
+  onSaveDraft?: (answers: SiteAuditAnswers) => void | Promise<void>
   submitting?: boolean
+  savingDraft?: boolean
 }) {
   const [answers, setAnswers] = useState<SiteAuditAnswers>(
     initialAnswers ?? emptyAnswersFor(schema),
@@ -99,8 +104,18 @@ export default function SiteAuditForm({
         </section>
       ))}
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={submitting}>
+      <div className="flex justify-end gap-2">
+        {onSaveDraft && (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={submitting || savingDraft}
+            onClick={() => void onSaveDraft(answers)}
+          >
+            {savingDraft ? 'Saving…' : 'Save progress'}
+          </Button>
+        )}
+        <Button type="submit" disabled={submitting || savingDraft}>
           {submitting ? 'Submitting…' : 'Submit audit'}
         </Button>
       </div>
