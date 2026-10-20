@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CalendarCog,
   Link2,
+  Printer,
   UsersRound,
   ChevronLeft,
   ChevronRight,
@@ -1118,6 +1119,23 @@ function Scheduler({ locationId }: { locationId: string }) {
   // Shared across all week blocks so a copied day can be pasted into any week.
   const [clipboard, setClipboard] = useState<DayClipboard | null>(null)
 
+  // The Mighty Wash public-schedule QR (points at the link-only portal).
+  const isMightyWash = profile?.account_id === ISOLVED_ACCOUNT_ID
+  const QR_SRC = '/mw-schedules-qr.png'
+  const printQr = () => {
+    const w = window.open('', '_blank', 'width=460,height=640')
+    if (!w) return
+    w.document.write(
+      '<!doctype html><html><head><title>Mighty Wash Schedules</title></head>' +
+      '<body style="margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:-apple-system,Segoe UI,Arial,sans-serif;text-align:center;">' +
+      '<img src="' + window.location.origin + QR_SRC + '" style="width:340px;height:340px;" onload="window.focus();window.print();" />' +
+      '<h2 style="margin:20px 0 4px;font-size:22px;">Scan to view the schedule</h2>' +
+      '<p style="margin:0;color:#555;font-size:15px;">Mighty Wash published schedules</p>' +
+      '</body></html>',
+    )
+    w.document.close()
+  }
+
   // The hidden, link-only public page for viewing published schedules per site.
   const openPublicLink = async () => {
     if (!profile?.account_id) return
@@ -1248,6 +1266,25 @@ function Scheduler({ locationId }: { locationId: string }) {
         </div>
         <span className="text-xs text-ink-muted">Work week starts {DAY_NAMES[weekStartsOn]}</span>
       </div>
+
+      {isMightyWash && (
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-card p-3">
+          <img
+            src={QR_SRC}
+            alt="Scan to view published schedules"
+            className="size-32 shrink-0 rounded-md border border-border bg-white p-1"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-ink">Scan to view published schedules</div>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              Staff can scan this code to open the published schedule view. Print it to post on site.
+            </p>
+            <Button variant="secondary" size="sm" className="mt-2" onClick={printQr}>
+              <Printer className="size-4" /> Print QR code
+            </Button>
+          </div>
+        </div>
+      )}
 
       {clipboard && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/30 bg-accent-soft/50 px-3 py-2 text-xs text-ink">
