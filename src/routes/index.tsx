@@ -134,6 +134,7 @@ const AskOperatorPage = lz(() => import('@/features/ask/AskOperatorPage'))
 const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
 const LaborDashboardPage = lz(() => import('@/features/ops/labor/LaborDashboardPage'))
 const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
+const SchedulePortalPage = lz(() => import('@/features/people/schedule/SchedulePortalPage'))
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
 const MarketExplorerPage = lz(() => import('@/features/opssuite/MarketExplorerPage'))
@@ -183,6 +184,7 @@ export const router = createBrowserRouter([
 
   // Public per-site tip pages (reached by QR code — no login)
   { path: '/request/:token', element: s(<RequestPortalPage />) },
+  { path: '/schedule/:token', element: s(<SchedulePortalPage />) },
   { path: '/tip/:locationId', element: s(<TipPage />) },
   { path: '/tip/:locationId/thanks', element: s(<TipThanksPage />) },
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   CalendarCog,
+  Link2,
   UsersRound,
   ChevronLeft,
   ChevronRight,
@@ -44,6 +45,7 @@ import { fnErrorMessage } from '@/lib/fnError'
 import {
   employees as empQ,
   schedules,
+  schedulePortal,
   shiftFavorites as shiftFavoritesQ,
   type Employee,
   type Shift,
@@ -1111,8 +1113,19 @@ function Scheduler({ locationId }: { locationId: string }) {
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [showWorkWeek, setShowWorkWeek] = useState(false)
   const [showPositions, setShowPositions] = useState(false)
+  const [publicLink, setPublicLink] = useState<string | null>(null)
+  const [linkBusy, setLinkBusy] = useState(false)
   // Shared across all week blocks so a copied day can be pasted into any week.
   const [clipboard, setClipboard] = useState<DayClipboard | null>(null)
+
+  // The hidden, link-only public page for viewing published schedules per site.
+  const openPublicLink = async () => {
+    if (!profile?.account_id) return
+    setLinkBusy(true)
+    const token = await schedulePortal.ensureToken(profile.account_id)
+    setLinkBusy(false)
+    if (token) setPublicLink(`${window.location.origin}/schedule/${token}`)
+  }
 
   // Account positions (used as each employee's default when scheduling).
   const positions = settings.positions ?? []
@@ -1204,6 +1217,9 @@ function Scheduler({ locationId }: { locationId: string }) {
         subtitle="Shift planning. Set the work week and plan weekly, bi-weekly, or monthly."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" disabled={linkBusy} onClick={() => void openPublicLink()}>
+              <Link2 className="size-4" /> Share link
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowPositions(true)}>
               <UsersRound className="size-4" /> Positions
             </Button>
@@ -1274,6 +1290,29 @@ function Scheduler({ locationId }: { locationId: string }) {
             setShowWorkWeek(false)
           }}
         />
+      )}
+
+      {publicLink && (
+        <Modal open onClose={() => setPublicLink(null)} title="Public schedule link" size="sm">
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-ink-muted">
+              Anyone with this link can view your <span className="font-medium text-ink">published</span> schedules by site —
+              no login, and no access to the rest of Operator. Unpublished schedules never appear.
+            </p>
+            <div className="flex items-center gap-2">
+              <Input readOnly value={publicLink} onFocus={(e) => e.currentTarget.select()} />
+              <Button
+                variant="secondary"
+                onClick={() => { void navigator.clipboard?.writeText(publicLink) }}
+              >
+                Copy
+              </Button>
+            </div>
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => setPublicLink(null)}>Done</Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {showPositions && (

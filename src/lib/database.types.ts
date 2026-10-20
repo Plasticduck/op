@@ -4836,6 +4836,30 @@ export type Database = {
           },
         ]
       }
+      schedule_portals: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          id: string
+          token: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          token?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          token?: string
+        }
+        Relationships: []
+      }
       schedules: {
         Row: {
           created_at: string

@@ -41,6 +41,40 @@ export function currentlyWorking(locationId: string) {
   return supabase.rpc('currently_working', { p_location_id: locationId })
 }
 
+// Public "view published schedules" portal. Managers get-or-create their account's
+// portal (one per account) to obtain the shareable link token.
+export const schedulePortal = {
+  get: () => supabase.from('schedule_portals').select('token').maybeSingle(),
+  create: () => supabase.from('schedule_portals').insert({} as never).select('token').single(),
+  async ensureToken(accountId: string): Promise<string | null> {
+    const existing = await supabase.from('schedule_portals').select('token').maybeSingle()
+    if (existing.data?.token) return existing.data.token as string
+    const created = await supabase.from('schedule_portals').insert({ account_id: accountId } as never).select('token').single()
+    return (created.data?.token as string) ?? null
+  },
+}
+
+// Anonymous (link-only) reads for the public schedule view page, via the
+// public-schedules edge function (no login; token in the URL).
+export type PublicSite = { id: string; name: string }
+export type PublicWeek = { week_start_date: string }
+export type PublicShift = {
+  employee_id: string
+  employee_name: string
+  date: string
+  start_time: string
+  end_time: string
+  role_label: string | null
+}
+export const publicSchedules = {
+  sites: (token: string) =>
+    supabase.functions.invoke('public-schedules', { body: { action: 'sites', token } }),
+  weeks: (token: string, locationId: string) =>
+    supabase.functions.invoke('public-schedules', { body: { action: 'weeks', token, location_id: locationId } }),
+  week: (token: string, locationId: string, weekStart: string) =>
+    supabase.functions.invoke('public-schedules', { body: { action: 'week', token, location_id: locationId, week_start_date: weekStart } }),
+}
+
 // Per-user remembered shifts for the schedule builder's palette. Operator learns
 // the shifts a user creates (by start/end) with a use count; the palette shows the
 // most-used. Stored on the user's own row (users.shift_favorites jsonb).
