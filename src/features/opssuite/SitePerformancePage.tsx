@@ -9,6 +9,7 @@ import {
   buildRegionIndex,
   fetchGuidedQueryOptions,
   fetchSitePerformance,
+  fetchGuidedTotals,
   fetchSitePerformanceHistory,
   fetchSitePerformanceHistoryBounds,
   fetchTtafReport,
@@ -1162,6 +1163,10 @@ function histPreset(key: string): [string, string] {
   }
 }
 
+// Per-site totals for the dashboard-sourced metrics (cars, gross sales, recharge),
+// keyed by site number, for a single range.
+type GuidedTotals = { cars: Map<number, number>; sales: Map<number, number>; recharge: Map<number, number> }
+
 // A History metric cell: the value, with a small "vs last year" figure beneath.
 // kind picks how the delta reads — 'pct' (% change, for counts and $), 'ratio'
 // (absolute delta, for Cars/Man-Hr), 'points' (pt delta, for Labor % where up is
@@ -1197,33 +1202,42 @@ function History({ idx }: { idx: RegionIndex }) {
   const [rangeKey, setRangeKey] = useState('last30')
   const [start, setStart] = useState(() => histPreset('last30')[0])
   const [end, setEnd] = useState(() => histPreset('last30')[1])
-  const [rows, setRows] = useState<SitePerfDayRow[] | null>(null)
-  const [pyRows, setPyRows] = useState<SitePerfDayRow[]>([])
+  const [rows, setRows] = useState<SitePerfDayRow[] | null>(null) // archive: hours + labor only
+  const [cur, setCur] = useState<GuidedTotals | null>(null)       // dashboard: cars/sales/recharge, this range
+  const [ly, setLy] = useState<GuidedTotals | null>(null)         // dashboard: same, one year earlier
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [bounds, setBounds] = useState<{ min: string | null; max: string | null }>({ min: null, max: null })
 
+  // Hours + labor come only from the archive (iSolved payroll; the dashboard has
+  // no labor metric), so there is no last-year figure for them.
   useEffect(() => {
-    void fetchSitePerformanceHistoryBounds().then(setBounds).catch(() => {})
-  }, [])
+    let alive = true
+    fetchSitePerformanceHistory(start, end)
+      .then((r) => { if (alive) setRows(r) })
+      .catch(() => { if (alive) setRows([]) })
+    return () => { alive = false }
+  }, [start, end])
 
+  // Cars, Sales (gross revenue) and Recharge $ come from the dashboard's own
+  // multi-year history, so totals are complete for any range and can be compared
+  // to the same range one year earlier.
   useEffect(() => {
     let alive = true
     setLoading(true)
     setError(null)
-    fetchSitePerformanceHistory(start, end)
-      .then((r) => { if (alive) setRows(r) })
-      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
+    setLy(null)
+    const pull = (s: string, e: string): Promise<GuidedTotals> => Promise.all([
+      fetchGuidedTotals('cars', s, e),
+      fetchGuidedTotals('revenue', s, e),
+      fetchGuidedTotals('recharge', s, e),
+    ]).then(([cars, sales, recharge]) => ({ cars, sales, recharge }))
+    pull(start, end)
+      .then((c) => { if (alive) setCur(c) })
+      .catch((e) => { if (alive) { setCur(null); setError(e instanceof Error ? e.message : String(e)) } })
       .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
-  }, [start, end])
-
-  // The same range one year earlier, for the "vs last year" figures.
-  useEffect(() => {
-    let alive = true
-    fetchSitePerformanceHistory(shiftYearStr(start, -1), shiftYearStr(end, -1))
-      .then((r) => { if (alive) setPyRows(r) })
-      .catch(() => { if (alive) setPyRows([]) })
+    pull(shiftYearStr(start, -1), shiftYearStr(end, -1))
+      .then((c) => { if (alive) setLy(c) })
+      .catch(() => { if (alive) setLy(null) })
     return () => { alive = false }
   }, [start, end])
 
@@ -1234,57 +1248,48 @@ function History({ idx }: { idx: RegionIndex }) {
     setEnd(e)
   }
 
-  // Only compare to last year when the WHOLE prior-year range is inside the
-  // archive — otherwise last year's totals are partial and the deltas mislead
-  // (e.g. a full 2026 vs only Aug–Oct 2025). Suppress the figures until then.
-  const lyComparable = !!bounds.min && shiftYearStr(start, -1) >= bounds.min
-
   const bySite = useMemo(() => {
-    type Agg = { cars: number; hours: number; sales: number; labor: number; recharge: number }
-    const z = (): Agg => ({ cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 })
-    const add = (a: Agg, r: SitePerfDayRow) => {
-      a.cars += Number(r.cars) || 0; a.hours += Number(r.hours) || 0; a.sales += Number(r.sales) || 0
-      a.labor += Number(r.labor_cost) || 0; a.recharge += Number(r.recharge) || 0
-    }
-    // Key by site number so current and prior-year rows join across name formats.
-    const idOf = (name: string, num: number | null) => (num != null ? 'n' + num : 'x:' + name)
-    const cur = new Map<string, { site: string; agg: Agg }>()
+    // Hours/labor + site names from the archive, keyed by site number.
+    const nameByNum = new Map<number, string>()
+    const hoursByNum = new Map<number, number>()
+    const laborByNum = new Map<number, number>()
     for (const r of rows ?? []) {
-      const id = idOf(r.site, r.site_number)
-      let m = cur.get(id); if (!m) { m = { site: r.site, agg: z() }; cur.set(id, m) }
-      add(m.agg, r)
+      const n = r.site_number ?? siteNumber(r.site)
+      if (n == null) continue
+      if (!nameByNum.has(n)) nameByNum.set(n, r.site)
+      hoursByNum.set(n, (hoursByNum.get(n) ?? 0) + (Number(r.hours) || 0))
+      laborByNum.set(n, (laborByNum.get(n) ?? 0) + (Number(r.labor_cost) || 0))
     }
-    const ly = new Map<string, Agg>()
-    for (const r of (lyComparable ? pyRows : [])) {
-      const id = idOf(r.site, r.site_number)
-      let a = ly.get(id); if (!a) { a = z(); ly.set(id, a) }
-      add(a, r)
-    }
-    return Array.from(cur.entries()).map(([id, { site, agg }]) => ({
-      site,
-      ...agg,
-      cph: agg.hours > 0 ? round(agg.cars / agg.hours, 2) : null,
-      laborPct: agg.sales > 0 ? round((agg.labor / agg.sales) * 100, 1) : null,
-      ly: ly.get(id) ?? null,
-    }))
-  }, [rows, pyRows, lyComparable])
+    const nums = new Set<number>([...nameByNum.keys(), ...(cur ? cur.cars.keys() : [])])
+    return Array.from(nums).map((n) => {
+      const cars = cur?.cars.get(n) ?? 0
+      const sales = cur?.sales.get(n) ?? 0
+      const recharge = cur?.recharge.get(n) ?? 0
+      const hours = hoursByNum.get(n) ?? 0
+      const labor = laborByNum.get(n) ?? 0
+      return {
+        site: nameByNum.get(n) ?? ('MightyWash ' + String(n).padStart(3, '0')),
+        cars, hours, sales, labor, recharge,
+        cph: hours > 0 ? round(cars / hours, 2) : null,
+        laborPct: sales > 0 ? round((labor / sales) * 100, 1) : null,
+        ly: ly ? { cars: ly.cars.get(n) ?? 0, sales: ly.sales.get(n) ?? 0, recharge: ly.recharge.get(n) ?? 0 } : null,
+      }
+    })
+  }, [rows, cur, ly])
 
   const groups = groupByRegion(bySite, (r) => r.site, idx)
-  const zAgg = { cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 }
   const tot = bySite.reduce(
     (a, s) => ({ cars: a.cars + s.cars, hours: a.hours + s.hours, sales: a.sales + s.sales, labor: a.labor + s.labor, recharge: a.recharge + s.recharge }),
-    { ...zAgg },
+    { cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 },
   )
   const totLy = bySite.reduce((a, s) => s.ly
-    ? { cars: a.cars + s.ly.cars, hours: a.hours + s.ly.hours, sales: a.sales + s.ly.sales, labor: a.labor + s.ly.labor, recharge: a.recharge + s.ly.recharge }
-    : a, { ...zAgg })
+    ? { cars: a.cars + s.ly.cars, sales: a.sales + s.ly.sales, recharge: a.recharge + s.ly.recharge }
+    : a, { cars: 0, sales: 0, recharge: 0 })
   const totLyHas = bySite.some((s) => s.ly)
   const rangeLabel = start === end ? start : `${start} to ${end}`
 
-  // Null-safe prior-year readers (treat 0/absent as "no comparison").
+  // Treat 0/absent prior-year values as "no comparison".
   const pos = (v: number | undefined | null) => (v && v > 0 ? v : null)
-  const lyCph = (a?: { cars: number; hours: number } | null) => (a && a.hours > 0 ? round(a.cars / a.hours, 2) : null)
-  const lyLabor = (a?: { labor: number; sales: number } | null) => (a && a.sales > 0 ? round((a.labor / a.sales) * 100, 1) : null)
 
   return (
     <div className="flex flex-col gap-5">
@@ -1322,7 +1327,7 @@ function History({ idx }: { idx: RegionIndex }) {
         ) : error ? (
           <p className="px-5 pb-5 text-sm text-danger">{error}</p>
         ) : bySite.length === 0 ? (
-          <p className="px-5 pb-5 text-sm text-ink-muted">No archived data in this range.</p>
+          <p className="px-5 pb-5 text-sm text-ink-muted">No data in this range.</p>
         ) : (
           <TableShell
             head={<>
@@ -1341,8 +1346,8 @@ function History({ idx }: { idx: RegionIndex }) {
               const cph = hours > 0 ? round(cars / hours, 2) : null
               const laborPct = sales > 0 ? round((labor / sales) * 100, 1) : null
               const lyAgg = rs.reduce((a, r) => r.ly
-                ? { cars: a.cars + r.ly.cars, hours: a.hours + r.ly.hours, sales: a.sales + r.ly.sales, labor: a.labor + r.ly.labor, recharge: a.recharge + r.ly.recharge }
-                : a, { cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 })
+                ? { cars: a.cars + r.ly.cars, sales: a.sales + r.ly.sales, recharge: a.recharge + r.ly.recharge }
+                : a, { cars: 0, sales: 0, recharge: 0 })
               const lyHas = rs.some((r) => r.ly)
               return (
                 <FragmentRegion key={g.region}>
@@ -1351,20 +1356,20 @@ function History({ idx }: { idx: RegionIndex }) {
                     <tr key={r.site}>
                       <td className={td} title={r.site}>{siteLabel(r.site)}</td>
                       <YoyCell value={r.cars} ly={pos(r.ly?.cars)} format={(v) => String(round(v, 0))} kind="pct" />
-                      <YoyCell value={r.hours} ly={pos(r.ly?.hours)} format={(v) => String(round(v, 1))} kind="pct" />
-                      <YoyCell value={r.cph} ly={lyCph(r.ly)} format={(v) => String(v)} kind="ratio" color={heatFor(r.cph, 'cph')} />
+                      <YoyCell value={r.hours} ly={null} format={(v) => String(round(v, 1))} kind="pct" />
+                      <YoyCell value={r.cph} ly={null} format={(v) => String(v)} kind="ratio" color={heatFor(r.cph, 'cph')} />
                       <YoyCell value={r.sales} ly={pos(r.ly?.sales)} format={money} kind="pct" />
-                      <YoyCell value={r.laborPct} ly={lyLabor(r.ly)} format={(v) => v + '%'} kind="points" color={heatFor(r.laborPct, 'labor')} />
+                      <YoyCell value={r.laborPct} ly={null} format={(v) => v + '%'} kind="points" color={heatFor(r.laborPct, 'labor')} />
                       <YoyCell value={r.recharge} ly={pos(r.ly?.recharge)} format={money} kind="pct" />
                     </tr>
                   ))}
                   <tr className="font-semibold text-ink">
                     <td className={td}>Subtotal</td>
                     <YoyCell value={cars} ly={lyHas ? pos(lyAgg.cars) : null} format={(v) => String(round(v, 0))} kind="pct" />
-                    <YoyCell value={hours} ly={lyHas ? pos(lyAgg.hours) : null} format={(v) => String(round(v, 1))} kind="pct" />
-                    <YoyCell value={cph} ly={lyCph(lyHas ? lyAgg : null)} format={(v) => String(v)} kind="ratio" color={heatFor(cph, 'cph')} />
+                    <YoyCell value={hours} ly={null} format={(v) => String(round(v, 1))} kind="pct" />
+                    <YoyCell value={cph} ly={null} format={(v) => String(v)} kind="ratio" color={heatFor(cph, 'cph')} />
                     <YoyCell value={sales} ly={lyHas ? pos(lyAgg.sales) : null} format={money} kind="pct" />
-                    <YoyCell value={laborPct} ly={lyLabor(lyHas ? lyAgg : null)} format={(v) => v + '%'} kind="points" color={heatFor(laborPct, 'labor')} />
+                    <YoyCell value={laborPct} ly={null} format={(v) => v + '%'} kind="points" color={heatFor(laborPct, 'labor')} />
                     <YoyCell value={recharge} ly={lyHas ? pos(lyAgg.recharge) : null} format={money} kind="pct" />
                   </tr>
                 </FragmentRegion>
@@ -1373,26 +1378,21 @@ function History({ idx }: { idx: RegionIndex }) {
             <tr className="border-t-2 border-border font-bold text-ink">
               <td className={td}>Company Total</td>
               <YoyCell value={tot.cars} ly={totLyHas ? pos(totLy.cars) : null} format={(v) => String(round(v, 0))} kind="pct" />
-              <YoyCell value={tot.hours} ly={totLyHas ? pos(totLy.hours) : null} format={(v) => String(round(v, 1))} kind="pct" />
-              <YoyCell value={tot.hours > 0 ? round(tot.cars / tot.hours, 2) : null} ly={lyCph(totLyHas ? totLy : null)} format={(v) => String(v)} kind="ratio" />
+              <YoyCell value={tot.hours} ly={null} format={(v) => String(round(v, 1))} kind="pct" />
+              <YoyCell value={tot.hours > 0 ? round(tot.cars / tot.hours, 2) : null} ly={null} format={(v) => String(v)} kind="ratio" />
               <YoyCell value={tot.sales} ly={totLyHas ? pos(totLy.sales) : null} format={money} kind="pct" />
-              <YoyCell value={tot.sales > 0 ? round((tot.labor / tot.sales) * 100, 1) : null} ly={lyLabor(totLyHas ? totLy : null)} format={(v) => v + '%'} kind="points" />
+              <YoyCell value={tot.sales > 0 ? round((tot.labor / tot.sales) * 100, 1) : null} ly={null} format={(v) => v + '%'} kind="points" />
               <YoyCell value={tot.recharge} ly={totLyHas ? pos(totLy.recharge) : null} format={money} kind="pct" />
             </tr>
           </TableShell>
         )}
       </Panel>
       <Footnote>
-        History is archived daily from the live dashboard.
-        {bounds.min ? ` Available from ${bounds.min} to ${bounds.max}.` : ' Building up as of today.'}
-        {' '}Dates before the archive began are not available. Totals sum each day in the range;
-        Cars/Man-Hr and Labor % are computed on the range totals.
-        {' '}Cars go back furthest; Hours, Sales, Labor % and Recharge $ were only archived from mid-2026 on,
-        so for ranges that reach earlier those columns cover only part of the span (and Cars/Man-Hr can read high).
-        {' '}The small figure under each number is the change vs the same range one year earlier (green better,
-        red worse). It shows only when the whole prior-year range is in the archive and that metric was being
-        recorded then — so today it appears mainly for Cars on recent ranges, and the rest fill in as the
-        archive builds a full prior year.
+        Cars, Sales (gross revenue) and Recharge $ come from the dashboard's own multi-year history, so they
+        are complete for any range and show a change vs the same range one year earlier (green better, red worse)
+        beneath each number. Hours and Labor % come from payroll (iSolved), which only goes back to mid-2026 —
+        there is no last-year figure for them, and Cars/Man-Hr = Cars ÷ Hours. Cars/Man-Hr and Labor % are
+        computed on the range totals.
       </Footnote>
     </div>
   )

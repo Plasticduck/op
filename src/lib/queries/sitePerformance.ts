@@ -228,6 +228,23 @@ export async function runCustomSql(sql: string): Promise<CustomQueryResult> {
   return (await dashApi('/api/custom_query', 'POST', { sql })) as CustomQueryResult
 }
 
+// Per-site totals for one guided metric over a date range, keyed by site number.
+// Uses the dashboard's own multi-year history (not the local archive), so it
+// returns complete totals for any range — including a year ago. The TOTAL row is
+// dropped. Metrics with history include 'cars', 'revenue' (gross sales), 'recharge'.
+export async function fetchGuidedTotals(metric: string, start: string, end: string): Promise<Map<number, number>> {
+  const res = await runGuidedQuery({ metric, sites: [], start, end })
+  const m = new Map<number, number>()
+  for (const row of res.rows ?? []) {
+    const name = String(row[0] ?? '')
+    if (/total/i.test(name)) continue
+    const num = siteNumber(name)
+    if (num == null) continue
+    m.set(num, Number(row[1]) || 0)
+  }
+  return m
+}
+
 // Just the By-MSA feed (salesperson conversion), without the ~10 other reports
 // the full feed pulls. Used by the standalone MSA Performance page.
 export async function fetchMsaReport(): Promise<MsaReport> {
