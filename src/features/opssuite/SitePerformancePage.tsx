@@ -317,6 +317,12 @@ const addDaysStr = (d: string, n: number): string => {
   dt.setUTCDate(dt.getUTCDate() + n)
   return dt.toISOString().slice(0, 10)
 }
+// Shift a YYYY-MM-DD by whole years (for same-dates-last-year comparison).
+const shiftYearStr = (d: string, years: number): string => {
+  const dt = new Date(d + 'T00:00:00Z')
+  dt.setUTCFullYear(dt.getUTCFullYear() + years)
+  return dt.toISOString().slice(0, 10)
+}
 
 // Preset ranges computed by date arithmetic relative to the latest day ("today"),
 // so any range works regardless of how many days the live feed carries. Clamped
@@ -414,6 +420,19 @@ function BySite({ feed, idx }: ViewProps) {
     return () => { alive = false }
   }, [start, end, feedMin])
 
+  // The same date range one year earlier, for the YoY cars column. Always older
+  // than the live feed, so it comes from the archive. Only cars are backfilled a
+  // year out (hours/sales are not), so the comparison is car volume.
+  const [pyRows, setPyRows] = useState<SitePerfDayRow[]>([])
+  useEffect(() => {
+    if (!start || !end) { setPyRows([]); return }
+    let alive = true
+    fetchSitePerformanceHistory(shiftYearStr(start, -1), shiftYearStr(end, -1))
+      .then((r) => { if (alive) setPyRows(r) })
+      .catch(() => { if (alive) setPyRows([]) })
+    return () => { alive = false }
+  }, [start, end])
+
   if (!report || !Object.keys(report.sites).length) return <Empty />
 
   const inRange = (d: string) => d >= start && d <= end
@@ -469,6 +488,33 @@ function BySite({ feed, idx }: ViewProps) {
     }
   })
   const rangeGroups = groupByRegion(rangeRows, (r) => r.site, idx)
+
+  // Prior-year cars per site (same range last year), summed and keyed by site
+  // number so it matches regardless of the stored site-name format.
+  const pyByNum = new Map<number, number>()
+  const pyByName = new Map<string, number>()
+  for (const r of pyRows) {
+    const c = Number(r.cars) || 0
+    if (r.site_number != null) pyByNum.set(r.site_number, (pyByNum.get(r.site_number) ?? 0) + c)
+    else pyByName.set(r.site, (pyByName.get(r.site) ?? 0) + c)
+  }
+  const pyCarsFor = (name: string): number | null => {
+    const n = siteNumber(name)
+    if (n != null && pyByNum.has(n)) return pyByNum.get(n)!
+    return pyByName.has(name) ? pyByName.get(name)! : null
+  }
+  // A "Cars vs LY" cell: % change colored up/down, with last year's count.
+  const yoyTd = (cur: number, py: number | null) => {
+    if (!py) return <td className={td}>{DASH}</td>
+    const pct = round(((cur - py) / py) * 100, 1)
+    const cls = pct > 0 ? 'text-ok' : pct < 0 ? 'text-danger' : 'text-ink-muted'
+    return (
+      <td className={td}>
+        <span className={`font-semibold ${cls}`}>{(pct > 0 ? '+' : '') + pct}%</span>
+        <span className="ml-1.5 text-xs text-ink-subtle">{py.toLocaleString()} LY</span>
+      </td>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -548,7 +594,7 @@ function BySite({ feed, idx }: ViewProps) {
       >
         <TableShell
           head={<>
-            {['Site', 'Cars', 'Hours', 'Cars/Man-Hr', 'Sales', 'Labor %'].map((h) => (
+            {['Site', 'Cars', 'Cars vs LY', 'Hours', 'Cars/Man-Hr', 'Sales', 'Labor %'].map((h) => (
               <th key={h} className={th}>{h}</th>
             ))}
           </>}
@@ -561,6 +607,8 @@ function BySite({ feed, idx }: ViewProps) {
             const labor = sum(rows, (r) => r.labor)
             const cph = hours > 0 ? round(cars / hours, 2) : null
             const laborPct = sales > 0 ? round((labor / sales) * 100, 1) : null
+            const pyCars = rows.reduce((a, r) => a + (pyCarsFor(r.site) ?? 0), 0)
+            const pyHas = rows.some((r) => pyCarsFor(r.site) != null)
             return (
               <FragmentRegion key={g.region}>
                 <RegionHead region={g.region} count={rows.length} />
@@ -568,6 +616,7 @@ function BySite({ feed, idx }: ViewProps) {
                   <tr key={r.site}>
                     <td className={td} title={r.site}>{siteLabel(r.site)}</td>
                     <td className={td}>{r.cars}</td>
+                    {yoyTd(r.cars, pyCarsFor(r.site))}
                     <td className={td}>{round(r.hours, 1)}</td>
                     <td className={td} style={{ color: heatFor(r.cph, 'cph') }}>{r.cph ?? DASH}</td>
                     <td className={td}>{money(r.sales)}</td>
@@ -577,6 +626,7 @@ function BySite({ feed, idx }: ViewProps) {
                 <tr className="font-semibold text-ink">
                   <td className={td}>Subtotal</td>
                   <td className={td}>{cars}</td>
+                  {yoyTd(cars, pyHas ? pyCars : null)}
                   <td className={td}>{round(hours, 1)}</td>
                   <td className={td} style={{ color: heatFor(cph, 'cph') }}>{cph ?? DASH}</td>
                   <td className={td}>{money(sales)}</td>
@@ -606,6 +656,7 @@ function BySite({ feed, idx }: ViewProps) {
       <Footnote>
         Cars = physical washes rung up. Hours = clocked labor across every employee at the site.
         Labor % = (hours x wage rate) / sales. Region subtotals weight Cars/Man-Hr and Labor % by the region total.
+        Cars vs LY compares car volume to the same dates one year earlier (the archive carries cars that far back, not hours or sales).
         The recent window is live from the dashboard; older dates are pulled from the archive{histMin ? ` (back to ${histMin})` : ''}.
       </Footnote>
     </div>
