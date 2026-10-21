@@ -18,6 +18,8 @@ import { Resend } from 'npm:resend@4'
 type Any = any
 const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const DEFAULT_TO = ['kjowers@mighty-wash.com', 'lkeith@mighty-wash.com']
+// Who gets the report as a TEXT (resolved to their users.phone at send time).
+const SMS_EMAILS = ['lkeith@mighty-wash.com']
 const DEFAULT_THRESHOLD_H = 14 // an open punch running this long = likely missed clock-out
 const LOOKBACK_DAYS = 3 // catch open punches opened in the last few days
 
@@ -100,8 +102,37 @@ Deno.serve(async (req) => {
     if (!p || p.role !== 'owner' || p.account_id !== MW_ACCOUNT) return json({ error: 'forbidden' }, 403)
   }
 
-  let body: { force?: boolean; to?: string; dryRun?: boolean; thresholdHours?: number } = {}
+  let body: { force?: boolean; to?: string; dryRun?: boolean; thresholdHours?: number; smsTo?: string | string[]; smsOnly?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
+
+  // Send an SMS via Twilio directly (the same call send-sms makes). Inlined rather
+  // than hopping through send-sms so it doesn't depend on the service key format.
+  const sendSms = async (to: string, text: string): Promise<Any> => {
+    const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
+    const keySid = Deno.env.get('TWILIO_API_KEY_SID')
+    const keySecret = Deno.env.get('TWILIO_API_KEY_SECRET')
+    const fromNum = Deno.env.get('TWILIO_FROM')
+    const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID')
+    if (!accountSid || !keySid || !keySecret || (!fromNum && !messagingServiceSid)) return { to, ok: false, error: 'twilio_not_configured' }
+    if (!/^\+\d{8,15}$/.test(to)) return { to, ok: false, error: 'bad_number' }
+    const form = new URLSearchParams()
+    form.set('To', to)
+    if (messagingServiceSid) form.set('MessagingServiceSid', messagingServiceSid)
+    else form.set('From', fromNum as string)
+    form.set('Body', text)
+    try {
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+        method: 'POST',
+        headers: { Authorization: 'Basic ' + btoa(`${keySid}:${keySecret}`), 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form.toString(),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok) return { to, ok: false, status: res.status, code: d?.code, error: d?.message ?? 'twilio_error' }
+      return { to, ok: true, sid: d?.sid, status: d?.status }
+    } catch (e) {
+      return { to, ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
 
   // Time guard: only send at 6 AM Central unless forced.
   const chicagoHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }).format(new Date()))
@@ -204,18 +235,52 @@ Deno.serve(async (req) => {
 
   if (body.dryRun) return json({ ok: true, dryRun: true, count: flags.length, sites: sites.map((s) => ({ site: s.site, n: s.list.length })) }, 200)
 
-  const to = body.to ? [body.to] : DEFAULT_TO
-  const from = Deno.env.get('RESEND_FROM') ?? 'WashLyfe Operator <notifications@washlyfe.com>'
-  const resend = new Resend(resendKey)
-  try {
-    const { error: sendErr } = await resend.emails.send({
-      from, to,
-      subject: `Unusual Clock-Ins — ${dateLabel}${flags.length ? ` (${flags.length})` : ' (all clear)'}`,
-      html,
-    })
-    if (sendErr) return json({ ok: false, error: (sendErr as { message?: string }).message ?? 'send_failed' }, 502)
-    return json({ ok: true, to, count: flags.length }, 200)
-  } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 502)
+  // Compact SMS version of the report.
+  const shortDate = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' })
+  let smsText: string
+  if (flags.length === 0) {
+    smsText = `Unusual Clock-Ins ${shortDate}: all clear — no open punches over ${threshold}h.`
+  } else {
+    const items: string[] = []
+    for (const s of sites) for (const f of s.list) items.push(`${s.site} ${f.name} ${fmtElapsed(f.elapsedHours)}`)
+    const shown = items.slice(0, 12)
+    const extra = items.length - shown.length
+    smsText = `Unusual Clock-Ins ${shortDate}: ${flags.length} open punch${flags.length === 1 ? '' : 'es'} over ${threshold}h at ${sites.length} site${sites.length === 1 ? '' : 's'}.\n`
+      + shown.join('\n') + (extra > 0 ? `\n+${extra} more` : '') + '\nReview in iSolved.'
   }
+
+  // Email (default recipients), unless this is an SMS-only test.
+  let email: Any = { skipped: true }
+  if (!body.smsOnly) {
+    const to = body.to ? [body.to] : DEFAULT_TO
+    const from = Deno.env.get('RESEND_FROM') ?? 'WashLyfe Operator <notifications@washlyfe.com>'
+    const resend = new Resend(resendKey)
+    try {
+      const { error: sendErr } = await resend.emails.send({
+        from, to,
+        subject: `Unusual Clock-Ins — ${dateLabel}${flags.length ? ` (${flags.length})` : ' (all clear)'}`,
+        html,
+      })
+      email = sendErr ? { ok: false, error: (sendErr as { message?: string }).message ?? 'send_failed' } : { ok: true, to }
+    } catch (e) {
+      email = { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  // Text the report to Laramie on alert mornings. All-clear stays email-only
+  // unless this is a test (smsTo override), which always sends so it can be seen.
+  const isTest = !!body.smsTo
+  const sms: Any[] = []
+  if (isTest || flags.length > 0) {
+    let recipients: string[]
+    if (body.smsTo) {
+      recipients = (Array.isArray(body.smsTo) ? body.smsTo : [body.smsTo]).map((s) => String(s).trim()).filter(Boolean)
+    } else {
+      const { data: us } = await svc.from('users').select('phone').in('email', SMS_EMAILS).not('phone', 'is', null)
+      recipients = (us ?? []).map((u: Any) => String(u.phone).trim()).filter(Boolean)
+    }
+    for (const r of recipients) sms.push(await sendSms(r, smsText))
+  }
+
+  return json({ ok: true, count: flags.length, email, sms }, 200)
 })
