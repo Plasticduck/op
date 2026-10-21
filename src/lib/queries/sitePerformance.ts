@@ -164,14 +164,27 @@ export async function fetchSitePerformanceHistory(
   startDate: string,
   endDate: string,
 ): Promise<SitePerfDayRow[]> {
-  const { data, error } = await supabase
-    .from('site_performance_days')
-    .select('site, site_number, date, cars, hours, cars_per_hour, sales, labor_cost, labor_pct, recharge')
-    .gte('date', startDate)
-    .lte('date', endDate)
-    .order('date')
-  if (error) throw new Error(error.message)
-  return (data as SitePerfDayRow[] | null) ?? []
+  // PostgREST caps a response at ~1000 rows, and a wide range easily exceeds that
+  // (≈33 sites/day → a year is ~12k rows). Page through so totals cover the whole
+  // range instead of silently stopping after the earliest ~30 days. The order is
+  // fully deterministic (date, then site) so range windows don't skip or repeat.
+  const PAGE = 1000
+  const all: SitePerfDayRow[] = []
+  for (let from = 0; from < 200_000; from += PAGE) {
+    const { data, error } = await supabase
+      .from('site_performance_days')
+      .select('site, site_number, date, cars, hours, cars_per_hour, sales, labor_cost, labor_pct, recharge')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date')
+      .order('site')
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    const rows = (data as SitePerfDayRow[] | null) ?? []
+    all.push(...rows)
+    if (rows.length < PAGE) break
+  }
+  return all
 }
 
 // ---------- Custom Query (dashboard's guided + raw-SQL query feature) ----------

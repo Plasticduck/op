@@ -1315,6 +1315,8 @@ function History({ idx }: { idx: RegionIndex }) {
         {bounds.min ? ` Available from ${bounds.min} to ${bounds.max}.` : ' Building up as of today.'}
         {' '}Dates before the archive began are not available. Totals sum each day in the range;
         Cars/Man-Hr and Labor % are computed on the range totals.
+        {' '}Cars go back furthest; Hours, Sales, Labor % and Recharge $ were only archived from mid-2026 on,
+        so for ranges that reach earlier those columns cover only part of the span (and Cars/Man-Hr can read high).
       </Footnote>
     </div>
   )
