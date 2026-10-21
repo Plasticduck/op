@@ -1162,11 +1162,43 @@ function histPreset(key: string): [string, string] {
   }
 }
 
+// A History metric cell: the value, with a small "vs last year" figure beneath.
+// kind picks how the delta reads — 'pct' (% change, for counts and $), 'ratio'
+// (absolute delta, for Cars/Man-Hr), 'points' (pt delta, for Labor % where up is
+// worse). Up is green except Labor %. No prior-year value → just the value.
+function YoyCell({ value, ly, format, kind, color }: {
+  value: number | null
+  ly: number | null
+  format: (v: number) => string
+  kind: 'pct' | 'ratio' | 'points'
+  color?: string
+}) {
+  const main = value == null ? DASH : format(value)
+  let sub: ReactNode = null
+  if (value != null && ly != null && ly !== 0) {
+    let text: string
+    let good: boolean
+    let neutral: boolean
+    if (kind === 'points') { const d = round(value - ly, 1); text = `${d > 0 ? '+' : ''}${d} pts`; good = d < 0; neutral = d === 0 }
+    else if (kind === 'ratio') { const d = round(value - ly, 2); text = `${d > 0 ? '+' : ''}${d}`; good = d > 0; neutral = d === 0 }
+    else { const p = round(((value - ly) / ly) * 100, 1); text = `${p > 0 ? '+' : ''}${p}%`; good = p > 0; neutral = p === 0 }
+    const cls = neutral ? 'text-ink-subtle' : good ? 'text-ok' : 'text-danger'
+    sub = <span className={cls} title={`Last year: ${format(ly)}`}>{text}</span>
+  }
+  return (
+    <td className={td}>
+      <div style={color ? { color } : undefined}>{main}</div>
+      {sub && <div className="text-[11px] font-normal leading-tight">{sub} <span className="text-ink-subtle">vs LY</span></div>}
+    </td>
+  )
+}
+
 function History({ idx }: { idx: RegionIndex }) {
   const [rangeKey, setRangeKey] = useState('last30')
   const [start, setStart] = useState(() => histPreset('last30')[0])
   const [end, setEnd] = useState(() => histPreset('last30')[1])
   const [rows, setRows] = useState<SitePerfDayRow[] | null>(null)
+  const [pyRows, setPyRows] = useState<SitePerfDayRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bounds, setBounds] = useState<{ min: string | null; max: string | null }>({ min: null, max: null })
@@ -1186,6 +1218,15 @@ function History({ idx }: { idx: RegionIndex }) {
     return () => { alive = false }
   }, [start, end])
 
+  // The same range one year earlier, for the "vs last year" figures.
+  useEffect(() => {
+    let alive = true
+    fetchSitePerformanceHistory(shiftYearStr(start, -1), shiftYearStr(end, -1))
+      .then((r) => { if (alive) setPyRows(r) })
+      .catch(() => { if (alive) setPyRows([]) })
+    return () => { alive = false }
+  }, [start, end])
+
   const applyPreset = (k: string) => {
     const [s, e] = histPreset(k)
     setRangeKey(k)
@@ -1193,30 +1234,57 @@ function History({ idx }: { idx: RegionIndex }) {
     setEnd(e)
   }
 
+  // Only compare to last year when the WHOLE prior-year range is inside the
+  // archive — otherwise last year's totals are partial and the deltas mislead
+  // (e.g. a full 2026 vs only Aug–Oct 2025). Suppress the figures until then.
+  const lyComparable = !!bounds.min && shiftYearStr(start, -1) >= bounds.min
+
   const bySite = useMemo(() => {
-    const map = new Map<string, { site: string; cars: number; hours: number; sales: number; labor: number; recharge: number }>()
-    for (const r of rows ?? []) {
-      const cur = map.get(r.site) ?? { site: r.site, cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 }
-      cur.cars += Number(r.cars) || 0
-      cur.hours += Number(r.hours) || 0
-      cur.sales += Number(r.sales) || 0
-      cur.labor += Number(r.labor_cost) || 0
-      cur.recharge += Number(r.recharge) || 0
-      map.set(r.site, cur)
+    type Agg = { cars: number; hours: number; sales: number; labor: number; recharge: number }
+    const z = (): Agg => ({ cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 })
+    const add = (a: Agg, r: SitePerfDayRow) => {
+      a.cars += Number(r.cars) || 0; a.hours += Number(r.hours) || 0; a.sales += Number(r.sales) || 0
+      a.labor += Number(r.labor_cost) || 0; a.recharge += Number(r.recharge) || 0
     }
-    return Array.from(map.values()).map((s) => ({
-      ...s,
-      cph: s.hours > 0 ? round(s.cars / s.hours, 2) : null,
-      laborPct: s.sales > 0 ? round((s.labor / s.sales) * 100, 1) : null,
+    // Key by site number so current and prior-year rows join across name formats.
+    const idOf = (name: string, num: number | null) => (num != null ? 'n' + num : 'x:' + name)
+    const cur = new Map<string, { site: string; agg: Agg }>()
+    for (const r of rows ?? []) {
+      const id = idOf(r.site, r.site_number)
+      let m = cur.get(id); if (!m) { m = { site: r.site, agg: z() }; cur.set(id, m) }
+      add(m.agg, r)
+    }
+    const ly = new Map<string, Agg>()
+    for (const r of (lyComparable ? pyRows : [])) {
+      const id = idOf(r.site, r.site_number)
+      let a = ly.get(id); if (!a) { a = z(); ly.set(id, a) }
+      add(a, r)
+    }
+    return Array.from(cur.entries()).map(([id, { site, agg }]) => ({
+      site,
+      ...agg,
+      cph: agg.hours > 0 ? round(agg.cars / agg.hours, 2) : null,
+      laborPct: agg.sales > 0 ? round((agg.labor / agg.sales) * 100, 1) : null,
+      ly: ly.get(id) ?? null,
     }))
-  }, [rows])
+  }, [rows, pyRows, lyComparable])
 
   const groups = groupByRegion(bySite, (r) => r.site, idx)
+  const zAgg = { cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 }
   const tot = bySite.reduce(
-    (a, s) => ({ cars: a.cars + s.cars, hours: a.hours + s.hours, sales: a.sales + s.sales, recharge: a.recharge + s.recharge }),
-    { cars: 0, hours: 0, sales: 0, recharge: 0 },
+    (a, s) => ({ cars: a.cars + s.cars, hours: a.hours + s.hours, sales: a.sales + s.sales, labor: a.labor + s.labor, recharge: a.recharge + s.recharge }),
+    { ...zAgg },
   )
+  const totLy = bySite.reduce((a, s) => s.ly
+    ? { cars: a.cars + s.ly.cars, hours: a.hours + s.ly.hours, sales: a.sales + s.ly.sales, labor: a.labor + s.ly.labor, recharge: a.recharge + s.ly.recharge }
+    : a, { ...zAgg })
+  const totLyHas = bySite.some((s) => s.ly)
   const rangeLabel = start === end ? start : `${start} to ${end}`
+
+  // Null-safe prior-year readers (treat 0/absent as "no comparison").
+  const pos = (v: number | undefined | null) => (v && v > 0 ? v : null)
+  const lyCph = (a?: { cars: number; hours: number } | null) => (a && a.hours > 0 ? round(a.cars / a.hours, 2) : null)
+  const lyLabor = (a?: { labor: number; sales: number } | null) => (a && a.sales > 0 ? round((a.labor / a.sales) * 100, 1) : null)
 
   return (
     <div className="flex flex-col gap-5">
@@ -1272,40 +1340,44 @@ function History({ idx }: { idx: RegionIndex }) {
               const recharge = sum(rs, (r) => r.recharge)
               const cph = hours > 0 ? round(cars / hours, 2) : null
               const laborPct = sales > 0 ? round((labor / sales) * 100, 1) : null
+              const lyAgg = rs.reduce((a, r) => r.ly
+                ? { cars: a.cars + r.ly.cars, hours: a.hours + r.ly.hours, sales: a.sales + r.ly.sales, labor: a.labor + r.ly.labor, recharge: a.recharge + r.ly.recharge }
+                : a, { cars: 0, hours: 0, sales: 0, labor: 0, recharge: 0 })
+              const lyHas = rs.some((r) => r.ly)
               return (
                 <FragmentRegion key={g.region}>
                   <RegionHead region={g.region} count={rs.length} />
                   {rs.map((r) => (
                     <tr key={r.site}>
                       <td className={td} title={r.site}>{siteLabel(r.site)}</td>
-                      <td className={td}>{round(r.cars, 0)}</td>
-                      <td className={td}>{round(r.hours, 1)}</td>
-                      <td className={td} style={{ color: heatFor(r.cph, 'cph') }}>{r.cph ?? DASH}</td>
-                      <td className={td}>{money(r.sales)}</td>
-                      <td className={td} style={{ color: heatFor(r.laborPct, 'labor') }}>{r.laborPct !== null ? r.laborPct + '%' : DASH}</td>
-                      <td className={td}>{money(r.recharge)}</td>
+                      <YoyCell value={r.cars} ly={pos(r.ly?.cars)} format={(v) => String(round(v, 0))} kind="pct" />
+                      <YoyCell value={r.hours} ly={pos(r.ly?.hours)} format={(v) => String(round(v, 1))} kind="pct" />
+                      <YoyCell value={r.cph} ly={lyCph(r.ly)} format={(v) => String(v)} kind="ratio" color={heatFor(r.cph, 'cph')} />
+                      <YoyCell value={r.sales} ly={pos(r.ly?.sales)} format={money} kind="pct" />
+                      <YoyCell value={r.laborPct} ly={lyLabor(r.ly)} format={(v) => v + '%'} kind="points" color={heatFor(r.laborPct, 'labor')} />
+                      <YoyCell value={r.recharge} ly={pos(r.ly?.recharge)} format={money} kind="pct" />
                     </tr>
                   ))}
                   <tr className="font-semibold text-ink">
                     <td className={td}>Subtotal</td>
-                    <td className={td}>{round(cars, 0)}</td>
-                    <td className={td}>{round(hours, 1)}</td>
-                    <td className={td} style={{ color: heatFor(cph, 'cph') }}>{cph ?? DASH}</td>
-                    <td className={td}>{money(sales)}</td>
-                    <td className={td} style={{ color: heatFor(laborPct, 'labor') }}>{laborPct !== null ? laborPct + '%' : DASH}</td>
-                    <td className={td}>{money(recharge)}</td>
+                    <YoyCell value={cars} ly={lyHas ? pos(lyAgg.cars) : null} format={(v) => String(round(v, 0))} kind="pct" />
+                    <YoyCell value={hours} ly={lyHas ? pos(lyAgg.hours) : null} format={(v) => String(round(v, 1))} kind="pct" />
+                    <YoyCell value={cph} ly={lyCph(lyHas ? lyAgg : null)} format={(v) => String(v)} kind="ratio" color={heatFor(cph, 'cph')} />
+                    <YoyCell value={sales} ly={lyHas ? pos(lyAgg.sales) : null} format={money} kind="pct" />
+                    <YoyCell value={laborPct} ly={lyLabor(lyHas ? lyAgg : null)} format={(v) => v + '%'} kind="points" color={heatFor(laborPct, 'labor')} />
+                    <YoyCell value={recharge} ly={lyHas ? pos(lyAgg.recharge) : null} format={money} kind="pct" />
                   </tr>
                 </FragmentRegion>
               )
             })}
             <tr className="border-t-2 border-border font-bold text-ink">
               <td className={td}>Company Total</td>
-              <td className={td}>{round(tot.cars, 0)}</td>
-              <td className={td}>{round(tot.hours, 1)}</td>
-              <td className={td}>{tot.hours > 0 ? round(tot.cars / tot.hours, 2) : DASH}</td>
-              <td className={td}>{money(tot.sales)}</td>
-              <td className={td}>{DASH}</td>
-              <td className={td}>{money(tot.recharge)}</td>
+              <YoyCell value={tot.cars} ly={totLyHas ? pos(totLy.cars) : null} format={(v) => String(round(v, 0))} kind="pct" />
+              <YoyCell value={tot.hours} ly={totLyHas ? pos(totLy.hours) : null} format={(v) => String(round(v, 1))} kind="pct" />
+              <YoyCell value={tot.hours > 0 ? round(tot.cars / tot.hours, 2) : null} ly={lyCph(totLyHas ? totLy : null)} format={(v) => String(v)} kind="ratio" />
+              <YoyCell value={tot.sales} ly={totLyHas ? pos(totLy.sales) : null} format={money} kind="pct" />
+              <YoyCell value={tot.sales > 0 ? round((tot.labor / tot.sales) * 100, 1) : null} ly={lyLabor(totLyHas ? totLy : null)} format={(v) => v + '%'} kind="points" />
+              <YoyCell value={tot.recharge} ly={totLyHas ? pos(totLy.recharge) : null} format={money} kind="pct" />
             </tr>
           </TableShell>
         )}
@@ -1317,6 +1389,10 @@ function History({ idx }: { idx: RegionIndex }) {
         Cars/Man-Hr and Labor % are computed on the range totals.
         {' '}Cars go back furthest; Hours, Sales, Labor % and Recharge $ were only archived from mid-2026 on,
         so for ranges that reach earlier those columns cover only part of the span (and Cars/Man-Hr can read high).
+        {' '}The small figure under each number is the change vs the same range one year earlier (green better,
+        red worse). It shows only when the whole prior-year range is in the archive and that metric was being
+        recorded then — so today it appears mainly for Cars on recent ranges, and the rest fill in as the
+        archive builds a full prior year.
       </Footnote>
     </div>
   )
