@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { flexwashSales, type FlexSite, type FlexDepositReport, type DepositDay } from '@/lib/queries/flexwashSales'
+import { flexwashSales, type FlexSite, type FlexDepositReport, type DepositDay, type DepositGroup } from '@/lib/queries/flexwashSales'
 
 // FlexWash Deposit Report: mirrors FlexWash's own daily deposit report (Sales
 // Performance → Payment Methods → Processor Settlement → Revenue Accounting), one
@@ -156,6 +156,35 @@ function SiteTable({ title, r }: { title: string; r: FlexDepositReport }) {
   )
 }
 
+// Roll several sites' reports into one: days summed by date; payout groups from
+// different sites merged whenever their date spans overlap, so each merged group
+// still covers a contiguous run of rows and the settlement cells can span them.
+function combine(reports: FlexDepositReport[]): FlexDepositReport {
+  const days = new Map<string, DepositDay>()
+  for (const r of reports) for (const d of r.days) {
+    const cur = days.get(d.date)
+    if (!cur) { days.set(d.date, { ...d, voyager: { ...d.voyager }, wex: { ...d.wex } }); continue }
+    for (const k of SUM_KEYS) cur[k] += d[k]
+    cur.voyager.count += d.voyager.count; cur.voyager.amount += d.voyager.amount
+    cur.wex.count += d.wex.count; cur.wex.amount += d.wex.amount
+  }
+  const groups: DepositGroup[] = []
+  const all = reports.flatMap((r) => r.groups).sort((a, b) => (a.dates[0] < b.dates[0] ? -1 : 1))
+  for (const g of all) {
+    const last = groups[groups.length - 1]
+    // Spans are sorted by start, so a group overlaps the previous merged one iff it
+    // starts on or before that one's last day.
+    if (last && g.dates[0] <= last.dates[last.dates.length - 1]) {
+      last.dates = [...new Set([...last.dates, ...g.dates])].sort()
+      last.card += g.card; last.chargebacks += g.chargebacks; last.fees += g.fees; last.deposit += g.deposit
+      last.settled = last.settled && g.settled
+    } else {
+      groups.push({ ...g, dates: [...g.dates] })
+    }
+  }
+  return { days: [...days.keys()].sort().map((d) => days.get(d)!), groups }
+}
+
 function toCsv(sites: { title: string; r: FlexDepositReport }[]): string {
   const head = ['Site', 'Date', ...COLS.flatMap((c) => (c === 'Voyager Fleet' || c === 'Wex Fleet' ? [c + ' $', c + ' Count'] : [c]))]
   const lines = [head.join(',')]
@@ -195,7 +224,15 @@ export default function FlexwashDepositReport({ sites }: { sites: FlexSite[] }) 
     setLoading(true)
     setError(null)
     Promise.all(chosen.map((s) => flexwashSales.deposit(s.car_wash_id, start, end).then((r) => ({ title: `MW #${s.site_number}`, r }))))
-      .then((d) => { if (active) { setData(d); setLoading(false) } })
+      .then((d) => {
+        if (!active) return
+        // All Sites: a combined roll-up first, then each site on its own.
+        const withActivity = d.filter((s) => s.r.days.length)
+        setData(site === 'all' && withActivity.length > 1
+          ? [{ title: 'All Sites (combined)', r: combine(withActivity.map((s) => s.r)) }, ...d]
+          : d)
+        setLoading(false)
+      })
       .catch((e) => { if (active) { setError(e instanceof Error ? e.message : String(e)); setLoading(false) } })
     return () => { active = false }
   }, [site, month, sites])
