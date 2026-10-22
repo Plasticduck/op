@@ -127,6 +127,7 @@ const InteriorReportingPage = lz(() => import('@/features/opssuite/InteriorRepor
 const CamerasPage = lz(() => import('@/features/cameras/CamerasPage'))
 const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
 const CommissionsPage = lz(() => import('@/features/opssuite/CommissionsPage'))
+const RechargeTimingPage = lz(() => import('@/features/opssuite/RechargeTimingPage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
 const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
@@ -269,6 +270,7 @@ export const router = createBrowserRouter([
           { path: 'cameras', element: mgr(<CamerasPage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
           { path: 'commissions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<CommissionsPage />)}</RequireEmails> },
+          { path: 'recharge-timing', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<RechargeTimingPage />)}</RequireEmails> },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
           { path: 'employees/:id', element: mgr(<EmployeeDetailPage />) },

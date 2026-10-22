@@ -155,6 +155,13 @@ export const NAV_GROUPS: NavGroup[] = [
         emails: ['kevan@washlyfe.com'],
       },
       {
+        to: '/app/recharge-timing',
+        label: 'Recharge Timing',
+        icon: CalendarClock,
+        roles: ['owner'],
+        emails: ['kevan@washlyfe.com'],
+      },
+      {
         to: '/app/violations',
         label: 'Violations',
         icon: AlertTriangle,
