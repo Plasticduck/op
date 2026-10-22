@@ -3,7 +3,7 @@ import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
-import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSuperAdmin, RequireEmails, RedirectIfAuthed } from '@/routes/guards'
+import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSitePerformance, RequireSuperAdmin, RequireEmails, RedirectIfAuthed } from '@/routes/guards'
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 
@@ -270,7 +270,7 @@ export const router = createBrowserRouter([
           { path: 'cameras', element: mgr(<CamerasPage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
           { path: 'commissions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<CommissionsPage />)}</RequireEmails> },
-          { path: 'recharge-timing', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<RechargeTimingPage />)}</RequireEmails> },
+          { path: 'recharge-timing', element: <RequireRole allow={['owner']}><RequireSitePerformance>{s(<RechargeTimingPage />)}</RequireSitePerformance></RequireRole> },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
           { path: 'employees/:id', element: mgr(<EmployeeDetailPage />) },

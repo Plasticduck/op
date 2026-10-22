@@ -13,7 +13,7 @@ import { InviteModal } from '@/features/settings/team/InviteModal'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { updateCompany } from '@/lib/queries/companySettings'
-import { NAV_GROUPS } from '@/components/layout/Sidebar'
+import { NAV_GROUPS, navFlagOn } from '@/components/layout/Sidebar'
 import { SECTION_CATALOG, permRoleInList } from '@/lib/permissions'
 import { CATEGORY_LABEL, ROLE_LABEL, displayRole, permRole, type PermRole, type Role, type RoleCategory } from '@/lib/rbac'
 import {
@@ -432,11 +432,11 @@ function PermissionsEditor() {
             (i) =>
               permRoleInList(role, i.roles) &&
               i.to !== '/app/dashboard' &&
-              (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)),
+              navFlagOn(i.flag, profile),
           ),
         }))
         .filter((g) => g.items.length > 0),
-    [role],
+    [role, profile],
   )
 
   useEffect(() => {
@@ -591,11 +591,11 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
             (i) =>
               permRoleInList(role, i.roles) &&
               i.to !== '/app/dashboard' &&
-              (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)),
+              navFlagOn(i.flag, profile),
           ),
         }))
         .filter((g) => g.items.length > 0),
-    [role],
+    [role, profile],
   )
   // The role's effective allowance for a key (role override, else opt-in default).
   const roleDefault = (to: string) => {

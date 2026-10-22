@@ -78,12 +78,24 @@ type NavItem = {
   icon: LucideIcon
   roles: PermRole[]
   // Item only shows when the account has this feature flag enabled.
-  flag?: 'gm_bonus'
+  flag?: NavFlag
   // Roles that can be granted this page but default to OFF (admin opts them in).
   optIn?: PermRole[]
   // Item only shows for these emails (super-admin HR pages, gated outside the
   // role system since owners can't be restricted). Lowercase.
   emails?: string[]
+}
+
+// Account-level feature flags a nav item can require. site_performance = the
+// account is wired to the SiteWatch dashboard / FlexWash (Mighty Wash).
+type NavFlag = 'gm_bonus' | 'site_performance'
+export function navFlagOn(
+  flag: NavFlag | undefined,
+  profile: { gm_bonus_enabled?: boolean; site_performance_enabled?: boolean } | null | undefined,
+): boolean {
+  if (!flag) return true
+  if (flag === 'gm_bonus') return !!profile?.gm_bonus_enabled
+  return !!profile?.site_performance_enabled
 }
 
 type NavGroup = {
@@ -159,7 +171,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Recharge Timing',
         icon: CalendarClock,
         roles: ['owner'],
-        emails: ['kevan@washlyfe.com'],
+        flag: 'site_performance',
       },
       {
         to: '/app/violations',
@@ -644,7 +656,7 @@ export function SidebarNav({
       userPerms: settings.userPermissions,
       optInRoles: i.optIn,
     }) &&
-    (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)) &&
+    navFlagOn(i.flag, profile) &&
     !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)) &&
     (!i.emails || i.emails.includes((profile?.email ?? '').toLowerCase()))
 
@@ -860,7 +872,7 @@ export function useVisibleNavItems(role: PermRole): VisibleNavItem[] {
       userPerms: settings.userPermissions,
       optInRoles: i.optIn,
     }) &&
-    (!i.flag || (i.flag === 'gm_bonus' && !!profile?.gm_bonus_enabled)) &&
+    navFlagOn(i.flag, profile) &&
     !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)) &&
     (!i.emails || i.emails.includes((profile?.email ?? '').toLowerCase()))
   return NAV_GROUPS

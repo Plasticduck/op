@@ -87,6 +87,15 @@ export function RequireGmBonus({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+// Pages built on the SiteWatch dashboard / FlexWash data (Mighty Wash): only for
+// accounts with site performance wired up, since that data isn't account-scoped.
+export function RequireSitePerformance({ children }: { children: ReactNode }) {
+  const { profile } = useAuth()
+  if (!profile) return null
+  if (!profile.site_performance_enabled) return <Navigate to="/app/dashboard" replace />
+  return <>{children}</>
+}
+
 // Payroll labor is limited to a single admin (kevan@washlyfe.com) for now.
 export function RequireSuperAdmin({ children }: { children: ReactNode }) {
   const { profile } = useAuth()
