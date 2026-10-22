@@ -122,6 +122,43 @@ export type FlexInteriorReport = {
   days: number
 }
 
+// Deposit report (mirrors FlexWash's own daily deposit report): one row per day
+// for a single site, plus the Adyen payout groups that settle those days. A
+// payout often covers several days (e.g. a weekend), so settlement figures live
+// on the group, not the day. Discounts/refunds/taxes are signed negative, as on
+// FlexWash's report. voyager/wex are the "Voyager Fleet" / "Wex Fleet" discount
+// lines for that day (already included in Discounts), amount signed negative.
+export type DepositDay = {
+  date: string
+  gross: number
+  discounts: number
+  refunds: number
+  tips: number
+  net: number
+  fleet: number
+  prepaids: number
+  cash: number
+  card: number
+  earned: number
+  deferred: number
+  taxes: number
+  netRevenue: number
+  voyager: { count: number; amount: number }
+  wex: { count: number; amount: number }
+}
+export type DepositGroup = { dates: string[]; card: number; chargebacks: number; fees: number; deposit: number; settled: boolean }
+export type FlexDepositReport = { days: DepositDay[]; groups: DepositGroup[] }
+
+// Run async jobs with a small concurrency cap (FlexWash rate-limits bursts).
+async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let i = 0
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k]) }
+  }))
+  return out
+}
+
 const CLASS_LABEL: Record<string, string> = {
   membershipsSoldNew: 'Memberships Sold (New)',
   membershipsRebilled: 'Memberships Recharged',
@@ -144,6 +181,83 @@ export const flexwashSales = {
         for (const dt of (pg.dates ?? []) as Any[])
           cents += Number((dt.accounting ?? {}).tipAmount) || 0
     return cents / 100
+  },
+
+  // Daily deposit report for one site (see DepositDay). Accounting comes per day
+  // inside Adyen payout groups; the Voyager/Wex fleet lines come from the discount
+  // endpoint, which only returns range totals, so it's queried one day at a time.
+  deposit: async (carWashId: string, start: string, end: string): Promise<FlexDepositReport> => {
+    const data = await flexApi('/external/accounting/get-accounting', { carWashIds: [carWashId], dateRange: { start, end } })
+    const days = new Map<string, DepositDay>()
+    const groups: DepositGroup[] = []
+    for (const cw of (data?.accounting ?? []) as Any[]) {
+      for (const pg of (cw.payoutGroups ?? []) as Any[]) {
+        const g: DepositGroup = { dates: [], card: 0, chargebacks: 0, fees: 0, deposit: 0, settled: true }
+        let groupAdyenCard = 0
+        for (const dt of (pg.dates ?? []) as Any[]) {
+          const date = String(dt.date ?? '').slice(0, 10)
+          if (!date || date < start || date > end) continue
+          const a = dt.accounting ?? {}
+          const net = toDollars(a.netSales)
+          const deferred = toDollars(a.washBookSalesAmount) + toDollars(a.giftCardSalesAmount) + toDollars(a.prepaidSalesAmount)
+          const taxes = -toDollars(a.taxAmount)
+          const card = toDollars(a.cardNetPayments)
+          const gross = toDollars(a.grossSales)
+          const refund = toDollars(a.refundAmount)
+          days.set(date, {
+            date,
+            gross,
+            // FlexWash's Discounts column is everything between Gross and Net other
+            // than refunds: discountAmount + promotions + upsell adjustments +
+            // loyalty redemptions. Derive it from their own net calculation so it
+            // matches to the cent.
+            discounts: -(gross - net - refund),
+            refunds: -refund,
+            tips: toDollars(a.tipAmount) + toDollars(a.cashBackAmount),
+            net,
+            fleet: toDollars(a.fleetUnpaidNetPayments),
+            prepaids: toDollars(a.giftCardNetPayments) + toDollars(a.washBookRedeemed) + toDollars(a.prepaidRedeemed),
+            cash: toDollars(a.cashNetPayments),
+            card,
+            earned: net - deferred,
+            deferred,
+            taxes,
+            netRevenue: net - deferred + taxes,
+            voyager: { count: 0, amount: 0 },
+            wex: { count: 0, amount: 0 },
+          })
+          g.dates.push(date)
+          g.card += card
+          groupAdyenCard += toDollars(a.cardNetPaymentsByProcessor?.adyen ?? a.cardNetPayments)
+        }
+        if (!g.dates.length) continue
+        const payout = pg.adyenPayout
+        if (payout) {
+          g.deposit = toDollars(payout.payoutAmount)
+          g.chargebacks = toDollars(payout.chargebackAmount) + toDollars(payout.chargebackReversalAmount)
+          g.fees = g.deposit - groupAdyenCard - g.chargebacks // residual, negative
+        } else if (g.card > 0) {
+          g.settled = false // card money taken but the payout hasn't posted yet
+        }
+        g.dates.sort()
+        groups.push(g)
+      }
+    }
+    // Voyager / Wex fleet discount lines, per day.
+    const dates = [...days.keys()].sort()
+    await mapLimit(dates, 6, async (date) => {
+      const disc = await flexApi('/external/discounts/get-discount-stats', { carWashIds: [carWashId], dateRange: { start: date, end: date } }).catch(() => null)
+      const day = days.get(date)!
+      for (const d of (disc?.records ?? []) as Any[]) {
+        const name = String(d.discount?.name ?? '').toLowerCase()
+        const bucket = name === 'voyager fleet' ? day.voyager : name === 'wex fleet' ? day.wex : null
+        if (!bucket) continue
+        bucket.count += Number(d.count) || 0
+        bucket.amount -= toDollars(d.amountInCents)
+      }
+    })
+    groups.sort((a, b) => (a.dates[0] < b.dates[0] ? -1 : 1))
+    return { days: dates.map((d) => days.get(d)!), groups }
   },
 
   // The FlexWash sites for this account (manager+ only, per RLS).

@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { flexwashSales, type FlexSite, type FlexSalesReport, type FlexBreakdown } from '@/lib/queries/flexwashSales'
 import { downloadFlexwashSalesPdf } from '@/lib/flexwashSalesPdf'
+import FlexwashDepositReport from './FlexwashDepositReport'
 
 const num = (n: number) => Math.round(n).toLocaleString('en-US')
 const money = (n: number) => currency(n)
@@ -63,6 +64,7 @@ export default function FlexwashSalesPage() {
   const [breakdown, setBreakdown] = useState<FlexBreakdown | null>(null)
   const [bdLoading, setBdLoading] = useState(false)
   const [exportBlocked, setExportBlocked] = useState(false)
+  const [mode, setMode] = useState<'sales' | 'deposit'>('sales')
 
   useEffect(() => {
     flexwashSales.sites().then((s) => {
@@ -73,7 +75,7 @@ export default function FlexwashSalesPage() {
 
   useEffect(() => {
     const ids = carWashId === 'all' ? sites.map((s) => s.car_wash_id) : carWashId ? [carWashId] : []
-    if (!ids.length || !start || !end || start > end) return
+    if (mode !== 'sales' || !ids.length || !start || !end || start > end) return
     let active = true
     setLoading(true)
     setError(null)
@@ -88,7 +90,7 @@ export default function FlexwashSalesPage() {
       .then((b) => { if (active) { setBreakdown(b); setBdLoading(false) } })
       .catch(() => { if (active) { setBreakdown(null); setBdLoading(false) } })
     return () => { active = false }
-  }, [carWashId, sites, start, end])
+  }, [carWashId, sites, start, end, mode])
 
   const siteLabel = useMemo(() => {
     if (carWashId === 'all') return 'All Sites'
@@ -113,15 +115,31 @@ export default function FlexwashSalesPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="FlexWash Sales Reports"
-        subtitle="Daily sales for the FlexWash sites, grouped to mirror the DRB General Sales Report."
-        actions={
+        subtitle={mode === 'deposit'
+          ? 'Daily deposit report for the FlexWash sites, laid out like FlexWash’s own, plus Voyager and Wex fleet lines.'
+          : 'Daily sales for the FlexWash sites, grouped to mirror the DRB General Sales Report.'}
+        actions={mode === 'sales' ? (
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-ink-muted">
             <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
             {error ? 'Load failed' : loading ? 'Loading...' : report ? 'Loaded' : 'Pick a site'}
           </span>
-        }
+        ) : undefined}
       />
 
+      <div className="inline-flex w-fit rounded-lg border border-border bg-card p-0.5">
+        {([['sales', 'Sales Report'], ['deposit', 'Deposit Report']] as const).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setMode(k)}
+            className={cn('rounded-md px-3 py-1.5 text-sm font-medium', mode === k ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink')}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'deposit' ? <FlexwashDepositReport sites={sites} /> : (<>
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <label htmlFor="fw-site" className="text-xs font-medium text-ink-muted">Site</label>
@@ -395,6 +413,7 @@ export default function FlexwashSalesPage() {
           </p>
         </>
       )}
+      </>)}
     </div>
   )
 }
