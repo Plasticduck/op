@@ -4,9 +4,11 @@ import { fnErrorMessage } from '@/lib/fnError'
 // Interior/detail sales from the DRB (SiteWatch) sites: every item in the
 // "Detail Services" and "Detail Extras" report categories, plus the specific MVP
 // ARM plan items the owner counts as interior. Revenue is in dollars.
-export type DrbSite = { site_number: number; name: string }
+// site_number is SiteWatch's INTERNAL site id (what the function filters on);
+// store is the real Mighty Wash store number it maps to (null if unmapped).
+export type DrbSite = { site_number: number; store: number | null; name: string }
 export type DrbInteriorItem = { name: string; category: string; count: number; qty: number; revenue: number }
-export type DrbInteriorSite = { site_number: number; name: string; count: number; qty: number; revenue: number }
+export type DrbInteriorSite = { site_number: number; store: number | null; name: string; count: number; qty: number; revenue: number }
 // MVP UNLMTD membership items (ARM Plans Sold + Recharged), split by category.
 export type DrbMvpItem = { name: string; category: string; count: number; revenue: number }
 export type DrbMvpReport = {

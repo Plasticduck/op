@@ -223,7 +223,21 @@ export default function FlexwashDepositReport({ sites }: { sites: FlexSite[] }) 
     let active = true
     setLoading(true)
     setError(null)
-    Promise.all(chosen.map((s) => flexwashSales.deposit(s.car_wash_id, start, end).then((r) => ({ title: `MW #${s.site_number}`, r }))))
+    // A few sites at a time: each site already fans out ~30 per-day calls, and
+    // FlexWash throttles big bursts.
+    const run = async () => {
+      const out: { title: string; r: FlexDepositReport }[] = new Array(chosen.length)
+      let i = 0
+      await Promise.all(Array.from({ length: Math.min(3, chosen.length) }, async () => {
+        while (i < chosen.length) {
+          const k = i++
+          const s = chosen[k]
+          out[k] = { title: `MW #${s.site_number}`, r: await flexwashSales.deposit(s.car_wash_id, start, end) }
+        }
+      }))
+      return out
+    }
+    run()
       .then((d) => {
         if (!active) return
         // All Sites: a combined roll-up first, then each site on its own.

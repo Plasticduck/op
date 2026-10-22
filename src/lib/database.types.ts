@@ -2264,6 +2264,7 @@ export type Database = {
           active: boolean
           car_wash_id: string
           created_at: string
+          dashboard_source: boolean
           id: string
           name: string | null
           site_number: number
@@ -2274,6 +2275,7 @@ export type Database = {
           active?: boolean
           car_wash_id: string
           created_at?: string
+          dashboard_source?: boolean
           id?: string
           name?: string | null
           site_number: number
@@ -2284,6 +2286,7 @@ export type Database = {
           active?: boolean
           car_wash_id?: string
           created_at?: string
+          dashboard_source?: boolean
           id?: string
           name?: string | null
           site_number?: number

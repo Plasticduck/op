@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { flexwashSales } from '@/lib/queries/flexwashSales'
+import { flexwashSales, type FlexSite } from '@/lib/queries/flexwashSales'
 
 // Monthly wash-package usage for the Chemicals hub, broken down by site. Counts
 // EVERY wash that used each package (retail sales + member redemptions), across
@@ -9,11 +9,13 @@ import { flexwashSales } from '@/lib/queries/flexwashSales'
 //    report category (BRANCH 001001001); each wash posts exactly one package line
 //    there (members post it too, offset by redemption discounts elsewhere). Site
 //    name comes from SITELIST (SALE.SITE = SITELIST.ID -> SITENAME "MightyWash 0NN").
-//    MW17/MW18 are FlexWash now; their SiteWatch rows are tiny residuals, so they
-//    are excluded here and taken from FlexWash instead (no double-count).
-//  - FlexWash sites (MW17/MW18): per site, counted from FlexWash line items exactly
-//    as the FlexWash Sales report does (flexwashSales.lineItemBreakdown -> carsByTier:
-//    one paid "Package" line per wash, member redemptions included).
+//  - FlexWash sites: counted from FlexWash line items exactly as the FlexWash Sales
+//    report does (flexwashSales.lineItemBreakdown -> carsByTier: one paid "Package"
+//    line per wash, member redemptions included).
+//  Each FlexWash site switches on its cutover date (flexwash_sites.start_date):
+//  SiteWatch counts it through that day (sites switch mid-day), FlexWash from that
+//  day on, so a month that spans a cutover keeps both halves and nothing is double
+//  counted (SiteWatch only has stray residuals after cutover). One row per site.
 
 export type SitePackageRow = { site: string; wonder: number; superShine: number; mighty: number; total: number }
 export type PackageTotals = { wonder: number; superShine: number; mighty: number; total: number }
@@ -32,9 +34,23 @@ export function lastCompleteMonth(now = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-// FlexWash sites to take from FlexWash instead of SiteWatch (their DRB rows are
-// stale residuals). Matched on the SiteWatch SITENAME.
-const FLEX_SITENAMES = ["'MightyWash 017'", "'MightyWash 018'"].join(', ')
+const swName = (n: number) => `MightyWash ${String(n).padStart(3, '0')}`
+
+const dayAfter = (d: string) => new Date(new Date(d + 'T00:00:00Z').getTime() + 86_400_000).toISOString().slice(0, 10)
+
+// SQL condition that drops each FlexWash site's SiteWatch rows after its cutover
+// (SITENAME is "MightyWash 0NN"). The cutover day itself keeps its SiteWatch rows:
+// sites switch mid-day (e.g. MW12 on 9/14: 192 washes in SiteWatch, 65 in
+// FlexWash), and after that SiteWatch only has stray residuals. Sites not yet on
+// FlexWash, or cutting over after the range, are left alone.
+function cutoverExclusions(flex: FlexSite[], start: string, end: string): string {
+  return flex
+    .filter((s) => s.start_date && dayAfter(s.start_date) <= end)
+    .map((s) => dayAfter(s.start_date!) <= start
+      ? `AND TRIM(sl.SITENAME)<>'${swName(s.site_number)}' `
+      : `AND NOT (TRIM(sl.SITENAME)='${swName(s.site_number)}' AND s.LOGDATE>='${dayAfter(s.start_date!)}') `)
+    .join('')
+}
 
 // Left out of the report and its grand total (requested 2026-10-20): MW19 is the
 // lube shop and Headquarters isn't a wash site. Matched on the SiteWatch SITENAME
@@ -49,7 +65,7 @@ function siteNum(name: string): number {
   return m ? Number(m[1]) : Number.POSITIVE_INFINITY
 }
 
-async function fetchSiteWatchPerSite(start: string, end: string): Promise<SitePackageRow[]> {
+async function fetchSiteWatchPerSite(start: string, end: string, flex: FlexSite[]): Promise<SitePackageRow[]> {
   const sql =
     "SELECT TRIM(sl.SITENAME) AS SITE, (CASE " +
     "WHEN UPPER(it.NAME) LIKE '%MIGHTY PROTECT%' THEN 'M' " +
@@ -61,7 +77,7 @@ async function fetchSiteWatchPerSite(start: string, end: string): Promise<SitePa
     "JOIN SITELIST sl ON sl.ID=s.SITE " +
     `WHERE s.LOGDATE>='${start}' AND s.LOGDATE<='${end}' AND si.FLAGS>=0 AND rc.BRANCH='001001001' ` +
     "AND (UPPER(it.NAME) LIKE '%MIGHTY PROTECT%' OR UPPER(it.NAME) LIKE '%SUPER SHINE%' OR UPPER(it.NAME) LIKE '%WONDER%') " +
-    `AND TRIM(sl.SITENAME) NOT IN (${FLEX_SITENAMES}) ` +
+    cutoverExclusions(flex, start, end) +
     "GROUP BY 1, 2"
 
   const { data, error } = await supabase.functions.invoke('site-performance', {
@@ -87,39 +103,47 @@ async function fetchSiteWatchPerSite(start: string, end: string): Promise<SitePa
   return [...bySite.values()]
 }
 
-async function fetchFlexPerSite(start: string, end: string): Promise<SitePackageRow[]> {
-  const sites = await flexwashSales.sites()
-  const active = sites.filter((s) => s.car_wash_id)
+async function fetchFlexPerSite(start: string, end: string, flex: FlexSite[]): Promise<SitePackageRow[]> {
+  // Only sites on FlexWash during the range, from their cutover on.
+  const active = flex.filter((s) => s.car_wash_id && s.start_date && s.start_date <= end)
   if (!active.length) return []
   return Promise.all(
     active.map(async (st) => {
-      const bd = await flexwashSales.lineItemBreakdown([st.car_wash_id], start, end)
+      const from = st.start_date! > start ? st.start_date! : start
+      const bd = await flexwashSales.lineItemBreakdown([st.car_wash_id], from, end)
       let wonder = 0, superShine = 0, mighty = 0
       for (const t of bd.carsByTier) {
         if (t.label === 'Wonder') wonder = t.count
         else if (t.label === 'Super Shine') superShine = t.count
         else if (t.label === 'Mighty') mighty = t.count
       }
-      const site = `MightyWash ${String(st.site_number).padStart(3, '0')}`
-      return { site, wonder, superShine, mighty, total: wonder + superShine + mighty }
+      return { site: swName(st.site_number), wonder, superShine, mighty, total: wonder + superShine + mighty }
     }),
   )
 }
 
 export async function fetchPackageReport(ym: string): Promise<PackageReport> {
   const { start, end } = monthRange(ym)
-  const sw = await fetchSiteWatchPerSite(start, end)
+  const flexSites = await flexwashSales.sites().catch(() => [] as FlexSite[])
+  const sw = await fetchSiteWatchPerSite(start, end, flexSites)
   // FlexWash is best-effort: if it fails, still show the SiteWatch sites and flag it.
   let flex: SitePackageRow[] = []
   let flexIncluded = false
   try {
-    flex = await fetchFlexPerSite(start, end)
+    flex = await fetchFlexPerSite(start, end, flexSites)
     flexIncluded = true
   } catch {
     /* keep SiteWatch-only, flexIncluded stays false */
   }
 
-  const sites = [...sw, ...flex]
+  // A site that cut over mid-month has a SiteWatch part and a FlexWash part: one row.
+  const merged = new Map<string, SitePackageRow>()
+  for (const r of [...sw, ...flex]) {
+    const m = merged.get(r.site)
+    if (!m) { merged.set(r.site, { ...r }); continue }
+    m.wonder += r.wonder; m.superShine += r.superShine; m.mighty += r.mighty; m.total += r.total
+  }
+  const sites = [...merged.values()]
     .filter((r) => !EXCLUDED_SITES.has(r.site))
     .sort((a, b) => siteNum(a.site) - siteNum(b.site) || a.site.localeCompare(b.site))
   const grand = sites.reduce<PackageTotals>(

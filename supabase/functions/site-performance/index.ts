@@ -177,6 +177,7 @@ async function augmentReport(report: any, svc: any) {
     .select('site_number, car_wash_id, name, start_date')
     .eq('account_id', MW_ACCOUNT)
     .eq('active', true)
+    .eq('dashboard_source', true) // reporting-only sites are already right in the feed
   if (!sites?.length) return
   const token = await flexToken(svc)
   if (!token) return

@@ -140,6 +140,7 @@ Deno.serve(async (req) => {
     .from('flexwash_sites')
     .select('site_number, car_wash_id, name, account_id, start_date')
     .eq('active', true)
+    .eq('dashboard_source', true) // reporting-only sites are archived from the dashboard
   const list = (sites ?? []) as FlexSite[]
 
   const now = new Date().toISOString()

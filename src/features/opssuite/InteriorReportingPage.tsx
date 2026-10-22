@@ -16,6 +16,22 @@ const DRB_CAT_ORDER = ['Detail Services', 'Detail Extras', 'ARM Plans Sold', 'AR
 const num = (n: number) => Math.round(n).toLocaleString('en-US')
 const money = (n: number) => currency(n)
 const yesterday = () => new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA')
+const dayBefore = (d: string) => new Date(new Date(d + 'T00:00:00Z').getTime() - 86_400_000).toISOString().slice(0, 10)
+
+// Official cars for a set of (store, date range) spans, summed. Each FlexWash
+// site's range is split at its cutover, so spans can differ per site.
+type CarSpan = { n: number; from: string; to: string }
+async function carsForSpans(spans: CarSpan[]): Promise<number> {
+  const live = spans.filter((s) => s.from <= s.to)
+  // Batch spans that share a date range into one call.
+  const byRange = new Map<string, number[]>()
+  for (const s of live) {
+    const k = `${s.from}|${s.to}`
+    byRange.set(k, [...(byRange.get(k) ?? []), s.n])
+  }
+  const totals = await Promise.all([...byRange].map(([k, nums]) => { const [f, t] = k.split('|'); return carsWashedTotal(nums, f, t) }))
+  return totals.reduce((a, b) => a + b, 0)
+}
 const monthStart = () => {
   const d = new Date()
   return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('en-CA')
@@ -81,9 +97,26 @@ export default function InteriorReportingPage() {
   const fwActive = selection === 'all' || selection.startsWith('fw:')
   const drbActive = selection === 'all' || selection.startsWith('drb:')
   const fwIds = selection === 'all' ? sites.map((s) => s.car_wash_id) : selection.startsWith('fw:') ? [selection.slice(3)] : []
+  // DRB picks carry SiteWatch's internal site id; cars are keyed by store number.
   const drbNums = selection.startsWith('drb:') ? [Number(selection.slice(4))] : []
-  const fwSiteNums = fwIds.length ? sites.filter((s) => fwIds.includes(s.car_wash_id)).map((s) => s.site_number) : []
-  const drbScopeNums = selection === 'all' ? drbSites.map((s) => s.site_number) : drbNums
+  const drbPickedStore = drbNums.length ? drbSites.find((s) => s.site_number === drbNums[0])?.store ?? null : null
+
+  // Cars behind each attach rate, split at every FlexWash site's cutover (the
+  // FlexWash interior side only has data from cutover on; the DRB side keeps a
+  // site's SiteWatch days before it).
+  const fwCarSpans: CarSpan[] = sites
+    .filter((s) => fwIds.includes(s.car_wash_id) && s.start_date && s.start_date <= end)
+    .map((s) => ({ n: s.site_number, from: s.start_date! > start ? s.start_date! : start, to: end }))
+  const drbCarSpans: CarSpan[] = selection === 'all'
+    ? [
+        ...drbSites.filter((s) => s.store != null).map((s) => ({ n: s.store!, from: start, to: end })),
+        // FlexWash sites' pre-cutover days are DRB days. (Sites not converted yet
+        // have no cutover and are already in drbSites.)
+        ...sites
+          .filter((s) => s.start_date && s.start_date > start)
+          .map((s) => ({ n: s.site_number, from: start, to: s.start_date! <= end ? dayBefore(s.start_date!) : end })),
+      ]
+    : drbPickedStore != null ? [{ n: drbPickedStore, from: start, to: end }] : []
 
   useEffect(() => {
     if (!fwActive) { setReport(null); setError(null); setFwCars(0); return }
@@ -95,7 +128,7 @@ export default function InteriorReportingPage() {
       .interiorReport(fwIds, start, end)
       .then((r) => { if (active) { setReport(r); setLoading(false) } })
       .catch((e) => { if (active) { setError(e instanceof Error ? e.message : String(e)); setLoading(false) } })
-    void carsWashedTotal(fwSiteNums, start, end).then((c) => { if (active) setFwCars(c) })
+    void carsForSpans(fwCarSpans).then((c) => { if (active) setFwCars(c) })
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, sites, start, end])
@@ -110,10 +143,10 @@ export default function InteriorReportingPage() {
       .report(start, end, drbNums.length ? drbNums : undefined)
       .then((d) => { if (active) { setDrb(d); setDrbLoading(false) } })
       .catch((e) => { if (active) { setDrbError(e instanceof Error ? e.message : String(e)); setDrbLoading(false) } })
-    void carsWashedTotal(drbScopeNums, start, end).then((c) => { if (active) setDrbCars(c) })
+    void carsForSpans(drbCarSpans).then((c) => { if (active) setDrbCars(c) })
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, start, end, drbSites])
+  }, [selection, start, end, drbSites, sites])
 
   const r = report
   const avgTicket = useMemo(() => (r && r.paid.count > 0 ? r.paid.revenue / r.paid.count : 0), [r])
@@ -174,7 +207,7 @@ export default function InteriorReportingPage() {
             {drbSites.length > 0 && (
               <optgroup label="DRB">
                 {drbSites.map((s) => (
-                  <option key={s.site_number} value={`drb:${s.site_number}`}>#{s.site_number} — {s.name}</option>
+                  <option key={s.site_number} value={`drb:${s.site_number}`}>{s.store != null ? `#${s.store}` : s.name}</option>
                 ))}
               </optgroup>
             )}
@@ -260,7 +293,7 @@ export default function InteriorReportingPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">DRB (detail)</h2>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] text-ink-muted">
             <RefreshCw className={cn('size-3', drbLoading && 'animate-spin')} />
-            {drbError ? 'Load failed' : drbLoading ? 'Loading...' : drb ? (drbNums.length ? `Site #${drbNums[0]}` : 'All DRB sites') : '—'}
+            {drbError ? 'Load failed' : drbLoading ? 'Loading...' : drb ? (drbNums.length ? (drbPickedStore != null ? `Site #${drbPickedStore}` : 'Selected site') : 'All DRB sites') : '—'}
           </span>
         </div>
       )}
@@ -434,8 +467,9 @@ export default function InteriorReportingPage() {
         categories, plus MVP Mighty ARM Sld, Intro MVP PB/NM Rchg, Intro MVP Rchg, and MVP Mighty
         Switch Rc. MVP UNLMTD counts new memberships sold (every "sold" classification) and their
         recharges/rebills: FlexWash MVP UNLMTD + Launch MVP UNLMTD plans, and the DRB MVP ARM items.
-        The all-sites DRB rollup excludes the FlexWash sites (so they are not double counted) and the
-        corporate/HQ sites.
+        Each FlexWash site counts on the DRB side through its FlexWash cutover day and on the FlexWash
+        side from that day on, so a range that spans a cutover keeps both halves without double
+        counting. The DRB rollup leaves out the corporate/HQ sites and the lube shop.
       </p>
     </div>
   )

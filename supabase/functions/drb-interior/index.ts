@@ -4,16 +4,19 @@
 // item in the "Detail Services" and "Detail Extras" report categories, plus a
 // short allow-list of MVP ARM plan items the owner wants counted as interior.
 //
-// SiteWatch's SALE.SITE column is the Mighty Wash site number directly. Some
-// sites now on FlexWash still have SiteWatch rows, so the all-sites rollup
-// excludes the FlexWash site numbers (read from flexwash_sites) to avoid
-// double-counting; the corporate/HQ sites (98, 99) are excluded too. Money
-// (AMT) is already in dollars.
+// SiteWatch's SALE.SITE is its INTERNAL site id (SITELIST.ID), NOT the store
+// number (e.g. id 24 = MightyWash 001, id 17 = MightyWash 019 the lube shop), so
+// stores are mapped through SITELIST for labels and FlexWash exclusions. Sites on
+// FlexWash are excluded from the day after their cutover (flexwash_sites.
+// start_date; they switch mid-day and SiteWatch only has stray residuals after),
+// so a range spanning a cutover keeps its SiteWatch half. HQ/hub and the lube
+// shop are never wash-interior sites. Money (AMT) is already in dollars.
 //
 // Body: { start, end, sites?: number[], list?: boolean }
-//   - list: return the selectable DRB site numbers (recent, non-FlexWash) only.
-//   - sites: restrict the report to these site numbers (a specific site pick).
-//   - neither: all DRB sites (SiteWatch minus FlexWash minus HQ).
+//   - list: the selectable DRB sites (recent, not on FlexWash); site_number is the
+//     internal SiteWatch id (sent back in `sites`), name/store the real store.
+//   - sites: restrict the report to these internal site ids (a specific site pick).
+//   - neither: all DRB sites (SiteWatch minus post-cutover FlexWash minus non-wash).
 //
 // Auth: owner/manager of the Mighty Wash account, or the service role.
 // Secrets: MW_DASHBOARD_PASSWORD (503 if absent), MW_DASHBOARD_URL (optional).
@@ -22,8 +25,9 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const DEFAULT_BASE = 'https://dashboard.tail1e050b.ts.net'
 const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
-// Non-wash corporate/HQ site numbers to keep out of the wash-interior rollup.
-const NON_WASH_SITES = [98, 99]
+// Non-wash SiteWatch site ids to keep out of the wash-interior rollup: HQ (98),
+// Mighty Hub Office (99), and the lube shop (id 17 = store 019).
+const NON_WASH_SITES = [17, 98, 99]
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 
@@ -128,17 +132,33 @@ Deno.serve(async (req) => {
   let body: { start?: string; end?: string; sites?: unknown; list?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
 
-  // FlexWash site numbers to exclude from the DRB rollup (they're on FlexWash).
-  const { data: fw } = await svc.from('flexwash_sites').select('site_number').eq('active', true)
-  const fwNums = ((fw as { site_number: number }[] | null) ?? []).map((s) => s.site_number).filter((n) => Number.isInteger(n))
+  // FlexWash stores and their cutover dates (null = not on FlexWash yet).
+  const { data: fw } = await svc.from('flexwash_sites').select('site_number, start_date').eq('active', true)
+  const fwCutover = new Map<number, string>()
+  for (const s of (fw as { site_number: number; start_date: string | null }[] | null) ?? []) {
+    if (Number.isInteger(s.site_number) && s.start_date) fwCutover.set(s.site_number, s.start_date)
+  }
 
   let cookie: string
   try { cookie = await login(base, password) } catch (e) { return json({ error: 'login_failed', message: String(e) }, 502, origin) }
 
-  // list mode: distinct SiteWatch sites in the last 60 days, minus FlexWash + HQ.
+  // SiteWatch internal id -> real store number ("MightyWash 0NN"), and back.
+  const storeOfId = new Map<number, number>()
+  try {
+    const sl = await runSql(base, cookie, `SELECT sl.ID, TRIM(sl.SITENAME) FROM SITELIST sl`)
+    for (const r of sl.rows ?? []) {
+      const m = String(r[1] ?? '').match(/^mightywash\s*0*(\d+)$/i) // skips "OLD MW.." legacy ids
+      if (m) storeOfId.set(Math.trunc(numify(r[0])), parseInt(m[1], 10))
+    }
+  } catch (e) { return json({ error: 'query_failed', message: String(e) }, 502, origin) }
+  const idOfStore = new Map([...storeOfId].map(([id, store]) => [store, id]))
+  const label = (id: number) => (storeOfId.has(id) ? `Mighty Wash #${storeOfId.get(id)}` : `SiteWatch site ${id}`)
+
+  // list mode: SiteWatch sites with sales in the last 60 days, minus non-wash
+  // sites and stores already on FlexWash (those report on the FlexWash side).
   if (body.list) {
     const cutoff = new Date(Date.now() - 60 * 86400_000).toISOString().slice(0, 10)
-    const excl = [...fwNums, ...NON_WASH_SITES]
+    const excl = [...NON_WASH_SITES, ...[...fwCutover.keys()].map((st) => idOfStore.get(st)).filter((x): x is number => x != null)]
     const sql =
       `SELECT s.SITE, COUNT(*) FROM SALE s WHERE s.LOGDATE >= '${cutoff}' ` +
       (excl.length ? `AND s.SITE NOT IN (${excl.join(', ')}) ` : '') +
@@ -148,7 +168,8 @@ Deno.serve(async (req) => {
     const sites = (res.rows ?? [])
       .map((r) => Math.trunc(numify(r[0])))
       .filter((n) => Number.isInteger(n) && n > 0)
-      .map((n) => ({ site_number: n, name: `Mighty Wash #${n}` }))
+      .map((n) => ({ site_number: n, store: storeOfId.get(n) ?? null, name: label(n) }))
+      .sort((a, b) => (a.store ?? 9999) - (b.store ?? 9999))
     return json({ ok: true, sites }, 200, origin)
   }
 
@@ -158,14 +179,21 @@ Deno.serve(async (req) => {
   const start = body.start!
   const endExclusive = nextDay(body.end!)
 
-  // Site predicate: an explicit pick (IN) or the all-DRB set (exclude FlexWash + HQ).
+  // Site predicate: an explicit pick (IN), or the all-DRB set: everything except
+  // non-wash sites and each FlexWash store from the day after its cutover.
   const picked = asInts(body.sites)
-  const excl = [...fwNums, ...NON_WASH_SITES]
+  const fullExcl = [...NON_WASH_SITES]
+  const partial: string[] = []
+  for (const [store, cut] of fwCutover) {
+    const id = idOfStore.get(store)
+    if (id == null) continue
+    const after = nextDay(cut)
+    if (after <= start) fullExcl.push(id)
+    else if (after < endExclusive) partial.push(`NOT (s.SITE = ${id} AND s.LOGDATE >= '${after} 00:00:00')`)
+  }
   const sitePred = picked.length
     ? `s.SITE IN (${picked.join(', ')})`
-    : excl.length
-      ? `s.SITE NOT IN (${excl.join(', ')})`
-      : `s.SITE <> ${NON_WASH_SITES[0]}`
+    : [`s.SITE NOT IN (${fullExcl.join(', ')})`, ...partial].join(' AND ')
 
   const branchPred = DETAIL_BRANCHES.map((b) => `rc.BRANCH STARTING WITH '${b}'`).join(' OR ')
   const armList = ARM_ITEMS.map((n) => `'${n.replace(/'/g, "''")}'`).join(', ')
@@ -210,7 +238,7 @@ Deno.serve(async (req) => {
   }))
   const bySite = (siteRes.rows ?? []).map((r) => {
     const n = Math.trunc(numify(r[0]))
-    return { site_number: n, name: `Mighty Wash #${n}`, count: Math.round(numify(r[1])), qty: numify(r[2]), revenue: numify(r[3]) }
+    return { site_number: n, store: storeOfId.get(n) ?? null, name: label(n), count: Math.round(numify(r[1])), qty: numify(r[2]), revenue: numify(r[3]) }
   })
   const total = items.reduce(
     (a, it) => ({ count: a.count + it.count, qty: a.qty + it.qty, revenue: a.revenue + it.revenue }),

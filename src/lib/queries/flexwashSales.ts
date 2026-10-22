@@ -5,7 +5,10 @@ import { fnErrorMessage } from '@/lib/fnError'
 // General Sales Report as closely as FlexWash's API allows. All FlexWash money
 // is returned in cents; we convert to dollars here.
 
-export type FlexSite = { site_number: number; car_wash_id: string; name: string | null }
+// start_date = the site's FlexWash cutover (first day it ran washes in FlexWash).
+// Reports that combine SiteWatch + FlexWash count SiteWatch before it and FlexWash
+// from it on. Null = not on FlexWash yet (count SiteWatch only).
+export type FlexSite = { site_number: number; car_wash_id: string; name: string | null; start_date: string | null }
 
 export type FlexSalesReport = {
   // Revenue components (dollars), from get-temporal-revenue-stats.
@@ -264,7 +267,7 @@ export const flexwashSales = {
   sites: async (): Promise<FlexSite[]> => {
     const { data } = await supabase
       .from('flexwash_sites')
-      .select('site_number, car_wash_id, name')
+      .select('site_number, car_wash_id, name, start_date')
       .eq('active', true)
       .order('site_number')
     return (data as FlexSite[] | null) ?? []

@@ -160,7 +160,9 @@ Deno.serve(async (req) => {
   // Sites owned by FlexWash (MW17/18/...) are archived by sync-flexwash, which is
   // authoritative for them. Skip those site numbers here so the two feeds don't
   // both claim the same site.
-  const { data: flexRows } = await svc.from('flexwash_sites').select('account_id, site_number')
+  // Only dashboard_source sites: reporting-only FlexWash sites are already correct
+  // in the dashboard feed, so they keep being archived here (with hours/labor).
+  const { data: flexRows } = await svc.from('flexwash_sites').select('account_id, site_number').eq('dashboard_source', true)
   const flexByAccount = new Map<string, Set<number>>()
   for (const f of (flexRows ?? []) as { account_id: string; site_number: number }[]) {
     const set = flexByAccount.get(f.account_id) ?? new Set<number>()
