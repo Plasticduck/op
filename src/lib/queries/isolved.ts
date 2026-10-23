@@ -19,14 +19,19 @@ export type LaborResponse = {
   sites: LaborSite[]
   employees: LaborEmployee[]
   salariedScope?: SalariedScope
+  // Regions an admin can pick from; what's in view (locked = an RM's own region).
+  regions?: string[]
+  region?: { names: string[]; locked: boolean }
   totals: { totalHours: number; totalCost: number; byPayType: Record<string, number>; employees: number; sites: number; unratedEmployees: number; unratedHours: number; onClock?: number }
   assumptions?: { otMultiplier: number; salariedBasis: string; note: string }
   error?: string
   message?: string
 }
 
-export const isolvedLabor = (startDate: string, endDate: string, salariedScope: SalariedScope = 'exclude-corporate') =>
-  supabase.functions.invoke<LaborResponse>('isolved-labor', { body: { startDate, endDate, salariedScope } })
+// region (admins only): limit the report to one region's sites. Regional
+// Managers are always limited to their own region by the server.
+export const isolvedLabor = (startDate: string, endDate: string, salariedScope: SalariedScope = 'exclude-corporate', region?: string | null) =>
+  supabase.functions.invoke<LaborResponse>('isolved-labor', { body: { startDate, endDate, salariedScope, ...(region ? { region } : {}) } })
 
 // Real-time labor: who is clocked in now, by site, with current pay-week hours
 // (the pay week runs Monday -> Sunday). Served by the isolved-live function.

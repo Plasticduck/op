@@ -48,6 +48,7 @@ const SITE_SCOPE_BY_EMAIL: Record<string, string> = {
   'isabel@mighty-wash.com': 'Permian Basin Region (A)',
   'lester@mighty-wash.com': 'Permian Basin Region (B)',
   'rbreed@mighty-wash.com': 'New Mexico Region',
+  'djones@mighty-wash.com': 'Central Region',
 }
 
 export default function OnTheClock() {

@@ -113,6 +113,16 @@ export function RequireEmails({ allow, children }: { allow: string[]; children: 
   return <>{children}</>
 }
 
+// Named admins, or anyone whose perm role is listed (e.g. every Regional
+// Manager). The page itself narrows what each one sees.
+export function RequireEmailsOrRoles({ allow, roles, children }: { allow: string[]; roles: PermRole[]; children: ReactNode }) {
+  const { profile } = useAuth()
+  if (!profile) return null
+  const ok = allow.includes((profile.email ?? '').toLowerCase()) || roles.includes(permRole(profile.role, profile.role_category))
+  if (!ok) return <Navigate to="/app/dashboard" replace />
+  return <>{children}</>
+}
+
 // Public auth pages bounce already-onboarded users into the app. We require a
 // *profile*, not just a session — during signup the session flips to
 // authenticated before the account row exists, and redirecting on session alone

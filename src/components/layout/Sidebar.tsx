@@ -84,6 +84,9 @@ type NavItem = {
   // Item only shows for these emails (super-admin HR pages, gated outside the
   // role system since owners can't be restricted). Lowercase.
   emails?: string[]
+  // With `emails`: these perm roles also pass the email gate (e.g. every
+  // Regional Manager, alongside a few named admins).
+  orRoles?: PermRole[]
 }
 
 // Account-level feature flags a nav item can require. site_performance = the
@@ -96,6 +99,17 @@ export function navFlagOn(
   if (!flag) return true
   if (flag === 'gm_bonus') return !!profile?.gm_bonus_enabled
   return !!profile?.site_performance_enabled
+}
+
+// The per-item email gate: no list, a listed email, or one of `orRoles`.
+export function navEmailOk(
+  item: { emails?: string[]; orRoles?: PermRole[] },
+  email: string | null | undefined,
+  role: PermRole,
+): boolean {
+  if (!item.emails) return true
+  if (item.emails.includes((email ?? '').toLowerCase())) return true
+  return !!item.orRoles && permRoleInList(role, item.orRoles)
 }
 
 type NavGroup = {
@@ -327,8 +341,10 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/hr/payroll-labor',
         label: 'Labor Data',
         icon: Clock,
-        roles: ['owner'],
+        // Admins on the list see every site; Regional Managers see their region.
+        roles: ['owner', 'regional_manager'],
         emails: ['kevan@washlyfe.com', 'lkeith@mighty-wash.com'],
+        orRoles: ['regional_manager'],
       },
       {
         to: '/app/hr/on-the-clock',
@@ -658,7 +674,7 @@ export function SidebarNav({
     }) &&
     navFlagOn(i.flag, profile) &&
     !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)) &&
-    (!i.emails || i.emails.includes((profile?.email ?? '').toLowerCase()))
+    navEmailOk(i, profile?.email, role)
 
   // Only the groups + items this role (and account) can see.
   const baseGroups = NAV_GROUPS
@@ -874,7 +890,7 @@ export function useVisibleNavItems(role: PermRole): VisibleNavItem[] {
     }) &&
     navFlagOn(i.flag, profile) &&
     !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)) &&
-    (!i.emails || i.emails.includes((profile?.email ?? '').toLowerCase()))
+    navEmailOk(i, profile?.email, role)
   return NAV_GROUPS
     .filter((g) => permRoleInList(role, g.roles))
     .flatMap((g) => g.items.filter(visible).map((i) => ({ to: i.to, label: navItemLabel(i, profile?.account_id), icon: i.icon, group: g.label })))

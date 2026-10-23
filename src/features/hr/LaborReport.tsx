@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { addDays, differenceInCalendarDays, format, parseISO, startOfMonth, startOfWeek, subDays, subMonths, endOfMonth } from 'date-fns'
-import { Clock, Loader2, RefreshCw, Download, Search, Building2, Users, Wallet, Timer } from 'lucide-react'
+import { Clock, Loader2, RefreshCw, Download, Search, Building2, Users, Wallet, Timer, MapPin } from 'lucide-react'
 import { isolvedLabor, type LaborResponse, type SalariedScope } from '@/lib/queries/isolved'
 import { fnErrorMessage } from '@/lib/fnError'
 import { fetchCarsBySite } from '@/lib/queries/carsBySite'
@@ -88,12 +88,17 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
     fetchCarsBySite(s, e).then(setCars).catch(() => setCars(new Map()))
   }, [salaried])
 
-  const load = useCallback(async (s: string, e: string, scope: SalariedScope) => {
+  // Admin region pick ('' = all sites). Read through a ref so every reload
+  // (presets, refresh, salaried toggle) keeps the chosen region.
+  const [region, setRegion] = useState('')
+  const regionRef = useRef('')
+  const load = useCallback(async (s: string, e: string, scope: SalariedScope, regionOverride?: string) => {
+    const reg = regionOverride ?? regionRef.current
     setLoading(true)
     setError(null)
     loadCars(s, e)
     try {
-      const { data: d, error: err } = await isolvedLabor(s, e, scope)
+      const { data: d, error: err } = await isolvedLabor(s, e, scope, reg || null)
       if (err || d?.error) {
         setError(await fnErrorMessage(err, (d ?? null) as { message?: string; error?: string } | null, 'Could not load labor from iSolved.'))
         setData(null)
@@ -115,6 +120,12 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   }, [])
 
   const payTypes = data?.payTypes ?? []
+  // Region view: RMs are locked to their region (no salaried data, no picker);
+  // admins choose from the account's regions. Options stick once loaded.
+  const regionLocked = !!data?.region?.locked
+  const lockedRegions = data?.region?.names ?? []
+  const [regionOptions, setRegionOptions] = useState<string[]>([])
+  useEffect(() => { if (data?.regions && !data.region?.locked) setRegionOptions(data.regions) }, [data])
   // Pay-type columns shown on screen. Labor Data hides Hourly and PTO (the CSV
   // export still includes every pay type).
   const shownTypes = salaried ? payTypes : payTypes.filter((p) => !/^(hourly|pto|salaried)$/i.test(p))
@@ -211,7 +222,30 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
             </button>
           ))}
         </div>
-        {!salaried && (
+        {!salaried && regionLocked && (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-soft px-3 py-2 text-sm font-semibold text-accent" title="You can view your region's sites">
+            <MapPin className="size-4" /> {lockedRegions.join(' + ')}
+          </span>
+        )}
+        {!salaried && !regionLocked && regionOptions.length > 0 && (
+          <label className="text-xs font-medium text-ink-subtle">
+            Region
+            <select
+              value={region}
+              onChange={(e) => {
+                const v = e.target.value
+                setRegion(v)
+                regionRef.current = v
+                void load(start, end, scopeFor(showSalaried), v)
+              }}
+              className="mt-1 block rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink"
+            >
+              <option value="">All sites</option>
+              {regionOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </label>
+        )}
+        {!salaried && !regionLocked && (
           <button
             type="button"
             role="switch"

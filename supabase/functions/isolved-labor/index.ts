@@ -117,12 +117,60 @@ async function getToken(base: string, cid: string, secret: string): Promise<stri
   return j.access_token as string
 }
 
+// --- Region scoping ---------------------------------------------------------
+// Regions (and their sites) live in Company settings; each region's Regional
+// Manager is effective-dated by quarter (latest entry on/before the quarter
+// wins). Labor Data admins see every site and may pick a region; a Regional
+// Manager is limited to the region(s) they manage.
+const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
+function quarterStart(date: string): string {
+  const [y, m] = date.split('-').map(Number)
+  return y + '-' + String(Math.floor((m - 1) / 3) * 3 + 1).padStart(2, '0') + '-01'
+}
+function effectiveManager(val: unknown, quarter: string): string | null {
+  if (typeof val === 'string') return val.trim() || null
+  if (!val || typeof val !== 'object') return null
+  const keys = Object.keys(val as Record<string, string>).filter((k) => k <= quarter).sort()
+  const name = keys.length ? (val as Record<string, string>)[keys[keys.length - 1]] : null
+  return name?.trim() || null
+}
+type LaborAccess = { admin: boolean; rmRegions: string[]; regions: Map<string, Set<string>> }
+async function laborAccess(svc: Any, email: string): Promise<LaborAccess> {
+  const { data: acct } = await svc.from('accounts').select('company_settings').eq('id', MW_ACCOUNT).single()
+  const settings = (acct?.company_settings ?? {}) as Any
+  const { data: locs } = await svc.from('locations').select('id, name').eq('account_id', MW_ACCOUNT)
+  const nameById = new Map(((locs ?? []) as { id: string; name: string }[]).map((l) => [l.id, String(l.name).trim()]))
+  const regions = new Map<string, Set<string>>()
+  for (const r of (Array.isArray(settings.regions) ? settings.regions : []) as Array<{ name?: string; siteIds?: string[] }>) {
+    const sites = new Set((r.siteIds ?? []).map((id) => nameById.get(id)).filter((n): n is string => !!n))
+    if (r.name && sites.size) regions.set(r.name, sites)
+  }
+  if (LABOR_DATA_EMAILS.has(email)) return { admin: true, rmRegions: [], regions }
+  const { data: u } = await svc.from('users').select('name, role_category').eq('account_id', MW_ACCOUNT).ilike('email', email).maybeSingle()
+  if (!u || u.role_category !== 'regional_manager') return { admin: false, rmRegions: [], regions }
+  const quarter = quarterStart(centralNowIso().slice(0, 10))
+  const me = String(u.name ?? '').trim().toLowerCase()
+  const managers = (settings.regionalManagers ?? {}) as Record<string, unknown>
+  const rmRegions = [...regions.keys()].filter((r) => (effectiveManager(managers[r], quarter) ?? '').toLowerCase() === me)
+  return { admin: false, rmRegions, regions }
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) })
 
   const url = Deno.env.get('SUPABASE_URL')!
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+  // region: an admin's region pick. asUser: service-role only, to preview what a
+  // given account (e.g. a Regional Manager) would see.
+  let body: { startDate?: string; endDate?: string; salariedScope?: string; region?: string; asUser?: string } = {}
+  try {
+    body = await req.json()
+  } catch {
+    /* empty */
+  }
 
   const auth = req.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) return json({ error: 'unauthorized' }, 401, origin)
@@ -130,16 +178,24 @@ Deno.serve(async (req) => {
   // otherwise the signed-in user must be on the allowlist.
   let email: string
   if (jwtRole(auth) === 'service_role') {
-    email = SUPER_ADMIN
+    email = body.asUser ? String(body.asUser).trim().toLowerCase() : SUPER_ADMIN
   } else {
     const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
     const { data: u } = await userClient.auth.getUser()
     if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
     email = (u.user.email ?? '').toLowerCase()
   }
-  if (!LABOR_DATA_EMAILS.has(email)) {
-    return json({ error: 'forbidden', message: `Labor Data is restricted to approved users (signed in as ${email || 'unknown'}).` }, 403, origin)
+  const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
+  const access = await laborAccess(svc, email)
+  if (!access.admin && !access.rmRegions.length) {
+    return json({ error: 'forbidden', message: 'Labor Data is limited to approved admins and Regional Managers with an assigned region (signed in as ' + (email || 'unknown') + ').' }, 403, origin)
   }
+  // Sites in view: an RM's own region(s); an admin's chosen region, or every site.
+  const scopeRegions = access.admin
+    ? (body.region && access.regions.has(body.region) ? [body.region] : [])
+    : access.rmRegions
+  const allowedSites = scopeRegions.length ? new Set(scopeRegions.flatMap((r) => [...(access.regions.get(r) ?? [])])) : null
+  const siteOk = (label: string) => !allowedSites || allowedSites.has(label)
 
   const base = Deno.env.get('ISOLVED_BASE_URL')
   const cid = Deno.env.get('ISOLVED_CLIENT_ID')
@@ -150,17 +206,14 @@ Deno.serve(async (req) => {
     return json({ error: 'no_key', message: 'iSolved is not configured.' }, 503, origin)
   }
 
-  let body: { startDate?: string; endDate?: string; salariedScope?: string } = {}
-  try {
-    body = await req.json()
-  } catch {
-    /* empty */
-  }
   const re = /^\d{4}-\d{2}-\d{2}$/
   const { startDate, endDate } = body
   // Which salaried staff to include. Default is the operational Labor Data view.
-  const scope: 'exclude-corporate' | 'none' | 'only' =
-    body.salariedScope === 'none' || body.salariedScope === 'only' ? body.salariedScope : 'exclude-corporate'
+  // Regional Managers only ever get hourly staff: no salaried hours or estimated
+  // salary cost (which would expose their GMs' pay) and never the salaried-only view.
+  const scope: 'exclude-corporate' | 'none' | 'only' = !access.admin
+    ? 'none'
+    : body.salariedScope === 'none' || body.salariedScope === 'only' ? body.salariedScope : 'exclude-corporate'
   // The salaried-only view (Salaried Labor page) stays limited to the super-admin;
   // other allowed emails only get the operational Labor Data views.
   if (scope === 'only' && email !== SUPER_ADMIN) {
@@ -253,7 +306,7 @@ Deno.serve(async (req) => {
       return out
     }
     const markOnClock = (r: Any, empNum: string) => {
-      for (const label of onClockSites(r)) { siteOf(label).onClock.add(empNum); onClockAll.add(empNum) }
+      for (const label of onClockSites(r)) { if (!siteOk(label)) continue; siteOf(label).onClock.add(empNum); onClockAll.add(empNum) }
     }
     for (let page = 0; scope !== 'only' && page < 200; page++) {
       const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=${PAGE_SIZE}&page=${page}`)
@@ -278,7 +331,9 @@ Deno.serve(async (req) => {
         }
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
-          const site = siteOf(siteLabel(String(loc)))
+          const label = siteLabel(String(loc))
+          if (!siteOk(label)) continue
+          const site = siteOf(label)
           site.emps.add(empNum)
           for (const p of t.payItems ?? []) {
             const hrs = Number(p.payItemHours) || 0
@@ -303,6 +358,7 @@ Deno.serve(async (req) => {
     {
       const ftHours = (FT_YEAR_HOURS / 365) * days
       for (const s of roster) {
+        if (!siteOk(s.site)) continue
         if (s.payType === 'Salary') {
           if (scope === 'none') continue
           if (scope === 'exclude-corporate' && s.site === 'Corporate') continue
@@ -335,7 +391,9 @@ Deno.serve(async (req) => {
     const sites = [...sitesMap.values()]
       .map((s) => ({ code: s.code, site: s.site, totalHours: round(s.total), cost: round(s.cost), byPayType: roundRec(s.byType), employees: s.emps.size, onClock: s.onClock.size }))
       .sort((a, b) => a.site.localeCompare(b.site, undefined, { numeric: true }))
+    // In a region view, only people who worked (or are rostered) at its sites.
     const employees = [...empsMap.values()]
+      .filter((e) => !allowedSites || [...e.sites].some((x) => allowedSites.has(x)))
       .map((e) => ({ employeeNumber: e.number, name: e.name, payType: e.payType, rate: round(e.rate), rated: e.rated, totalHours: round(e.total), cost: round(e.cost), byPayType: roundRec(e.byType), sites: [...e.sites].sort() }))
       .sort((a, b) => b.cost - a.cost)
 
@@ -343,6 +401,10 @@ Deno.serve(async (req) => {
       {
         range: { startDate, endDate },
         includesToday,
+        // Region view: the regions an admin can choose from, and what's in view
+        // (locked = a Regional Manager's own region(s)).
+        regions: access.admin ? [...access.regions.keys()] : scopeRegions,
+        region: { names: scopeRegions, locked: !access.admin },
         salariedScope: scope,
         payTypes,
         sites,
@@ -351,7 +413,7 @@ Deno.serve(async (req) => {
           totalHours: round(grandHours),
           totalCost: round(grandCost),
           byPayType: roundRec(typeTotals),
-          employees: empsMap.size,
+          employees: employees.length,
           sites: sitesMap.size,
           unratedEmployees: unratedEmps.size,
           unratedHours: round(unratedHours),

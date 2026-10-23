@@ -3,7 +3,7 @@ import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
-import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSitePerformance, RequireSuperAdmin, RequireEmails, RedirectIfAuthed } from '@/routes/guards'
+import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSitePerformance, RequireSuperAdmin, RequireEmails, RequireEmailsOrRoles, RedirectIfAuthed } from '@/routes/guards'
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 
@@ -258,7 +258,7 @@ export const router = createBrowserRouter([
           { path: 'signage', element: emp(<SignagePage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
-          { path: 'hr/payroll-labor', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com']}>{s(<LaborDataPage />)}</RequireEmails> },
+          { path: 'hr/payroll-labor', element: <RequireEmailsOrRoles allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com']} roles={['regional_manager']}>{s(<LaborDataPage />)}</RequireEmailsOrRoles> },
           { path: 'hr/on-the-clock', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com', 'kellyspiller@mighty-wash.com', 'kspiller@mighty-wash.com', 'zachary@mighty-wash.com', 'mcanales@mighty-wash.com', 'isabel@mighty-wash.com', 'rbreed@mighty-wash.com', 'lester@mighty-wash.com', 'djones@mighty-wash.com']}>{s(<OnTheClockPage />)}</RequireEmails> },
           { path: 'hr/salaried-labor', element: <RequireSuperAdmin>{s(<SalariedLaborPage />)}</RequireSuperAdmin> },
           { path: 'facilities', element: s(<ServiceBoardPage />) },
