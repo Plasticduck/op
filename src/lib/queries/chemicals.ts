@@ -77,9 +77,10 @@ function cutoverExclusions(flex: FlexSite[], start: string, end: string): string
 const EXCLUDED_SITES = new Set(['MightyWash 019', 'Mighty Wash Headquarters'])
 
 // FlexWash package lines left out of the counts (requested 2026-10-23): the
-// "- Issue" packages (e.g. "Wonder Clean - Issue") and the Wex/Voyager fleet plan
-// lines ("Wex/Voyager Yearly Mighty", "Wex/Voyager 1 Month Super").
-const SKIP_FLEX_PACKAGE = (name: string) => /-\s*issue\s*$/i.test(name.trim()) || /wex|voyager/i.test(name)
+// Wex/Voyager fleet plan lines ("Wex/Voyager Yearly Mighty", "Wex/Voyager 1 Month
+// Super"). The "- Issue" packages (e.g. "Wonder Clean - Issue") were left out at
+// first, then added back the same day: they're real washes, counted as cars.
+const SKIP_FLEX_PACKAGE = (name: string) => /wex|voyager/i.test(name)
 
 // Sort key: the trailing site number ("MightyWash 001" -> 1); names without a
 // number (e.g. Headquarters) sort last.

@@ -256,8 +256,8 @@ export default function ChemicalsPage() {
           <p className="mt-4 text-xs text-ink-subtle">
             Counts every time each package was used — retail washes plus member redemptions. DRB sites come from the POS
             wash ledger (the same source as the dashboards); FlexWash sites come from the FlexWash API’s paid package
-            lines, from the day each site switched over. FlexWash “- Issue” packages and Wex/Voyager fleet plan lines
-            aren’t counted. Flash is only sold at some sites; a dash means the site had no Flash washes. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
+            lines, from the day each site switched over (“- Issue” washes count under their package). Wex/Voyager fleet
+            plan lines aren’t counted. Flash is only sold at some sites; a dash means the site had no Flash washes. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
             sheet, with no package split: they’re in the grand total of washes but not in the package totals.
           </p>
         </div>
