@@ -245,6 +245,26 @@ export async function fetchGuidedTotals(metric: string, start: string, end: stri
   return m
 }
 
+// Monthly car totals for sites with no daily car source (site_performance_months,
+// e.g. MW33 from the monthly car count sheet), keyed by site number. Only months
+// lying entirely inside [start, end] count, since there's no daily split.
+export async function fetchMonthlyCars(start: string, end: string): Promise<Map<number, number>> {
+  const { data, error } = await supabase
+    .from('site_performance_months')
+    .select('site_number, month, cars')
+    .gte('month', start)
+    .lte('month', end)
+  if (error) throw new Error(error.message)
+  const m = new Map<number, number>()
+  for (const r of data ?? []) {
+    const [y, mo] = r.month.split('-').map(Number)
+    const lastDay = `${r.month.slice(0, 8)}${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`
+    if (lastDay > end) continue
+    m.set(r.site_number, (m.get(r.site_number) ?? 0) + (Number(r.cars) || 0))
+  }
+  return m
+}
+
 // Just the By-MSA feed (salesperson conversion), without the ~10 other reports
 // the full feed pulls. Used by the standalone MSA Performance page.
 export async function fetchMsaReport(): Promise<MsaReport> {

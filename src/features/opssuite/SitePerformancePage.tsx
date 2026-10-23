@@ -10,6 +10,7 @@ import {
   fetchGuidedQueryOptions,
   fetchSitePerformance,
   fetchGuidedTotals,
+  fetchMonthlyCars,
   fetchSitePerformanceHistory,
   fetchSitePerformanceHistoryBounds,
   fetchTtafReport,
@@ -1164,8 +1165,14 @@ function histPreset(key: string): [string, string] {
 }
 
 // Per-site totals for the dashboard-sourced metrics (cars, gross sales, recharge),
-// keyed by site number, for a single range.
-type GuidedTotals = { cars: Map<number, number>; sales: Map<number, number>; recharge: Map<number, number> }
+// keyed by site number, for a single range. monthlyOnly = sites whose cars came
+// from whole-month totals (site_performance_months) because the dashboard had none.
+type GuidedTotals = {
+  cars: Map<number, number>
+  sales: Map<number, number>
+  recharge: Map<number, number>
+  monthlyOnly: Set<number>
+}
 
 // A History metric cell: the value, with a small "vs last year" figure beneath.
 // kind picks how the delta reads — 'pct' (% change, for counts and $), 'ratio'
@@ -1230,7 +1237,17 @@ function History({ idx }: { idx: RegionIndex }) {
       fetchGuidedTotals('cars', s, e),
       fetchGuidedTotals('revenue', s, e),
       fetchGuidedTotals('recharge', s, e),
-    ]).then(([cars, sales, recharge]) => ({ cars, sales, recharge }))
+      fetchMonthlyCars(s, e).catch(() => new Map<number, number>()),
+    ]).then(([cars, sales, recharge, monthly]) => {
+      // A site with no dashboard cars in the range (MW33) uses its whole-month totals.
+      const monthlyOnly = new Set<number>()
+      for (const [n, v] of monthly) {
+        if ((cars.get(n) ?? 0) > 0) continue
+        cars.set(n, v)
+        monthlyOnly.add(n)
+      }
+      return { cars, sales, recharge, monthlyOnly }
+    })
     pull(start, end)
       .then((c) => { if (alive) setCur(c) })
       .catch((e) => { if (alive) { setCur(null); setError(e instanceof Error ? e.message : String(e)) } })
@@ -1267,10 +1284,12 @@ function History({ idx }: { idx: RegionIndex }) {
       const recharge = cur?.recharge.get(n) ?? 0
       const hours = hoursByNum.get(n) ?? 0
       const labor = laborByNum.get(n) ?? 0
+      // Whole-month cars don't line up with the range's daily hours, so no Cars/Man-Hr.
+      const monthly = cur?.monthlyOnly.has(n) ?? false
       return {
         site: nameByNum.get(n) ?? ('MightyWash ' + String(n).padStart(3, '0')),
-        cars, hours, sales, labor, recharge,
-        cph: hours > 0 ? round(cars / hours, 2) : null,
+        cars, hours, sales, labor, recharge, monthly,
+        cph: hours > 0 && !monthly ? round(cars / hours, 2) : null,
         laborPct: sales > 0 ? round((labor / sales) * 100, 1) : null,
         ly: ly ? { cars: ly.cars.get(n) ?? 0, sales: ly.sales.get(n) ?? 0, recharge: ly.recharge.get(n) ?? 0 } : null,
       }
@@ -1354,7 +1373,12 @@ function History({ idx }: { idx: RegionIndex }) {
                   <RegionHead region={g.region} count={rs.length} />
                   {rs.map((r) => (
                     <tr key={r.site}>
-                      <td className={td} title={r.site}>{siteLabel(r.site)}</td>
+                      <td className={td} title={r.site}>
+                        {siteLabel(r.site)}
+                        {r.monthly && (
+                          <span className="ml-1 text-ink-subtle" title="Cars from the monthly car count sheet (whole months only)">†</span>
+                        )}
+                      </td>
                       <YoyCell value={r.cars} ly={pos(r.ly?.cars)} format={(v) => String(round(v, 0))} kind="pct" />
                       <YoyCell value={r.hours} ly={null} format={(v) => String(round(v, 1))} kind="pct" />
                       <YoyCell value={r.cph} ly={null} format={(v) => String(v)} kind="ratio" color={heatFor(r.cph, 'cph')} />
@@ -1392,7 +1416,8 @@ function History({ idx }: { idx: RegionIndex }) {
         are complete for any range and show a change vs the same range one year earlier (green better, red worse)
         beneath each number. Hours and Labor % come from payroll (iSolved), which only goes back to mid-2026 —
         there is no last-year figure for them, and Cars/Man-Hr = Cars ÷ Hours. Cars/Man-Hr and Labor % are
-        computed on the range totals.
+        computed on the range totals. † The dashboard has no car counts for this site, so its Cars come from
+        the monthly car count sheet and only count months that fall entirely inside the range.
       </Footnote>
     </div>
   )

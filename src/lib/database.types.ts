@@ -4797,6 +4797,38 @@ export type Database = {
           },
         ]
       }
+      schedule_portals: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          id: string
+          token: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          token?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_portals_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedule_templates: {
         Row: {
           created_at: string
@@ -4838,30 +4870,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      schedule_portals: {
-        Row: {
-          account_id: string
-          active: boolean
-          created_at: string
-          id: string
-          token: string
-        }
-        Insert: {
-          account_id: string
-          active?: boolean
-          created_at?: string
-          id?: string
-          token?: string
-        }
-        Update: {
-          account_id?: string
-          active?: boolean
-          created_at?: string
-          id?: string
-          token?: string
-        }
-        Relationships: []
       }
       schedules: {
         Row: {
@@ -5317,6 +5325,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "site_performance_days_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      site_performance_months: {
+        Row: {
+          account_id: string
+          cars: number
+          created_at: string
+          id: string
+          month: string
+          site: string
+          site_number: number
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          cars: number
+          created_at?: string
+          id?: string
+          month: string
+          site: string
+          site_number: number
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          cars?: number
+          created_at?: string
+          id?: string
+          month?: string
+          site?: string
+          site_number?: number
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_performance_months_account_id_fkey"
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
@@ -6121,10 +6173,10 @@ export type Database = {
           location_ids: string[]
           name: string
           nav_favorites: string[] | null
-          shift_favorites: Json | null
           phone: string | null
           role: string
           role_category: string | null
+          shift_favorites: Json | null
           sms_opt_in: boolean
           sms_opt_in_at: string | null
           sms_opt_in_source: string | null
@@ -6139,10 +6191,10 @@ export type Database = {
           location_ids?: string[]
           name: string
           nav_favorites?: string[] | null
-          shift_favorites?: Json | null
           phone?: string | null
           role: string
           role_category?: string | null
+          shift_favorites?: Json | null
           sms_opt_in?: boolean
           sms_opt_in_at?: string | null
           sms_opt_in_source?: string | null
@@ -6157,10 +6209,10 @@ export type Database = {
           location_ids?: string[]
           name?: string
           nav_favorites?: string[] | null
-          shift_favorites?: Json | null
           phone?: string | null
           role?: string
           role_category?: string | null
+          shift_favorites?: Json | null
           sms_opt_in?: boolean
           sms_opt_in_at?: string | null
           sms_opt_in_source?: string | null
