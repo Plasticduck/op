@@ -9,8 +9,9 @@ import {
   buildRegionIndex,
   fetchGuidedQueryOptions,
   fetchSitePerformance,
-  fetchGuidedTotals,
   fetchMonthlyCars,
+  fetchSiteDailyBounds,
+  fetchSiteDailyTotals,
   fetchSitePerformanceHistory,
   fetchSitePerformanceHistoryBounds,
   fetchTtafReport,
@@ -1164,10 +1165,10 @@ function histPreset(key: string): [string, string] {
   }
 }
 
-// Per-site totals for the dashboard-sourced metrics (cars, gross sales, recharge),
-// keyed by site number, for a single range. monthlyOnly = sites whose cars came
-// from whole-month totals (site_performance_months) because the dashboard had none.
-type GuidedTotals = {
+// Per-site cars, gross sales and recharge $ (DRB + FlexWash, split at each
+// site's cutover), keyed by site number, for a single range. monthlyOnly = sites
+// whose cars came from whole-month totals (site_performance_months) instead.
+type RangeTotals = {
   cars: Map<number, number>
   sales: Map<number, number>
   recharge: Map<number, number>
@@ -1210,10 +1211,13 @@ function History({ idx }: { idx: RegionIndex }) {
   const [start, setStart] = useState(() => histPreset('last30')[0])
   const [end, setEnd] = useState(() => histPreset('last30')[1])
   const [rows, setRows] = useState<SitePerfDayRow[] | null>(null) // archive: hours + labor only
-  const [cur, setCur] = useState<GuidedTotals | null>(null)       // dashboard: cars/sales/recharge, this range
-  const [ly, setLy] = useState<GuidedTotals | null>(null)         // dashboard: same, one year earlier
+  const [cur, setCur] = useState<RangeTotals | null>(null)        // cars/sales/recharge, this range
+  const [ly, setLy] = useState<RangeTotals | null>(null)          // same, one year earlier
+  const [bounds, setBounds] = useState<{ min: string; max: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { void fetchSiteDailyBounds().then(setBounds).catch(() => {}) }, [])
 
   // Hours + labor come only from the archive (iSolved payroll; the dashboard has
   // no labor metric), so there is no last-year figure for them.
@@ -1225,20 +1229,18 @@ function History({ idx }: { idx: RegionIndex }) {
     return () => { alive = false }
   }, [start, end])
 
-  // Cars, Sales (gross revenue) and Recharge $ come from the dashboard's own
-  // multi-year history, so totals are complete for any range and can be compared
-  // to the same range one year earlier.
+  // Cars, Sales (gross revenue) and Recharge $ come from the stored official daily
+  // numbers (DRB + FlexWash, back to 2023), so totals are complete for any range
+  // and can be compared to the same range one year earlier.
   useEffect(() => {
     let alive = true
     setLoading(true)
     setError(null)
     setLy(null)
-    const pull = (s: string, e: string): Promise<GuidedTotals> => Promise.all([
-      fetchGuidedTotals('cars', s, e),
-      fetchGuidedTotals('revenue', s, e),
-      fetchGuidedTotals('recharge', s, e),
+    const pull = (s: string, e: string): Promise<RangeTotals> => Promise.all([
+      fetchSiteDailyTotals(s, e),
       fetchMonthlyCars(s, e).catch(() => new Map<number, number>()),
-    ]).then(([cars, sales, recharge, monthly]) => {
+    ]).then(([{ cars, sales, recharge }, monthly]) => {
       // A site with no dashboard cars in the range (MW33) uses its whole-month totals.
       const monthlyOnly = new Set<number>()
       for (const [n, v] of monthly) {
@@ -1278,6 +1280,8 @@ function History({ idx }: { idx: RegionIndex }) {
       laborByNum.set(n, (laborByNum.get(n) ?? 0) + (Number(r.labor_cost) || 0))
     }
     const nums = new Set<number>([...nameByNum.keys(), ...(cur ? cur.cars.keys() : [])])
+    // Only compare to last year when that whole range is stored.
+    const lyOk = !!ly && !!bounds && shiftYearStr(start, -1) >= bounds.min
     return Array.from(nums).map((n) => {
       const cars = cur?.cars.get(n) ?? 0
       const sales = cur?.sales.get(n) ?? 0
@@ -1291,10 +1295,10 @@ function History({ idx }: { idx: RegionIndex }) {
         cars, hours, sales, labor, recharge, monthly,
         cph: hours > 0 && !monthly ? round(cars / hours, 2) : null,
         laborPct: sales > 0 ? round((labor / sales) * 100, 1) : null,
-        ly: ly ? { cars: ly.cars.get(n) ?? 0, sales: ly.sales.get(n) ?? 0, recharge: ly.recharge.get(n) ?? 0 } : null,
+        ly: ly && lyOk ? { cars: ly.cars.get(n) ?? 0, sales: ly.sales.get(n) ?? 0, recharge: ly.recharge.get(n) ?? 0 } : null,
       }
     })
-  }, [rows, cur, ly])
+  }, [rows, cur, ly, bounds, start])
 
   const groups = groupByRegion(bySite, (r) => r.site, idx)
   const tot = bySite.reduce(
@@ -1326,6 +1330,7 @@ function History({ idx }: { idx: RegionIndex }) {
             <input
               type="date"
               value={start}
+              min={bounds?.min}
               max={end}
               onChange={(e) => { setRangeKey('custom'); setStart(e.target.value) }}
               className={dateInputCls}
@@ -1412,9 +1417,12 @@ function History({ idx }: { idx: RegionIndex }) {
         )}
       </Panel>
       <Footnote>
-        Cars, Sales (gross revenue) and Recharge $ come from the dashboard's own multi-year history, so they
-        are complete for any range and show a change vs the same range one year earlier (green better, red worse)
-        beneath each number. Hours and Labor % come from payroll (iSolved), which only goes back to mid-2026 —
+        Cars, Sales (gross revenue) and Recharge $ are the official daily numbers from the dashboard (DRB) and
+        FlexWash, stored every hour back to {bounds?.min ?? '2023'}, so they are complete for any range and show a
+        change vs the same range one year earlier (green better, red worse) beneath each number. For a site that
+        switched to FlexWash, each number is DRB plus FlexWash from its cutover day on (members who joined before
+        the switch keep billing in DRB), matching the monthly car count sheet. Hours and Labor % come
+        from payroll (iSolved), which only goes back to mid-2026 —
         there is no last-year figure for them, and Cars/Man-Hr = Cars ÷ Hours. Cars/Man-Hr and Labor % are
         computed on the range totals. † The dashboard has no car counts for this site, so its Cars come from
         the monthly car count sheet and only count months that fall entirely inside the range.

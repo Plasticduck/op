@@ -5212,6 +5212,53 @@ export type Database = {
           },
         ]
       }
+      site_daily_metrics: {
+        Row: {
+          account_id: string
+          date: string
+          drb_cars: number | null
+          drb_recharge: number | null
+          drb_sales: number | null
+          flex_cars: number | null
+          flex_recharge: number | null
+          flex_sales: number | null
+          site_number: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          date: string
+          drb_cars?: number | null
+          drb_recharge?: number | null
+          drb_sales?: number | null
+          flex_cars?: number | null
+          flex_recharge?: number | null
+          flex_sales?: number | null
+          site_number: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          date?: string
+          drb_cars?: number | null
+          drb_recharge?: number | null
+          drb_sales?: number | null
+          flex_cars?: number | null
+          flex_recharge?: number | null
+          flex_sales?: number | null
+          site_number?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_daily_metrics_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_evaluations: {
         Row: {
           account_id: string
@@ -7472,6 +7519,22 @@ export type Database = {
           p_user_name?: string
         }
         Returns: string
+      }
+      site_daily_bounds: {
+        Args: never
+        Returns: {
+          max_date: string
+          min_date: string
+        }[]
+      }
+      site_daily_totals: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          cars: number
+          recharge: number
+          sales: number
+          site_number: number
+        }[]
       }
       start_break: { Args: { p_break_id: string }; Returns: undefined }
       sync_maintainx_work_orders: { Args: { p_rows: Json }; Returns: number }

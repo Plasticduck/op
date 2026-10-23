@@ -228,21 +228,31 @@ export async function runCustomSql(sql: string): Promise<CustomQueryResult> {
   return (await dashApi('/api/custom_query', 'POST', { sql })) as CustomQueryResult
 }
 
-// Per-site totals for one guided metric over a date range, keyed by site number.
-// Uses the dashboard's own multi-year history (not the local archive), so it
-// returns complete totals for any range — including a year ago. The TOTAL row is
-// dropped. Metrics with history include 'cars', 'revenue' (gross sales), 'recharge'.
-export async function fetchGuidedTotals(metric: string, start: string, end: string): Promise<Map<number, number>> {
-  const res = await runGuidedQuery({ metric, sites: [], start, end })
-  const m = new Map<number, number>()
-  for (const row of res.rows ?? []) {
-    const name = String(row[0] ?? '')
-    if (/total/i.test(name)) continue
-    const num = siteNumber(name)
-    if (num == null) continue
-    m.set(num, Number(row[1]) || 0)
+// Official per-site cars / gross sales / recharge $ over a date range, keyed by
+// site number, from site_daily_metrics (the dashboard's daily numbers plus
+// FlexWash, stored hourly by sync-site-daily). site_daily_totals adds DRB and
+// FlexWash for every metric: FlexWash is stored from each site's cutover day, and
+// DRB's legacy billing / stray washes after it count too, as on the official
+// monthly car count sheet.
+export type SiteRangeTotals = { cars: Map<number, number>; sales: Map<number, number>; recharge: Map<number, number> }
+export async function fetchSiteDailyTotals(start: string, end: string): Promise<SiteRangeTotals> {
+  const { data, error } = await supabase.rpc('site_daily_totals', { p_start: start, p_end: end })
+  if (error) throw new Error(error.message)
+  const out: SiteRangeTotals = { cars: new Map(), sales: new Map(), recharge: new Map() }
+  for (const r of data ?? []) {
+    out.cars.set(r.site_number, Number(r.cars) || 0)
+    out.sales.set(r.site_number, Number(r.sales) || 0)
+    out.recharge.set(r.site_number, Number(r.recharge) || 0)
   }
-  return m
+  return out
+}
+
+// First and last day stored in site_daily_metrics (null when empty).
+export async function fetchSiteDailyBounds(): Promise<{ min: string; max: string } | null> {
+  const { data, error } = await supabase.rpc('site_daily_bounds')
+  if (error) throw new Error(error.message)
+  const b = data?.[0]
+  return b?.min_date && b?.max_date ? { min: b.min_date, max: b.max_date } : null
 }
 
 // Monthly car totals for sites with no daily car source (site_performance_months,
