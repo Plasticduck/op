@@ -279,7 +279,7 @@ Deno.serve(async (req) => {
     if (!p || p.role !== 'owner') return json({ error: 'forbidden' }, 403)
   }
 
-  let body: { force?: boolean; to?: string; subjectTag?: string; dryRun?: boolean; date?: string } = {}
+  let body: { force?: boolean; to?: string; subjectTag?: string; dryRun?: boolean; date?: string; includeHtml?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
 
   // Time guard: only send at 7am Central unless forced.
@@ -649,6 +649,7 @@ Deno.serve(async (req) => {
       yoy_cars: dash?.yoyCars ?? null,
       yoy_recharge: dash?.yoyRecharge ?? null,
       cars_ly_by_site: dash ? Object.fromEntries(dash.carsLyBySite) : null,
+      html: body.includeHtml ? html : undefined,
     }, 200)
   }
 
