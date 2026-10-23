@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Download, Droplets, Loader2, RefreshCw } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, Download, Droplets, Loader2, RefreshCw } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useAuth } from '@/lib/auth'
 import {
@@ -11,7 +11,8 @@ import { exportChemicalsPdf } from '@/lib/reports/chemicalsPdf'
 
 // Chemicals — the Chemical Manager's hub. First tool: a monthly report of how
 // many times each wash package was used, broken down by site with a grand total
-// (retail + member redemptions), exportable to a branded PDF.
+// (retail + member redemptions), exportable to a branded PDF. Each site row opens
+// to its package-by-package lines (item name + source), each counted under its tier.
 
 const nf = (n: number) => n.toLocaleString('en-US')
 const monthLabel = (ym: string) =>
@@ -29,8 +30,17 @@ export default function ChemicalsPage() {
   const [data, setData] = useState<PackageReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [openSites, setOpenSites] = useState<Set<string>>(() => new Set())
 
   const maxMonth = lastCompleteMonth()
+  const allOpen = !!data && data.sites.length > 0 && data.sites.every((r) => openSites.has(r.site))
+  const toggleSite = (site: string) =>
+    setOpenSites((prev) => {
+      const next = new Set(prev)
+      if (next.has(site)) next.delete(site)
+      else next.add(site)
+      return next
+    })
 
   const load = useCallback(async (ym: string) => {
     setLoading(true)
@@ -130,8 +140,21 @@ export default function ChemicalsPage() {
                 </div>
               )}
 
-              {/* Per-site breakdown */}
-              <div className="mt-5 overflow-x-auto rounded-xl border border-border">
+              {/* Per-site breakdown; each site opens to its packages */}
+              <div className="mt-5 mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs text-ink-subtle">Tap a site to see it package by package.</p>
+                {data.sites.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setOpenSites(allOpen ? new Set() : new Set(data.sites.map((r) => r.site)))}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-ink"
+                  >
+                    {allOpen ? <ChevronsDownUp className="size-3.5" /> : <ChevronsUpDown className="size-3.5" />}
+                    {allOpen ? 'Collapse all' : 'Expand all'}
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-border">
                 <table className="w-full min-w-[520px] text-sm">
                   <thead className="bg-content text-left text-[11px] uppercase tracking-wide text-ink-subtle">
                     <tr>
@@ -143,15 +166,46 @@ export default function ChemicalsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {data.sites.map((r) => (
-                      <tr key={r.site}>
-                        <td className="px-3 py-2 font-medium text-ink">{r.site}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.wonder)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.superShine)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.mighty)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink">{nf(r.total)}</td>
-                      </tr>
-                    ))}
+                    {data.sites.map((r) => {
+                      const open = openSites.has(r.site)
+                      return (
+                        <Fragment key={r.site}>
+                          <tr onClick={() => toggleSite(r.site)} className="cursor-pointer transition hover:bg-content">
+                            <td className="px-3 py-2 font-medium text-ink">
+                              <button
+                                type="button"
+                                aria-expanded={open}
+                                onClick={(e) => { e.stopPropagation(); toggleSite(r.site) }}
+                                className="inline-flex items-center gap-1.5 text-left"
+                              >
+                                <ChevronDown className={`size-4 shrink-0 text-ink-subtle transition ${open ? 'rotate-180' : ''}`} />
+                                {r.site}
+                              </button>
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.wonder)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.superShine)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.mighty)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink">{nf(r.total)}</td>
+                          </tr>
+                          {open && r.packages.map((p) => (
+                            <tr key={`${r.site}|${p.source}|${p.name}`} className="bg-content/40 text-xs">
+                              <td className="py-1.5 pl-9 pr-3 text-ink-muted">
+                                {p.name}
+                                <span className="ml-2 rounded border border-border px-1 py-px text-[10px] font-medium uppercase tracking-wide text-ink-subtle">
+                                  {p.source}
+                                </span>
+                              </td>
+                              {TIERS.map((t) => (
+                                <td key={t.key} className="px-3 py-1.5 text-right tabular-nums text-ink-muted">
+                                  {p.tier === t.key ? nf(p.count) : ''}
+                                </td>
+                              ))}
+                              <td className="px-3 py-1.5 text-right tabular-nums text-ink-muted">{nf(p.count)}</td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      )
+                    })}
                     {data.sites.length === 0 && (
                       <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-subtle">No wash package activity this month.</td></tr>
                     )}

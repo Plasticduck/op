@@ -96,11 +96,13 @@ export type FlexLineGroup = { key: string; label: string; revenue: number; count
 // The grouped product breakdown plus discount-type adjustments that reduce Total
 // to Account For but aren't in the discounts endpoint (rewashes, next-bill and
 // prorate discounts), so the Discounts section can itemize everything. carsByTier
-// rolls every wash package up into its family (Mighty / Super Shine / Wonder).
+// rolls every wash package up into its family (Mighty / Super Shine / Wonder);
+// carsByPackage is the same count per package name, tagged with its family.
 export type FlexBreakdown = {
   groups: FlexLineGroup[]
   extraDiscounts: { name: string; count: number; amount: number }[]
   carsByTier: { label: string; count: number }[]
+  carsByPackage: { name: string; tier: string; count: number }[]
 }
 
 // Interior (detail) reporting. FlexWash tags every line item with an
@@ -407,7 +409,7 @@ export const flexwashSales = {
   // product line(s) so the price shown is net (like DRB adjusting a wash's value).
   // Tax lines are excluded (they're in the accounting totals). Product names have
   // their per-member code prefix stripped so like items collapse to one line.
-  // opts.skipPackage drops matching Package lines from carsByTier only (the
+  // opts.skipPackage drops matching Package lines from the car counts only (the
   // Chemicals report uses it; the Sales report counts every package).
   lineItemBreakdown: async (
     carWashIds: string[],
@@ -454,17 +456,23 @@ export const flexwashSales = {
       return 'Other'
     }
     const tierCount = new Map<string, number>()
+    const packageCount = new Map<string, number>()
     for (const it of items) {
       if (String(it.type) !== 'Package') continue
       if (!WASH_CLASSES.has(String(it.orderClassification))) continue
       if (String((it.order ?? {}).status) !== 'paid') continue
-      if (opts.skipPackage?.(String(it.name ?? ''))) continue
-      const t = tierOf(String(it.name ?? ''))
+      const name = String(it.name ?? '')
+      if (opts.skipPackage?.(name)) continue
+      const t = tierOf(name)
       tierCount.set(t, (tierCount.get(t) ?? 0) + 1)
+      packageCount.set(name, (packageCount.get(name) ?? 0) + 1)
     }
     const carsByTier = ['Mighty', 'Super Shine', 'Wonder', 'Other']
       .filter((t) => tierCount.has(t))
       .map((t) => ({ label: t, count: tierCount.get(t) as number }))
+    const carsByPackage = [...packageCount.entries()]
+      .map(([name, count]) => ({ name, tier: tierOf(name), count }))
+      .sort((a, b) => b.count - a.count)
 
     const PRODUCT_TYPES = new Set(['Package', 'Add On Service'])
     const FOLD_TYPES = new Set(['Discount', 'Next Bill Discount', 'Prorate Discount', 'Refund', 'Membership Benefit'])
@@ -519,7 +527,7 @@ export const flexwashSales = {
         items: [...g.items.values()].sort((a, b) => b.revenue - a.revenue),
       }))
       .sort((a, b) => rank(a.key) - rank(b.key))
-    return { groups: gr, extraDiscounts, carsByTier }
+    return { groups: gr, extraDiscounts, carsByTier, carsByPackage }
   },
 
   // Interior (detail) reporting: every line item FlexWash classifies in its
