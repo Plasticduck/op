@@ -11,6 +11,7 @@ import { fetchMonthlyCars } from '@/lib/queries/sitePerformance'
 //    there (members post it too, offset by redemption discounts elsewhere). Site
 //    name comes from SITELIST (SALE.SITE = SITELIST.ID -> SITENAME "MightyWash 0NN").
 //    "MIGHTY PROT" (not "PROTECT") so "Mighty Prot +HD" counts as Mighty Protector.
+//    Flash ("Flash Wash") is a fourth package that only some sites sell.
 //  - FlexWash sites: counted from FlexWash line items like the FlexWash Sales
 //    report does (flexwashSales.lineItemBreakdown -> carsByTier: one paid "Package"
 //    line per wash, member redemptions included), minus SKIP_FLEX_PACKAGE.
@@ -22,20 +23,16 @@ import { fetchMonthlyCars } from '@/lib/queries/sitePerformance'
 //    site_performance_months (the car count sheet), shown as a total-only row with
 //    no package split. It counts in the grand total of washes, not the packages.
 
-export type TierKey = 'wonder' | 'superShine' | 'mighty'
+export type TierKey = 'flash' | 'wonder' | 'superShine' | 'mighty'
 // One package (item name) at one site, from one source; count is washes.
 export type PackageLine = { name: string; tier: TierKey; source: 'SiteWatch' | 'FlexWash'; count: number }
-export type SitePackageRow = {
+export type PackageTotals = { flash: number; wonder: number; superShine: number; mighty: number; total: number }
+export type SitePackageRow = PackageTotals & {
   site: string
-  wonder: number
-  superShine: number
-  mighty: number
-  total: number
   packages: PackageLine[]
   // Total washes only (from the monthly car count sheet), no package split.
   totalOnly?: boolean
 }
-export type PackageTotals = { wonder: number; superShine: number; mighty: number; total: number }
 export type PackageReport = { sites: SitePackageRow[]; grand: PackageTotals; flexIncluded: boolean }
 
 // First and last calendar day (YYYY-MM-DD) of a 'YYYY-MM' month.
@@ -52,6 +49,10 @@ export function lastCompleteMonth(now = new Date()): string {
 }
 
 const swName = (n: number) => `MightyWash ${String(n).padStart(3, '0')}`
+
+const emptyRow = (site: string): SitePackageRow =>
+  ({ site, flash: 0, wonder: 0, superShine: 0, mighty: 0, total: 0, packages: [] })
+const tierSum = (r: PackageTotals) => r.flash + r.wonder + r.superShine + r.mighty
 
 const dayAfter = (d: string) => new Date(new Date(d + 'T00:00:00Z').getTime() + 86_400_000).toISOString().slice(0, 10)
 
@@ -91,14 +92,16 @@ async function fetchSiteWatchPerSite(start: string, end: string, flex: FlexSite[
   const sql =
     "SELECT TRIM(sl.SITENAME) AS SITE, (CASE " +
     "WHEN UPPER(it.NAME) LIKE '%MIGHTY PROT%' THEN 'M' " +
-    "WHEN UPPER(it.NAME) LIKE '%SUPER SHINE%' THEN 'S' ELSE 'W' END) AS TIER, TRIM(it.NAME) AS ITEM, COUNT(*) AS N " +
+    "WHEN UPPER(it.NAME) LIKE '%SUPER SHINE%' THEN 'S' " +
+    "WHEN UPPER(it.NAME) LIKE '%FLASH%' THEN 'F' ELSE 'W' END) AS TIER, TRIM(it.NAME) AS ITEM, COUNT(*) AS N " +
     "FROM SALEITEMS si " +
     "JOIN SALE s ON s.SITE=si.SITE AND s.OBJID=si.SALEID " +
     "JOIN ITEM it ON it.OBJID=si.ITEM " +
     "JOIN ITEMRPTCATEGORY rc ON rc.OBJID=it.REPORTCATEGORY " +
     "JOIN SITELIST sl ON sl.ID=s.SITE " +
     `WHERE s.LOGDATE>='${start}' AND s.LOGDATE<='${end}' AND si.FLAGS>=0 AND rc.BRANCH='001001001' ` +
-    "AND (UPPER(it.NAME) LIKE '%MIGHTY PROT%' OR UPPER(it.NAME) LIKE '%SUPER SHINE%' OR UPPER(it.NAME) LIKE '%WONDER%') " +
+    "AND (UPPER(it.NAME) LIKE '%MIGHTY PROT%' OR UPPER(it.NAME) LIKE '%SUPER SHINE%' OR UPPER(it.NAME) LIKE '%WONDER%' " +
+    "OR UPPER(it.NAME) LIKE '%FLASH%') " +
     cutoverExclusions(flex, start, end) +
     "GROUP BY 1, 2, 3"
 
@@ -114,11 +117,11 @@ async function fetchSiteWatchPerSite(start: string, end: string, flex: FlexSite[
   for (const [siteRaw, tierRaw, itemRaw, nRaw] of rows) {
     const site = String(siteRaw).trim()
     const n = Number(nRaw) || 0
-    const row = bySite.get(site) ?? { site, wonder: 0, superShine: 0, mighty: 0, total: 0, packages: [] }
+    const row = bySite.get(site) ?? emptyRow(site)
     const code = String(tierRaw).trim()
-    const tier: TierKey = code === 'M' ? 'mighty' : code === 'S' ? 'superShine' : 'wonder'
+    const tier: TierKey = code === 'M' ? 'mighty' : code === 'S' ? 'superShine' : code === 'F' ? 'flash' : 'wonder'
     row[tier] += n
-    row.total = row.wonder + row.superShine + row.mighty
+    row.total = tierSum(row)
     row.packages.push({ name: String(itemRaw).trim(), tier, source: 'SiteWatch', count: n })
     bySite.set(site, row)
   }
@@ -135,14 +138,15 @@ async function fetchFlexPerSite(start: string, end: string, flex: FlexSite[]): P
     active.map(async (st) => {
       const from = st.start_date! > start ? st.start_date! : start
       const bd = await flexwashSales.lineItemBreakdown([st.car_wash_id], from, end, { skipPackage: SKIP_FLEX_PACKAGE })
-      const row: SitePackageRow = { site: swName(st.site_number), wonder: 0, superShine: 0, mighty: 0, total: 0, packages: [] }
+      const row = emptyRow(swName(st.site_number))
       for (const p of bd.carsByPackage) {
-        const tier = FLEX_TIER[p.tier]
-        if (!tier) continue // "Other" packages aren't one of the three
+        // FlexWash's own tiers don't include Flash (it lands in "Other"), so match it by name.
+        const tier = FLEX_TIER[p.tier] ?? (/flash/i.test(p.name) ? 'flash' : undefined)
+        if (!tier) continue // other "Other" packages aren't one of the four
         row[tier] += p.count
         row.packages.push({ name: p.name, tier, source: 'FlexWash', count: p.count })
       }
-      row.total = row.wonder + row.superShine + row.mighty
+      row.total = tierSum(row)
       return row
     }),
   )
@@ -167,12 +171,12 @@ export async function fetchPackageReport(ym: string): Promise<PackageReport> {
   for (const r of [...sw, ...flex]) {
     const m = merged.get(r.site)
     if (!m) { merged.set(r.site, { ...r, packages: [...r.packages] }); continue }
-    m.wonder += r.wonder; m.superShine += r.superShine; m.mighty += r.mighty; m.total += r.total
+    m.flash += r.flash; m.wonder += r.wonder; m.superShine += r.superShine; m.mighty += r.mighty; m.total += r.total
     m.packages.push(...r.packages)
   }
-  // Packages listed Wonder -> Super Shine -> Mighty, SiteWatch before FlexWash
-  // (a split site's DRB days came first), biggest first.
-  const tierRank: Record<TierKey, number> = { wonder: 0, superShine: 1, mighty: 2 }
+  // Packages listed Flash -> Wonder -> Super Shine -> Mighty, SiteWatch before
+  // FlexWash (a split site's DRB days came first), biggest first.
+  const tierRank: Record<TierKey, number> = { flash: 0, wonder: 1, superShine: 2, mighty: 3 }
   const sourceRank = (s: PackageLine['source']) => (s === 'SiteWatch' ? 0 : 1)
   for (const r of merged.values()) {
     r.packages.sort((a, b) => tierRank[a.tier] - tierRank[b.tier] || sourceRank(a.source) - sourceRank(b.source) || b.count - a.count)
@@ -182,14 +186,20 @@ export async function fetchPackageReport(ym: string): Promise<PackageReport> {
   for (const [n, cars] of monthly) {
     const site = swName(n)
     if (merged.has(site) || cars <= 0) continue
-    merged.set(site, { site, wonder: 0, superShine: 0, mighty: 0, total: cars, packages: [], totalOnly: true })
+    merged.set(site, { ...emptyRow(site), total: cars, totalOnly: true })
   }
   const sites = [...merged.values()]
     .filter((r) => !EXCLUDED_SITES.has(r.site))
     .sort((a, b) => siteNum(a.site) - siteNum(b.site) || a.site.localeCompare(b.site))
   const grand = sites.reduce<PackageTotals>(
-    (a, r) => ({ wonder: a.wonder + r.wonder, superShine: a.superShine + r.superShine, mighty: a.mighty + r.mighty, total: a.total + r.total }),
-    { wonder: 0, superShine: 0, mighty: 0, total: 0 },
+    (a, r) => ({
+      flash: a.flash + r.flash,
+      wonder: a.wonder + r.wonder,
+      superShine: a.superShine + r.superShine,
+      mighty: a.mighty + r.mighty,
+      total: a.total + r.total,
+    }),
+    { flash: 0, wonder: 0, superShine: 0, mighty: 0, total: 0 },
   )
   return { sites, grand, flexIncluded }
 }

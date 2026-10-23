@@ -6,6 +6,7 @@ import {
   fetchPackageReport,
   lastCompleteMonth,
   type PackageReport,
+  type TierKey,
 } from '@/lib/queries/chemicals'
 import { exportChemicalsPdf } from '@/lib/reports/chemicalsPdf'
 
@@ -18,7 +19,8 @@ const nf = (n: number) => n.toLocaleString('en-US')
 const monthLabel = (ym: string) =>
   new Date(ym + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
-const TIERS: Array<{ key: 'wonder' | 'superShine' | 'mighty'; label: string; accent: string }> = [
+const TIERS: Array<{ key: TierKey; label: string; accent: string }> = [
+  { key: 'flash', label: 'Flash', accent: 'text-ok' },
   { key: 'wonder', label: 'Wonder', accent: 'text-accent' },
   { key: 'superShine', label: 'Super Shine', accent: 'text-warn' },
   { key: 'mighty', label: 'Mighty Protector', accent: 'text-danger' },
@@ -121,12 +123,14 @@ export default function ChemicalsPage() {
           ) : data ? (
             <>
               {/* Grand total */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {TIERS.map((t) => (
                   <div key={t.key} className="rounded-xl border border-border bg-content/40 p-4">
                     <div className="text-xs font-medium uppercase tracking-wide text-ink-subtle">{t.label}</div>
                     <div className={`mt-1 text-3xl font-extrabold tabular-nums ${t.accent}`}>{nf(data.grand[t.key])}</div>
-                    <div className="mt-0.5 text-[11px] text-ink-subtle">washes · excludes MW19 and HQ</div>
+                    <div className="mt-0.5 text-[11px] text-ink-subtle">
+                      {t.key === 'flash' ? 'washes · sites that sell it' : 'washes · excludes MW19 and HQ'}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -163,13 +167,13 @@ export default function ChemicalsPage() {
                 )}
               </div>
               <div className="overflow-x-auto rounded-xl border border-border">
-                <table className="w-full min-w-[520px] text-sm">
+                <table className="w-full min-w-[600px] text-sm">
                   <thead className="bg-content text-left text-[11px] uppercase tracking-wide text-ink-subtle">
                     <tr>
                       <th className="px-3 py-2 font-medium">Site</th>
-                      <th className="px-3 py-2 text-right font-medium">Wonder</th>
-                      <th className="px-3 py-2 text-right font-medium">Super Shine</th>
-                      <th className="px-3 py-2 text-right font-medium">Mighty Protector</th>
+                      {TIERS.map((t) => (
+                        <th key={t.key} className="px-3 py-2 text-right font-medium">{t.label}</th>
+                      ))}
                       <th className="px-3 py-2 text-right font-medium">Total</th>
                     </tr>
                   </thead>
@@ -204,9 +208,12 @@ export default function ChemicalsPage() {
                                 {r.site}
                               </button>
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.wonder)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.superShine)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{nf(r.mighty)}</td>
+                            {TIERS.map((t) => (
+                              <td key={t.key} className="px-3 py-2 text-right tabular-nums text-ink-muted">
+                                {/* Not every site sells Flash: a dash, not a 0. */}
+                                {t.key === 'flash' && r.flash === 0 ? <span className="text-ink-subtle">—</span> : nf(r[t.key])}
+                              </td>
+                            ))}
                             <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink">{nf(r.total)}</td>
                           </tr>
                           {open && r.packages.map((p) => (
@@ -229,15 +236,15 @@ export default function ChemicalsPage() {
                       )
                     })}
                     {data.sites.length === 0 && (
-                      <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-subtle">No wash package activity this month.</td></tr>
+                      <tr><td colSpan={TIERS.length + 2} className="px-3 py-6 text-center text-ink-subtle">No wash package activity this month.</td></tr>
                     )}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-border bg-content/60 font-semibold text-ink">
                       <td className="px-3 py-2">Grand total</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{nf(data.grand.wonder)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{nf(data.grand.superShine)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{nf(data.grand.mighty)}</td>
+                      {TIERS.map((t) => (
+                        <td key={t.key} className="px-3 py-2 text-right tabular-nums">{nf(data.grand[t.key])}</td>
+                      ))}
                       <td className="px-3 py-2 text-right tabular-nums">{nf(data.grand.total)}</td>
                     </tr>
                   </tfoot>
@@ -250,7 +257,7 @@ export default function ChemicalsPage() {
             Counts every time each package was used — retail washes plus member redemptions. DRB sites come from the POS
             wash ledger (the same source as the dashboards); FlexWash sites come from the FlexWash API’s paid package
             lines, from the day each site switched over. FlexWash “- Issue” packages and Wex/Voyager fleet plan lines
-            aren’t counted. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
+            aren’t counted. Flash is only sold at some sites; a dash means the site had no Flash washes. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
             sheet, with no package split: they’re in the grand total of washes but not in the package totals.
           </p>
         </div>
