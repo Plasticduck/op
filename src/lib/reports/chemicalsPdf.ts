@@ -39,7 +39,9 @@ export async function exportChemicalsPdf(opts: {
     footStyles: { fillColor: [237, 240, 245], textColor: 20, fontStyle: 'bold' },
     margin: { left: 14, right: 14 },
     head: [['Site', 'Wonder', 'Super Shine', 'Mighty Protector', 'Total']],
-    body: opts.sites.map((r) => [r.site, nf(r.wonder), nf(r.superShine), nf(r.mighty), nf(r.total)]),
+    body: opts.sites.map((r) => r.totalOnly
+      ? [`${r.site} †`, '—', '—', '—', nf(r.total)]
+      : [r.site, nf(r.wonder), nf(r.superShine), nf(r.mighty), nf(r.total)]),
     foot: [[
       'Grand total',
       { content: nf(opts.grand.wonder), styles: { halign: 'right' } },
@@ -51,11 +53,15 @@ export async function exportChemicalsPdf(opts: {
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
   })
 
-  if (!opts.flexIncluded) {
-    const y = (doc.lastAutoTable?.finalY ?? 28) + 8
+  const notes: string[] = []
+  if (opts.sites.some((r) => r.totalOnly)) {
+    notes.push('† Not on DRB or FlexWash: the month\'s total washes from the car count sheet, with no package split. Included in the grand total, not the package totals.')
+  }
+  if (!opts.flexIncluded) notes.push('Note: the FlexWash sites could not be loaded and are not included in these totals.')
+  if (notes.length) {
     doc.setFontSize(8)
     doc.setTextColor(150)
-    doc.text('Note: the FlexWash sites could not be loaded and are not included in these totals.', 14, y)
+    doc.text(notes, 14, (doc.lastAutoTable?.finalY ?? 28) + 8)
     doc.setTextColor(0)
   }
 

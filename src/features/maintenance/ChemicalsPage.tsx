@@ -33,7 +33,8 @@ export default function ChemicalsPage() {
   const [openSites, setOpenSites] = useState<Set<string>>(() => new Set())
 
   const maxMonth = lastCompleteMonth()
-  const allOpen = !!data && data.sites.length > 0 && data.sites.every((r) => openSites.has(r.site))
+  const totalOnly = data?.sites.filter((r) => r.totalOnly) ?? []
+  const allOpen = !!data && data.sites.length > 0 && data.sites.every((r) => r.totalOnly || openSites.has(r.site))
   const toggleSite = (site: string) =>
     setOpenSites((prev) => {
       const next = new Set(prev)
@@ -130,7 +131,14 @@ export default function ChemicalsPage() {
                 ))}
               </div>
               <div className="mt-3 flex items-baseline justify-between rounded-xl border border-border bg-card px-4 py-3">
-                <span className="text-sm font-medium text-ink-muted">Grand total (3 packages)</span>
+                <span className="text-sm font-medium text-ink-muted">
+                  Grand total washes
+                  {totalOnly.length > 0 && (
+                    <span className="block text-[11px] font-normal text-ink-subtle">
+                      includes {totalOnly.map((r) => `${r.site.replace('MightyWash 0', 'MW')} (${nf(r.total)})`).join(', ')} with no package split †
+                    </span>
+                  )}
+                </span>
                 <span className="text-2xl font-bold tabular-nums text-ink">{nf(data.grand.total)}</span>
               </div>
 
@@ -167,6 +175,20 @@ export default function ChemicalsPage() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {data.sites.map((r) => {
+                      if (r.totalOnly) {
+                        return (
+                          <tr key={r.site}>
+                            <td className="px-3 py-2 pl-[2.125rem] font-medium text-ink">
+                              {r.site}
+                              <span className="ml-1 text-ink-subtle" title="Total from the monthly car count sheet; no package split">†</span>
+                            </td>
+                            {TIERS.map((t) => (
+                              <td key={t.key} className="px-3 py-2 text-right text-ink-subtle">—</td>
+                            ))}
+                            <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink">{nf(r.total)}</td>
+                          </tr>
+                        )
+                      }
                       const open = openSites.has(r.site)
                       return (
                         <Fragment key={r.site}>
@@ -228,7 +250,8 @@ export default function ChemicalsPage() {
             Counts every time each package was used — retail washes plus member redemptions. DRB sites come from the POS
             wash ledger (the same source as the dashboards); FlexWash sites come from the FlexWash API’s paid package
             lines, from the day each site switched over. FlexWash “- Issue” packages and Wex/Voyager fleet plan lines
-            aren’t counted.
+            aren’t counted. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
+            sheet, with no package split: they’re in the grand total of washes but not in the package totals.
           </p>
         </div>
       </section>

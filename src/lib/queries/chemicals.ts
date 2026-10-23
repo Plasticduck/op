@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { flexwashSales, type FlexSite } from '@/lib/queries/flexwashSales'
+import { fetchMonthlyCars } from '@/lib/queries/sitePerformance'
 
 // Monthly wash-package usage for the Chemicals hub, broken down by site. Counts
 // EVERY wash that used each package (retail sales + member redemptions), across
@@ -17,6 +18,9 @@ import { flexwashSales, type FlexSite } from '@/lib/queries/flexwashSales'
 //  SiteWatch counts it through that day (sites switch mid-day), FlexWash from that
 //  day on, so a month that spans a cutover keeps both halves and nothing is double
 //  counted (SiteWatch only has stray residuals after cutover). One row per site.
+//  - Sites on neither system (MW33): their monthly car total from
+//    site_performance_months (the car count sheet), shown as a total-only row with
+//    no package split. It counts in the grand total of washes, not the packages.
 
 export type TierKey = 'wonder' | 'superShine' | 'mighty'
 // One package (item name) at one site, from one source; count is washes.
@@ -28,6 +32,8 @@ export type SitePackageRow = {
   mighty: number
   total: number
   packages: PackageLine[]
+  // Total washes only (from the monthly car count sheet), no package split.
+  totalOnly?: boolean
 }
 export type PackageTotals = { wonder: number; superShine: number; mighty: number; total: number }
 export type PackageReport = { sites: SitePackageRow[]; grand: PackageTotals; flexIncluded: boolean }
@@ -170,6 +176,13 @@ export async function fetchPackageReport(ym: string): Promise<PackageReport> {
   const sourceRank = (s: PackageLine['source']) => (s === 'SiteWatch' ? 0 : 1)
   for (const r of merged.values()) {
     r.packages.sort((a, b) => tierRank[a.tier] - tierRank[b.tier] || sourceRank(a.source) - sourceRank(b.source) || b.count - a.count)
+  }
+  // Sites with no package data anywhere: their monthly total from the car count sheet.
+  const monthly = await fetchMonthlyCars(start, end).catch(() => new Map<number, number>())
+  for (const [n, cars] of monthly) {
+    const site = swName(n)
+    if (merged.has(site) || cars <= 0) continue
+    merged.set(site, { site, wonder: 0, superShine: 0, mighty: 0, total: cars, packages: [], totalOnly: true })
   }
   const sites = [...merged.values()]
     .filter((r) => !EXCLUDED_SITES.has(r.site))
