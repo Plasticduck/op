@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { format, startOfMonth, subDays, subMonths, endOfMonth } from 'date-fns'
+import { addDays, differenceInCalendarDays, format, parseISO, startOfMonth, startOfWeek, subDays, subMonths, endOfMonth } from 'date-fns'
 import { Clock, Loader2, RefreshCw, Download, Search, Building2, Users, Wallet, Timer } from 'lucide-react'
 import { isolvedLabor, type LaborResponse, type SalariedScope } from '@/lib/queries/isolved'
 import { fnErrorMessage } from '@/lib/fnError'
@@ -10,8 +10,22 @@ const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1,
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const usd2 = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Mighty Wash pays bi-weekly, Monday through Sunday of the second week. Any
+// pay-period start works as the anchor; Mon 10/19/2026 started one (confirmed).
+const PAY_PERIOD_ANCHOR = '2026-10-19'
+const PAY_PERIOD_DAYS = 14
+function currentPayPeriodStart(today = new Date()): Date {
+  const anchor = parseISO(PAY_PERIOD_ANCHOR)
+  const periods = Math.floor(differenceInCalendarDays(today, anchor) / PAY_PERIOD_DAYS)
+  return addDays(anchor, periods * PAY_PERIOD_DAYS)
+}
+
 type Preset = { label: string; range: () => { start: string; end: string } }
+// Ranges that include today end today (iSolved has nothing for future days).
 const PRESETS: Preset[] = [
+  { label: 'Today', range: () => ({ start: iso(new Date()), end: iso(new Date()) }) },
+  { label: 'Week (M–Sun)', range: () => ({ start: iso(startOfWeek(new Date(), { weekStartsOn: 1 })), end: iso(new Date()) }) },
+  { label: 'Pay Period', range: () => ({ start: iso(currentPayPeriodStart()), end: iso(new Date()) }) },
   { label: 'This month', range: () => ({ start: iso(startOfMonth(new Date())), end: iso(new Date()) }) },
   { label: 'Last 14 days', range: () => ({ start: iso(subDays(new Date(), 13)), end: iso(new Date()) }) },
   {
@@ -51,6 +65,8 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   const [empSearch, setEmpSearch] = useState('')
   // Labor Data only: whether salaried (non-Corporate) staff are shown.
   const [showSalaried, setShowSalaried] = useState(true)
+  // Which quick range is in effect (cleared when the dates are edited by hand).
+  const [activePreset, setActivePreset] = useState<string | null>('This month')
 
   const scopeFor = useCallback(
     (show: boolean): SalariedScope => (salaried ? 'only' : show ? 'exclude-corporate' : 'none'),
@@ -157,9 +173,11 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                 const r = p.range()
                 setStart(r.start)
                 setEnd(r.end)
+                setActivePreset(p.label)
                 void load(r.start, r.end, scopeFor(showSalaried))
               }}
-              className="rounded-lg border border-border bg-content px-3 py-2 text-sm font-medium text-ink-muted hover:border-accent hover:text-ink"
+              aria-pressed={activePreset === p.label}
+              className={`rounded-lg border px-3 py-2 text-sm font-medium ${activePreset === p.label ? 'border-accent bg-accent text-white' : 'border-border bg-content text-ink-muted hover:border-accent hover:text-ink'}`}
             >
               {p.label}
             </button>
@@ -186,11 +204,11 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
         <div className="flex items-end gap-2">
           <label className="text-xs font-medium text-ink-subtle">
             Start
-            <input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} className="mt-1 block rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink" />
+            <input type="date" value={start} max={end} onChange={(e) => { setStart(e.target.value); setActivePreset(null) }} className="mt-1 block rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink" />
           </label>
           <label className="text-xs font-medium text-ink-subtle">
             End
-            <input type="date" value={end} min={start} onChange={(e) => setEnd(e.target.value)} className="mt-1 block rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink" />
+            <input type="date" value={end} min={start} onChange={(e) => { setEnd(e.target.value); setActivePreset(null) }} className="mt-1 block rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink" />
           </label>
           <button
             onClick={() => void load(start, end, scopeFor(showSalaried))}
@@ -223,6 +241,13 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
               <Stat key={p} label={`${p} hrs`} value={num(data.totals.byPayType[p] ?? 0)} />
             ))}
           </div>
+
+          {(data.totals.byPayType['In progress'] ?? 0) > 0 && (
+            <p className="mt-3 text-xs text-ink-muted">
+              <strong className="text-ink">In progress</strong> is time so far on shifts that are still open (people on the clock now), which iSolved
+              hasn&apos;t turned into paid hours yet. A forgotten clock-out counts up to 16 hours until it&apos;s fixed, same as On the Clock.
+            </p>
+          )}
 
           <div className="mt-6" />
 

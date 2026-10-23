@@ -26,6 +26,24 @@ const SUPER_ADMIN = 'kevan@washlyfe.com'
 const LABOR_DATA_EMAILS = new Set(['kevan@washlyfe.com', 'lkeith@mighty-wash.com'])
 const FT_YEAR_HOURS = 2080
 const OT_MULTIPLIER = 1.5
+// When the range includes today, people still on the clock have no paid hours
+// yet for their open shift, so the time so far is added under this pay type
+// (same open-punch rules and 16h cap as the On the Clock view).
+const IN_PROGRESS = 'In progress'
+const OPEN_ACCRUAL_CAP_H = 16
+// Central "now" as a naive ISO string, comparable to iSolved effective times.
+function centralNowIso(): string {
+  const p: Record<string, string> = {}
+  for (const part of new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(new Date())) p[part.type] = part.value
+  return `${p.year}-${p.month}-${p.day}T${p.hour === '24' ? '00' : p.hour}:${p.minute}:${p.second}`
+}
+function jwtRole(auth: string): string | null {
+  const t = auth.replace(/^Bearers+/i, '').split('.')
+  if (t.length !== 3) return null
+  try { return JSON.parse(atob(t[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? null } catch { return null }
+}
+const diffHours = (fromIso: string, toIso: string): number => (Date.parse(toIso + 'Z') - Date.parse(fromIso + 'Z')) / 3600_000
+const isMidnight = (iso: string): boolean => /T00:00:00$/.test(iso)
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -108,10 +126,17 @@ Deno.serve(async (req) => {
 
   const auth = req.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) return json({ error: 'unauthorized' }, 401, origin)
-  const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
-  const { data: u } = await userClient.auth.getUser()
-  if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
-  const email = (u.user.email ?? '').toLowerCase()
+  // The service role (server-side jobs / verification) acts as the super admin;
+  // otherwise the signed-in user must be on the allowlist.
+  let email: string
+  if (jwtRole(auth) === 'service_role') {
+    email = SUPER_ADMIN
+  } else {
+    const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
+    const { data: u } = await userClient.auth.getUser()
+    if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
+    email = (u.user.email ?? '').toLowerCase()
+  }
   if (!LABOR_DATA_EMAILS.has(email)) {
     return json({ error: 'forbidden', message: `Labor Data is restricted to approved users (signed in as ${email || 'unknown'}).` }, 403, origin)
   }
@@ -201,6 +226,8 @@ Deno.serve(async (req) => {
 
     // 2) Timecards -> hourly cost. Salaried are always costed from the roster
     //    (step 3), never from punches. Skipped entirely on the salaried-only view.
+    const nowIso = centralNowIso()
+    const includesToday = endDate >= nowIso.slice(0, 10)
     for (let page = 0; scope !== 'only' && page < 200; page++) {
       const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=${PAGE_SIZE}&page=${page}`)
       const results = d.results ?? []
@@ -217,6 +244,16 @@ Deno.serve(async (req) => {
           emp = { number: empNum, name, payType: rr.payType, rate: rr.rate, rated: rr.rate > 0, total: 0, cost: 0, byType: {}, sites: new Set() }
           empsMap.set(empNum, emp)
         }
+        // Latest genuine clock-out (an out from a real out punch, or an out time
+        // after the in); an open punch only counts if it started after it.
+        let latestOut = ''
+        if (includesToday) {
+          for (const t of r.timecardData ?? []) {
+            const i = String(t.inPunchDateTimeEffective ?? '')
+            const o = String(t.outPunchDateTimeEffective ?? '')
+            if (o && (t.outPunchId != null || o > i) && o > latestOut) latestOut = o
+          }
+        }
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
           const site = siteOf(siteLabel(String(loc)))
@@ -231,6 +268,24 @@ Deno.serve(async (req) => {
             typeTotals[type] = (typeTotals[type] || 0) + hrs
             grandHours += hrs; grandCost += cost
             if (rr.rate <= 0) { unratedEmps.add(empNum); unratedHours += hrs }
+          }
+          // Still on the clock: add the open shift's time so far (capped).
+          if (includesToday) {
+            const inEff = String(t.inPunchDateTimeEffective ?? '')
+            const outEff = String(t.outPunchDateTimeEffective ?? '')
+            const hasOut = !!outEff && (t.outPunchId != null || outEff > inEff)
+            const open = !!inEff && !isMidnight(inEff) && !hasOut && (!latestOut || inEff > latestOut)
+            if (open) {
+              const hrs = Math.min(Math.max(0, diffHours(inEff, nowIso)), OPEN_ACCRUAL_CAP_H)
+              if (hrs > 0) {
+                const cost = rr.rate * hrs
+                site.total += hrs; site.cost += cost; site.byType[IN_PROGRESS] = (site.byType[IN_PROGRESS] || 0) + hrs
+                emp.total += hrs; emp.cost += cost; emp.byType[IN_PROGRESS] = (emp.byType[IN_PROGRESS] || 0) + hrs; emp.sites.add(site.site)
+                typeTotals[IN_PROGRESS] = (typeTotals[IN_PROGRESS] || 0) + hrs
+                grandHours += hrs; grandCost += cost
+                if (rr.rate <= 0) { unratedEmps.add(empNum); unratedHours += hrs }
+              }
+            }
           }
         }
       }
