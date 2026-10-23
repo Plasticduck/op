@@ -24,6 +24,7 @@ type Preset = { label: string; range: () => { start: string; end: string } }
 // Ranges that include today end today (iSolved has nothing for future days).
 const PRESETS: Preset[] = [
   { label: 'Today', range: () => ({ start: iso(new Date()), end: iso(new Date()) }) },
+  { label: 'Yesterday', range: () => ({ start: iso(subDays(new Date(), 1)), end: iso(subDays(new Date(), 1)) }) },
   { label: 'Week (M–Sun)', range: () => ({ start: iso(startOfWeek(new Date(), { weekStartsOn: 1 })), end: iso(new Date()) }) },
   { label: 'Pay Period', range: () => ({ start: iso(currentPayPeriodStart()), end: iso(new Date()) }) },
   { label: 'This month', range: () => ({ start: iso(startOfMonth(new Date())), end: iso(new Date()) }) },
@@ -56,7 +57,10 @@ export type LaborVariant = 'labor' | 'salaried'
 
 export default function LaborReport({ variant }: { variant: LaborVariant }) {
   const salaried = variant === 'salaried'
-  const [start, setStart] = useState(() => iso(startOfMonth(new Date())))
+  // Labor Data opens on Today; Salaried Labor (salary allocated over the range)
+  // opens on This month.
+  const defaultPreset = salaried ? 'This month' : 'Today'
+  const [start, setStart] = useState(() => PRESETS.find((p) => p.label === defaultPreset)!.range().start)
   const [end, setEnd] = useState(() => iso(new Date()))
   const [data, setData] = useState<LaborResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -66,7 +70,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   // Labor Data only: whether salaried (non-Corporate) staff are shown.
   const [showSalaried, setShowSalaried] = useState(true)
   // Which quick range is in effect (cleared when the dates are edited by hand).
-  const [activePreset, setActivePreset] = useState<string | null>('This month')
+  const [activePreset, setActivePreset] = useState<string | null>(defaultPreset)
 
   const scopeFor = useCallback(
     (show: boolean): SalariedScope => (salaried ? 'only' : show ? 'exclude-corporate' : 'none'),
