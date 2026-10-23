@@ -8,7 +8,7 @@ import OnTheClock from './OnTheClock'
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd')
 // Labor site label "MW01" -> store number 1 (Corporate/Spotless -> null).
-const storeOf = (label: string): number | null => { const m = label.match(/^MW(d+)$/); return m ? parseInt(m[1], 10) : null }
+const storeOf = (label: string): number | null => { const m = label.match(/^MW(\d+)$/); return m ? parseInt(m[1], 10) : null }
 const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const usd2 = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })

@@ -38,7 +38,7 @@ function centralNowIso(): string {
   return `${p.year}-${p.month}-${p.day}T${p.hour === '24' ? '00' : p.hour}:${p.minute}:${p.second}`
 }
 function jwtRole(auth: string): string | null {
-  const t = auth.replace(/^Bearers+/i, '').split('.')
+  const t = auth.replace(/^Bearer\s+/i, '').split('.')
   if (t.length !== 3) return null
   try { return JSON.parse(atob(t[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? null } catch { return null }
 }
