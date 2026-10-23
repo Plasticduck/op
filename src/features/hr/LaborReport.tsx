@@ -3,9 +3,12 @@ import { addDays, differenceInCalendarDays, format, parseISO, startOfMonth, star
 import { Clock, Loader2, RefreshCw, Download, Search, Building2, Users, Wallet, Timer } from 'lucide-react'
 import { isolvedLabor, type LaborResponse, type SalariedScope } from '@/lib/queries/isolved'
 import { fnErrorMessage } from '@/lib/fnError'
+import { fetchCarsBySite } from '@/lib/queries/carsBySite'
 import OnTheClock from './OnTheClock'
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd')
+// Labor site label "MW01" -> store number 1 (Corporate/Spotless -> null).
+const storeOf = (label: string): number | null => { const m = label.match(/^MW(d+)$/); return m ? parseInt(m[1], 10) : null }
 const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const usd2 = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -77,9 +80,18 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
     [salaried],
   )
 
+  // Labor Data only: official cars washed per store for the same range.
+  const [cars, setCars] = useState<Map<number, number> | null>(null)
+  const loadCars = useCallback((s: string, e: string) => {
+    if (salaried) return
+    setCars(null)
+    fetchCarsBySite(s, e).then(setCars).catch(() => setCars(new Map()))
+  }, [salaried])
+
   const load = useCallback(async (s: string, e: string, scope: SalariedScope) => {
     setLoading(true)
     setError(null)
+    loadCars(s, e)
     try {
       const { data: d, error: err } = await isolvedLabor(s, e, scope)
       if (err || d?.error) {
@@ -94,7 +106,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadCars])
 
   useEffect(() => {
     void load(start, end, scopeFor(showSalaried))
@@ -105,7 +117,12 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   const payTypes = data?.payTypes ?? []
   // Pay-type columns shown on screen. Labor Data hides Hourly and PTO (the CSV
   // export still includes every pay type).
-  const shownTypes = salaried ? payTypes : payTypes.filter((p) => !/^(hourly|pto)$/i.test(p))
+  const shownTypes = salaried ? payTypes : payTypes.filter((p) => !/^(hourly|pto|salaried)$/i.test(p))
+  // Labor Data's By Site table also drops the Emps column and adds Cars.
+  const showEmps = salaried
+  const showCars = !salaried
+  const carsFor = (label: string) => { const n = storeOf(label); return n == null ? null : cars?.get(n) ?? null }
+  const carsTotal = cars && data ? data.sites.reduce((a, x) => a + (carsFor(x.site) ?? 0), 0) : null
   // The On the Clock headcount only means something when the range includes today.
   const showOnClock = !salaried && !!data?.includesToday
 
@@ -119,9 +136,10 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   const exportSites = () => {
     if (!data) return
     const oc = showOnClock
-    const header = ['Site', ...(oc ? ['On the clock'] : []), ...payTypes, 'Total hours', 'Est. cost', 'Employees']
-    const rows = data.sites.map((s) => [s.site, ...(oc ? [s.onClock ?? 0] : []), ...payTypes.map((p) => s.byPayType[p] ?? 0), s.totalHours, s.cost, s.employees])
-    const totalRow = ['Total', ...(oc ? [data.totals.onClock ?? 0] : []), ...payTypes.map((p) => data.totals.byPayType[p] ?? 0), data.totals.totalHours, data.totals.totalCost, data.totals.employees]
+    const cc = showCars && cars != null
+    const header = ['Site', ...(oc ? ['On the clock'] : []), ...(cc ? ['Cars'] : []), ...payTypes, 'Total hours', 'Est. cost', 'Employees']
+    const rows = data.sites.map((s) => [s.site, ...(oc ? [s.onClock ?? 0] : []), ...(cc ? [carsFor(s.site) ?? ''] : []), ...payTypes.map((p) => s.byPayType[p] ?? 0), s.totalHours, s.cost, s.employees])
+    const totalRow = ['Total', ...(oc ? [data.totals.onClock ?? 0] : []), ...(cc ? [carsTotal ?? ''] : []), ...payTypes.map((p) => data.totals.byPayType[p] ?? 0), data.totals.totalHours, data.totals.totalCost, data.totals.employees]
     downloadCsv(`${filePrefix}-by-site-${start}-to-${end}.csv`, [header, ...rows, totalRow])
   }
   const exportEmployees = () => {
@@ -244,6 +262,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Stat label="Est. labor cost" value={usd(data.totals.totalCost)} tone="accent" />
             {showOnClock && <Stat label="On the clock now" value={String(data.totals.onClock ?? 0)} />}
+            {showCars && <Stat label="Cars" value={carsTotal == null ? '…' : carsTotal.toLocaleString('en-US')} />}
             <Stat label="Total hours" value={num(data.totals.totalHours)} />
             <Stat label="Blended rate" value={data.totals.totalHours ? `${usd2(data.totals.totalCost / data.totals.totalHours)}/hr` : "—"} />
             <Stat label="Employees" value={String(data.totals.employees)} />
@@ -269,11 +288,12 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                   <tr>
                     <th className="px-4 py-2.5 font-semibold">Site</th>
                     {showOnClock && <th className="px-4 py-2.5 text-right font-semibold">On the Clock</th>}
+                    {showCars && <th className="px-4 py-2.5 text-right font-semibold">Cars</th>}
                     {shownTypes.map((p) => <th key={p} className="px-4 py-2.5 text-right font-semibold">{p}</th>)}
                     <th className="px-4 py-2.5 text-right font-semibold">Total hrs</th>
                     <th className="px-4 py-2.5 text-right font-semibold">Est. cost</th>
                     <th className="px-4 py-2.5 text-right font-semibold">$/hr</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">Emps</th>
+                    {showEmps && <th className="px-4 py-2.5 text-right font-semibold">Emps</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -281,11 +301,12 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                     <tr key={s.site} className="hover:bg-content/50">
                       <td className="px-4 py-2.5 font-medium text-ink">{s.site}</td>
                       {showOnClock && <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-ink">{s.onClock ? s.onClock : '—'}</td>}
+                      {showCars && <td className="px-4 py-2.5 text-right tabular-nums text-ink">{cars == null ? '…' : carsFor(s.site) != null ? carsFor(s.site)!.toLocaleString('en-US') : '—'}</td>}
                       {shownTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.byPayType[p] ? num(s.byPayType[p]) : '—'}</td>)}
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{num(s.totalHours)}</td>
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{usd(s.cost)}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.totalHours ? usd2(s.cost / s.totalHours) : "—"}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.employees}</td>
+                      {showEmps && <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.employees}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -293,11 +314,12 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                   <tr>
                     <td className="px-4 py-2.5 text-ink">Total</td>
                     {showOnClock && <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.onClock ?? 0}</td>}
+                    {showCars && <td className="px-4 py-2.5 text-right tabular-nums text-ink">{carsTotal == null ? '…' : carsTotal.toLocaleString('en-US')}</td>}
                     {shownTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.byPayType[p] ?? 0)}</td>)}
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.totalHours)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{usd(data.totals.totalCost)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.totalHours ? usd2(data.totals.totalCost / data.totals.totalHours) : "—"}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.employees}</td>
+                    {showEmps && <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.employees}</td>}
                   </tr>
                 </tfoot>
               </table>
