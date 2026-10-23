@@ -103,6 +103,9 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   }, [])
 
   const payTypes = data?.payTypes ?? []
+  // Pay-type columns shown on screen. Labor Data hides Hourly and PTO (the CSV
+  // export still includes every pay type).
+  const shownTypes = salaried ? payTypes : payTypes.filter((p) => !/^(hourly|pto)$/i.test(p))
   // The On the Clock headcount only means something when the range includes today.
   const showOnClock = !salaried && !!data?.includesToday
 
@@ -245,7 +248,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
             <Stat label="Blended rate" value={data.totals.totalHours ? `${usd2(data.totals.totalCost / data.totals.totalHours)}/hr` : "—"} />
             <Stat label="Employees" value={String(data.totals.employees)} />
             <Stat label="Sites" value={String(data.totals.sites)} />
-            {payTypes.map((p) => (
+            {shownTypes.map((p) => (
               <Stat key={p} label={`${p} hrs`} value={num(data.totals.byPayType[p] ?? 0)} />
             ))}
           </div>
@@ -266,7 +269,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                   <tr>
                     <th className="px-4 py-2.5 font-semibold">Site</th>
                     {showOnClock && <th className="px-4 py-2.5 text-right font-semibold">On the Clock</th>}
-                    {payTypes.map((p) => <th key={p} className="px-4 py-2.5 text-right font-semibold">{p}</th>)}
+                    {shownTypes.map((p) => <th key={p} className="px-4 py-2.5 text-right font-semibold">{p}</th>)}
                     <th className="px-4 py-2.5 text-right font-semibold">Total hrs</th>
                     <th className="px-4 py-2.5 text-right font-semibold">Est. cost</th>
                     <th className="px-4 py-2.5 text-right font-semibold">$/hr</th>
@@ -278,7 +281,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                     <tr key={s.site} className="hover:bg-content/50">
                       <td className="px-4 py-2.5 font-medium text-ink">{s.site}</td>
                       {showOnClock && <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-ink">{s.onClock ? s.onClock : '—'}</td>}
-                      {payTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.byPayType[p] ? num(s.byPayType[p]) : '—'}</td>)}
+                      {shownTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.byPayType[p] ? num(s.byPayType[p]) : '—'}</td>)}
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{num(s.totalHours)}</td>
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{usd(s.cost)}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.totalHours ? usd2(s.cost / s.totalHours) : "—"}</td>
@@ -290,7 +293,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                   <tr>
                     <td className="px-4 py-2.5 text-ink">Total</td>
                     {showOnClock && <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.onClock ?? 0}</td>}
-                    {payTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.byPayType[p] ?? 0)}</td>)}
+                    {shownTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.byPayType[p] ?? 0)}</td>)}
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.totalHours)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{usd(data.totals.totalCost)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.totalHours ? usd2(data.totals.totalCost / data.totals.totalHours) : "—"}</td>
