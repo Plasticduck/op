@@ -31,7 +31,7 @@ type Any = any
 const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const DEFAULT_TO = ['kjowers@mighty-wash.com', 'lkeith@mighty-wash.com']
 // Who gets the report as a TEXT (resolved to their users.phone at send time).
-const SMS_EMAILS = ['lkeith@mighty-wash.com']
+const SMS_EMAILS = ['lkeith@mighty-wash.com', 'kevan@washlyfe.com']
 const DEFAULT_THRESHOLD_H = 14 // an open punch running this long = likely missed clock-out
 const LOOKBACK_DAYS = 3 // catch open punches opened in the last few days
 
