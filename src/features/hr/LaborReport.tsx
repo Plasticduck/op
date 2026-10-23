@@ -103,6 +103,8 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   }, [])
 
   const payTypes = data?.payTypes ?? []
+  // The On the Clock headcount only means something when the range includes today.
+  const showOnClock = !salaried && !!data?.includesToday
 
   const filteredEmployees = useMemo(() => {
     const q = empSearch.trim().toLowerCase()
@@ -113,9 +115,10 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
   const filePrefix = salaried ? 'salaried-labor' : 'labor-data'
   const exportSites = () => {
     if (!data) return
-    const header = ['Site', ...payTypes, 'Total hours', 'Est. cost', 'Employees']
-    const rows = data.sites.map((s) => [s.site, ...payTypes.map((p) => s.byPayType[p] ?? 0), s.totalHours, s.cost, s.employees])
-    const totalRow = ['Total', ...payTypes.map((p) => data.totals.byPayType[p] ?? 0), data.totals.totalHours, data.totals.totalCost, data.totals.employees]
+    const oc = showOnClock
+    const header = ['Site', ...(oc ? ['On the clock'] : []), ...payTypes, 'Total hours', 'Est. cost', 'Employees']
+    const rows = data.sites.map((s) => [s.site, ...(oc ? [s.onClock ?? 0] : []), ...payTypes.map((p) => s.byPayType[p] ?? 0), s.totalHours, s.cost, s.employees])
+    const totalRow = ['Total', ...(oc ? [data.totals.onClock ?? 0] : []), ...payTypes.map((p) => data.totals.byPayType[p] ?? 0), data.totals.totalHours, data.totals.totalCost, data.totals.employees]
     downloadCsv(`${filePrefix}-by-site-${start}-to-${end}.csv`, [header, ...rows, totalRow])
   }
   const exportEmployees = () => {
@@ -237,6 +240,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
           {/* Totals */}
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Stat label="Est. labor cost" value={usd(data.totals.totalCost)} tone="accent" />
+            {showOnClock && <Stat label="On the clock now" value={String(data.totals.onClock ?? 0)} />}
             <Stat label="Total hours" value={num(data.totals.totalHours)} />
             <Stat label="Blended rate" value={data.totals.totalHours ? `${usd2(data.totals.totalCost / data.totals.totalHours)}/hr` : "—"} />
             <Stat label="Employees" value={String(data.totals.employees)} />
@@ -246,10 +250,10 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
             ))}
           </div>
 
-          {(data.totals.byPayType['In progress'] ?? 0) > 0 && (
+          {showOnClock && (
             <p className="mt-3 text-xs text-ink-muted">
-              <strong className="text-ink">In progress</strong> is time so far on shifts that are still open (people on the clock now), which iSolved
-              hasn&apos;t turned into paid hours yet. A forgotten clock-out counts up to 16 hours until it&apos;s fixed, same as On the Clock.
+              Hours are paid hours from finished shifts only. <strong className="text-ink">On the Clock</strong> is how many people are clocked in right now;
+              their current shift is added to the hours once they clock out.
             </p>
           )}
 
@@ -261,6 +265,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                 <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-subtle">
                   <tr>
                     <th className="px-4 py-2.5 font-semibold">Site</th>
+                    {showOnClock && <th className="px-4 py-2.5 text-right font-semibold">On the Clock</th>}
                     {payTypes.map((p) => <th key={p} className="px-4 py-2.5 text-right font-semibold">{p}</th>)}
                     <th className="px-4 py-2.5 text-right font-semibold">Total hrs</th>
                     <th className="px-4 py-2.5 text-right font-semibold">Est. cost</th>
@@ -272,6 +277,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                   {data.sites.map((s) => (
                     <tr key={s.site} className="hover:bg-content/50">
                       <td className="px-4 py-2.5 font-medium text-ink">{s.site}</td>
+                      {showOnClock && <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-ink">{s.onClock ? s.onClock : '—'}</td>}
                       {payTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink-muted">{s.byPayType[p] ? num(s.byPayType[p]) : '—'}</td>)}
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{num(s.totalHours)}</td>
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-ink">{usd(s.cost)}</td>
@@ -283,6 +289,7 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
                 <tfoot className="border-t-2 border-border bg-content font-semibold">
                   <tr>
                     <td className="px-4 py-2.5 text-ink">Total</td>
+                    {showOnClock && <td className="px-4 py-2.5 text-right tabular-nums text-ink">{data.totals.onClock ?? 0}</td>}
                     {payTypes.map((p) => <td key={p} className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.byPayType[p] ?? 0)}</td>)}
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{num(data.totals.totalHours)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ink">{usd(data.totals.totalCost)}</td>

@@ -26,11 +26,11 @@ const SUPER_ADMIN = 'kevan@washlyfe.com'
 const LABOR_DATA_EMAILS = new Set(['kevan@washlyfe.com', 'lkeith@mighty-wash.com'])
 const FT_YEAR_HOURS = 2080
 const OT_MULTIPLIER = 1.5
-// When the range includes today, people still on the clock have no paid hours
-// yet for their open shift, so the time so far is added under this pay type
-// (same open-punch rules and 16h cap as the On the Clock view).
-const IN_PROGRESS = 'In progress'
-const OPEN_ACCRUAL_CAP_H = 16
+// When the range includes today, each site also reports how many people are on
+// the clock right now (a headcount only; hours stay paid hours). Same open-punch
+// rules as the On the Clock view; a punch open longer than this is treated as a
+// forgotten clock-out, not someone working.
+const ON_CLOCK_MAX_H = 16
 // Central "now" as a naive ISO string, comparable to iSolved effective times.
 function centralNowIso(): string {
   const p: Record<string, string> = {}
@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
   }
   const days = Math.max(1, Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86400000) + 1)
 
-  type Site = { code: string; site: string; total: number; cost: number; byType: Record<string, number>; emps: Set<string> }
+  type Site = { code: string; site: string; total: number; cost: number; byType: Record<string, number>; emps: Set<string>; onClock: Set<string> }
   type Emp = { number: string; name: string; payType: string; rate: number; rated: boolean; total: number; cost: number; byType: Record<string, number>; sites: Set<string> }
 
   try {
@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
     let unratedHours = 0
     const siteOf = (label: string): Site => {
       let s = sitesMap.get(label)
-      if (!s) { s = { code: '', site: label, total: 0, cost: 0, byType: {}, emps: new Set() }; sitesMap.set(label, s) }
+      if (!s) { s = { code: '', site: label, total: 0, cost: 0, byType: {}, emps: new Set(), onClock: new Set() }; sitesMap.set(label, s) }
       return s
     }
 
@@ -228,6 +228,33 @@ Deno.serve(async (req) => {
     //    (step 3), never from punches. Skipped entirely on the salaried-only view.
     const nowIso = centralNowIso()
     const includesToday = endDate >= nowIso.slice(0, 10)
+    const onClockAll = new Set<string>()
+    // Sites where this person is on the clock right now: an open punch (no genuine
+    // out, started after their latest clock-out) that's been open no longer than
+    // ON_CLOCK_MAX_H. Same open-punch rules as the On the Clock view.
+    const onClockSites = (r: Any): string[] => {
+      if (!includesToday) return []
+      let latestOut = ''
+      for (const t of r.timecardData ?? []) {
+        const i = String(t.inPunchDateTimeEffective ?? '')
+        const o = String(t.outPunchDateTimeEffective ?? '')
+        if (o && (t.outPunchId != null || o > i) && o > latestOut) latestOut = o
+      }
+      const out: string[] = []
+      for (const t of r.timecardData ?? []) {
+        const inEff = String(t.inPunchDateTimeEffective ?? '')
+        const outEff = String(t.outPunchDateTimeEffective ?? '')
+        const hasOut = !!outEff && (t.outPunchId != null || outEff > inEff)
+        const open = !!inEff && !isMidnight(inEff) && !hasOut && (!latestOut || inEff > latestOut)
+        if (open && diffHours(inEff, nowIso) <= ON_CLOCK_MAX_H) {
+          out.push(siteLabel(String((t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? '')))
+        }
+      }
+      return out
+    }
+    const markOnClock = (r: Any, empNum: string) => {
+      for (const label of onClockSites(r)) { siteOf(label).onClock.add(empNum); onClockAll.add(empNum) }
+    }
     for (let page = 0; scope !== 'only' && page < 200; page++) {
       const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=${PAGE_SIZE}&page=${page}`)
       const results = d.results ?? []
@@ -236,23 +263,18 @@ Deno.serve(async (req) => {
         const empId = r.employeeId as number
         const empNum = String(r.employeeNumber ?? empId ?? '')
         const rr = rateByKey.get(empNum) ?? rateByKey.get('id:' + String(empId)) ?? { rate: 0, payType: '' }
-        // Salaried are costed from the roster, not punches.
-        if (rr.payType === 'Salary') continue
+        // Salaried are costed from the roster, not punches — but a salaried person
+        // who's clocked in still counts toward On the Clock when salaried is shown.
+        if (rr.payType === 'Salary') {
+          if (scope !== 'none') markOnClock(r, empNum)
+          continue
+        }
+        markOnClock(r, empNum)
         const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || empNum
         let emp = empsMap.get(empNum)
         if (!emp) {
           emp = { number: empNum, name, payType: rr.payType, rate: rr.rate, rated: rr.rate > 0, total: 0, cost: 0, byType: {}, sites: new Set() }
           empsMap.set(empNum, emp)
-        }
-        // Latest genuine clock-out (an out from a real out punch, or an out time
-        // after the in); an open punch only counts if it started after it.
-        let latestOut = ''
-        if (includesToday) {
-          for (const t of r.timecardData ?? []) {
-            const i = String(t.inPunchDateTimeEffective ?? '')
-            const o = String(t.outPunchDateTimeEffective ?? '')
-            if (o && (t.outPunchId != null || o > i) && o > latestOut) latestOut = o
-          }
         }
         for (const t of r.timecardData ?? []) {
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
@@ -268,24 +290,6 @@ Deno.serve(async (req) => {
             typeTotals[type] = (typeTotals[type] || 0) + hrs
             grandHours += hrs; grandCost += cost
             if (rr.rate <= 0) { unratedEmps.add(empNum); unratedHours += hrs }
-          }
-          // Still on the clock: add the open shift's time so far (capped).
-          if (includesToday) {
-            const inEff = String(t.inPunchDateTimeEffective ?? '')
-            const outEff = String(t.outPunchDateTimeEffective ?? '')
-            const hasOut = !!outEff && (t.outPunchId != null || outEff > inEff)
-            const open = !!inEff && !isMidnight(inEff) && !hasOut && (!latestOut || inEff > latestOut)
-            if (open) {
-              const hrs = Math.min(Math.max(0, diffHours(inEff, nowIso)), OPEN_ACCRUAL_CAP_H)
-              if (hrs > 0) {
-                const cost = rr.rate * hrs
-                site.total += hrs; site.cost += cost; site.byType[IN_PROGRESS] = (site.byType[IN_PROGRESS] || 0) + hrs
-                emp.total += hrs; emp.cost += cost; emp.byType[IN_PROGRESS] = (emp.byType[IN_PROGRESS] || 0) + hrs; emp.sites.add(site.site)
-                typeTotals[IN_PROGRESS] = (typeTotals[IN_PROGRESS] || 0) + hrs
-                grandHours += hrs; grandCost += cost
-                if (rr.rate <= 0) { unratedEmps.add(empNum); unratedHours += hrs }
-              }
-            }
           }
         }
       }
@@ -329,7 +333,7 @@ Deno.serve(async (req) => {
     const roundRec = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, round(v)]))
     const payTypes = Object.keys(typeTotals).sort()
     const sites = [...sitesMap.values()]
-      .map((s) => ({ code: s.code, site: s.site, totalHours: round(s.total), cost: round(s.cost), byPayType: roundRec(s.byType), employees: s.emps.size }))
+      .map((s) => ({ code: s.code, site: s.site, totalHours: round(s.total), cost: round(s.cost), byPayType: roundRec(s.byType), employees: s.emps.size, onClock: s.onClock.size }))
       .sort((a, b) => a.site.localeCompare(b.site, undefined, { numeric: true }))
     const employees = [...empsMap.values()]
       .map((e) => ({ employeeNumber: e.number, name: e.name, payType: e.payType, rate: round(e.rate), rated: e.rated, totalHours: round(e.total), cost: round(e.cost), byPayType: roundRec(e.byType), sites: [...e.sites].sort() }))
@@ -338,6 +342,7 @@ Deno.serve(async (req) => {
     return json(
       {
         range: { startDate, endDate },
+        includesToday,
         salariedScope: scope,
         payTypes,
         sites,
@@ -350,6 +355,7 @@ Deno.serve(async (req) => {
           sites: sitesMap.size,
           unratedEmployees: unratedEmps.size,
           unratedHours: round(unratedHours),
+          onClock: onClockAll.size,
         },
         assumptions: {
           otMultiplier: OT_MULTIPLIER,
