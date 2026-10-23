@@ -264,6 +264,8 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Salaried staff whose home site is Corporate: overhead, kept off Labor Data.
+    const corporateSalaried = new Set(roster.filter((s) => s.payType === 'Salary' && s.site === 'Corporate').map((s) => s.number))
     const sitesMap = new Map<string, Site>()
     const empsMap = new Map<string, Emp>()
     const typeTotals: Record<string, number> = {}
@@ -320,6 +322,31 @@ Deno.serve(async (req) => {
         // who's clocked in still counts toward On the Clock when salaried is shown.
         if (rr.payType === 'Salary') {
           if (scope !== 'none') markOnClock(r, empNum)
+          // Labor Data: salaried staff clock in too, so count their ACTUAL punched
+          // hours (their cost still comes from salary, in the roster pass). Same
+          // exclusions as the roster pass: Corporate salaried and the named
+          // exception. The salaried-only view keeps its full-time-equivalent hours.
+          const sName = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || empNum
+          if (scope === 'exclude-corporate' && !corporateSalaried.has(empNum) && !isExcludedFromLaborData(sName)) {
+            for (const t of r.timecardData ?? []) {
+              const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
+              const label = siteLabel(String(loc))
+              if (label === 'Corporate' || !siteOk(label)) continue
+              for (const p of t.payItems ?? []) {
+                const hrs = Number(p.payItemHours) || 0
+                if (!hrs) continue
+                const type = /pto/i.test(String(p.payItemName ?? '')) || String(p.payItemCode) === '03' ? 'PTO' : 'Salaried'
+                const site = siteOf(label)
+                site.emps.add(empNum)
+                site.total += hrs; site.byType[type] = (site.byType[type] || 0) + hrs
+                let emp = empsMap.get(empNum)
+                if (!emp) { emp = { number: empNum, name: sName, payType: 'Salary', rate: rr.rate, rated: rr.rate > 0, total: 0, cost: 0, byType: {}, sites: new Set() }; empsMap.set(empNum, emp) }
+                emp.total += hrs; emp.byType[type] = (emp.byType[type] || 0) + hrs; emp.sites.add(label)
+                typeTotals[type] = (typeTotals[type] || 0) + hrs
+                grandHours += hrs
+              }
+            }
+          }
           continue
         }
         markOnClock(r, empNum)
@@ -365,15 +392,20 @@ Deno.serve(async (req) => {
           if (scope === 'exclude-corporate' && isExcludedFromLaborData(s.name)) continue
           const cost = (s.annual / 365) * days
           const rate = s.annual > 0 ? s.annual / FT_YEAR_HOURS : 0
+          // Hours: Labor Data uses salaried staff's actual punches (added in the
+          // timecard pass), so only the salaried-only view adds the FT-equivalent
+          // estimate. Cost is the salary allocated to the range either way.
+          const estHours = scope === 'only' ? ftHours : 0
           const site = siteOf(s.site)
           site.emps.add(s.number)
-          site.total += ftHours; site.cost += cost; site.byType['Salaried'] = (site.byType['Salaried'] || 0) + ftHours
+          site.total += estHours; site.cost += cost
+          if (estHours) site.byType['Salaried'] = (site.byType['Salaried'] || 0) + estHours
           let emp = empsMap.get(s.number)
           if (!emp) { emp = { number: s.number, name: s.name, payType: 'Salary', rate, rated: s.annual > 0, total: 0, cost: 0, byType: {}, sites: new Set() }; empsMap.set(s.number, emp) }
-          emp.total += ftHours; emp.cost += cost; emp.byType['Salaried'] = (emp.byType['Salaried'] || 0) + ftHours; emp.sites.add(site.site)
-          typeTotals['Salaried'] = (typeTotals['Salaried'] || 0) + ftHours
-          grandHours += ftHours; grandCost += cost
-          if (s.annual <= 0) { unratedEmps.add(s.number); unratedHours += ftHours }
+          emp.total += estHours; emp.cost += cost; emp.sites.add(site.site)
+          if (estHours) { emp.byType['Salaried'] = (emp.byType['Salaried'] || 0) + estHours; typeTotals['Salaried'] = (typeTotals['Salaried'] || 0) + estHours }
+          grandHours += estHours; grandCost += cost
+          if (s.annual <= 0) { unratedEmps.add(s.number); unratedHours += estHours }
         } else if (scope !== 'only' && !empsMap.has(s.number)) {
           // Active hourly who did not punch in this range: list at their home site
           // with no worked hours ($0) so the active roster is complete. Not shown
