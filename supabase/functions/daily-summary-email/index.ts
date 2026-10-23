@@ -82,10 +82,19 @@ async function gq(cookie: string, metric: string, day: string, sites: string[] =
     return j
   } catch { return null }
 }
-// Sites the default roster drops but that were on SiteWatch previously, so their
-// same-day-last-year cars are still available when named explicitly. The
-// dashboard silently omits any of these with no data for the requested date.
-const LY_EXTRA_SITES = ['MightyWash 017', 'MightyWash 018', 'MightyWash 029', 'MightyWash 030']
+// The dashboard's default roster drops every site once it moves to FlexWash —
+// even for LAST year's dates, when it was still on SiteWatch (DRB) and its
+// history is intact. Naming those sites explicitly brings their last-year numbers
+// back, so the vs-LY figures name every FlexWash site (read live from
+// flexwash_sites, so newly converted sites are covered automatically). The
+// dashboard silently omits any with no data for the requested date.
+// deno-lint-ignore no-explicit-any
+async function lyExtraSites(svc: any): Promise<string[]> {
+  const { data } = await svc.from('flexwash_sites').select('site_number').eq('account_id', MW_ACCOUNT).eq('active', true)
+  return ((data ?? []) as { site_number: number }[]).map((r) => 'MightyWash ' + String(r.site_number).padStart(3, '0'))
+}
+// Sum of per-site values (no TOTAL row), or null if the query failed.
+const mapSum = (m: Map<string, number> | null): number | null => (m ? [...m.values()].reduce((a, b) => a + b, 0) : null)
 // Monthly TTAF report (per-site recharge + retail dollars), keyed "YYYY-MM".
 // deno-lint-ignore no-explicit-any
 async function fetchTtaf(cookie: string): Promise<any | null> {
@@ -402,8 +411,10 @@ Deno.serve(async (req) => {
         }
       } catch { /* best-effort */ }
 
-      const [carsLy, carsLyExtra, revLy, rechLy, plansT, plansM, plansS, plansW, cvol, ccc] = await Promise.all([
-        gq(cookie, 'cars', lyStr), gq(cookie, 'cars', lyStr, LY_EXTRA_SITES), gq(cookie, 'revenue', lyStr), gq(cookie, 'recharge', lyStr),
+      const lyExtra = await lyExtraSites(svc)
+      const [carsLy, carsLyExtra, revLy, rechLy, rechLyExtra, plansT, plansM, plansS, plansW, cvol, ccc] = await Promise.all([
+        gq(cookie, 'cars', lyStr), lyExtra.length ? gq(cookie, 'cars', lyStr, lyExtra) : null, gq(cookie, 'revenue', lyStr),
+        gq(cookie, 'recharge', lyStr), lyExtra.length ? gq(cookie, 'recharge', lyStr, lyExtra) : null,
         gq(cookie, 'plans_total', rday), gq(cookie, 'plans_mighty', rday), gq(cookie, 'plans_super', rday), gq(cookie, 'plans_wonder', rday),
         gq(cookie, 'churn_voluntary', rday), gq(cookie, 'churn_cc', rday),
       ])
@@ -436,11 +447,13 @@ Deno.serve(async (req) => {
       const conversionAvg = companyAvg ?? (convVals.length ? convVals.reduce((a, b) => a + b, 0) / convVals.length : null)
       const churnVolBySite = gqMap(cvol)
       const churnCcBySite = gqMap(ccc)
-      // Same-day-last-year cars: the default roster plus the explicitly-named
-      // former-SiteWatch sites (17/18/29/...), so their per-site "vs LY" fills in
-      // wherever last-year history exists.
+      // Same-day-last-year cars/recharge: the default roster plus every FlexWash
+      // site named explicitly (their DRB history), merged per site so a site that
+      // shows up in both is counted once.
       const carsLyBySite = gqMap(carsLy)
       for (const [k, v] of gqMap(carsLyExtra)) carsLyBySite.set(k, v)
+      const rechLyBySite = gqMap(rechLy)
+      for (const [k, v] of gqMap(rechLyExtra)) rechLyBySite.set(k, v)
       let plansTotal = gqTotal(plansT) ?? 0
       let plansMighty = gqTotal(plansM) ?? 0
       let plansSuper = gqTotal(plansS) ?? 0
@@ -479,12 +492,13 @@ Deno.serve(async (req) => {
       } catch { /* FlexWash is best-effort */ }
 
       const chAvg = churnAverages(churnVolBySite, churnCcBySite)
-      // Headline last-year cars = the roster total plus any extra former-SiteWatch
-      // sites, matching this year's all-sites count for a fair comparison.
-      const yoyCarsBase = gqTotal(carsLy)
-      const yoyCars = yoyCarsBase == null ? null : yoyCarsBase + (gqTotal(carsLyExtra) ?? 0)
+      // Headline last-year cars/recharge = every site (roster + FlexWash sites'
+      // DRB history), matching this year's all-sites totals for a fair comparison.
+      // Null only if the roster query itself failed.
+      const yoyCars = carsLy ? mapSum(carsLyBySite) : null
+      const yoyRecharge = rechLy ? mapSum(rechLyBySite) : null
       dash = {
-        yoyCars, yoyRevenue: gqTotal(revLy), yoyRecharge: gqTotal(rechLy),
+        yoyCars, yoyRevenue: gqTotal(revLy), yoyRecharge,
         plansTotal, plansMighty, plansSuper, plansWonder,
         conversion: conversionAvg, churnVol: chAvg.vol, churnCc: chAvg.cc,
         convBySite, churnVolBySite, churnCcBySite, carsLyBySite,
@@ -632,6 +646,9 @@ Deno.serve(async (req) => {
       retail: retailDay,
       recharge_plus_retail: (rechargeDay != null && retailDay != null) ? rechargeDay + retailDay : null,
       conversion_avg: dash?.conversion ?? null,
+      yoy_cars: dash?.yoyCars ?? null,
+      yoy_recharge: dash?.yoyRecharge ?? null,
+      cars_ly_by_site: dash ? Object.fromEntries(dash.carsLyBySite) : null,
     }, 200)
   }
 
