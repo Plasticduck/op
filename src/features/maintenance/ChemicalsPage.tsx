@@ -126,7 +126,7 @@ export default function ChemicalsPage() {
 
               {!data.flexIncluded && (
                 <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-4 py-2.5 text-xs text-warn">
-                  FlexWash sites (MW17, MW18) couldn’t be loaded this time, so they’re not in these totals. Refresh to try again.
+                  The FlexWash sites couldn’t be loaded this time, so they’re not in these totals. Refresh to try again.
                 </div>
               )}
 
@@ -172,8 +172,9 @@ export default function ChemicalsPage() {
 
           <p className="mt-4 text-xs text-ink-subtle">
             Counts every time each package was used — retail washes plus member redemptions. DRB sites come from the POS
-            wash ledger (the same source as the dashboards); the FlexWash sites (MW17, MW18) come from the FlexWash API,
-            counted the same way as the FlexWash Sales report.
+            wash ledger (the same source as the dashboards); FlexWash sites come from the FlexWash API’s paid package
+            lines, from the day each site switched over. FlexWash “- Issue” packages and Wex/Voyager fleet plan lines
+            aren’t counted.
           </p>
         </div>
       </section>

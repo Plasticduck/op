@@ -9,9 +9,9 @@ import { flexwashSales, type FlexSite } from '@/lib/queries/flexwashSales'
 //    report category (BRANCH 001001001); each wash posts exactly one package line
 //    there (members post it too, offset by redemption discounts elsewhere). Site
 //    name comes from SITELIST (SALE.SITE = SITELIST.ID -> SITENAME "MightyWash 0NN").
-//  - FlexWash sites: counted from FlexWash line items exactly as the FlexWash Sales
+//  - FlexWash sites: counted from FlexWash line items like the FlexWash Sales
 //    report does (flexwashSales.lineItemBreakdown -> carsByTier: one paid "Package"
-//    line per wash, member redemptions included).
+//    line per wash, member redemptions included), minus SKIP_FLEX_PACKAGE.
 //  Each FlexWash site switches on its cutover date (flexwash_sites.start_date):
 //  SiteWatch counts it through that day (sites switch mid-day), FlexWash from that
 //  day on, so a month that spans a cutover keeps both halves and nothing is double
@@ -57,6 +57,11 @@ function cutoverExclusions(flex: FlexSite[], start: string, end: string): string
 // the rows carry. Filtered after the fetch rather than in the SQL so the
 // dashboard's query endpoint sees the same query it already accepts.
 const EXCLUDED_SITES = new Set(['MightyWash 019', 'Mighty Wash Headquarters'])
+
+// FlexWash package lines left out of the counts (requested 2026-10-23): the
+// "- Issue" packages (e.g. "Wonder Clean - Issue") and the Wex/Voyager fleet plan
+// lines ("Wex/Voyager Yearly Mighty", "Wex/Voyager 1 Month Super").
+const SKIP_FLEX_PACKAGE = (name: string) => /-\s*issue\s*$/i.test(name.trim()) || /wex|voyager/i.test(name)
 
 // Sort key: the trailing site number ("MightyWash 001" -> 1); names without a
 // number (e.g. Headquarters) sort last.
@@ -110,7 +115,7 @@ async function fetchFlexPerSite(start: string, end: string, flex: FlexSite[]): P
   return Promise.all(
     active.map(async (st) => {
       const from = st.start_date! > start ? st.start_date! : start
-      const bd = await flexwashSales.lineItemBreakdown([st.car_wash_id], from, end)
+      const bd = await flexwashSales.lineItemBreakdown([st.car_wash_id], from, end, { skipPackage: SKIP_FLEX_PACKAGE })
       let wonder = 0, superShine = 0, mighty = 0
       for (const t of bd.carsByTier) {
         if (t.label === 'Wonder') wonder = t.count

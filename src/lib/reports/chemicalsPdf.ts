@@ -55,7 +55,7 @@ export async function exportChemicalsPdf(opts: {
     const y = (doc.lastAutoTable?.finalY ?? 28) + 8
     doc.setFontSize(8)
     doc.setTextColor(150)
-    doc.text('Note: FlexWash sites (MW17, MW18) could not be loaded and are not included in these totals.', 14, y)
+    doc.text('Note: the FlexWash sites could not be loaded and are not included in these totals.', 14, y)
     doc.setTextColor(0)
   }
 

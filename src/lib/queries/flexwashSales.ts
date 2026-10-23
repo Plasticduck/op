@@ -407,7 +407,14 @@ export const flexwashSales = {
   // product line(s) so the price shown is net (like DRB adjusting a wash's value).
   // Tax lines are excluded (they're in the accounting totals). Product names have
   // their per-member code prefix stripped so like items collapse to one line.
-  lineItemBreakdown: async (carWashIds: string[], start: string, end: string): Promise<FlexBreakdown> => {
+  // opts.skipPackage drops matching Package lines from carsByTier only (the
+  // Chemicals report uses it; the Sales report counts every package).
+  lineItemBreakdown: async (
+    carWashIds: string[],
+    start: string,
+    end: string,
+    opts: { skipPackage?: (name: string) => boolean } = {},
+  ): Promise<FlexBreakdown> => {
     const data = await flexApi('/external/accounting/get-line-items-detail', {
       carWashIds,
       dateRange: { start, end },
@@ -451,6 +458,7 @@ export const flexwashSales = {
       if (String(it.type) !== 'Package') continue
       if (!WASH_CLASSES.has(String(it.orderClassification))) continue
       if (String((it.order ?? {}).status) !== 'paid') continue
+      if (opts.skipPackage?.(String(it.name ?? ''))) continue
       const t = tierOf(String(it.name ?? ''))
       tierCount.set(t, (tierCount.get(t) ?? 0) + 1)
     }
