@@ -287,7 +287,10 @@ Deno.serve(async (req) => {
     // Sites where this person is on the clock right now: an open punch (no genuine
     // out, started after their latest clock-out) that's been open no longer than
     // ON_CLOCK_MAX_H. Same open-punch rules as the On the Clock view.
-    const onClockSites = (r: Any): string[] => {
+    // Open shifts right now (site + hours worked so far, clock-in -> now). These
+    // count toward Total hrs as time actually worked; they become paid hours
+    // once the person clocks out.
+    const openShifts = (r: Any): { label: string; hours: number }[] => {
       if (!includesToday) return []
       let latestOut = ''
       for (const t of r.timecardData ?? []) {
@@ -295,21 +298,36 @@ Deno.serve(async (req) => {
         const o = String(t.outPunchDateTimeEffective ?? '')
         if (o && (t.outPunchId != null || o > i) && o > latestOut) latestOut = o
       }
-      const out: string[] = []
+      const out: { label: string; hours: number }[] = []
       for (const t of r.timecardData ?? []) {
         const inEff = String(t.inPunchDateTimeEffective ?? '')
         const outEff = String(t.outPunchDateTimeEffective ?? '')
         const hasOut = !!outEff && (t.outPunchId != null || outEff > inEff)
         const open = !!inEff && !isMidnight(inEff) && !hasOut && (!latestOut || inEff > latestOut)
-        if (open && diffHours(inEff, nowIso) <= ON_CLOCK_MAX_H) {
-          out.push(siteLabel(String((t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? '')))
+        const elapsed = open ? diffHours(inEff, nowIso) : -1
+        if (open && elapsed >= 0 && elapsed <= ON_CLOCK_MAX_H) {
+          out.push({ label: siteLabel(String((t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? '')), hours: elapsed })
         }
       }
       return out
     }
     const markOnClock = (r: Any, empNum: string) => {
-      for (const label of onClockSites(r)) { if (!siteOk(label)) continue; siteOf(label).onClock.add(empNum); onClockAll.add(empNum) }
+      for (const { label } of openShifts(r)) { if (!siteOk(label)) continue; siteOf(label).onClock.add(empNum); onClockAll.add(empNum) }
     }
+    // Add an open shift's time so far to the person's regular hours.
+    const addOpenTime = (r: Any, emp: Emp, empNum: string, type: string, rate: number, skip: (label: string) => boolean) => {
+      for (const { label, hours } of openShifts(r)) {
+        if (skip(label) || !siteOk(label) || hours <= 0) continue
+        const site = siteOf(label)
+        const cost = rate * hours
+        site.emps.add(empNum)
+        site.total += hours; site.cost += cost; site.byType[type] = (site.byType[type] || 0) + hours
+        emp.total += hours; emp.cost += cost; emp.byType[type] = (emp.byType[type] || 0) + hours; emp.sites.add(label)
+        typeTotals[type] = (typeTotals[type] || 0) + hours
+        grandHours += hours; grandCost += cost
+      }
+    }
+    const isPtoItem = (p: Any) => /pto/i.test(String(p.payItemName ?? '')) || String(p.payItemCode) === '03'
     for (let page = 0; scope !== 'only' && page < 200; page++) {
       const d = await getJson(`${base}/api/clients/${client}/legals/${legal}/timecardData?startDate=${startDate}&endDate=${endDate}&pageSize=${PAGE_SIZE}&page=${page}`)
       const results = d.results ?? []
@@ -335,17 +353,22 @@ Deno.serve(async (req) => {
               for (const p of t.payItems ?? []) {
                 const hrs = Number(p.payItemHours) || 0
                 if (!hrs) continue
-                const type = /pto/i.test(String(p.payItemName ?? '')) || String(p.payItemCode) === '03' ? 'PTO' : 'Salaried'
+                const type = isPtoItem(p) ? 'PTO' : 'Salaried'
+                const worked = type === 'PTO' ? 0 : hrs // PTO isn't time worked
                 const site = siteOf(label)
                 site.emps.add(empNum)
-                site.total += hrs; site.byType[type] = (site.byType[type] || 0) + hrs
+                site.total += worked; site.byType[type] = (site.byType[type] || 0) + hrs
                 let emp = empsMap.get(empNum)
                 if (!emp) { emp = { number: empNum, name: sName, payType: 'Salary', rate: rr.rate, rated: rr.rate > 0, total: 0, cost: 0, byType: {}, sites: new Set() }; empsMap.set(empNum, emp) }
-                emp.total += hrs; emp.byType[type] = (emp.byType[type] || 0) + hrs; emp.sites.add(label)
+                emp.total += worked; emp.byType[type] = (emp.byType[type] || 0) + hrs; emp.sites.add(label)
                 typeTotals[type] = (typeTotals[type] || 0) + hrs
-                grandHours += hrs
+                grandHours += worked
               }
             }
+            // Still on the clock: time so far (no added cost; salary covers it).
+            let emp = empsMap.get(empNum)
+            if (!emp) { emp = { number: empNum, name: sName, payType: 'Salary', rate: rr.rate, rated: rr.rate > 0, total: 0, cost: 0, byType: {}, sites: new Set() }; empsMap.set(empNum, emp) }
+            addOpenTime(r, emp, empNum, 'Salaried', 0, (label) => label === 'Corporate')
           }
           continue
         }
@@ -367,13 +390,18 @@ Deno.serve(async (req) => {
             if (!hrs) continue
             const type = String(p.payItemName || p.payItemCode || 'Other')
             const cost = rr.rate * hrs * (/overtime/i.test(type) ? OT_MULTIPLIER : 1)
-            site.total += hrs; site.cost += cost; site.byType[type] = (site.byType[type] || 0) + hrs
-            emp.total += hrs; emp.cost += cost; emp.byType[type] = (emp.byType[type] || 0) + hrs; emp.sites.add(site.site)
+            // PTO is paid (counts in cost and its own column) but isn't time
+            // worked, so it stays out of Total hrs.
+            const worked = isPtoItem(p) ? 0 : hrs
+            site.total += worked; site.cost += cost; site.byType[type] = (site.byType[type] || 0) + hrs
+            emp.total += worked; emp.cost += cost; emp.byType[type] = (emp.byType[type] || 0) + hrs; emp.sites.add(site.site)
             typeTotals[type] = (typeTotals[type] || 0) + hrs
-            grandHours += hrs; grandCost += cost
-            if (rr.rate <= 0) { unratedEmps.add(empNum); unratedHours += hrs }
+            grandHours += worked; grandCost += cost
+            if (rr.rate <= 0 && worked) { unratedEmps.add(empNum); unratedHours += worked }
           }
         }
+        // Still on the clock: time worked so far on the open shift.
+        addOpenTime(r, emp, empNum, 'Hourly', rr.rate, () => false)
       }
     }
 

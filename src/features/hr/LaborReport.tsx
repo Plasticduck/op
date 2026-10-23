@@ -308,8 +308,8 @@ export default function LaborReport({ variant }: { variant: LaborVariant }) {
 
           {showOnClock && (
             <p className="mt-3 text-xs text-ink-muted">
-              Hours are paid hours from finished shifts only. <strong className="text-ink">On the Clock</strong> is how many people are clocked in right now;
-              their current shift is added to the hours once they clock out.
+              <strong className="text-ink">Total hrs</strong> is time actually worked: finished shifts plus time so far for everyone still clocked in
+              (PTO is not included). <strong className="text-ink">On the Clock</strong> is how many people are clocked in right now.
             </p>
           )}
 
