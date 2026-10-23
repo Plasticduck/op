@@ -19,11 +19,13 @@ const nf = (n: number) => n.toLocaleString('en-US')
 const monthLabel = (ym: string) =>
   new Date(ym + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
-const TIERS: Array<{ key: TierKey; label: string; accent: string }> = [
-  { key: 'flash', label: 'Flash', accent: 'text-ok' },
-  { key: 'wonder', label: 'Wonder', accent: 'text-accent' },
-  { key: 'superShine', label: 'Super Shine', accent: 'text-warn' },
-  { key: 'mighty', label: 'Mighty Protector', accent: 'text-danger' },
+// sub: the card caption. optional: not every site has it, so a 0 shows as a dash.
+const TIERS: Array<{ key: TierKey; label: string; accent: string; sub: string; optional?: boolean }> = [
+  { key: 'flash', label: 'Flash', accent: 'text-ok', sub: 'washes · sites that sell it', optional: true },
+  { key: 'wonder', label: 'Wonder', accent: 'text-accent', sub: 'washes · excludes MW19 and HQ' },
+  { key: 'superShine', label: 'Super Shine', accent: 'text-warn', sub: 'washes · excludes MW19 and HQ' },
+  { key: 'mighty', label: 'Mighty Protector', accent: 'text-danger', sub: 'washes · excludes MW19 and HQ' },
+  { key: 'testCar', label: 'Test Car', accent: 'text-ink-muted', sub: 'DRB test washes', optional: true },
 ]
 
 export default function ChemicalsPage() {
@@ -123,13 +125,13 @@ export default function ChemicalsPage() {
           ) : data ? (
             <>
               {/* Grand total */}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 {TIERS.map((t) => (
                   <div key={t.key} className="rounded-xl border border-border bg-content/40 p-4">
                     <div className="text-xs font-medium uppercase tracking-wide text-ink-subtle">{t.label}</div>
                     <div className={`mt-1 text-3xl font-extrabold tabular-nums ${t.accent}`}>{nf(data.grand[t.key])}</div>
                     <div className="mt-0.5 text-[11px] text-ink-subtle">
-                      {t.key === 'flash' ? 'washes · sites that sell it' : 'washes · excludes MW19 and HQ'}
+                      {t.sub}
                     </div>
                   </div>
                 ))}
@@ -167,7 +169,7 @@ export default function ChemicalsPage() {
                 )}
               </div>
               <div className="overflow-x-auto rounded-xl border border-border">
-                <table className="w-full min-w-[600px] text-sm">
+                <table className="w-full min-w-[680px] text-sm">
                   <thead className="bg-content text-left text-[11px] uppercase tracking-wide text-ink-subtle">
                     <tr>
                       <th className="px-3 py-2 font-medium">Site</th>
@@ -210,8 +212,8 @@ export default function ChemicalsPage() {
                             </td>
                             {TIERS.map((t) => (
                               <td key={t.key} className="px-3 py-2 text-right tabular-nums text-ink-muted">
-                                {/* Not every site sells Flash: a dash, not a 0. */}
-                                {t.key === 'flash' && r.flash === 0 ? <span className="text-ink-subtle">—</span> : nf(r[t.key])}
+                                {/* Not every site has Flash / Test Car: a dash, not a 0. */}
+                                {t.optional && r[t.key] === 0 ? <span className="text-ink-subtle">—</span> : nf(r[t.key])}
                               </td>
                             ))}
                             <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink">{nf(r.total)}</td>
@@ -257,7 +259,9 @@ export default function ChemicalsPage() {
             Counts every time each package was used — retail washes plus member redemptions. DRB sites come from the POS
             wash ledger (the same source as the dashboards); FlexWash sites come from the FlexWash API’s paid package
             lines, from the day each site switched over (“- Issue” washes count under their package); the few washes
-            still rung up in DRB after a switch count too. Wex/Voyager fleet plan lines aren’t counted. Flash is only sold at some sites; a dash means the site had no Flash washes. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
+            still rung up in DRB after a switch count too. Refunded DRB washes net to zero, as in DRB’s car count.
+            Wex/Voyager fleet plan lines aren’t counted. Flash is only sold at some sites, and Test Car is DRB’s test
+            washes (left out of Site Performance); a dash means none that month. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
             sheet, with no package split: they’re in the grand total of washes but not in the package totals.
           </p>
         </div>

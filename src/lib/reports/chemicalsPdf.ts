@@ -38,20 +38,21 @@ export async function exportChemicalsPdf(opts: {
     headStyles: { fillColor: ACCENT },
     footStyles: { fillColor: [237, 240, 245], textColor: 20, fontStyle: 'bold' },
     margin: { left: 14, right: 14 },
-    head: [['Site', 'Flash', 'Wonder', 'Super Shine', 'Mighty Protector', 'Total']],
+    head: [['Site', 'Flash', 'Wonder', 'Super Shine', 'Mighty Protector', 'Test Car', 'Total']],
     body: opts.sites.map((r) => r.totalOnly
-      ? [`${r.site} †`, '—', '—', '—', '—', nf(r.total)]
-      : [r.site, r.flash ? nf(r.flash) : '—', nf(r.wonder), nf(r.superShine), nf(r.mighty), nf(r.total)]),
+      ? [`${r.site} †`, '—', '—', '—', '—', '—', nf(r.total)]
+      : [r.site, r.flash ? nf(r.flash) : '—', nf(r.wonder), nf(r.superShine), nf(r.mighty), r.testCar ? nf(r.testCar) : '—', nf(r.total)]),
     foot: [[
       'Grand total',
       { content: nf(opts.grand.flash), styles: { halign: 'right' } },
       { content: nf(opts.grand.wonder), styles: { halign: 'right' } },
       { content: nf(opts.grand.superShine), styles: { halign: 'right' } },
       { content: nf(opts.grand.mighty), styles: { halign: 'right' } },
+      { content: nf(opts.grand.testCar), styles: { halign: 'right' } },
       { content: nf(opts.grand.total), styles: { halign: 'right' } },
     ]],
     showFoot: 'lastPage',
-    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } },
   })
 
   const notes: string[] = []

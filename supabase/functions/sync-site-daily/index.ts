@@ -12,7 +12,9 @@
 // Processes at most maxDays days per call; the caller advances start to
 // nextStart until done. The hourly cron covers yesterday + today.
 //
-// Body: { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', maxDays?: number, parts?: 'drb' | 'flex' | 'both' }
+// DRB runs also store each site's "Test Car" washes (SiteWatch ledger), which
+// Site Performance subtracts from the official car count.
+// Body: { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', maxDays?: number, parts?: 'drb' | 'flex' | 'tests' | 'both' }
 // Auth: service-role JWT (cron/backfill driver) or a signed-in owner.
 // Secrets: MW_DASHBOARD_URL (optional), MW_DASHBOARD_PASSWORD,
 //          FLEXWASH_CLIENT_ID, FLEXWASH_CLIENT_SECRET.
@@ -100,6 +102,7 @@ type Row = {
   drb_cars?: number | null
   drb_sales?: number | null
   drb_recharge?: number | null
+  drb_test_cars?: number
   flex_cars?: number
   flex_sales?: number
   flex_recharge?: number
@@ -131,6 +134,37 @@ async function guidedDay(base: string, cookie: string, metric: string, day: stri
     return m
   }
   return null
+}
+
+// "Test Car" washes per site per day over [start, end], straight from the
+// SiteWatch ledger (Carwashes category), net of refunds. The official car count
+// includes them; Site Performance takes them back out. Keyed date -> site number.
+async function testCarDays(base: string, cookie: string, start: string, end: string): Promise<Map<string, Map<number, number>> | null> {
+  const sql =
+    'SELECT TRIM(sl.SITENAME), CAST(s.LOGDATE AS DATE), SUM(si.QTY) FROM SALEITEMS si ' +
+    'JOIN SALE s ON s.SITE=si.SITE AND s.OBJID=si.SALEID JOIN ITEM it ON it.OBJID=si.ITEM ' +
+    'JOIN ITEMRPTCATEGORY rc ON rc.OBJID=it.REPORTCATEGORY JOIN SITELIST sl ON sl.ID=s.SITE ' +
+    `WHERE s.LOGDATE>='${start}' AND s.LOGDATE<='${end}' AND si.FLAGS>=0 AND rc.BRANCH='001001001' ` +
+    "AND UPPER(it.NAME) LIKE '%TEST CAR%' GROUP BY 1, 2"
+  const res = await fetch(`${base}/api/custom_query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie, 'User-Agent': BROWSER_UA },
+    body: JSON.stringify({ sql }),
+    signal: AbortSignal.timeout(60000),
+  })
+  const j = await res.json().catch(() => null) as { rows?: [string, string, number][]; error?: unknown } | null
+  if (!res.ok || !j?.rows || j.error) return null
+  const out = new Map<string, Map<number, number>>()
+  for (const [name, date, qty] of j.rows) {
+    // Current stores only ("MightyWash 0NN"); "OLD MW.." rows would land on the wrong site.
+    const m = String(name).match(/^MightyWash (\d+)$/)
+    if (!m) continue
+    const day = String(date).slice(0, 10)
+    const byDay = out.get(day) ?? new Map<number, number>()
+    byDay.set(Number(m[1]), num(qty))
+    out.set(day, byDay)
+  }
+  return out
 }
 
 // ---- FlexWash -------------------------------------------------------------
@@ -227,8 +261,10 @@ Deno.serve(async (req) => {
   const start = body.start as string
   const maxDays = Math.max(1, Math.min(60, Math.round(body.maxDays ?? 10)))
   const end = [body.end as string, addDays(start, maxDays - 1)].sort()[0]
-  const doDrb = body.parts !== 'flex'
-  const doFlex = body.parts !== 'drb'
+  // parts: 'drb' | 'flex' | 'tests' (Test Car counts only) | both (default).
+  const doDrb = body.parts !== 'flex' && body.parts !== 'tests'
+  const doTests = body.parts !== 'flex'
+  const doFlex = body.parts !== 'drb' && body.parts !== 'tests'
   const days = daysBetween(start, end)
   const now = new Date().toISOString()
   const errors: string[] = []
@@ -249,7 +285,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (doDrb) {
+  if (doDrb || doTests) {
     let cookie: string | null = null
     try {
       cookie = await login(base, password)
@@ -261,22 +297,38 @@ Deno.serve(async (req) => {
       const optRes = await fetch(`${base}/api/guided_query_options`, { headers: { Cookie: cookie, 'User-Agent': BROWSER_UA } })
       const opts = await optRes.json().catch(() => null) as { sites?: { name: string }[] } | null
       const names = [...new Set([...(opts?.sites ?? []).map((s) => s.name), ...flex.map((f) => swName(f.site_number))])]
-      // Two days at a time (three queries each) — gentle on the production dashboard.
-      await pool(days, 2, async (day) => {
-        const [cars, sales, recharge] = await Promise.all(
-          ['cars', 'revenue', 'recharge'].map((m) => guidedDay(base, cookie!, m, day, names)),
-        )
-        if (!cars && !sales && !recharge) { errors.push(`${day}: dashboard returned nothing`); return }
-        const nums = new Set<number>([...(cars?.keys() ?? []), ...(sales?.keys() ?? []), ...(recharge?.keys() ?? [])])
-        const rows: Row[] = [...nums].map((n) => ({
-          account_id: MW_ACCOUNT, site_number: n, date: day, updated_at: now,
-          // Only overwrite a metric whose query worked.
-          ...(cars ? { drb_cars: cars.get(n) ?? null } : {}),
-          ...(sales ? { drb_sales: sales.get(n) ?? null } : {}),
-          ...(recharge ? { drb_recharge: recharge.get(n) ?? null } : {}),
-        }))
+      const known = new Set(names.map(siteNumber).filter((n): n is number => n != null))
+      const tests = doTests ? await testCarDays(base, cookie, start, end).catch(() => null) : null
+      if (doTests && !tests) errors.push('test cars: query failed')
+      if (doDrb) {
+        // Two days at a time (three queries each) — gentle on the production dashboard.
+        await pool(days, 2, async (day) => {
+          const [cars, sales, recharge] = await Promise.all(
+            ['cars', 'revenue', 'recharge'].map((m) => guidedDay(base, cookie!, m, day, names)),
+          )
+          if (!cars && !sales && !recharge) { errors.push(`${day}: dashboard returned nothing`); return }
+          const nums = new Set<number>([...(cars?.keys() ?? []), ...(sales?.keys() ?? []), ...(recharge?.keys() ?? [])])
+          const rows: Row[] = [...nums].map((n) => ({
+            account_id: MW_ACCOUNT, site_number: n, date: day, updated_at: now,
+            // Only overwrite a metric whose query worked.
+            ...(cars ? { drb_cars: cars.get(n) ?? null } : {}),
+            ...(sales ? { drb_sales: sales.get(n) ?? null } : {}),
+            ...(recharge ? { drb_recharge: recharge.get(n) ?? null } : {}),
+            ...(tests ? { drb_test_cars: tests.get(day)?.get(n) ?? 0 } : {}),
+          }))
+          await save(rows)
+        })
+      } else if (tests) {
+        // Test Car counts only (backfill): just the site-days that had any, for
+        // sites the dashboard reports on (so no stray rows for e.g. the lube shop).
+        const rows: Row[] = []
+        for (const [day, bySite] of tests) {
+          for (const [n, v] of bySite) {
+            if (known.has(n)) rows.push({ account_id: MW_ACCOUNT, site_number: n, date: day, updated_at: now, drb_test_cars: v })
+          }
+        }
         await save(rows)
-      })
+      }
     }
   }
 
