@@ -15,10 +15,11 @@ import { fetchMonthlyCars } from '@/lib/queries/sitePerformance'
 //  - FlexWash sites: counted from FlexWash line items like the FlexWash Sales
 //    report does (flexwashSales.lineItemBreakdown -> carsByTier: one paid "Package"
 //    line per wash, member redemptions included), minus SKIP_FLEX_PACKAGE.
-//  Each FlexWash site switches on its cutover date (flexwash_sites.start_date):
-//  SiteWatch counts it through that day (sites switch mid-day), FlexWash from that
-//  day on, so a month that spans a cutover keeps both halves and nothing is double
-//  counted (SiteWatch only has stray residuals after cutover). One row per site.
+//  Each FlexWash site adds FlexWash from its cutover date (flexwash_sites.start_date)
+//  on, while SiteWatch counts every day: before the cutover that's the whole site,
+//  on the cutover day the half before the switch, and after it a few stray washes
+//  still rung up in SiteWatch, which Operator keeps (as the car count sheet and
+//  Site Performance do; the dashboard's TTAF drops them). One row per site.
 //  - Sites on neither system (MW33): their monthly car total from
 //    site_performance_months (the car count sheet), shown as a total-only row with
 //    no package split. It counts in the grand total of washes, not the packages.
@@ -54,22 +55,6 @@ const emptyRow = (site: string): SitePackageRow =>
   ({ site, flash: 0, wonder: 0, superShine: 0, mighty: 0, total: 0, packages: [] })
 const tierSum = (r: PackageTotals) => r.flash + r.wonder + r.superShine + r.mighty
 
-const dayAfter = (d: string) => new Date(new Date(d + 'T00:00:00Z').getTime() + 86_400_000).toISOString().slice(0, 10)
-
-// SQL condition that drops each FlexWash site's SiteWatch rows after its cutover
-// (SITENAME is "MightyWash 0NN"). The cutover day itself keeps its SiteWatch rows:
-// sites switch mid-day (e.g. MW12 on 9/14: 192 washes in SiteWatch, 65 in
-// FlexWash), and after that SiteWatch only has stray residuals. Sites not yet on
-// FlexWash, or cutting over after the range, are left alone.
-function cutoverExclusions(flex: FlexSite[], start: string, end: string): string {
-  return flex
-    .filter((s) => s.start_date && dayAfter(s.start_date) <= end)
-    .map((s) => dayAfter(s.start_date!) <= start
-      ? `AND TRIM(sl.SITENAME)<>'${swName(s.site_number)}' `
-      : `AND NOT (TRIM(sl.SITENAME)='${swName(s.site_number)}' AND s.LOGDATE>='${dayAfter(s.start_date!)}') `)
-    .join('')
-}
-
 // Left out of the report and its grand total (requested 2026-10-20): MW19 is the
 // lube shop and Headquarters isn't a wash site. Matched on the SiteWatch SITENAME
 // the rows carry. Filtered after the fetch rather than in the SQL so the
@@ -89,7 +74,7 @@ function siteNum(name: string): number {
   return m ? Number(m[1]) : Number.POSITIVE_INFINITY
 }
 
-async function fetchSiteWatchPerSite(start: string, end: string, flex: FlexSite[]): Promise<SitePackageRow[]> {
+async function fetchSiteWatchPerSite(start: string, end: string): Promise<SitePackageRow[]> {
   const sql =
     "SELECT TRIM(sl.SITENAME) AS SITE, (CASE " +
     "WHEN UPPER(it.NAME) LIKE '%MIGHTY PROT%' THEN 'M' " +
@@ -103,7 +88,6 @@ async function fetchSiteWatchPerSite(start: string, end: string, flex: FlexSite[
     `WHERE s.LOGDATE>='${start}' AND s.LOGDATE<='${end}' AND si.FLAGS>=0 AND rc.BRANCH='001001001' ` +
     "AND (UPPER(it.NAME) LIKE '%MIGHTY PROT%' OR UPPER(it.NAME) LIKE '%SUPER SHINE%' OR UPPER(it.NAME) LIKE '%WONDER%' " +
     "OR UPPER(it.NAME) LIKE '%FLASH%') " +
-    cutoverExclusions(flex, start, end) +
     "GROUP BY 1, 2, 3"
 
   const { data, error } = await supabase.functions.invoke('site-performance', {
@@ -155,8 +139,10 @@ async function fetchFlexPerSite(start: string, end: string, flex: FlexSite[]): P
 
 export async function fetchPackageReport(ym: string): Promise<PackageReport> {
   const { start, end } = monthRange(ym)
-  const flexSites = await flexwashSales.sites().catch(() => [] as FlexSite[])
-  const sw = await fetchSiteWatchPerSite(start, end, flexSites)
+  const [flexSites, sw] = await Promise.all([
+    flexwashSales.sites().catch(() => [] as FlexSite[]),
+    fetchSiteWatchPerSite(start, end),
+  ])
   // FlexWash is best-effort: if it fails, still show the SiteWatch sites and flag it.
   let flex: SitePackageRow[] = []
   let flexIncluded = false
