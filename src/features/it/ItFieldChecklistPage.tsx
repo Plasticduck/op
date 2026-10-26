@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, ClipboardCheck, Loader2, MessageSquare, Play, Send, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, ClipboardCheck, Download, Loader2, MessageSquare, Play, Send, Trash2, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -15,6 +15,7 @@ import {
   type ItChecklistItem,
   type ItFieldChecklistRow,
 } from '@/lib/queries/itFieldChecklists'
+import { downloadItFieldChecklistPdf } from '@/lib/reports/itFieldChecklistPdf'
 
 // IT Field Checklist: an IT field tech works through the checks at a site,
 // checking items off, attaching photos or videos and commenting where needed.
@@ -161,6 +162,7 @@ function ChecklistList() {
                   <th className="px-3 py-2 text-right font-medium">Issues</th>
                   <th className="px-3 py-2 text-right font-medium">Comments</th>
                   <th className="px-3 py-2 text-right font-medium">Photos / videos</th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -179,6 +181,9 @@ function ChecklistList() {
                       </td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{t.comments || '–'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{t.media || '–'}</td>
+                      <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                        <PdfButton row={r} label="PDF" />
+                      </td>
                     </tr>
                   )
                 })}
@@ -355,9 +360,14 @@ function ChecklistView({ id }: { id: string }) {
               : `Started ${fmtStamp(row.created_at)}`}
           </p>
         </div>
-        {row.status === 'submitted'
-          ? <span className="inline-flex items-center gap-1 rounded-full bg-ok-soft px-2.5 py-1 text-xs font-semibold text-ok"><CheckCircle2 className="size-3.5" /> Submitted</span>
-          : <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">In progress</span>}
+        {row.status === 'submitted' ? (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-ok-soft px-2.5 py-1 text-xs font-semibold text-ok"><CheckCircle2 className="size-3.5" /> Submitted</span>
+            <PdfButton row={{ ...row, items: items as unknown as ItFieldChecklistRow['items'], notes }} label="Export PDF" />
+          </div>
+        ) : (
+          <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">In progress</span>
+        )}
       </div>
 
       <Progress checked={t.checked} issues={t.issues} total={t.total} className="mt-4" />
@@ -508,6 +518,28 @@ function ChecklistView({ id }: { id: string }) {
         </div>
       )}
     </div>
+  )
+}
+
+// Export a submitted checklist to PDF (photos are fetched and embedded, so it
+// can take a moment with a lot of media).
+function PdfButton({ row, label }: { row: ItFieldChecklistRow; label: string }) {
+  const [busy, setBusy] = useState(false)
+  const run = async () => {
+    setBusy(true)
+    try {
+      await downloadItFieldChecklistPdf(row)
+    } catch {
+      window.alert('Could not build the PDF. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button type="button" onClick={() => void run()} disabled={busy}
+      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-ink hover:bg-content disabled:opacity-60">
+      {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />} {label}
+    </button>
   )
 }
 
