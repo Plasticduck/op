@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowLeft, Camera, CheckCircle2, ClipboardCheck, Loader2, MessageSquare, Play, Send, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, ClipboardCheck, Loader2, MessageSquare, Play, Send, Trash2, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -28,6 +28,7 @@ const fmtStamp = (iso: string) => format(new Date(iso), 'MMM d, yyyy h:mm a')
 function tally(items: ItChecklistItem[]) {
   return {
     checked: items.filter((i) => i.checked).length,
+    issues: items.filter((i) => i.issue).length,
     total: items.length,
     comments: items.filter((i) => i.comment.trim()).length,
     media: items.reduce((a, i) => a + i.media.length, 0),
@@ -128,7 +129,7 @@ function ChecklistList() {
                       </button>
                     )}
                   </div>
-                  <Progress checked={t.checked} total={t.total} className="mt-3" />
+                  <Progress checked={t.checked} issues={t.issues} total={t.total} className="mt-3" />
                   <div className="mt-3">
                     <Link to={`/app/it-field-checklist/${r.id}`}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-content px-3 py-1.5 text-sm font-medium text-ink hover:border-accent">
@@ -157,6 +158,7 @@ function ChecklistList() {
                   <th className="px-3 py-2 font-medium">Site</th>
                   <th className="px-3 py-2 font-medium">Tech</th>
                   <th className="px-3 py-2 text-right font-medium">Checked</th>
+                  <th className="px-3 py-2 text-right font-medium">Issues</th>
                   <th className="px-3 py-2 text-right font-medium">Comments</th>
                   <th className="px-3 py-2 text-right font-medium">Photos / videos</th>
                 </tr>
@@ -169,8 +171,11 @@ function ChecklistList() {
                       <td className="whitespace-nowrap px-3 py-2.5 text-ink-muted">{fmtDay(r.submitted_at ?? r.created_at)}</td>
                       <td className="px-3 py-2.5 font-medium text-ink">{r.location?.name ?? '–'}</td>
                       <td className="px-3 py-2.5 text-ink-muted">{r.tech_name ?? '–'}</td>
-                      <td className={cn('px-3 py-2.5 text-right tabular-nums', t.checked < t.total ? 'font-semibold text-warn' : 'text-ink-muted')}>
+                      <td className={cn('px-3 py-2.5 text-right tabular-nums', t.checked + t.issues < t.total ? 'font-semibold text-warn' : 'text-ink-muted')}>
                         {t.checked} / {t.total}
+                      </td>
+                      <td className={cn('px-3 py-2.5 text-right tabular-nums', t.issues ? 'font-semibold text-danger' : 'text-ink-muted')}>
+                        {t.issues || '–'}
                       </td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{t.comments || '–'}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-ink-muted">{t.media || '–'}</td>
@@ -186,16 +191,22 @@ function ChecklistList() {
   )
 }
 
-function Progress({ checked, total, className }: { checked: number; total: number; className?: string }) {
-  const pct = total ? Math.round((checked / total) * 100) : 0
+// Done = checked or marked an issue. Issues show as the red part of the bar.
+function Progress({ checked, issues, total, className }: { checked: number; issues: number; total: number; className?: string }) {
+  const done = checked + issues
+  const pct = total ? Math.round((done / total) * 100) : 0
   return (
     <div className={className}>
       <div className="flex items-baseline justify-between text-xs text-ink-muted">
-        <span>{checked} of {total} checked</span>
+        <span>
+          {done} of {total} done
+          {issues > 0 && <span className="font-semibold text-danger"> · {issues} issue{issues === 1 ? '' : 's'}</span>}
+        </span>
         <span className="tabular-nums">{pct}%</span>
       </div>
-      <div className="mt-1 h-2 overflow-hidden rounded-full bg-content">
-        <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-ok' : 'bg-accent')} style={{ width: `${pct}%` }} />
+      <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-content">
+        <div className={cn('h-full transition-all', pct === 100 && !issues ? 'bg-ok' : 'bg-accent')} style={{ width: `${total ? (checked / total) * 100 : 0}%` }} />
+        <div className="h-full bg-danger transition-all" style={{ width: `${total ? (issues / total) * 100 : 0}%` }} />
       </div>
     </div>
   )
@@ -284,10 +295,23 @@ function ChecklistView({ id }: { id: string }) {
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, media: i.media.filter((m) => m.path !== path) } : i)))
   }
 
+  // Marking an issue clears the check (and checking clears the issue); an issue
+  // opens its comment box, since it needs a comment before submitting.
+  const toggleIssue = (i: ItChecklistItem) => {
+    update(i.key, i.issue ? { issue: false } : { issue: true, checked: false })
+    if (!i.issue) setOpenComments((prev) => new Set(prev).add(i.key))
+  }
+
   const submit = async () => {
-    const left = items.filter((i) => !i.checked).length
+    const needComment = items.filter((i) => i.issue && !i.comment.trim())
+    if (needComment.length) {
+      setError(`Add a comment for every item marked Issue (${needComment.length} still need${needComment.length === 1 ? 's' : ''} one).`)
+      return
+    }
+    setError(null)
+    const left = items.filter((i) => !i.checked && !i.issue).length
     const msg = left
-      ? `${left} item${left === 1 ? ' is' : 's are'} not checked. Submit anyway? Leave a comment on anything that isn't working.`
+      ? `${left} item${left === 1 ? ' is' : 's are'} not checked or marked as an issue. Submit anyway?`
       : 'Submit this checklist? It can’t be edited after.'
     if (!window.confirm(msg)) return
     setSubmitting(true)
@@ -336,7 +360,7 @@ function ChecklistView({ id }: { id: string }) {
           : <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">In progress</span>}
       </div>
 
-      <Progress checked={t.checked} total={t.total} className="mt-4" />
+      <Progress checked={t.checked} issues={t.issues} total={t.total} className="mt-4" />
       {error && <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
       {sections.map((s) => (
@@ -344,19 +368,42 @@ function ChecklistView({ id }: { id: string }) {
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">{s.title}</h2>
           <div className="flex flex-col gap-2.5">
             {s.items.map((i) => {
-              const showComment = !!i.comment || openComments.has(i.key)
+              const showComment = !!i.comment || !!i.issue || openComments.has(i.key)
+              const commentMissing = !!i.issue && !i.comment.trim()
               return (
-                <div key={i.key} className={cn('rounded-xl border bg-card p-3', i.checked ? 'border-ok/40' : 'border-border')}>
-                  <label className={cn('flex items-start gap-3', canEdit && 'cursor-pointer')}>
-                    <input
-                      type="checkbox"
-                      checked={i.checked}
-                      disabled={!canEdit}
-                      onChange={(e) => update(i.key, { checked: e.target.checked })}
-                      className="mt-0.5 size-5 shrink-0 accent-accent"
-                    />
-                    <span className="text-sm leading-snug text-ink">{i.label}</span>
-                  </label>
+                <div key={i.key} className={cn(
+                  'rounded-xl border p-3',
+                  i.issue ? 'border-danger/60 bg-danger-soft/40' : i.checked ? 'border-ok/40 bg-card' : 'border-border bg-card',
+                )}>
+                  <div className="flex items-start gap-3">
+                    <label className={cn('flex min-w-0 flex-1 items-start gap-3', canEdit && 'cursor-pointer')}>
+                      <input
+                        type="checkbox"
+                        checked={i.checked}
+                        disabled={!canEdit}
+                        onChange={(e) => update(i.key, e.target.checked ? { checked: true, issue: false } : { checked: false })}
+                        className="mt-0.5 size-5 shrink-0 accent-accent"
+                      />
+                      <span className="text-sm leading-snug text-ink">{i.label}</span>
+                    </label>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleIssue(i)}
+                        aria-pressed={!!i.issue}
+                        className={cn(
+                          'inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-semibold transition',
+                          i.issue ? 'border-danger bg-danger text-white' : 'border-danger/50 bg-card text-danger hover:bg-danger-soft',
+                        )}
+                      >
+                        <AlertTriangle className="size-3.5" /> Issue
+                      </button>
+                    ) : i.issue ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-danger px-2.5 py-1 text-xs font-semibold text-white">
+                        <AlertTriangle className="size-3.5" /> Issue
+                      </span>
+                    ) : null}
+                  </div>
 
                   {i.media.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2 pl-8">
@@ -390,13 +437,19 @@ function ChecklistView({ id }: { id: string }) {
                   {showComment && (
                     <div className="mt-3 pl-8">
                       {canEdit ? (
-                        <textarea
-                          value={i.comment}
-                          onChange={(e) => update(i.key, { comment: e.target.value })}
-                          rows={2}
-                          placeholder="Comment"
-                          className="w-full rounded-lg border border-border bg-content px-3 py-2 text-sm text-ink"
-                        />
+                        <>
+                          <textarea
+                            value={i.comment}
+                            onChange={(e) => update(i.key, { comment: e.target.value })}
+                            rows={2}
+                            placeholder={i.issue ? 'Describe the issue (required)' : 'Comment'}
+                            className={cn(
+                              'w-full rounded-lg border bg-content px-3 py-2 text-sm text-ink',
+                              commentMissing ? 'border-danger' : 'border-border',
+                            )}
+                          />
+                          {commentMissing && <p className="mt-1 text-xs font-medium text-danger">A comment is required for an issue.</p>}
+                        </>
                       ) : (
                         <p className="whitespace-pre-wrap rounded-lg bg-content px-3 py-2 text-sm text-ink">{i.comment}</p>
                       )}

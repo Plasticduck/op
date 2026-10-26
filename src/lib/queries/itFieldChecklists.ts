@@ -11,11 +11,14 @@ export type ItFieldChecklist = T['it_field_checklists']['Row']
 export type ItFieldChecklistRow = ItFieldChecklist & { location: { name: string } | null }
 
 export type ItMedia = { path: string; kind: 'image' | 'video'; name: string }
+// An item is either checked (fine), marked an issue (needs a comment), or not
+// done yet. `issue` is absent on checklists saved before the option existed.
 export type ItChecklistItem = {
   key: string
   section: string
   label: string
   checked: boolean
+  issue?: boolean
   comment: string
   media: ItMedia[]
 }
@@ -27,7 +30,7 @@ export const IT_MEDIA_MAX_BYTES = 50 * 1024 * 1024
 // A fresh set of unchecked items from the current checklist definition.
 export function blankItems(): ItChecklistItem[] {
   return IT_FIELD_CHECKLIST.flatMap((s) =>
-    s.items.map((i) => ({ key: i.key, section: s.title, label: i.label, checked: false, comment: '', media: [] })),
+    s.items.map((i) => ({ key: i.key, section: s.title, label: i.label, checked: false, issue: false, comment: '', media: [] })),
   )
 }
 
