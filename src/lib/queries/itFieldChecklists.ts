@@ -69,6 +69,10 @@ export const itFieldChecklists = {
       })
       .eq('id', id),
   remove: (id: string) => supabase.from('it_field_checklists').delete().eq('id', id),
+  // Email a submitted checklist's report (PDF attached) to Mighty Wash. Stamps
+  // emailed_at on success.
+  emailReport: (id: string, pdfBase64: string | null, fileName: string | null) =>
+    supabase.functions.invoke('it-field-checklist-email', { body: { checklist_id: id, pdf_base64: pdfBase64, file_name: fileName } }),
 
   // Upload one photo or video for a checklist, returning its media entry.
   uploadMedia: async (accountId: string, checklistId: string, file: File): Promise<{ media: ItMedia | null; error: string | null }> => {

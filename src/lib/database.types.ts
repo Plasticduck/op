@@ -3122,6 +3122,7 @@ export type Database = {
         Row: {
           account_id: string
           created_at: string
+          emailed_at: string | null
           id: string
           items: Json
           location_id: string | null
@@ -3135,6 +3136,7 @@ export type Database = {
         Insert: {
           account_id: string
           created_at?: string
+          emailed_at?: string | null
           id?: string
           items?: Json
           location_id?: string | null
@@ -3148,6 +3150,7 @@ export type Database = {
         Update: {
           account_id?: string
           created_at?: string
+          emailed_at?: string | null
           id?: string
           items?: Json
           location_id?: string | null

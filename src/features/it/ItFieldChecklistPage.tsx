@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, ClipboardCheck, Download, Loader2, MessageSquare, Play, Send, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, ClipboardCheck, Download, Loader2, Mail, MessageSquare, Play, Send, Trash2, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -15,7 +15,7 @@ import {
   type ItChecklistItem,
   type ItFieldChecklistRow,
 } from '@/lib/queries/itFieldChecklists'
-import { downloadItFieldChecklistPdf } from '@/lib/reports/itFieldChecklistPdf'
+import { downloadItFieldChecklistPdf, itFieldChecklistPdfBase64 } from '@/lib/reports/itFieldChecklistPdf'
 
 // IT Field Checklist: an IT field tech works through the checks at a site,
 // checking items off, attaching photos or videos and commenting where needed.
@@ -231,22 +231,35 @@ function ChecklistView({ id }: { id: string }) {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [emailState, setEmailState] = useState<'idle' | 'sending' | 'failed'>('idle')
   const dirty = useRef(false)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<ItFieldChecklistRow | null> => {
     const { data } = await itFieldChecklists.get(id)
     const r = data as unknown as ItFieldChecklistRow | null
-    if (!r) { setMissing(true); return }
+    if (!r) { setMissing(true); return null }
     const its = itemsOf(r)
     setRow(r)
     setItems(its)
     setNotes(r.notes ?? '')
     dirty.current = false
     setUrls(await itFieldChecklists.mediaUrls(its.flatMap((i) => i.media.map((m) => m.path))))
+    return r
   }, [id])
   useEffect(() => { void load() }, [load])
 
   const canEdit = !!row && row.status === 'draft' && row.tech_id === profile?.id
+  // The tech who did it (or an owner) can re-send the emailed copy.
+  const canSend = !!row && (row.tech_id === profile?.id || profile?.role === 'owner')
+
+  // Email the report (PDF attached) to Mighty Wash; emailed_at is stamped on success.
+  const sendEmail = async (r: ItFieldChecklistRow) => {
+    setEmailState('sending')
+    const pdf = await itFieldChecklistPdfBase64(r).catch(() => null)
+    const { error: err } = await itFieldChecklists.emailReport(r.id, pdf?.base64 ?? null, pdf?.fileName ?? null)
+    setEmailState(err ? 'failed' : 'idle')
+    void load()
+  }
 
   // Save as they go: a short pause after the last change. A change still waiting
   // when they leave the page is saved on the way out.
@@ -324,7 +337,8 @@ function ChecklistView({ id }: { id: string }) {
     const { error: err } = await itFieldChecklists.submit(id, items, notes)
     setSubmitting(false)
     if (err) { setError(err.message); return }
-    void load()
+    const fresh = await load()
+    if (fresh) void sendEmail(fresh)
   }
 
   const sections = useMemo(() => {
@@ -369,6 +383,26 @@ function ChecklistView({ id }: { id: string }) {
           <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">In progress</span>
         )}
       </div>
+
+      {row.status === 'submitted' && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          {emailState === 'sending' ? (
+            <span className="inline-flex items-center gap-1.5 text-ink-muted"><Loader2 className="size-3.5 animate-spin" /> Emailing the report to Mighty Wash…</span>
+          ) : row.emailed_at ? (
+            <span className="inline-flex items-center gap-1.5 text-ok"><Mail className="size-3.5" /> Report emailed {fmtStamp(row.emailed_at)}</span>
+          ) : (
+            <>
+              <span className="text-warn">{emailState === 'failed' ? 'The report email didn’t go out.' : 'The report hasn’t been emailed yet.'}</span>
+              {canSend && (
+                <button type="button" onClick={() => void sendEmail(row)}
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-medium text-ink hover:bg-content">
+                  <Mail className="size-3.5" /> Send email
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <Progress checked={t.checked} issues={t.issues} total={t.total} className="mt-4" />
       {error && <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}

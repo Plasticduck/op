@@ -39,7 +39,8 @@ async function resolveMedia(items: ItChecklistItem[]): Promise<Record<string, Me
           im.onerror = reject
           im.src = objUrl
         })
-        const scale = Math.min(1, 1000 / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
+        // ~700px is sharp at thumbnail size and keeps the emailed copy small.
+        const scale = Math.min(1, 700 / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
         const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale))
         const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale))
         const canvas = document.createElement('canvas')
@@ -48,7 +49,7 @@ async function resolveMedia(items: ItChecklistItem[]): Promise<Record<string, Me
         const ctx = canvas.getContext('2d')
         if (!ctx) return
         ctx.drawImage(img, 0, 0, w, h)
-        out[m.path] = { url, kind: 'image', dataUrl: canvas.toDataURL('image/jpeg', 0.8), w, h }
+        out[m.path] = { url, kind: 'image', dataUrl: canvas.toDataURL('image/jpeg', 0.78), w, h }
       } finally {
         URL.revokeObjectURL(objUrl)
       }
@@ -63,7 +64,7 @@ function statusOf(i: ItChecklistItem): 'Issue' | 'Checked' | 'Not done' {
   return i.issue ? 'Issue' : i.checked ? 'Checked' : 'Not done'
 }
 
-export async function downloadItFieldChecklistPdf(row: ItFieldChecklistRow): Promise<void> {
+async function buildItFieldChecklistPdf(row: ItFieldChecklistRow): Promise<{ doc: Doc; fileName: string }> {
   const items = itemsOf(row)
   const [{ jsPDF }, autoTableMod, logo, media] = await Promise.all([
     import('jspdf'),
@@ -237,5 +238,16 @@ export async function downloadItFieldChecklistPdf(row: ItFieldChecklistRow): Pro
 
   const day = format(new Date(row.submitted_at ?? row.created_at), 'yyyy-MM-dd')
   const slug = site.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'site'
-  doc.save(`it-field-checklist-${slug}-${day}.pdf`)
+  return { doc, fileName: `it-field-checklist-${slug}-${day}.pdf` }
+}
+
+export async function downloadItFieldChecklistPdf(row: ItFieldChecklistRow): Promise<void> {
+  const { doc, fileName } = await buildItFieldChecklistPdf(row)
+  doc.save(fileName)
+}
+
+// The PDF as base64 (no data: prefix), for the emailed copy.
+export async function itFieldChecklistPdfBase64(row: ItFieldChecklistRow): Promise<{ base64: string; fileName: string }> {
+  const { doc, fileName } = await buildItFieldChecklistPdf(row)
+  return { base64: String(doc.output('datauristring')).split(',')[1] ?? '', fileName }
 }
