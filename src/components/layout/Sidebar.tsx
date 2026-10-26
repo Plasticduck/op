@@ -48,6 +48,7 @@ import {
   Palmtree,
   PanelLeftClose,
   PanelLeftOpen,
+  PartyPopper,
   Percent,
   Search,
   SearchCheck,
@@ -179,6 +180,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Percent,
         roles: ['owner'],
         emails: ['kevan@washlyfe.com'],
+      },
+      {
+        to: '/app/event-pay',
+        label: 'Event Pay Requests',
+        icon: PartyPopper,
+        roles: ['owner', 'manager', 'regional_manager', 'executive'],
+        emails: ['kevan@washlyfe.com'], // pre-launch: Kevan only until the approver list is set
       },
       {
         to: '/app/recharge-timing',

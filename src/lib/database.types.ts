@@ -2120,6 +2120,73 @@ export type Database = {
           },
         ]
       }
+      event_pay_requests: {
+        Row: {
+          account_id: string
+          attendees: Json
+          created_at: string
+          emailed_at: string | null
+          event_date: string
+          event_name: string
+          id: string
+          location_id: string | null
+          notes: string | null
+          requester_name: string
+          submitted_by: string | null
+          submitter_name: string | null
+        }
+        Insert: {
+          account_id: string
+          attendees?: Json
+          created_at?: string
+          emailed_at?: string | null
+          event_date: string
+          event_name: string
+          id?: string
+          location_id?: string | null
+          notes?: string | null
+          requester_name: string
+          submitted_by?: string | null
+          submitter_name?: string | null
+        }
+        Update: {
+          account_id?: string
+          attendees?: Json
+          created_at?: string
+          emailed_at?: string | null
+          event_date?: string
+          event_name?: string
+          id?: string
+          location_id?: string | null
+          notes?: string | null
+          requester_name?: string
+          submitted_by?: string | null
+          submitter_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_pay_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_pay_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_pay_requests_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       facility_request_updates: {
         Row: {
           account_id: string
@@ -5219,6 +5286,7 @@ export type Database = {
           drb_cars: number | null
           drb_recharge: number | null
           drb_sales: number | null
+          drb_test_cars: number | null
           flex_cars: number | null
           flex_recharge: number | null
           flex_sales: number | null
@@ -5231,6 +5299,7 @@ export type Database = {
           drb_cars?: number | null
           drb_recharge?: number | null
           drb_sales?: number | null
+          drb_test_cars?: number | null
           flex_cars?: number | null
           flex_recharge?: number | null
           flex_sales?: number | null
@@ -5243,6 +5312,7 @@ export type Database = {
           drb_cars?: number | null
           drb_recharge?: number | null
           drb_sales?: number | null
+          drb_test_cars?: number | null
           flex_cars?: number | null
           flex_recharge?: number | null
           flex_sales?: number | null

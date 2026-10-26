@@ -127,6 +127,7 @@ const InteriorReportingPage = lz(() => import('@/features/opssuite/InteriorRepor
 const CamerasPage = lz(() => import('@/features/cameras/CamerasPage'))
 const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
 const CommissionsPage = lz(() => import('@/features/opssuite/CommissionsPage'))
+const EventPayPage = lz(() => import('@/features/opssuite/EventPayPage'))
 const RechargeTimingPage = lz(() => import('@/features/opssuite/RechargeTimingPage'))
 const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
@@ -270,6 +271,8 @@ export const router = createBrowserRouter([
           { path: 'cameras', element: mgr(<CamerasPage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
           { path: 'commissions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<CommissionsPage />)}</RequireEmails> },
+          // Pre-launch: Kevan only until the approver list is set.
+          { path: 'event-pay', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<EventPayPage />)}</RequireEmails> },
           { path: 'recharge-timing', element: <RequireRole allow={['owner']}><RequireSitePerformance>{s(<RechargeTimingPage />)}</RequireSitePerformance></RequireRole> },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },

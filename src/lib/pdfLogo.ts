@@ -4,8 +4,9 @@ export type PdfLogo = { dataUrl: string; w: number; h: number }
 
 // Load a brand logo into a data URL so jsPDF can embed it. Same-origin (public/)
 // so the canvas is not tainted. Returns null on any failure so an export never
-// breaks over a missing logo.
-export async function loadPdfLogo(url?: string | null): Promise<PdfLogo | null> {
+// breaks over a missing logo. opts.maxPx scales the longer side down first: jsPDF
+// stores a PNG uncompressed, so a full-size logo can add megabytes to the file.
+export async function loadPdfLogo(url?: string | null, opts?: { maxPx?: number }): Promise<PdfLogo | null> {
   if (!url) return null
   try {
     return await new Promise<PdfLogo>((resolve, reject) => {
@@ -13,13 +14,14 @@ export async function loadPdfLogo(url?: string | null): Promise<PdfLogo | null> 
       img.crossOrigin = 'anonymous'
       img.onload = () => {
         try {
+          const scale = opts?.maxPx ? Math.min(1, opts.maxPx / Math.max(img.naturalWidth, img.naturalHeight)) : 1
           const canvas = document.createElement('canvas')
-          canvas.width = img.naturalWidth
-          canvas.height = img.naturalHeight
+          canvas.width = Math.round(img.naturalWidth * scale)
+          canvas.height = Math.round(img.naturalHeight * scale)
           const ctx = canvas.getContext('2d')
           if (!ctx) return reject(new Error('no canvas context'))
-          ctx.drawImage(img, 0, 0)
-          resolve({ dataUrl: canvas.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight })
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          resolve({ dataUrl: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height })
         } catch (e) {
           reject(e)
         }
