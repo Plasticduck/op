@@ -186,7 +186,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Event Pay Requests',
         icon: PartyPopper,
         roles: ['owner', 'manager', 'regional_manager', 'executive'],
-        emails: ['kevan@washlyfe.com'], // pre-launch: Kevan only until the approver list is set
+        emails: ['kevan@washlyfe.com', 'gwatson@mighty-wash.com'], // pre-launch: named users until the approver list is set
       },
       {
         to: '/app/recharge-timing',

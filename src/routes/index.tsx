@@ -271,8 +271,8 @@ export const router = createBrowserRouter([
           { path: 'cameras', element: mgr(<CamerasPage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
           { path: 'commissions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<CommissionsPage />)}</RequireEmails> },
-          // Pre-launch: Kevan only until the approver list is set.
-          { path: 'event-pay', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<EventPayPage />)}</RequireEmails> },
+          // Pre-launch: named users until the approver list is set.
+          { path: 'event-pay', element: <RequireEmails allow={['kevan@washlyfe.com', 'gwatson@mighty-wash.com']}>{s(<EventPayPage />)}</RequireEmails> },
           { path: 'recharge-timing', element: <RequireRole allow={['owner']}><RequireSitePerformance>{s(<RechargeTimingPage />)}</RequireSitePerformance></RequireRole> },
 
           { path: 'employees', element: mgr(<EmployeesPage />) },
