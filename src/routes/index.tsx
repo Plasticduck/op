@@ -134,6 +134,7 @@ const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPag
 const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
 const AskOperatorPage = lz(() => import('@/features/ask/AskOperatorPage'))
 const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
+const ItFieldChecklistPage = lz(() => import('@/features/it/ItFieldChecklistPage'))
 const LaborDashboardPage = lz(() => import('@/features/ops/labor/LaborDashboardPage'))
 const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
 const SchedulePortalPage = lz(() => import('@/features/people/schedule/SchedulePortalPage'))
@@ -217,6 +218,8 @@ export const router = createBrowserRouter([
 
           { path: 'ask', element: s(<AskOperatorPage />) },
           { path: 'issuetrak', element: tech(<IssuetrakPage />) },
+          { path: 'it-field-checklist', element: tech(<ItFieldChecklistPage />) },
+          { path: 'it-field-checklist/:id', element: tech(<ItFieldChecklistPage />) },
           { path: 'insights', element: tech(<InsightsPage />) },
           { path: 'reports', element: tech(<ReportingPage />) },
           { path: 'reports/:reportKey', element: tech(<PreBuiltReportPage />) },

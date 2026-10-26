@@ -3118,6 +3118,70 @@ export type Database = {
           },
         ]
       }
+      it_field_checklists: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          items: Json
+          location_id: string | null
+          notes: string | null
+          status: string
+          submitted_at: string | null
+          tech_id: string | null
+          tech_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          items?: Json
+          location_id?: string | null
+          notes?: string | null
+          status?: string
+          submitted_at?: string | null
+          tech_id?: string | null
+          tech_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          items?: Json
+          location_id?: string | null
+          notes?: string | null
+          status?: string
+          submitted_at?: string | null
+          tech_id?: string | null
+          tech_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_field_checklists_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_field_checklists_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_field_checklists_tech_id_fkey"
+            columns: ["tech_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       labor_benchmark_tiers: {
         Row: {
           account_id: string
