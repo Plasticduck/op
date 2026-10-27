@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils'
 // suit (a flat amount); everyone else is paid their hourly rate. Submitting saves
 // the request, emails it with a PDF to Tayler (copy to the submitter), and keeps it
 // in the list below. Each user sees only their own requests; kevan@washlyfe.com
-// sees (and can delete) every request (RLS, migration 0175).
+// and Tayler see every request, and only Kevan can delete (RLS, 0175/0176).
 
 type Draft = { key: string; name: string; arrival: string; departure: string; mightyMaxx: boolean; amount: string }
 
@@ -41,7 +41,9 @@ const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigi
 export default function EventPayPage() {
   const { profile } = useAuth()
   const { locations, activeLocation } = useLocations()
-  const isAdmin = (profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'
+  const email = (profile?.email ?? '').toLowerCase()
+  const isAdmin = email === 'kevan@washlyfe.com'
+  const seesAll = isAdmin || email === 'tayler@mighty-wash.com'
 
   const [rows, setRows] = useState<EventPayRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -312,7 +314,7 @@ export default function EventPayPage() {
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink">{isAdmin ? 'All requests' : 'My requests'}</h2>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink">{seesAll ? 'All requests' : 'My requests'}</h2>
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           {loading ? (
             <p className="px-4 py-8 text-center text-sm text-ink-muted">Loading requests…</p>
@@ -360,7 +362,8 @@ export default function EventPayPage() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex justify-end gap-1.5">
-                          {!r.emailed_at && (
+                          {/* Re-send: the submitter or Kevan (the email function's rule). */}
+                          {!r.emailed_at && (isAdmin || r.submitted_by === profile?.id) && (
                             <button type="button" onClick={() => void resend(r)} disabled={sendingId === r.id}
                               className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink hover:bg-content disabled:opacity-50">
                               {sendingId === r.id ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />} Send

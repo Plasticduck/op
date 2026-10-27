@@ -4,7 +4,7 @@ import type { Database } from '@/lib/database.types'
 // Event Pay Requests: pay for team members who work an event (the Mighty Maxx
 // mascot at a flat amount, everyone else at their hourly rate for the time
 // present). RLS: each user sees only the requests they submitted; only
-// kevan@washlyfe.com sees every request (migration 0175).
+// kevan@washlyfe.com and tayler@mighty-wash.com see every request (0175/0176).
 type T = Database['public']['Tables']
 export type EventPayRequest = T['event_pay_requests']['Row']
 export type EventPayInsert = T['event_pay_requests']['Insert']
