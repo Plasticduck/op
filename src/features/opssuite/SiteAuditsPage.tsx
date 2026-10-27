@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ClipboardCheck, FileText, MapPin, Plus, Search } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
@@ -7,7 +7,7 @@ import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
 import { Field } from '@/components/forms/Field'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { compareLocationName } from '@/lib/utils'
+import { cn, compareLocationName } from '@/lib/utils'
 import { JsonView } from '@/components/data/JsonView'
 import { AttachmentViewer } from '@/components/data/AttachmentViewer'
 import { shortDate } from '@/lib/format'
@@ -272,7 +272,7 @@ export default function SiteAuditsPage() {
           submitterName={profile?.name ?? null}
           schema={schema}
           draft={resuming ? { id: resuming.id, locationId: resuming.location_id ?? '', answers: (resuming.draft_answers as unknown as SiteAuditAnswers) ?? {} } : null}
-          onClose={() => { setAdding(false); setResuming(null) }}
+          onClose={() => { setAdding(false); setResuming(null); loadDrafts() }}
           onSaved={() => { setAdding(false); setResuming(null); void load(); loadDrafts() }}
         />
       )}
@@ -398,30 +398,104 @@ function AddAudit({ accountId, submitterId, submitterName, schema, draft, onClos
   onSaved: () => void
 }) {
   const { locations } = useLocations()
-  const [locationId, setLocationId] = useState(draft?.locationId ?? '')
-  const draftId = draft?.id ?? null
+  // A local copy of an audit that hasn't got a site yet (so it can't be a server
+  // draft): if the phone reloads the page, the next "New audit" picks it back up.
+  const backupKey = `site-audit-backup:${submitterId ?? 'anon'}`
+  const [restored] = useState<{ locationId: string; answers: SiteAuditAnswers } | null>(() => {
+    if (draft) return null
+    try {
+      const b = JSON.parse(localStorage.getItem(backupKey) ?? 'null') as { locationId?: string; answers?: SiteAuditAnswers; draftRowId?: string | null; savedAt?: number } | null
+      if (!b?.answers || b.draftRowId || Date.now() - (b.savedAt ?? 0) > 3 * 86_400_000 || !hasContent(b.answers)) return null
+      return { locationId: b.locationId ?? '', answers: b.answers }
+    } catch {
+      return null
+    }
+  })
+  const [locationId, setLocationId] = useState(draft?.locationId ?? restored?.locationId ?? '')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
+
+  // Autosave: every change is saved as the user's draft once a site is picked, so
+  // a reloaded page (iOS does this after the camera) or an accidental close never
+  // loses answers or photos. The draft is resumed from the "In progress" list and
+  // removed when the audit is submitted.
+  const draftRowId = useRef<string | null>(draft?.id ?? null)
+  const latest = useRef<SiteAuditAnswers | null>(draft?.answers ?? restored?.answers ?? null)
+  const chain = useRef<Promise<unknown>>(Promise.resolve())
+  // Set while submitting, so a late autosave can't recreate the draft after it.
+  const submitted = useRef(false)
+  const [tick, setTick] = useState(0)
+  const [autoState, setAutoState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  const persist = useCallback((): Promise<boolean> => {
+    const run = async () => {
+      const answers = latest.current
+      if (!answers || submitted.current) return true
+      try {
+        localStorage.setItem(backupKey, JSON.stringify({ locationId, answers, draftRowId: draftRowId.current, savedAt: Date.now() }))
+      } catch { /* storage full or blocked */ }
+      if (!locationId) return true
+      setAutoState('saving')
+      const base = {
+        account_id: accountId,
+        location_id: locationId,
+        submitted_by: submitterId,
+        submitted_by_name: submitterName,
+        draft_answers: answers as never,
+      }
+      const res = draftRowId.current
+        ? await siteAudits.updateDraft(draftRowId.current, base)
+        : await siteAudits.saveDraft(base)
+      if (res.error) { setAutoState('error'); return false }
+      if (!draftRowId.current) draftRowId.current = (res.data as { id: string }).id
+      try {
+        localStorage.setItem(backupKey, JSON.stringify({ locationId, answers, draftRowId: draftRowId.current, savedAt: Date.now() }))
+      } catch { /* ignore */ }
+      setAutoState('saved')
+      return true
+    }
+    // One save at a time, so the first save's new draft id is used by the next.
+    const p = chain.current.then(run, run)
+    chain.current = p
+    return p
+  }, [accountId, backupKey, locationId, submitterId, submitterName])
+
+  useEffect(() => {
+    if (!tick) return
+    const t = setTimeout(() => { void persist() }, 1200)
+    return () => clearTimeout(t)
+  }, [tick, persist])
+
+  const clearBackup = () => {
+    try { localStorage.removeItem(backupKey) } catch { /* ignore */ }
+  }
 
   // Save the in-progress answers as a draft and close, so it can be resumed later.
   const saveDraft = async (answers: SiteAuditAnswers) => {
     setError(null)
     if (!locationId) { setError('Pick a site first, then save your progress.'); return }
     setSavingDraft(true)
-    const base = {
-      account_id: accountId,
-      location_id: locationId,
-      submitted_by: submitterId,
-      submitted_by_name: submitterName,
-      draft_answers: answers as never,
-    }
-    const { error: err } = draftId
-      ? await siteAudits.updateDraft(draftId, base)
-      : await siteAudits.saveDraft(base)
+    latest.current = answers
+    const ok = await persist()
     setSavingDraft(false)
-    if (err) { setError(err.message); return }
+    if (!ok) { setError('Could not save your progress. Check your connection and try again.'); return }
+    clearBackup()
     onSaved()
+  }
+
+  // Closing keeps the autosaved draft. Only an audit with no site yet (which
+  // can't be saved as a draft) asks before it's thrown away.
+  const requestClose = async () => {
+    if (latest.current && hasContent(latest.current)) {
+      if (!locationId) {
+        if (!window.confirm('Close this audit? Pick a site to keep it as a draft, otherwise it will be lost.')) return
+        clearBackup()
+      } else if (await persist()) {
+        clearBackup()
+      }
+    }
+    onClose()
   }
 
   const save = async (answers: SiteAuditAnswers) => {
@@ -478,41 +552,64 @@ function AddAudit({ accountId, submitterId, submitterName, schema, draft, onClos
     const auditId = (data as { id?: string } | null)?.id
     if (auditId) void siteAudits.emailReport(auditId)
 
-    // If this was resumed from a draft, remove the draft now that it's submitted.
-    if (draftId) void siteAudits.removeDraft(draftId)
+    // The autosaved (or resumed) draft is done with now that the audit is submitted.
+    submitted.current = true
+    await chain.current.catch(() => undefined)
+    if (draftRowId.current) void siteAudits.removeDraft(draftRowId.current)
+    clearBackup()
 
     setBusy(false)
     onSaved()
   }
 
   return (
-    <Modal open onClose={onClose} title={draft ? 'Resume site audit' : 'Submit site audit'} size="lg">
+    <Modal open onClose={() => void requestClose()} title={draft ? 'Resume site audit' : 'Submit site audit'} size="lg">
       <div className="flex flex-col gap-4">
         <Field label="Site" required>
           {(id) => (
-            <Select id={id} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+            <Select id={id} value={locationId} onChange={(e) => { setLocationId(e.target.value); if (latest.current) setTick((t) => t + 1) }}>
               <option value="">Select…</option>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </Select>
           )}
         </Field>
 
+        <p className={cn('-mt-2 text-xs', autoState === 'error' ? 'text-danger' : 'text-ink-muted')}>
+          {autoState === 'saving' ? 'Saving…'
+            : autoState === 'saved' ? 'Progress saved. If you leave, finish it from In progress.'
+            : autoState === 'error' ? 'Couldn’t save progress. Check your connection.'
+            : locationId ? 'Your progress saves automatically, photos included.'
+            : 'Pick the site first so your progress saves automatically.'}
+        </p>
+        {restored && (
+          <p className="rounded-md bg-accent-soft px-3 py-2 text-sm text-accent">We restored the audit you were working on.</p>
+        )}
+
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
         <SiteAuditForm
           accountId={accountId}
           schema={schema}
-          initialAnswers={draft?.answers}
+          initialAnswers={draft?.answers ?? restored?.answers}
           onSubmit={save}
           onSaveDraft={saveDraft}
+          onAnswersChange={(a) => { latest.current = a; setTick((t) => t + 1) }}
           submitting={busy}
           savingDraft={savingDraft}
         />
 
         <div className="flex justify-end">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={() => void requestClose()}>Close</Button>
         </div>
       </div>
     </Modal>
   )
+}
+
+// Whether any item has an answer or a photo (an empty form isn't worth keeping).
+function hasContent(answers: SiteAuditAnswers): boolean {
+  return Object.values(answers).some((v) => {
+    const a = (v ?? {}) as { value?: unknown; photos?: unknown }
+    return (a.value != null && a.value !== '') || (Array.isArray(a.photos) && a.photos.length > 0)
+  })
 }
