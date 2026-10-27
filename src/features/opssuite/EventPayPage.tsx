@@ -25,7 +25,9 @@ import { cn } from '@/lib/utils'
 // used to pay team members who work an event. An RM or GM lists who attended, with
 // arrival / departure (hours are worked out) and whether they wore the Mighty Maxx
 // suit (a flat amount); everyone else is paid their hourly rate. Submitting saves
-// the request, emails it with a PDF for approval, and keeps it in the list below.
+// the request, emails it with a PDF to Tayler (copy to the submitter), and keeps it
+// in the list below. Each user sees only their own requests; kevan@washlyfe.com
+// sees (and can delete) every request (RLS, migration 0175).
 
 type Draft = { key: string; name: string; arrival: string; departure: string; mightyMaxx: boolean; amount: string }
 
@@ -39,7 +41,7 @@ const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigi
 export default function EventPayPage() {
   const { profile } = useAuth()
   const { locations, activeLocation } = useLocations()
-  const isOwner = profile?.role === 'owner'
+  const isAdmin = (profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'
 
   const [rows, setRows] = useState<EventPayRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -162,12 +164,8 @@ export default function EventPayPage() {
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
         title="Event Pay Requests"
-        subtitle="Pay team members who work an event. Submit for approval, and download the PDF any time."
+        subtitle="Pay team members who work an event. Requests are emailed to Tayler with a copy to you, and you can download the PDF any time."
       />
-
-      <div className="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-ink-muted">
-        <strong className="text-ink">Setup:</strong> approval emails go to Kevan for now. The approver list will be set before this opens to RMs and GMs.
-      </div>
 
       <section className="mt-5 rounded-xl border border-border bg-card p-4 sm:p-5">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-ink"><PartyPopper className="size-4 text-accent" /> New request</h2>
@@ -296,7 +294,7 @@ export default function EventPayPage() {
             <span className="inline-flex items-center gap-2">
               <CircleCheck className="size-4" />
               {done.emailed
-                ? `Sent for approval: ${done.row.event_name}.`
+                ? `Sent to Tayler: ${done.row.event_name}. A copy was emailed to you.`
                 : `Saved ${done.row.event_name}, but the email didn't go out. Use Send in the list below to try again.`}
             </span>
             <button type="button" onClick={() => void downloadEventPayPdf(done.row)}
@@ -308,13 +306,13 @@ export default function EventPayPage() {
 
         <div className="mt-5 flex justify-end">
           <Button onClick={() => void submit()} disabled={busy}>
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Submit for approval
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Submit request
           </Button>
         </div>
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink">{isOwner ? 'All requests' : 'My requests'}</h2>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink">{isAdmin ? 'All requests' : 'My requests'}</h2>
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           {loading ? (
             <p className="px-4 py-8 text-center text-sm text-ink-muted">Loading requests…</p>
@@ -372,7 +370,7 @@ export default function EventPayPage() {
                             className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink hover:bg-content">
                             <Download className="size-3.5" /> PDF
                           </button>
-                          {isOwner && (
+                          {isAdmin && (
                             <button type="button" onClick={() => void remove(r)} aria-label="Delete request"
                               className="grid size-7 place-items-center rounded-md border border-border text-danger hover:bg-danger-soft">
                               <Trash2 className="size-3.5" />

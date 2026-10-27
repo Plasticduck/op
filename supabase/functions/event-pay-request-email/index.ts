@@ -1,8 +1,8 @@
 // event-pay-request-email — Supabase Edge Function (Deno).
-// Emails a new Event Pay Request for approval: (1) to the approvers, with the
-// request's PDF attached (built client-side and passed in as base64), and (2) a
-// copy to the person who submitted it. Stamps event_pay_requests.emailed_at on
-// success. The row is saved client-side first, so a missing key just returns
+// Emails a new Event Pay Request: (1) to payroll (Tayler), with the request's PDF
+// attached (built client-side and passed in as base64), and (2) a copy to the
+// person who submitted it. Stamps event_pay_requests.emailed_at on success. The
+// row is saved client-side first, so a missing key just returns
 // 503 { error: 'no_key' } and the request can be re-sent from the page.
 //
 // Body: { request_id: uuid, pdf_base64?: string }
@@ -12,8 +12,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Resend } from 'npm:resend@4'
 
-// Who approves event pay. Placeholder until the approver list is assigned.
-const APPROVERS = ['kevan@washlyfe.com']
+// Every submitted request goes to payroll.
+const RECIPIENTS = ['tayler@mighty-wash.com']
+// The one account that can see (and re-send) every request; everyone else only
+// their own. Mirrors the RLS in migration 0175.
+const ADMIN_EMAIL = 'kevan@washlyfe.com'
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -119,7 +122,7 @@ Deno.serve(async (req) => {
   if (!body.request_id) return json({ error: 'bad_request' }, 400, origin)
 
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
-  const { data: caller } = await svc.from('users').select('account_id, role').eq('id', callerId).maybeSingle()
+  const { data: caller } = await svc.from('users').select('account_id').eq('id', callerId).maybeSingle()
   if (!caller) return json({ error: 'forbidden' }, 403, origin)
 
   const { data: r } = await svc
@@ -130,8 +133,8 @@ Deno.serve(async (req) => {
   // deno-lint-ignore no-explicit-any
   const o = r as any
   if (!o || o.account_id !== caller.account_id) return json({ error: 'not_found' }, 404, origin)
-  // Only the submitter (or an owner) can send a request.
-  if (o.submitted_by !== callerId && caller.role !== 'owner') return json({ error: 'forbidden' }, 403, origin)
+  // Only the submitter (or the admin) can send a request.
+  if (o.submitted_by !== callerId && callerEmail.toLowerCase() !== ADMIN_EMAIL) return json({ error: 'forbidden' }, 403, origin)
 
   const site = (o.locations?.name ?? '').trim() || 'Not specified'
   const people: Attendee[] = Array.isArray(o.attendees) ? o.attendees : []
@@ -159,12 +162,12 @@ Deno.serve(async (req) => {
       <p style="margin:18px 0 0;color:#888;font-size:12px;">Submitted from WashLyfe Operator.</p>
     </div>`
 
-  // 1) To the approvers.
+  // 1) To payroll.
   let sendError: string | null = null
   try {
     const { error } = await resend.emails.send({
       from: fromAddr,
-      to: APPROVERS,
+      to: RECIPIENTS,
       replyTo: callerEmail || undefined,
       subject: `Event Pay Request: ${o.event_name} (${site}, ${fmtDate(o.event_date)})`,
       html: page(`Event Pay Request: ${o.event_name}`, `${o.requester_name} is requesting event pay for ${people.length} team member${people.length === 1 ? '' : 's'}.`),
@@ -178,20 +181,20 @@ Deno.serve(async (req) => {
 
   await svc.from('event_pay_requests').update({ emailed_at: new Date().toISOString() }).eq('id', o.id)
 
-  // 2) A copy to the submitter (best-effort), unless they're an approver.
+  // 2) A copy to the submitter (best-effort), unless they're already a recipient.
   let copyTo: string | null = null
-  if (callerEmail && !APPROVERS.includes(callerEmail.toLowerCase())) {
+  if (callerEmail && !RECIPIENTS.includes(callerEmail.toLowerCase())) {
     try {
       const { error } = await resend.emails.send({
         from: fromAddr,
         to: [callerEmail],
-        subject: `Sent for approval: ${o.event_name}`,
-        html: page('Your event pay request was sent for approval', 'Here is a copy for your records.'),
+        subject: `Submitted: Event Pay Request for ${o.event_name}`,
+        html: page('Your event pay request was submitted', 'It was emailed to Tayler. Here is a copy for your records.'),
         attachments,
       })
       if (!error) copyTo = callerEmail
     } catch { /* best-effort */ }
   }
 
-  return json({ ok: true, sent_to: APPROVERS, copy_to: copyTo }, 200, origin)
+  return json({ ok: true, sent_to: RECIPIENTS, copy_to: copyTo }, 200, origin)
 })

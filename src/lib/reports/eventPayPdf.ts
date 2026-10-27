@@ -118,7 +118,7 @@ export async function downloadEventPayPdf(r: EventPayRow): Promise<void> {
   doc.save(fileName(r))
 }
 
-// The PDF as base64 (no data: prefix), for attaching to the approval email.
+// The PDF as base64 (no data: prefix), for attaching to the request email.
 export async function eventPayPdfBase64(r: EventPayRow): Promise<string> {
   const doc = await buildEventPayPdf(r)
   return String(doc.output('datauristring')).split(',')[1] ?? ''

@@ -3,7 +3,8 @@ import type { Database } from '@/lib/database.types'
 
 // Event Pay Requests: pay for team members who work an event (the Mighty Maxx
 // mascot at a flat amount, everyone else at their hourly rate for the time
-// present). RLS: submitters see their own requests, account owners see all.
+// present). RLS: each user sees only the requests they submitted; only
+// kevan@washlyfe.com sees every request (migration 0175).
 type T = Database['public']['Tables']
 export type EventPayRequest = T['event_pay_requests']['Row']
 export type EventPayInsert = T['event_pay_requests']['Insert']
@@ -58,9 +59,9 @@ export const eventPay = {
       .order('created_at', { ascending: false }),
   create: (row: EventPayInsert) =>
     supabase.from('event_pay_requests').insert(row).select('*, location:location_id(name)').single(),
-  // Owners only (RLS).
+  // kevan@washlyfe.com only (RLS).
   remove: (id: string) => supabase.from('event_pay_requests').delete().eq('id', id),
-  // Email the request (with its PDF attached) for approval. Best-effort: the row
+  // Email the request (with its PDF attached) to Tayler. Best-effort: the row
   // is already saved; emailed_at is stamped on success.
   email: (requestId: string, pdfBase64: string | null) =>
     supabase.functions.invoke('event-pay-request-email', { body: { request_id: requestId, pdf_base64: pdfBase64 } }),
