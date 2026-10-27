@@ -187,8 +187,8 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/event-pay',
         label: 'Event Pay Requests',
         icon: PartyPopper,
-        roles: ['owner', 'manager', 'regional_manager', 'executive'],
-        emails: ['kevan@washlyfe.com', 'gwatson@mighty-wash.com'], // pre-launch: named users until the approver list is set
+        // Admins and Regional Managers (plain managers and executives excluded).
+        roles: ['owner', 'regional_manager'],
       },
       {
         to: '/app/goal-tracker',
