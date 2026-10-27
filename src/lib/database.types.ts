@@ -2187,6 +2187,167 @@ export type Database = {
           },
         ]
       }
+      exec_goal_checkins: {
+        Row: {
+          account_id: string
+          checkin_date: string
+          created_at: string
+          goal_id: string
+          id: string
+          note: string | null
+          value: number | null
+        }
+        Insert: {
+          account_id: string
+          checkin_date?: string
+          created_at?: string
+          goal_id: string
+          id?: string
+          note?: string | null
+          value?: number | null
+        }
+        Update: {
+          account_id?: string
+          checkin_date?: string
+          created_at?: string
+          goal_id?: string
+          id?: string
+          note?: string | null
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exec_goal_checkins_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exec_goal_checkins_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "exec_goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exec_goal_milestones: {
+        Row: {
+          account_id: string
+          created_at: string
+          done_at: string | null
+          due_date: string | null
+          goal_id: string
+          id: string
+          sort: number
+          title: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          done_at?: string | null
+          due_date?: string | null
+          goal_id: string
+          id?: string
+          sort?: number
+          title: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          done_at?: string | null
+          due_date?: string | null
+          goal_id?: string
+          id?: string
+          sort?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exec_goal_milestones_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exec_goal_milestones_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "exec_goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exec_goals: {
+        Row: {
+          account_id: string
+          category: string | null
+          created_at: string
+          current_value: number | null
+          description: string | null
+          due_date: string
+          id: string
+          kind: string
+          owner_name: string
+          quarter: string
+          start_date: string
+          start_value: number | null
+          status_override: string | null
+          target_value: number | null
+          title: string
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          category?: string | null
+          created_at?: string
+          current_value?: number | null
+          description?: string | null
+          due_date: string
+          id?: string
+          kind?: string
+          owner_name: string
+          quarter: string
+          start_date: string
+          start_value?: number | null
+          status_override?: string | null
+          target_value?: number | null
+          title: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          category?: string | null
+          created_at?: string
+          current_value?: number | null
+          description?: string | null
+          due_date?: string
+          id?: string
+          kind?: string
+          owner_name?: string
+          quarter?: string
+          start_date?: string
+          start_value?: number | null
+          status_override?: string | null
+          target_value?: number | null
+          title?: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exec_goals_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       facility_request_updates: {
         Row: {
           account_id: string

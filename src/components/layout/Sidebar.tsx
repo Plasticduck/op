@@ -57,6 +57,7 @@ import {
   Shirt,
   Signpost,
   Stamp,
+  Target,
   Telescope,
   Timer,
   UserPlus,
@@ -188,6 +189,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: PartyPopper,
         roles: ['owner', 'manager', 'regional_manager', 'executive'],
         emails: ['kevan@washlyfe.com', 'gwatson@mighty-wash.com'], // pre-launch: named users until the approver list is set
+      },
+      {
+        to: '/app/goal-tracker',
+        label: 'Quarterly Goal Tracker',
+        icon: Target,
+        roles: ['owner'],
+        emails: ['kevan@washlyfe.com'], // Kevan enters every exec's goals
       },
       {
         to: '/app/recharge-timing',
