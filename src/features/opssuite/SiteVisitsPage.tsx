@@ -103,12 +103,16 @@ export default function SiteVisitsPage() {
     return mapped.map((l) => {
       // visits are newest first, so the first match is the latest.
       const here = visits.filter((v) => v.location_id === l.id)
+      const lastBy: Partial<Record<FleetCategory, SiteVisit>> = {}
+      for (const v of here) {
+        const c = categoryOf(v)
+        if (c && !lastBy[c]) lastBy[c] = v
+      }
       return {
         id: l.id,
         name: l.name,
         last: here[0] ?? null,
-        lastRm: here.find((v) => categoryOf(v) === 'regional_manager') ?? null,
-        lastMaint: here.find((v) => categoryOf(v) === 'maintenance') ?? null,
+        lastBy,
         count30: here.filter((v) => Date.parse(v.arrived_at) >= since30).length,
       }
     })
@@ -139,9 +143,9 @@ export default function SiteVisitsPage() {
 
       {untagged > 0 && tab !== 'people' && (
         <p className="rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-ink">
-          {untagged} {untagged === 1 ? 'person is' : 'people are'} not tagged yet. Tag maintenance techs on the{' '}
-          <button className="font-medium text-accent underline" onClick={() => setTab('people')}>People</button> tab so the
-          Last maintenance visit column fills in.
+          {untagged} {untagged === 1 ? 'person is' : 'people are'} not tagged yet. Tag them on the{' '}
+          <button className="font-medium text-accent underline" onClick={() => setTab('people')}>People</button> tab so their
+          visits fill in the Last visit columns.
         </p>
       )}
 
@@ -168,20 +172,21 @@ type SiteRow = {
   id: string
   name: string
   last: SiteVisit | null
-  lastRm: SiteVisit | null
-  lastMaint: SiteVisit | null
+  lastBy: Partial<Record<FleetCategory, SiteVisit>>
   count30: number
 }
 
+// A "Last ... visit" column per type (Other has none; it shows under "anyone").
+const SITE_COLUMNS: FleetCategory[] = ['regional_manager', 'executive', 'maintenance', 'facilities', 'it']
+
 function SitesTab({ sites, unmapped, nameOf }: { sites: SiteRow[]; unmapped: string[]; nameOf: (v: SiteVisit) => string }) {
   if (sites.length === 0) return <EmptyState icon={MapPinCheck} title="No sites on the map" description="Sites need a map location to track visits." />
-  const visitCell = (v: SiteVisit | null, toned: boolean) =>
+  const visitCell = (v: SiteVisit | null | undefined, toned: boolean) =>
     v ? (
       <div>
         {toned ? <Badge tone={recencyTone(v.arrived_at)}>{agoLabel(v.arrived_at)}</Badge> : <span className="text-ink">{agoLabel(v.arrived_at)}</span>}
-        <div className="mt-0.5 text-xs text-ink-muted">
-          {nameOf(v)} · {when(v.arrived_at)} · {stay(v)}
-        </div>
+        <div className="mt-0.5 text-xs text-ink">{nameOf(v)}</div>
+        <div className="text-xs text-ink-muted">{when(v.arrived_at)} · {stay(v)}</div>
       </div>
     ) : toned ? (
       <Badge tone="danger">None in {HISTORY_DAYS} days</Badge>
@@ -191,12 +196,13 @@ function SitesTab({ sites, unmapped, nameOf }: { sites: SiteRow[]; unmapped: str
   return (
     <div className="flex flex-col gap-2">
       <div className="overflow-x-auto rounded-md border border-border bg-card">
-        <table className="w-full min-w-[820px] text-sm">
+        <table className="w-full min-w-[1280px] text-sm">
           <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
             <tr>
-              <th className="px-3 py-2.5 font-medium">Site</th>
-              <th className="px-3 py-2.5 font-medium">Last Regional Manager visit</th>
-              <th className="px-3 py-2.5 font-medium">Last maintenance visit</th>
+              <th className="sticky left-0 z-10 bg-content px-3 py-2.5 font-medium">Site</th>
+              {SITE_COLUMNS.map((c) => (
+                <th key={c} className="px-3 py-2.5 font-medium">Last {FLEET_CATEGORY_LABEL[c]} visit</th>
+              ))}
               <th className="px-3 py-2.5 font-medium">Last visit by anyone</th>
               <th className="px-3 py-2.5 text-right font-medium">Visits, 30 days</th>
             </tr>
@@ -204,9 +210,10 @@ function SitesTab({ sites, unmapped, nameOf }: { sites: SiteRow[]; unmapped: str
           <tbody>
             {sites.map((s) => (
               <tr key={s.id} className="border-t border-border align-top hover:bg-content">
-                <td className="px-3 py-2.5 font-medium text-ink">{s.name}</td>
-                <td className="px-3 py-2.5">{visitCell(s.lastRm, true)}</td>
-                <td className="px-3 py-2.5">{visitCell(s.lastMaint, true)}</td>
+                <td className="sticky left-0 z-10 bg-card px-3 py-2.5 font-medium text-ink">{s.name}</td>
+                {SITE_COLUMNS.map((c) => (
+                  <td key={c} className="px-3 py-2.5">{visitCell(s.lastBy[c], true)}</td>
+                ))}
                 <td className="px-3 py-2.5">{visitCell(s.last, false)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-ink">{s.count30}</td>
               </tr>
