@@ -9,13 +9,23 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/utils'
 import { durationHm } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
-import { siteVisits, FLEET_CATEGORIES, FLEET_CATEGORY_LABEL, type FleetCategory, type FleetPerson, type SiteVisit } from '@/lib/queries/fleet'
+import {
+  siteVisits,
+  canonicalPeople,
+  FLEET_CATEGORIES,
+  FLEET_CATEGORY_LABEL,
+  type FleetCategory,
+  type FleetPerson,
+  type SiteVisit,
+} from '@/lib/queries/fleet'
 
 // Site Visits: who parked at each Mighty Wash site, from Verizon Connect Reveal
 // trips (reveal-visits-sync, hourly). A visit is a vehicle parked within the
 // site's geofence. People are tagged by type (Regional Manager, Executive,
 // Maintenance, Facilities, IT, Other) on the People tab; Regional Managers and
-// Executives are pre-tagged from their Operator role.
+// Executives are pre-tagged from their Operator role. A vehicle with no driver
+// assigned in Reveal shows up as its own "person" (named after the vehicle);
+// merging it into its driver shows those visits under the driver.
 // Pre-launch: kevan@washlyfe.com only.
 
 const HISTORY_DAYS = 90
@@ -78,11 +88,11 @@ export default function SiteVisitsPage() {
     void load()
   }
 
-  const personBy = useMemo(() => new Map(people.map((p) => [p.person_key, p])), [people])
-  const categoryOf = useCallback(
-    (v: SiteVisit) => (v.person_key ? (personBy.get(v.person_key)?.category as FleetCategory | null | undefined) ?? null : null),
-    [personBy],
-  )
+  // Every visit counts toward its person after merges.
+  const canon = useMemo(() => canonicalPeople(people), [people])
+  const personOf = useCallback((v: SiteVisit) => (v.person_key ? canon.get(v.person_key) : undefined), [canon])
+  const categoryOf = useCallback((v: SiteVisit) => (personOf(v)?.category as FleetCategory | null | undefined) ?? null, [personOf])
+  const nameOf = useCallback((v: SiteVisit) => personOf(v)?.name ?? v.person_name ?? v.vehicle_name ?? 'Unknown', [personOf])
   const siteName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations])
 
   const sites = useMemo(() => {
@@ -105,7 +115,7 @@ export default function SiteVisitsPage() {
   }, [locations, visits, categoryOf])
   const unmapped = locations.filter((l) => (l.latitude == null || l.longitude == null) && !/unassigned/i.test(l.name))
 
-  const untagged = people.filter((p) => !p.category).length
+  const untagged = people.filter((p) => !p.category && !p.merged_into).length
 
   return (
     <div className="flex flex-col gap-6">
@@ -124,7 +134,7 @@ export default function SiteVisitsPage() {
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border">
         <TabButton active={tab === 'sites'} onClick={() => setTab('sites')} label="Sites" count={sites.length} />
         <TabButton active={tab === 'log'} onClick={() => setTab('log')} label="Visit log" count={visits.length} />
-        <TabButton active={tab === 'people'} onClick={() => setTab('people')} label="People" count={people.length} />
+        <TabButton active={tab === 'people'} onClick={() => setTab('people')} label="People" count={people.filter((p) => !p.merged_into).length} />
       </div>
 
       {untagged > 0 && tab !== 'people' && (
@@ -138,14 +148,16 @@ export default function SiteVisitsPage() {
       {loading ? (
         <p className="text-sm text-ink-muted">Loading...</p>
       ) : tab === 'sites' ? (
-        <SitesTab sites={sites} unmapped={unmapped.map((l) => l.name)} />
+        <SitesTab sites={sites} unmapped={unmapped.map((l) => l.name)} nameOf={nameOf} />
       ) : tab === 'log' ? (
-        <LogTab visits={visits} people={people} siteName={siteName} categoryOf={categoryOf} />
+        <LogTab visits={visits} people={people} siteName={siteName} categoryOf={categoryOf} personOf={personOf} nameOf={nameOf} />
       ) : (
         <PeopleTab
           people={people}
           visits={visits}
+          canon={canon}
           onChange={(key, category) => setPeople((ps) => ps.map((p) => (p.person_key === key ? { ...p, category } : p)))}
+          onReload={() => void load()}
         />
       )}
     </div>
@@ -161,14 +173,14 @@ type SiteRow = {
   count30: number
 }
 
-function SitesTab({ sites, unmapped }: { sites: SiteRow[]; unmapped: string[] }) {
+function SitesTab({ sites, unmapped, nameOf }: { sites: SiteRow[]; unmapped: string[]; nameOf: (v: SiteVisit) => string }) {
   if (sites.length === 0) return <EmptyState icon={MapPinCheck} title="No sites on the map" description="Sites need a map location to track visits." />
   const visitCell = (v: SiteVisit | null, toned: boolean) =>
     v ? (
       <div>
         {toned ? <Badge tone={recencyTone(v.arrived_at)}>{agoLabel(v.arrived_at)}</Badge> : <span className="text-ink">{agoLabel(v.arrived_at)}</span>}
         <div className="mt-0.5 text-xs text-ink-muted">
-          {v.person_name ?? v.vehicle_name ?? 'Unknown'} · {when(v.arrived_at)} · {stay(v)}
+          {nameOf(v)} · {when(v.arrived_at)} · {stay(v)}
         </div>
       </div>
     ) : toned ? (
@@ -210,11 +222,13 @@ function SitesTab({ sites, unmapped }: { sites: SiteRow[]; unmapped: string[] })
   )
 }
 
-function LogTab({ visits, people, siteName, categoryOf }: {
+function LogTab({ visits, people, siteName, categoryOf, personOf, nameOf }: {
   visits: SiteVisit[]
   people: FleetPerson[]
   siteName: Map<string, string>
   categoryOf: (v: SiteVisit) => FleetCategory | null
+  personOf: (v: SiteVisit) => FleetPerson | undefined
+  nameOf: (v: SiteVisit) => string
 }) {
   const [site, setSite] = useState('all')
   const [person, setPerson] = useState('all')
@@ -232,10 +246,10 @@ function LogTab({ visits, people, siteName, categoryOf }: {
     return visits.filter((v) =>
       Date.parse(v.arrived_at) >= since &&
       (site === 'all' || v.location_id === site) &&
-      (person === 'all' || v.person_key === person) &&
+      (person === 'all' || personOf(v)?.person_key === person) &&
       (cat === 'all' || (cat === 'untagged' ? !categoryOf(v) : categoryOf(v) === cat)),
     )
-  }, [visits, site, person, cat, days, categoryOf])
+  }, [visits, site, person, cat, days, categoryOf, personOf])
 
   return (
     <div className="flex flex-col gap-3">
@@ -246,7 +260,7 @@ function LogTab({ visits, people, siteName, categoryOf }: {
         </Select>
         <Select value={person} onChange={(e) => setPerson(e.target.value)} className="sm:w-56">
           <option value="all">Everyone</option>
-          {people.map((p) => <option key={p.person_key} value={p.person_key}>{p.name}</option>)}
+          {people.filter((p) => !p.merged_into).map((p) => <option key={p.person_key} value={p.person_key}>{p.name}</option>)}
         </Select>
         <Select value={cat} onChange={(e) => setCat(e.target.value as CatFilter)} className="sm:w-48">
           <option value="all">All types</option>
@@ -283,7 +297,7 @@ function LogTab({ visits, people, siteName, categoryOf }: {
                       <td className="whitespace-nowrap px-3 py-2 text-ink">{when(v.arrived_at)}</td>
                       <td className="px-3 py-2 font-medium text-ink">{siteName.get(v.location_id) ?? 'Unknown site'}</td>
                       <td className="px-3 py-2 text-ink">
-                        {v.person_name ?? 'Unknown'}
+                        {nameOf(v)}
                         {c && <span className="ml-1.5 text-xs text-ink-subtle">{FLEET_CATEGORY_LABEL[c]}</span>}
                       </td>
                       <td className="px-3 py-2 text-ink-muted">{v.vehicle_name ?? '-'}</td>
@@ -304,25 +318,61 @@ function LogTab({ visits, people, siteName, categoryOf }: {
   )
 }
 
-function PeopleTab({ people, visits, onChange }: {
+function PeopleTab({ people, visits, canon, onChange, onReload }: {
   people: FleetPerson[]
   visits: SiteVisit[]
+  canon: Map<string, FleetPerson>
   onChange: (key: string, category: FleetCategory | null) => void
+  onReload: () => void
 }) {
   const [saving, setSaving] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+
+  const main = useMemo(() => people.filter((p) => !p.merged_into), [people])
+  const mergedUnder = useMemo(() => {
+    const m = new Map<string, FleetPerson[]>()
+    for (const p of people) if (p.merged_into) m.set(p.merged_into, [...(m.get(p.merged_into) ?? []), p])
+    return m
+  }, [people])
+
+  // Visit counts per person, merged entries included.
   const stats = useMemo(() => {
     const since30 = Date.now() - 30 * DAY_MS
     const m = new Map<string, { count30: number; last: string | null }>()
     for (const v of visits) {
-      if (!v.person_key) continue
-      const s = m.get(v.person_key) ?? { count30: 0, last: null }
+      const key = v.person_key ? canon.get(v.person_key)?.person_key : undefined
+      if (!key) continue
+      const s = m.get(key) ?? { count30: 0, last: null }
       if (Date.parse(v.arrived_at) >= since30) s.count30++
       if (!s.last) s.last = v.arrived_at
-      m.set(v.person_key, s)
+      m.set(key, s)
     }
     return m
-  }, [visits])
+  }, [visits, canon])
+
+  // For a vehicle-named entry (no driver assigned those days), suggest whoever
+  // drives that same vehicle most on the days it does have a driver.
+  const suggestions = useMemo(() => {
+    const byVehicle = new Map<string, Map<string, number>>()
+    for (const v of visits) {
+      if (!v.person_key || v.person_key.startsWith('v:')) continue
+      const key = canon.get(v.person_key)?.person_key
+      if (!key || key.startsWith('v:')) continue
+      const counts = byVehicle.get(v.vehicle_number) ?? new Map<string, number>()
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+      byVehicle.set(v.vehicle_number, counts)
+    }
+    const out = new Map<string, FleetPerson>()
+    for (const p of main) {
+      if (!p.person_key.startsWith('v:')) continue
+      const counts = byVehicle.get(p.person_key.slice(2))
+      if (!counts) continue
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+      const target = top && canon.get(top[0])
+      if (target && target.person_key !== p.person_key) out.set(p.person_key, target)
+    }
+    return out
+  }, [visits, canon, main])
 
   const save = async (key: string, value: string) => {
     const category = (value || null) as FleetCategory | null
@@ -334,16 +384,59 @@ function PeopleTab({ people, visits, onChange }: {
     onChange(key, category)
   }
 
+  const merge = async (from: FleetPerson, into: FleetPerson) => {
+    setSaving(from.person_key)
+    setErr(null)
+    const { error } = await siteVisits.merge(from.person_key, into.person_key)
+    setSaving(null)
+    if (error) { setErr(`Could not merge ${from.name}.`); return }
+    onReload()
+  }
+  const unmerge = async (p: FleetPerson) => {
+    setSaving(p.person_key)
+    setErr(null)
+    const { error } = await siteVisits.unmerge(p.person_key)
+    setSaving(null)
+    if (error) { setErr(`Could not undo the merge for ${p.name}.`); return }
+    onReload()
+  }
+  const mergeAllSuggested = async () => {
+    const pairs = [...suggestions.entries()]
+      .map(([key, into]) => [main.find((p) => p.person_key === key), into] as const)
+      .filter((pair): pair is readonly [FleetPerson, FleetPerson] => !!pair[0])
+    const list = pairs.map(([from, into]) => `${from.name} -> ${into.name}`).join('\n')
+    if (!window.confirm(`Merge these ${pairs.length}?\n\n${list}`)) return
+    setSaving('all')
+    setErr(null)
+    for (const [from, into] of pairs) {
+      const { error } = await siteVisits.merge(from.person_key, into.person_key)
+      if (error) { setErr(`Stopped at ${from.name}: could not merge.`); break }
+    }
+    setSaving(null)
+    onReload()
+  }
+
   if (people.length === 0) return <EmptyState icon={MapPinCheck} title="No people yet" description="People appear after the first sync." />
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm text-ink-muted">
         Everyone Verizon Connect has trips for. The type decides which column a visit counts toward on the Sites tab.
-        Site staff parked at their own wash are best tagged Other.
+        Site staff parked at their own wash are best tagged Other. Entries named after a vehicle are trips from days
+        no driver was assigned in Verizon; merge them into the person who drives it.
       </p>
+      {suggestions.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-sm">
+          <span className="text-ink">
+            {suggestions.size} vehicle {suggestions.size === 1 ? 'entry has' : 'entries have'} a suggested driver.
+          </span>
+          <Button size="sm" variant="secondary" disabled={saving != null} onClick={() => void mergeAllSuggested()}>
+            Merge all suggestions
+          </Button>
+        </div>
+      )}
       {err && <p className="text-sm text-danger">{err}</p>}
       <div className="overflow-x-auto rounded-md border border-border bg-card">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
             <tr>
               <th className="px-3 py-2.5 font-medium">Name</th>
@@ -351,16 +444,35 @@ function PeopleTab({ people, visits, onChange }: {
               <th className="px-3 py-2.5 text-right font-medium">Visits, 30 days</th>
               <th className="px-3 py-2.5 font-medium">Last visit</th>
               <th className="px-3 py-2.5 font-medium">Type</th>
+              <th className="px-3 py-2.5 font-medium">Merge</th>
             </tr>
           </thead>
           <tbody>
-            {people.map((p) => {
+            {main.map((p) => {
               const s = stats.get(p.person_key)
+              const merged = mergedUnder.get(p.person_key) ?? []
+              const suggested = suggestions.get(p.person_key)
+              const busy = saving === p.person_key || saving === 'all'
               return (
-                <tr key={p.person_key} className="border-t border-border hover:bg-content">
-                  <td className="px-3 py-2 font-medium text-ink">
-                    {p.name}
-                    {p.user_id && <span className="ml-1.5 text-xs font-normal text-ink-subtle">Operator user</span>}
+                <tr key={p.person_key} className="border-t border-border align-top hover:bg-content">
+                  <td className="px-3 py-2">
+                    <div className="font-medium text-ink">
+                      {p.name}
+                      {p.user_id && <span className="ml-1.5 text-xs font-normal text-ink-subtle">Operator user</span>}
+                      {p.person_key.startsWith('v:') && <span className="ml-1.5 text-xs font-normal text-ink-subtle">Vehicle</span>}
+                    </div>
+                    {merged.map((m) => (
+                      <div key={m.person_key} className="mt-0.5 text-xs text-ink-muted">
+                        Includes {m.name}{' '}
+                        <button
+                          className="font-medium text-accent hover:underline disabled:opacity-50"
+                          disabled={saving != null}
+                          onClick={() => void unmerge(m)}
+                        >
+                          Undo
+                        </button>
+                      </div>
+                    ))}
                   </td>
                   <td className="px-3 py-2 text-ink-muted">{p.email ?? '-'}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-ink">{s?.count30 ?? 0}</td>
@@ -368,13 +480,36 @@ function PeopleTab({ people, visits, onChange }: {
                   <td className="px-3 py-2">
                     <Select
                       value={p.category ?? ''}
-                      disabled={saving === p.person_key}
+                      disabled={busy}
                       onChange={(e) => void save(p.person_key, e.target.value)}
                       className="w-44"
                     >
                       <option value="">Not tagged</option>
                       {FLEET_CATEGORIES.map((c) => <option key={c} value={c}>{FLEET_CATEGORY_LABEL[c]}</option>)}
                     </Select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-col items-start gap-1.5">
+                      {suggested && (
+                        <Button size="sm" variant="secondary" disabled={saving != null} onClick={() => void merge(p, suggested)}>
+                          Merge into {suggested.name}
+                        </Button>
+                      )}
+                      <Select
+                        value=""
+                        disabled={saving != null}
+                        onChange={(e) => {
+                          const into = main.find((x) => x.person_key === e.target.value)
+                          if (into) void merge(p, into)
+                        }}
+                        className="w-48"
+                      >
+                        <option value="">Merge into...</option>
+                        {main
+                          .filter((x) => x.person_key !== p.person_key)
+                          .map((x) => <option key={x.person_key} value={x.person_key}>{x.name}</option>)}
+                      </Select>
+                    </div>
                   </td>
                 </tr>
               )

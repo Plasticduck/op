@@ -2519,6 +2519,7 @@ export type Database = {
           account_id: string
           category: string | null
           email: string | null
+          merged_into: string | null
           name: string
           person_key: string
           updated_at: string
@@ -2528,6 +2529,7 @@ export type Database = {
           account_id: string
           category?: string | null
           email?: string | null
+          merged_into?: string | null
           name: string
           person_key: string
           updated_at?: string
@@ -2537,6 +2539,7 @@ export type Database = {
           account_id?: string
           category?: string | null
           email?: string | null
+          merged_into?: string | null
           name?: string
           person_key?: string
           updated_at?: string

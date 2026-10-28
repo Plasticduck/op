@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { siteVisits, type SiteVisit } from '@/lib/queries/fleet'
+import { siteVisits, canonicalPeople, type SiteVisit } from '@/lib/queries/fleet'
 
 // RM Site Reviews vehicle check: was the reviewer's vehicle (Verizon Connect)
 // parked at the reviewed site around the time the review was submitted?
-// Reviewers are linked to Reveal drivers through fleet_people.user_id. A visit
+// Reviewers are linked to Reveal drivers through fleet_people.user_id (merged
+// entries, such as their vehicle on days it had no driver, count too). A visit
 // counts if it overlaps the 18 hours before submission (reviews are often
 // written up after leaving) through 1 hour after. Pre-launch: kevan only.
 
@@ -28,10 +29,13 @@ export function useReviewVehicleChecks(rows: Review[], enabled: boolean): Map<st
       try {
         const { data: people, error } = await siteVisits.people()
         if (error) throw error
+        // A reviewer's keys: their own plus any entries merged into them.
+        const canon = canonicalPeople(people ?? [])
         const keysByUser = new Map<string, string[]>()
         for (const p of people ?? []) {
-          if (!p.user_id) continue
-          keysByUser.set(p.user_id, [...(keysByUser.get(p.user_id) ?? []), p.person_key])
+          const userId = canon.get(p.person_key)?.user_id
+          if (!userId) continue
+          keysByUser.set(userId, [...(keysByUser.get(userId) ?? []), p.person_key])
         }
         const earliest = rows.reduce((m, r) => (r.submitted_at < m ? r.submitted_at : m), rows[0].submitted_at)
         const since = new Date(Date.parse(earliest) - BEFORE_MS).toISOString()

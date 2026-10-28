@@ -21,6 +21,12 @@ export const FLEET_CATEGORY_LABEL: Record<FleetCategory, string> = {
 }
 export const FLEET_CATEGORIES = Object.keys(FLEET_CATEGORY_LABEL) as FleetCategory[]
 
+// person_key -> the person it counts as (itself, or who it was merged into).
+export function canonicalPeople(people: FleetPerson[]): Map<string, FleetPerson> {
+  const byKey = new Map(people.map((p) => [p.person_key, p]))
+  return new Map(people.map((p) => [p.person_key, (p.merged_into && byKey.get(p.merged_into)) || p]))
+}
+
 export type FleetVehicle = {
   number: string
   name: string // cleaned Reveal vehicle name, usually the assigned person
@@ -89,6 +95,16 @@ export const siteVisits = {
       .update({ category, updated_at: new Date().toISOString() })
       .eq('person_key', personKey)
       .select('person_key'),
+  // Show one person's visits under another (e.g. a vehicle-named entry under
+  // its driver). Anything already merged into `fromKey` moves along, so merges
+  // stay one level deep.
+  merge: async (fromKey: string, intoKey: string) => {
+    const moved = await supabase.from('fleet_people').update({ merged_into: intoKey }).eq('merged_into', fromKey)
+    if (moved.error) return moved
+    return supabase.from('fleet_people').update({ merged_into: intoKey }).eq('person_key', fromKey).select('person_key')
+  },
+  unmerge: (key: string) =>
+    supabase.from('fleet_people').update({ merged_into: null }).eq('person_key', key).select('person_key'),
   // Re-sync yesterday and today now instead of waiting for the hourly run.
   sync: () => supabase.functions.invoke('reveal-visits-sync', { body: {} }),
 }
