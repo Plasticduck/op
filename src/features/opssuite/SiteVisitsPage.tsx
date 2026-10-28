@@ -9,12 +9,13 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/utils'
 import { durationHm } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
-import { siteVisits, FLEET_CATEGORY_LABEL, type FleetCategory, type FleetPerson, type SiteVisit } from '@/lib/queries/fleet'
+import { siteVisits, FLEET_CATEGORIES, FLEET_CATEGORY_LABEL, type FleetCategory, type FleetPerson, type SiteVisit } from '@/lib/queries/fleet'
 
 // Site Visits: who parked at each Mighty Wash site, from Verizon Connect Reveal
 // trips (reveal-visits-sync, hourly). A visit is a vehicle parked within the
-// site's geofence. People are tagged Regional Manager / Maintenance / Other on
-// the People tab; Regional Managers are pre-tagged from their Operator role.
+// site's geofence. People are tagged by type (Regional Manager, Executive,
+// Maintenance, Facilities, IT, Other) on the People tab; Regional Managers and
+// Executives are pre-tagged from their Operator role.
 // Pre-launch: kevan@washlyfe.com only.
 
 const HISTORY_DAYS = 90
@@ -249,9 +250,7 @@ function LogTab({ visits, people, siteName, categoryOf }: {
         </Select>
         <Select value={cat} onChange={(e) => setCat(e.target.value as CatFilter)} className="sm:w-48">
           <option value="all">All types</option>
-          <option value="regional_manager">Regional Managers</option>
-          <option value="maintenance">Maintenance</option>
-          <option value="other">Other</option>
+          {FLEET_CATEGORIES.map((c) => <option key={c} value={c}>{FLEET_CATEGORY_LABEL[c]}</option>)}
           <option value="untagged">Not tagged</option>
         </Select>
         <Select value={String(days)} onChange={(e) => setDays(Number(e.target.value))} className="sm:w-40">
@@ -374,9 +373,7 @@ function PeopleTab({ people, visits, onChange }: {
                       className="w-44"
                     >
                       <option value="">Not tagged</option>
-                      <option value="regional_manager">Regional Manager</option>
-                      <option value="maintenance">Maintenance</option>
-                      <option value="other">Other</option>
+                      {FLEET_CATEGORIES.map((c) => <option key={c} value={c}>{FLEET_CATEGORY_LABEL[c]}</option>)}
                     </Select>
                   </td>
                 </tr>

@@ -9,12 +9,17 @@ import type { Database } from '@/lib/database.types'
 type T = Database['public']['Tables']
 export type SiteVisit = T['vehicle_site_visits']['Row']
 export type FleetPerson = T['fleet_people']['Row']
-export type FleetCategory = 'regional_manager' | 'maintenance' | 'other'
+export type FleetCategory = 'regional_manager' | 'executive' | 'maintenance' | 'facilities' | 'it' | 'other'
+// Display order for the People tab and filters.
 export const FLEET_CATEGORY_LABEL: Record<FleetCategory, string> = {
   regional_manager: 'Regional Manager',
+  executive: 'Executive',
   maintenance: 'Maintenance',
+  facilities: 'Facilities',
+  it: 'IT',
   other: 'Other',
 }
+export const FLEET_CATEGORIES = Object.keys(FLEET_CATEGORY_LABEL) as FleetCategory[]
 
 export type FleetVehicle = {
   number: string

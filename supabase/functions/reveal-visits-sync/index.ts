@@ -328,8 +328,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // People: add new ones (Regional Managers pre-tagged), refresh names/emails
-    // and Operator user matches, never touch a category already set.
+    // People: add new ones, refresh names/emails and Operator user matches, and
+    // pre-tag untagged Regional Managers and Executives from their Operator
+    // role. A category already set is never changed.
     const people = new Map<string, Person>()
     for (const v of trips.values()) for (const t of v.trips) if (t.person) people.set(t.person.key, t.person)
     if (people.size) {
@@ -339,14 +340,14 @@ Deno.serve(async (req) => {
       const has = new Map((existing ?? []).map((p: Any) => [p.person_key, p.category]))
       const rows = [...people.values()].map((p) => {
         const u: Any = p.email ? byEmail.get(p.email) : null
-        const isRm = u?.role_category === 'regional_manager'
+        const fromRole = u?.role_category === 'regional_manager' || u?.role_category === 'executive' ? u.role_category : null
         return {
           account_id: MW_ACCOUNT_ID,
           person_key: p.key,
           name: p.name,
           email: p.email,
           user_id: u?.id ?? null,
-          category: has.has(p.key) ? has.get(p.key) : isRm ? 'regional_manager' : null,
+          category: has.get(p.key) ?? fromRole,
           updated_at: new Date().toISOString(),
         }
       })
