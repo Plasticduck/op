@@ -6,11 +6,20 @@ import { fleet, type FleetLive, type FleetVehicle } from '@/lib/queries/fleet'
 import { useLocations } from '@/lib/locations'
 
 // Fleet Map: live positions of Mighty Wash vehicles from Verizon Connect Reveal
-// (reveal-fleet edge function). Reveal's own live map refreshes every 30
-// seconds, so this polls at the same rate while the tab is visible.
-// Pre-launch: kevan@washlyfe.com only.
+// (reveal-fleet edge function). Pre-launch: kevan@washlyfe.com only.
+//
+// Reveal plots a moving vehicle about every 30 seconds (sometimes up to 90), so
+// the page polls every 15 seconds while anything is moving (30 otherwise) and
+// glides each marker from where it is to its new plot over the time between
+// the two plots. Movement stays continuous without guessing ahead: the
+// reported speed is a single instant reading and swings 0 to 50+ in town.
 
 const REFRESH_MS = 30_000
+const MOVING_REFRESH_MS = 15_000
+const GLIDE_MIN_MS = 5_000
+const GLIDE_MAX_MS = 45_000
+// A jump this far (bad plot, long gap) snaps instead of sliding across the map.
+const SNAP_METERS = 30_000
 // A vehicle whose last GPS update is older than this is drawn faded. Parked
 // vehicles stop reporting, so this means "hasn't moved in a while", not offline.
 const OLD_MS = 7 * 24 * 3600_000
@@ -119,6 +128,12 @@ export default function FleetMapPage() {
   const sitesRef = useRef<L.LayerGroup | null>(null)
   const markersRef = useRef(new Map<string, L.Marker>())
   const fittedRef = useRef(false)
+  // Plot time each marker is showing or gliding to, the glides in progress, and
+  // the animation frame driving them.
+  const plotRef = useRef(new Map<string, string | null>())
+  const glidesRef = useRef(new Map<string, { m: L.Marker; from: L.LatLng; to: L.LatLng; start: number; dur: number }>())
+  const rafRef = useRef<number | null>(null)
+  const anyMovingRef = useRef(false)
 
   const { locations } = useLocations()
   const [data, setData] = useState<FleetLive | null>(null)
@@ -133,7 +148,9 @@ export default function FleetMapPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setData(await fleet.live())
+      const live = await fleet.live()
+      anyMovingRef.current = live.vehicles.some((v) => v.status === 'Moving')
+      setData(live)
       setError(null)
     } catch (e) {
       // invoke() puts the HTTP status on the error's context Response.
@@ -143,28 +160,48 @@ export default function FleetMapPage() {
           ? 'Your sign-in has expired. Sign out and back in to load vehicles.'
           : status === 403
             ? 'Your account does not have access to the fleet map.'
-            : 'Could not reach Verizon Connect. It will try again in 30 seconds.',
+            : 'Could not reach Verizon Connect. It will try again shortly.',
       )
     } finally {
       setLoading(false)
     }
   }, [])
 
-  // Poll while the tab is visible; refresh right away on coming back.
+  // Poll while the tab is visible (faster while anything is moving); refresh
+  // right away on coming back.
   useEffect(() => {
-    void load()
-    const id = setInterval(() => {
-      if (!document.hidden) void load()
-    }, REFRESH_MS)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let stopped = false
+    const tick = async () => {
+      if (!document.hidden) await load()
+      if (!stopped) timer = setTimeout(tick, anyMovingRef.current ? MOVING_REFRESH_MS : REFRESH_MS)
+    }
+    void tick()
     const onVis = () => {
       if (!document.hidden) void load()
     }
     document.addEventListener('visibilitychange', onVis)
     return () => {
-      clearInterval(id)
+      stopped = true
+      clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVis)
     }
   }, [load])
+
+  // Step every in-progress glide; runs only while something is gliding.
+  const startGlides = useCallback(() => {
+    if (rafRef.current != null) return
+    const frame = () => {
+      const now = performance.now()
+      for (const [num, g] of glidesRef.current) {
+        const t = Math.min(1, (now - g.start) / g.dur)
+        g.m.setLatLng([g.from.lat + (g.to.lat - g.from.lat) * t, g.from.lng + (g.to.lng - g.from.lng) * t])
+        if (t >= 1) glidesRef.current.delete(num)
+      }
+      rafRef.current = glidesRef.current.size ? requestAnimationFrame(frame) : null
+    }
+    rafRef.current = requestAnimationFrame(frame)
+  }, [])
 
   // Keep the "x min ago" labels current between refreshes.
   useEffect(() => {
@@ -186,8 +223,14 @@ export default function FleetMapPage() {
     vehiclesRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
     const markers = markersRef.current
+    const plots = plotRef.current
+    const glides = glidesRef.current
     setTimeout(() => map.invalidateSize(), 200)
     return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+      glides.clear()
+      plots.clear()
       map.remove()
       mapRef.current = null
       markers.clear()
@@ -228,12 +271,15 @@ export default function FleetMapPage() {
   }, [vehicles, filter, query])
 
   // Sync markers with the shown vehicles: move existing ones in place so an
-  // open popup stays open across refreshes.
+  // open popup stays open across refreshes. A new plot starts a glide from
+  // wherever the marker is now (mid-glide included) to the new position.
   useEffect(() => {
     const layer = vehiclesRef.current
     const map = mapRef.current
     if (!layer || !map) return
     const markers = markersRef.current
+    const plots = plotRef.current
+    const glides = glidesRef.current
     const keep = new Set<string>()
     for (const v of shown) {
       keep.add(v.number)
@@ -242,9 +288,24 @@ export default function FleetMapPage() {
         m = L.marker([v.lat, v.lng], { icon: vehicleIcon(v), title: v.name, zIndexOffset: kindOf(v) === 'moving' ? 1000 : 0 })
         m.bindPopup(popupHtml(v))
         markers.set(v.number, m)
+        plots.set(v.number, v.updated_at)
         m.addTo(layer)
       } else {
-        m.setLatLng([v.lat, v.lng])
+        const prevPlot = plots.get(v.number)
+        if (prevPlot !== v.updated_at) {
+          plots.set(v.number, v.updated_at)
+          const from = m.getLatLng()
+          const to = L.latLng(v.lat, v.lng)
+          if (from.equals(to) || from.distanceTo(to) > SNAP_METERS) {
+            glides.delete(v.number)
+            m.setLatLng(to)
+          } else {
+            const gap = prevPlot && v.updated_at ? Date.parse(v.updated_at) - Date.parse(prevPlot) : REFRESH_MS
+            const dur = Math.min(GLIDE_MAX_MS, Math.max(GLIDE_MIN_MS, Number.isFinite(gap) ? gap : REFRESH_MS))
+            glides.set(v.number, { m, from, to, start: performance.now(), dur })
+            startGlides()
+          }
+        }
         m.setIcon(vehicleIcon(v))
         m.setZIndexOffset(kindOf(v) === 'moving' ? 1000 : 0)
         m.setPopupContent(popupHtml(v))
@@ -261,7 +322,7 @@ export default function FleetMapPage() {
       fittedRef.current = true
       map.fitBounds(L.latLngBounds(vehicles.map((v) => [v.lat, v.lng] as [number, number])), { padding: [60, 60], maxZoom: 13 })
     }
-  }, [shown, vehicles, showNames])
+  }, [shown, vehicles, showNames, startGlides])
 
   const focus = (v: FleetVehicle) => {
     const map = mapRef.current
