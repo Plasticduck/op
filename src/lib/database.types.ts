@@ -2123,13 +2123,20 @@ export type Database = {
       event_pay_requests: {
         Row: {
           account_id: string
+          approval_requested_at: string | null
+          approval_status: string | null
           attendees: Json
           created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decided_by_name: string | null
+          decision_note: string | null
           emailed_at: string | null
           event_date: string
           event_name: string
           id: string
           location_id: string | null
+          needs_approval: boolean
           notes: string | null
           requester_name: string
           submitted_by: string | null
@@ -2137,13 +2144,20 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          approval_requested_at?: string | null
+          approval_status?: string | null
           attendees?: Json
           created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decided_by_name?: string | null
+          decision_note?: string | null
           emailed_at?: string | null
           event_date: string
           event_name: string
           id?: string
           location_id?: string | null
+          needs_approval?: boolean
           notes?: string | null
           requester_name: string
           submitted_by?: string | null
@@ -2151,13 +2165,20 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          approval_requested_at?: string | null
+          approval_status?: string | null
           attendees?: Json
           created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decided_by_name?: string | null
+          decision_note?: string | null
           emailed_at?: string | null
           event_date?: string
           event_name?: string
           id?: string
           location_id?: string | null
+          needs_approval?: boolean
           notes?: string | null
           requester_name?: string
           submitted_by?: string | null
@@ -2169,6 +2190,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_pay_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
