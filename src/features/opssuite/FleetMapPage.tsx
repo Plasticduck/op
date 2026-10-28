@@ -135,8 +135,16 @@ export default function FleetMapPage() {
     try {
       setData(await fleet.live())
       setError(null)
-    } catch {
-      setError('Could not reach Verizon Connect. It will try again in 30 seconds.')
+    } catch (e) {
+      // invoke() puts the HTTP status on the error's context Response.
+      const status = (e as { context?: { status?: number } })?.context?.status
+      setError(
+        status === 401
+          ? 'Your sign-in has expired. Sign out and back in to load vehicles.'
+          : status === 403
+            ? 'Your account does not have access to the fleet map.'
+            : 'Could not reach Verizon Connect. It will try again in 30 seconds.',
+      )
     } finally {
       setLoading(false)
     }
