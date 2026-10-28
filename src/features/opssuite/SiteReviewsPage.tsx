@@ -11,7 +11,8 @@ import { TimeSelect } from '@/components/forms/TimeSelect'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { JsonView } from '@/components/data/JsonView'
 import { AttachmentViewer } from '@/components/data/AttachmentViewer'
-import { shortDate } from '@/lib/format'
+import { format } from 'date-fns'
+import { durationHm, shortDate, timeOfDay } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { siteEvaluations, customForms, siteReviewPhotos, type SiteEvaluation } from '@/lib/queries/opsSuite'
@@ -25,6 +26,7 @@ import {
 } from './siteReviewSchema'
 import { buildSiteReviewPdf, openPdfInNewTab, downloadBlob, type SiteReviewPdfInput } from '@/lib/reports/siteReviewPdf'
 import { fetchCurrentWeather, currentWeatherLabel, geocodeAddress } from '@/lib/weather'
+import { useReviewVehicleChecks, type VehicleCheck } from './useReviewVehicleChecks'
 
 // Weather + time-arrived captured on a review are stored under this reserved key
 // in the answers JSON (the table has no dedicated columns for them).
@@ -186,6 +188,9 @@ export default function SiteReviewsPage() {
   const canCustomize = profile?.role === 'owner' || profile?.role === 'manager'
   // Only this admin account may delete monthly site reviews (enforced by RLS too).
   const canDelete = (profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'
+  // Vehicle check against Verizon Connect site visits. Pre-launch: same single admin.
+  const showVehicleCheck = canDelete
+  const vehicleChecks = useReviewVehicleChecks(rows, showVehicleCheck)
   const [removing, setRemoving] = useState<string | null>(null)
   const remove = async (row: Row) => {
     if (!window.confirm(`Delete the ${row.location?.name ?? 'site'} review from ${shortDate(row.submitted_at)}? This cannot be undone.`)) return
@@ -274,13 +279,14 @@ export default function SiteReviewsPage() {
         <EmptyState icon={ClipboardList} title="No site reviews" description="Monthly site reviews will appear here." />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className={showVehicleCheck ? 'w-full min-w-[880px] text-sm' : 'w-full min-w-[720px] text-sm'}>
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-3 py-2.5 font-medium">Site</th>
                 <th className="px-3 py-2.5 font-medium">Result</th>
                 <th className="px-3 py-2.5 font-medium">Submitted by</th>
                 <th className="px-3 py-2.5 font-medium">Date</th>
+                {showVehicleCheck && <th className="px-3 py-2.5 font-medium">Vehicle</th>}
                 <th className="px-3 py-2.5" />
               </tr>
             </thead>
@@ -293,6 +299,9 @@ export default function SiteReviewsPage() {
                   </td>
                   <td className="px-3 py-2.5 text-ink-muted">{e.submitted_by_name ?? '—'}</td>
                   <td className="px-3 py-2.5 text-ink-muted">{shortDate(e.submitted_at)}</td>
+                  {showVehicleCheck && (
+                    <td className="px-3 py-2.5"><VehicleCheckCell check={vehicleChecks.get(e.id)} /></td>
+                  )}
                   <td className="px-3 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="sm" onClick={() => setOpen(e)}>View</Button>
@@ -322,6 +331,7 @@ export default function SiteReviewsPage() {
 
       {open && (
         <Modal open onClose={() => setOpen(null)} title={`Review · ${open.location?.name ?? 'Site'}`} size="lg">
+          {showVehicleCheck && <VehicleCheckNote row={open} check={vehicleChecks.get(open.id)} />}
           <ReviewDetail row={open} schema={schema} onView={() => void openReport(open)} onDownload={() => void downloadReport(open)} />
         </Modal>
       )}
@@ -348,6 +358,59 @@ export default function SiteReviewsPage() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+const clock = (iso: string) => format(new Date(iso), 'h:mm a')
+
+function VehicleCheckCell({ check }: { check: VehicleCheck | undefined }) {
+  if (!check) return <span className="text-ink-subtle">-</span>
+  if (check.kind === 'at_site') {
+    const v = check.visit
+    return (
+      <div>
+        <Badge tone="ok">At site</Badge>
+        <div className="mt-0.5 whitespace-nowrap text-xs text-ink-muted">
+          {clock(v.arrived_at)}{v.departed_at ? ` to ${clock(v.departed_at)}` : ''}
+        </div>
+      </div>
+    )
+  }
+  if (check.kind === 'not_found') return <Badge tone="danger">No visit found</Badge>
+  return <span className="text-xs text-ink-subtle">{check.kind === 'untracked' ? 'No tracked vehicle' : 'Before tracking'}</span>
+}
+
+// The vehicle check spelled out at the top of a review's detail view.
+function VehicleCheckNote({ row, check }: { row: Row; check: VehicleCheck | undefined }) {
+  if (!check) return null
+  const site = row.location?.name ?? 'the site'
+  const who = row.submitted_by_name ?? 'The reviewer'
+  const reported = reviewMeta(row.answers).timeArrived
+  let text: string
+  let tone: 'ok' | 'danger' | 'neutral' = 'neutral'
+  if (check.kind === 'at_site') {
+    const v = check.visit
+    tone = 'ok'
+    text = `${who}'s vehicle was parked at ${site} from ${clock(v.arrived_at)}` +
+      (v.departed_at ? ` to ${clock(v.departed_at)} (${durationHm(v.arrived_at, v.departed_at)})` : ', still there') +
+      ` on ${format(new Date(v.arrived_at), 'MMM d')}.`
+  } else if (check.kind === 'not_found') {
+    tone = 'danger'
+    text = `No visit to ${site} by ${who}'s vehicle in the 18 hours before this review was submitted.`
+  } else if (check.kind === 'untracked') {
+    text = `${who} has no vehicle in Verizon Connect, so this review can't be checked.`
+  } else {
+    text = 'This review was submitted before vehicle visit tracking began.'
+  }
+  return (
+    <div className={
+      tone === 'ok' ? 'mb-4 rounded-md bg-ok-soft px-3 py-2 text-sm text-ink'
+        : tone === 'danger' ? 'mb-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-ink'
+          : 'mb-4 rounded-md bg-content px-3 py-2 text-sm text-ink-muted'
+    }>
+      <span className="font-medium">Vehicle check:</span> {text}
+      {reported && <span className="text-ink-muted"> Reported arrival: {timeOfDay(reported)}.</span>}
     </div>
   )
 }

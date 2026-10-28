@@ -39,6 +39,7 @@ import {
   ListChecks,
   Building2,
   Map,
+  MapPinCheck,
   Megaphone,
   Tags as TagsIcon,
   MessageCircle,
@@ -174,6 +175,13 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/app/fleet-map',
         label: 'Fleet Map',
         icon: Truck,
+        roles: ['owner'],
+        emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
+      },
+      {
+        to: '/app/site-visits',
+        label: 'Site Visits',
+        icon: MapPinCheck,
         roles: ['owner'],
         emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
       },

@@ -2514,6 +2514,51 @@ export type Database = {
           },
         ]
       }
+      fleet_people: {
+        Row: {
+          account_id: string
+          category: string | null
+          email: string | null
+          name: string
+          person_key: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          account_id: string
+          category?: string | null
+          email?: string | null
+          name: string
+          person_key: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          category?: string | null
+          email?: string | null
+          name?: string
+          person_key?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_people_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_people_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       flexwash_sites: {
         Row: {
           account_id: string
@@ -6596,6 +6641,60 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_site_visits: {
+        Row: {
+          account_id: string
+          arrived_at: string
+          created_at: string
+          departed_at: string | null
+          id: string
+          location_id: string
+          person_key: string | null
+          person_name: string | null
+          vehicle_name: string | null
+          vehicle_number: string
+        }
+        Insert: {
+          account_id: string
+          arrived_at: string
+          created_at?: string
+          departed_at?: string | null
+          id?: string
+          location_id: string
+          person_key?: string | null
+          person_name?: string | null
+          vehicle_name?: string | null
+          vehicle_number: string
+        }
+        Update: {
+          account_id?: string
+          arrived_at?: string
+          created_at?: string
+          departed_at?: string | null
+          id?: string
+          location_id?: string
+          person_key?: string | null
+          person_name?: string | null
+          vehicle_name?: string | null
+          vehicle_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_site_visits_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_site_visits_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]
