@@ -60,6 +60,7 @@ import {
   Target,
   Telescope,
   Timer,
+  Truck,
   UserPlus,
   UsersRound,
   Wallet,
@@ -168,6 +169,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Market Explorer',
         icon: Globe,
         roles: ['owner', 'manager'],
+      },
+      {
+        to: '/app/fleet-map',
+        label: 'Fleet Map',
+        icon: Truck,
+        roles: ['owner'],
+        emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
       },
       {
         to: '/app/bonuses',

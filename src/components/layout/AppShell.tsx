@@ -28,6 +28,7 @@ import { BillingGate } from '@/components/layout/BillingGate'
 const FULL_BLEED_PATTERNS = [
   /^\/app\/ask($|\/)/,
   /^\/app\/market-explorer($|\/)/,
+  /^\/app\/fleet-map($|\/)/,
   /^\/app\/messages($|\/)/,
   /^\/app\/work-orders($|\/)/,
   /^\/app\/work-orders-new($|\/)/,
