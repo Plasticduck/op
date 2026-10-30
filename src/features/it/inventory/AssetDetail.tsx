@@ -32,6 +32,7 @@ import { useLocations } from '@/lib/locations'
 import { shrinkPhoto } from '@/lib/shrinkPhoto'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItAssetRow, type ItAssignment } from '@/lib/queries/itInventory'
+import { AccessoriesWithAsset } from './AccessoriesPanel'
 import { AssetForm, type AssetFormMode } from './AssetForm'
 import { CheckInDialog, CheckOutDialog, MoveDialog, StatusDialog } from './ItemActions'
 import { fieldsFor } from './customFields'
@@ -365,6 +366,8 @@ export function AssetDetail({ id }: { id: string }) {
                 onChanged={(m) => { setFlash(m); void load() }} />
 
               <CoveredBy assetId={asset.id} />
+
+              <AccessoriesWithAsset assetId={asset.id} canEdit={canEdit} />
 
               <Section title="Purchase and warranty">
                 <Row label="Purchased">{asset.purchase_date ? fmtDay(asset.purchase_date) : null}</Row>

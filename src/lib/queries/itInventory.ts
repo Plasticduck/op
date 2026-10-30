@@ -77,6 +77,11 @@ export type ItOverview = {
   repair_spend_90d: number
 }
 
+export type ItAccessory = T['it_accessories']['Row']
+// With how many are out and how many are left (it_accessory_stock view).
+export type ItAccessoryStock = ItAccessory & { checked_out: number; available: number }
+export type ItAccessoryAssignment = T['it_accessory_assignments']['Row']
+
 export type ItMaintenanceType = T['it_maintenance_types']['Row']
 export type ItRepair = T['it_maintenances']['Row']
 // With the item it's for (null if it's at a site you can't see).
@@ -391,6 +396,28 @@ export const itInventory = {
   removeConsumable: (id: string) => supabase.from('it_consumables').update({ deleted_at: new Date().toISOString() }).eq('id', id),
   // A count that matches what's on record still counts as counted.
   markCounted: (id: string) => supabase.from('it_consumables').update({ counted_at: new Date().toISOString() }).eq('id', id),
+
+  // ---- Accessories (counted, lent out and returned) ----
+  accessories: () =>
+    fetchAll<ItAccessoryStock>((f, t) =>
+      supabase.from('it_accessory_stock').select('*').is('deleted_at', null).order('name').range(f, t)),
+  saveAccessory: (row: T['it_accessories']['Insert'] & { id?: string }) =>
+    row.id
+      ? supabase.from('it_accessories').update(row).eq('id', row.id).select('*').single()
+      : supabase.from('it_accessories').insert(row).select('*').single(),
+  removeAccessory: (id: string) => supabase.from('it_accessories').update({ deleted_at: new Date().toISOString() }).eq('id', id),
+  // Who has them (open first), and the recent history.
+  accessoryAssignments: (accessoryId: string) =>
+    supabase.from('it_accessory_assignments').select('*').eq('accessory_id', accessoryId)
+      .order('checked_in_at', { ascending: false, nullsFirst: true }).order('checked_out_at', { ascending: false }).limit(100),
+  accessoriesWithAsset: (assetId: string) =>
+    supabase.from('it_accessory_assignments').select('*').eq('asset_id', assetId).is('checked_in_at', null).order('checked_out_at'),
+  // The site and label are filled in by trigger (location_id is there for the types).
+  checkOutAccessory: (row: { account_id: string; location_id: string; accessory_id: string; qty: number; assigned_type: 'user' | 'asset';
+    assigned_id: string; expected_return_at?: string | null; note?: string | null }) =>
+    supabase.from('it_accessory_assignments').insert(row),
+  checkInAccessory: (id: string, note: string | null) =>
+    supabase.from('it_accessory_assignments').update({ checked_in_at: new Date().toISOString(), checkin_note: note }).eq('id', id),
 
   // ---- Repairs and service (it_maintenances) ----
   maintenanceTypes: () => supabase.from('it_maintenance_types').select('*').is('deleted_at', null).order('sort_order'),

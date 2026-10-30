@@ -918,6 +918,118 @@ exception when others then
 end $$;
 reset role;
 
+-- ---- Accessories (Phase 2) ---------------------------------------------------------------------
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  acc    uuid;
+  person uuid := (select e.id from public.employees e where e.location_id = current_setting('t.site_in')::uuid limit 1);
+  a1 uuid; a2 uuid;
+begin
+  if (select count(*) from public.it_categories where account_id = current_setting('t.a')::uuid and kind = 'accessory') < 1 then
+    raise exception 'FAIL 140: accessory categories are missing';
+  end if;
+  insert into public.it_accessories (account_id, location_id, name, qty_total, min_qty)
+  values (current_setting('t.a')::uuid, current_setting('t.site_in')::uuid, 'Test tablet charger', 5, 2) returning id into acc;
+  perform set_config('t.acc', acc::text, true);
+  if person is not null then
+    insert into public.it_accessory_assignments (account_id, accessory_id, qty, assigned_type, assigned_id)
+    values (current_setting('t.a')::uuid, acc, 2, 'user', person) returning id into a1;
+    if (select assigned_label is null or location_id <> current_setting('t.site_in')::uuid from public.it_accessory_assignments where id = a1) then
+      raise exception 'FAIL 141: a check-out to a person did not get their name and the site';
+    end if;
+  end if;
+  begin
+    insert into public.it_accessory_assignments (account_id, accessory_id, qty, assigned_type, assigned_id)
+    values (current_setting('t.a')::uuid, acc, 1, 'assign', current_setting('t.tablet')::uuid)
+    returning id into a2;
+    raise exception 'FAIL 142: an unknown check-out type was accepted';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+end $$;
+do $$
+declare
+  acc   uuid := current_setting('t.acc')::uuid;
+  out_n integer := (select coalesce(sum(qty), 0) from public.it_accessory_assignments where accessory_id = current_setting('t.acc')::uuid and checked_in_at is null);
+  a2    uuid;
+begin
+  insert into public.it_accessory_assignments (account_id, accessory_id, qty, assigned_type, assigned_id)
+  values (current_setting('t.a')::uuid, acc, 5 - out_n, 'asset', current_setting('t.tablet')::uuid) returning id into a2;
+  perform set_config('t.acc_a2', a2::text, true);
+  if (select available from public.it_accessory_stock where id = acc) <> 0 or (select checked_out from public.it_accessory_stock where id = acc) <> 5 then
+    raise exception 'FAIL 143: the stock view doesn''t show all 5 out';
+  end if;
+  if (select asset_id from public.it_accessory_assignments where id = a2) is distinct from current_setting('t.tablet')::uuid then
+    raise exception 'FAIL 144: a check-out to a device doesn''t point at the device';
+  end if;
+  if not exists (select 1 from public.it_activity_log where asset_id = current_setting('t.tablet')::uuid and entity_type = 'accessory_assignment') then
+    raise exception 'FAIL 145: a check-out to a device is not on that device''s Timeline';
+  end if;
+  begin
+    insert into public.it_accessory_assignments (account_id, accessory_id, qty, assigned_type, assigned_id)
+    values (current_setting('t.a')::uuid, acc, 1, 'asset', current_setting('t.tablet')::uuid);
+    raise exception 'FAIL 146: checked out more than there are';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+    if sqlerrm <> 'None left to check out.' then raise exception 'FAIL 146: wrong message: %', sqlerrm; end if;
+  end;
+  begin
+    update public.it_accessories set qty_total = 3 where id = acc;
+    raise exception 'FAIL 147: lowered the total below what''s out';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  update public.it_accessory_assignments set checked_in_at = now(), checkin_note = 'Back' where id = a2;
+  if (select checked_in_by from public.it_accessory_assignments where id = a2) is null
+     or (select available from public.it_accessory_stock where id = acc) <> 5 - (select coalesce(sum(qty), 0) from public.it_accessory_assignments where accessory_id = acc and checked_in_at is null) then
+    raise exception 'FAIL 148: checking in did not record who or free them up';
+  end if;
+  begin
+    update public.it_accessory_assignments set checkin_note = 'again' where id = a2;
+    raise exception 'FAIL 149: changed a closed check-out';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  begin
+    insert into public.it_accessories (account_id, location_id, name, qty_total)
+    values (current_setting('t.a')::uuid, current_setting('t.site_out')::uuid, 'Not mine', 1);
+    raise exception 'FAIL 150: a manager added an accessory at another site';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+end $$;
+reset role;
+do $$ begin
+  -- A device at another site can't take one (checked as the owner, who can see both).
+  perform set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+  insert into public.it_accessory_assignments (account_id, accessory_id, qty, assigned_type, assigned_id)
+  values (current_setting('t.a')::uuid, current_setting('t.acc')::uuid, 1, 'asset', current_setting('t.asset_out')::uuid);
+  raise exception 'FAIL 151: an accessory went to a device at another site';
+exception when others then
+  if sqlerrm like 'FAIL%' then raise; end if;
+end $$;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  insert into public.it_accessory_assignments (account_id, accessory_id, qty, assigned_type, assigned_id)
+  values (current_setting('t.a')::uuid, current_setting('t.acc')::uuid, 1, 'asset', current_setting('t.tablet')::uuid);
+  raise exception 'FAIL 152: crew checked out an accessory';
+exception when others then
+  if sqlerrm like 'FAIL%' then raise; end if;
+end $$;
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.b_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if exists (select 1 from public.it_accessories) or exists (select 1 from public.it_accessory_stock)
+     or exists (select 1 from public.it_accessory_assignments) then
+    raise exception 'FAIL 153: another company can see these accessories';
+  end if;
+end $$;
+reset role;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;

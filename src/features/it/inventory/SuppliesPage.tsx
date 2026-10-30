@@ -13,8 +13,10 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
+import { cn } from '@/lib/utils'
 import { itInventory, type ItConsumable, type ItConsumableEvent, type ItPerson } from '@/lib/queries/itInventory'
 import { friendlyError, type Tone } from './format'
+import { AccessoriesPanel } from './AccessoriesPanel'
 import { Footer, NoteField } from './ItemActions'
 import { SectionNav } from './SectionNav'
 import { useItRefs, type ItRefs } from './useItRefs'
@@ -24,6 +26,7 @@ import { useItRefs, type ItRefs } from './useItRefs'
 // so every change is explained. A supply nobody has counted yet says so
 // instead of showing a guess, and only counted supplies can run low and send
 // a reminder. Printing stickers counts the site's Sticker Stock down.
+// Accessories (lent out and returned) share this tab: ?kind=accessories.
 
 type StockMode = 'count' | 'restock' | 'use'
 
@@ -47,6 +50,9 @@ export function SuppliesPage() {
   const [flash, setFlash] = useState<string | null>(null)
   const [stock, setStock] = useState<{ mode: StockMode; row: ItConsumable } | null>(null)
   const [editing, setEditing] = useState<ItConsumable | 'new' | null>(null)
+  const [addingAccessory, setAddingAccessory] = useState(false)
+  // Supplies get used up; accessories are lent out and come back.
+  const kind = params.get('kind') === 'accessories' ? 'accessories' : 'supplies'
   const staff = profile?.role === 'owner' || profile?.role === 'manager' || profile?.role === 'technician'
   const siteName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations])
 
@@ -82,10 +88,27 @@ export function SuppliesPage() {
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <PageHeader
         title="IT Inventory"
-        subtitle="Supplies on hand at each site, so nobody runs out of receipt paper or stickers."
-        actions={staff ? <Button onClick={() => setEditing('new')} disabled={!refs}><Plus className="size-4" /> Add supply</Button> : undefined}
+        subtitle={kind === 'supplies'
+          ? 'Supplies on hand at each site, so nobody runs out of receipt paper or stickers.'
+          : 'Chargers, cables, cases and other accessories each site lends out, and who has them.'}
+        actions={staff ? (kind === 'supplies'
+          ? <Button onClick={() => setEditing('new')} disabled={!refs}><Plus className="size-4" /> Add supply</Button>
+          : <Button onClick={() => setAddingAccessory(true)} disabled={!refs}><Plus className="size-4" /> Add accessory</Button>) : undefined}
       />
       <SectionNav className="mt-4" />
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="inline-flex rounded-lg border border-border bg-card p-0.5">
+          {([['supplies', 'Supplies'], ['accessories', 'Accessories']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setParam({ kind: k === 'supplies' ? null : k, low: null })}
+              className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition', kind === k ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:text-ink')}>
+              {l}
+            </button>
+          ))}
+        </span>
+        <span className="text-xs text-ink-muted">{kind === 'supplies' ? 'Things that get used up.' : 'Things lent out that come back.'}</span>
+      </div>
+
+      {kind === 'accessories' ? <AccessoriesPanel adding={addingAccessory} onAddingClose={() => setAddingAccessory(false)} /> : <>
 
       {flash && (
         <div className="mt-4 flex items-start justify-between gap-3 rounded-md bg-ok-soft px-3 py-2 text-sm text-ok">
@@ -95,7 +118,7 @@ export function SuppliesPage() {
       )}
       {(error || refsError) && <p className="mt-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">Couldn't load supplies: {friendlyError(error ?? refsError ?? '')}</p>}
 
-      <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_220px_auto]">
+      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_220px_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-subtle" />
           <Input value={q} onChange={(e) => setParam({ q: e.target.value })} className="pl-9" placeholder="Search supplies" aria-label="Search supplies" />
@@ -183,6 +206,7 @@ export function SuppliesPage() {
           defaultSite={site !== 'all' ? site : activeLocation?.id ?? ''} canEdit={staff} admin={profile.role === 'owner'}
           onRefsChanged={() => void reloadRefs()} onClose={() => setEditing(null)} onDone={done} />
       )}
+      </>}
     </div>
   )
 }

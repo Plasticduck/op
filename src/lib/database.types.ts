@@ -3355,6 +3355,222 @@ export type Database = {
           },
         ]
       }
+      it_accessories: {
+        Row: {
+          account_id: string
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          location_id: string
+          min_qty: number
+          model_number: string | null
+          name: string
+          notes: string | null
+          qty_total: number
+          supplier_id: string | null
+          unit_cost: number | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          location_id: string
+          min_qty?: number
+          model_number?: string | null
+          name: string
+          notes?: string | null
+          qty_total?: number
+          supplier_id?: string | null
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          location_id?: string
+          min_qty?: number
+          model_number?: string | null
+          name?: string
+          notes?: string | null
+          qty_total?: number
+          supplier_id?: string | null
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_accessories_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessories_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "it_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessories_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessories_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "it_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_accessory_assignments: {
+        Row: {
+          accessory_id: string
+          accessory_name: string | null
+          account_id: string
+          asset_id: string | null
+          assigned_id: string
+          assigned_label: string | null
+          assigned_type: string
+          checked_in_at: string | null
+          checked_in_by: string | null
+          checked_out_at: string
+          checked_out_by: string | null
+          checkin_note: string | null
+          created_at: string
+          created_by: string | null
+          expected_return_at: string | null
+          id: string
+          location_id: string
+          note: string | null
+          qty: number
+          updated_at: string
+        }
+        Insert: {
+          accessory_id: string
+          accessory_name?: string | null
+          account_id: string
+          asset_id?: string | null
+          assigned_id: string
+          assigned_label?: string | null
+          assigned_type: string
+          checked_in_at?: string | null
+          checked_in_by?: string | null
+          checked_out_at?: string
+          checked_out_by?: string | null
+          checkin_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          expected_return_at?: string | null
+          id?: string
+          location_id: string
+          note?: string | null
+          qty: number
+          updated_at?: string
+        }
+        Update: {
+          accessory_id?: string
+          accessory_name?: string | null
+          account_id?: string
+          asset_id?: string | null
+          assigned_id?: string
+          assigned_label?: string | null
+          assigned_type?: string
+          checked_in_at?: string | null
+          checked_in_by?: string | null
+          checked_out_at?: string
+          checked_out_by?: string | null
+          checkin_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          expected_return_at?: string | null
+          id?: string
+          location_id?: string
+          note?: string | null
+          qty?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_accessory_assignments_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "it_accessories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessory_assignments_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "it_accessory_stock"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessory_assignments_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessory_assignments_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessory_assignments_checked_in_by_fkey"
+            columns: ["checked_in_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessory_assignments_checked_out_by_fkey"
+            columns: ["checked_out_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessory_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessory_assignments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       it_activity_log: {
         Row: {
           account_id: string
@@ -10154,6 +10370,64 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_accessory_stock: {
+        Row: {
+          account_id: string | null
+          available: number | null
+          category_id: string | null
+          checked_out: number | null
+          created_at: string | null
+          created_by: string | null
+          deleted_at: string | null
+          id: string | null
+          location_id: string | null
+          min_qty: number | null
+          model_number: string | null
+          name: string | null
+          notes: string | null
+          qty_total: number | null
+          supplier_id: string | null
+          unit_cost: number | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_accessories_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessories_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "it_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessories_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_accessories_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "it_suppliers"
             referencedColumns: ["id"]
           },
         ]

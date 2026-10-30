@@ -7,11 +7,14 @@ import {
   CreditCard,
   Globe,
   HardDrive,
+  Headphones,
+  Keyboard,
   KeyRound,
   Monitor,
   MonitorPlay,
   Network,
   Package,
+  Plug,
   Printer,
   RadioTower,
   ReceiptText,
@@ -55,5 +58,8 @@ export const IT_ICONS: Record<string, LucideIcon> = {
   globe: Globe,
   cloud: Cloud,
   key: KeyRound,
+  plug: Plug,
+  keyboard: Keyboard,
+  headphones: Headphones,
 }
 
