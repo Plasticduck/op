@@ -3355,57 +3355,290 @@ export type Database = {
           },
         ]
       }
-      it_asset_events: {
+      it_activity_log: {
         Row: {
           account_id: string
-          actor_id: string | null
+          action: string
           actor_name: string | null
-          asset_id: string
+          actor_system: string | null
+          actor_user_id: string | null
+          after: Json | null
+          asset_id: string | null
+          before: Json | null
           created_at: string
+          entity_id: string
+          entity_type: string
           id: string
-          kind: string
-          summary: string
+          location_id: string | null
         }
         Insert: {
           account_id: string
-          actor_id?: string | null
+          action: string
           actor_name?: string | null
-          asset_id: string
+          actor_system?: string | null
+          actor_user_id?: string | null
+          after?: Json | null
+          asset_id?: string | null
+          before?: Json | null
           created_at?: string
+          entity_id: string
+          entity_type: string
           id?: string
-          kind: string
-          summary: string
+          location_id?: string | null
         }
         Update: {
           account_id?: string
-          actor_id?: string | null
+          action?: string
           actor_name?: string | null
-          asset_id?: string
+          actor_system?: string | null
+          actor_user_id?: string | null
+          after?: Json | null
+          asset_id?: string | null
+          before?: Json | null
           created_at?: string
+          entity_id?: string
+          entity_type?: string
           id?: string
-          kind?: string
-          summary?: string
+          location_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "it_asset_events_account_id_fkey"
+            foreignKeyName: "it_activity_log_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_asset_models: {
+        Row: {
+          account_id: string
+          category_id: string
+          created_at: string
+          created_by: string | null
+          default_warranty_months: number | null
+          deleted_at: string | null
+          depreciation_id: string | null
+          eol_months: number | null
+          fieldset_id: string | null
+          id: string
+          image_path: string | null
+          manufacturer_id: string | null
+          model_number: string | null
+          name: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          category_id: string
+          created_at?: string
+          created_by?: string | null
+          default_warranty_months?: number | null
+          deleted_at?: string | null
+          depreciation_id?: string | null
+          eol_months?: number | null
+          fieldset_id?: string | null
+          id?: string
+          image_path?: string | null
+          manufacturer_id?: string | null
+          model_number?: string | null
+          name: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          category_id?: string
+          created_at?: string
+          created_by?: string | null
+          default_warranty_months?: number | null
+          deleted_at?: string | null
+          depreciation_id?: string | null
+          eol_months?: number | null
+          fieldset_id?: string | null
+          id?: string
+          image_path?: string | null
+          manufacturer_id?: string | null
+          model_number?: string | null
+          name?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_asset_models_account_id_fkey"
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "it_asset_events_actor_id_fkey"
-            columns: ["actor_id"]
+            foreignKeyName: "it_asset_models_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "it_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_models_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "it_asset_events_asset_id_fkey"
+            foreignKeyName: "it_asset_models_fieldset_id_fkey"
+            columns: ["fieldset_id"]
+            isOneToOne: false
+            referencedRelation: "it_fieldsets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_models_manufacturer_id_fkey"
+            columns: ["manufacturer_id"]
+            isOneToOne: false
+            referencedRelation: "it_manufacturers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_asset_secrets: {
+        Row: {
+          account_id: string
+          asset_id: string
+          created_at: string
+          created_by: string | null
+          field_id: string
+          id: string
+          secret_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          asset_id: string
+          created_at?: string
+          created_by?: string | null
+          field_id: string
+          id?: string
+          secret_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string
+          created_at?: string
+          created_by?: string | null
+          field_id?: string
+          id?: string
+          secret_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_asset_secrets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_secrets_asset_id_fkey"
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_secrets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_secrets_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "it_custom_fields"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_asset_tags: {
+        Row: {
+          account_id: string
+          asset_id: string | null
+          batch_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          last_printed_at: string | null
+          location_id: string | null
+          printed_count: number
+          source: string
+          status: string
+          tag: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          asset_id?: string | null
+          batch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_printed_at?: string | null
+          location_id?: string | null
+          printed_count?: number
+          source?: string
+          status?: string
+          tag: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string | null
+          batch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_printed_at?: string | null
+          location_id?: string | null
+          printed_count?: number
+          source?: string
+          status?: string
+          tag?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_asset_tags_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_tags_asset_fk"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_tags_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_tags_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]
@@ -3413,100 +3646,163 @@ export type Database = {
       it_assets: {
         Row: {
           account_id: string
-          asset_number: number
-          assigned_to: string | null
-          category: string
+          area_id: string | null
+          asset_tag: string
+          assigned_id: string | null
+          assigned_label: string | null
+          assigned_type: string | null
+          category_id: string
           created_at: string
           created_by: string | null
+          custom_values: Json
+          deleted_at: string | null
+          eol_date: string | null
+          health_changed_at: string | null
+          health_state: string
           hostname: string | null
           id: string
-          ip_address: string | null
-          last_verified_at: string | null
-          location_id: string | null
-          mac_address: string | null
-          manufacturer: string | null
-          model: string | null
-          monthly_cost: number | null
+          image_path: string | null
+          ip_address: unknown
+          last_audit_at: string | null
+          last_seen_at: string | null
+          location_id: string
+          mac_address: unknown
+          model_id: string | null
+          monitor_interval_seconds: number
+          monitor_method: string
+          monitor_target: string | null
+          monitoring_enabled: boolean
           name: string
+          next_audit_date: string | null
           notes: string | null
-          operating_system: string | null
-          placement: string | null
+          order_number: string | null
+          parent_asset_id: string | null
           purchase_cost: number | null
           purchase_date: string | null
-          remote_access_id: string | null
-          renewal_date: string | null
-          serial_number: string | null
-          status: string
+          serial: string | null
+          status_label_id: string
+          sticker_condition: string
+          sticker_last_verified_at: string | null
+          supplier_id: string | null
           updated_at: string
-          vendor: string | null
-          warranty_expires: string | null
+          warranty_end_date: string | null
+          warranty_end_manual: boolean
         }
         Insert: {
           account_id: string
-          asset_number?: number
-          assigned_to?: string | null
-          category?: string
+          area_id?: string | null
+          asset_tag: string
+          assigned_id?: string | null
+          assigned_label?: string | null
+          assigned_type?: string | null
+          category_id: string
           created_at?: string
           created_by?: string | null
+          custom_values?: Json
+          deleted_at?: string | null
+          eol_date?: string | null
+          health_changed_at?: string | null
+          health_state?: string
           hostname?: string | null
           id?: string
-          ip_address?: string | null
-          last_verified_at?: string | null
-          location_id?: string | null
-          mac_address?: string | null
-          manufacturer?: string | null
-          model?: string | null
-          monthly_cost?: number | null
+          image_path?: string | null
+          ip_address?: unknown
+          last_audit_at?: string | null
+          last_seen_at?: string | null
+          location_id: string
+          mac_address?: unknown
+          model_id?: string | null
+          monitor_interval_seconds?: number
+          monitor_method?: string
+          monitor_target?: string | null
+          monitoring_enabled?: boolean
           name: string
+          next_audit_date?: string | null
           notes?: string | null
-          operating_system?: string | null
-          placement?: string | null
+          order_number?: string | null
+          parent_asset_id?: string | null
           purchase_cost?: number | null
           purchase_date?: string | null
-          remote_access_id?: string | null
-          renewal_date?: string | null
-          serial_number?: string | null
-          status?: string
+          serial?: string | null
+          status_label_id: string
+          sticker_condition?: string
+          sticker_last_verified_at?: string | null
+          supplier_id?: string | null
           updated_at?: string
-          vendor?: string | null
-          warranty_expires?: string | null
+          warranty_end_date?: string | null
+          warranty_end_manual?: boolean
         }
         Update: {
           account_id?: string
-          asset_number?: number
-          assigned_to?: string | null
-          category?: string
+          area_id?: string | null
+          asset_tag?: string
+          assigned_id?: string | null
+          assigned_label?: string | null
+          assigned_type?: string | null
+          category_id?: string
           created_at?: string
           created_by?: string | null
+          custom_values?: Json
+          deleted_at?: string | null
+          eol_date?: string | null
+          health_changed_at?: string | null
+          health_state?: string
           hostname?: string | null
           id?: string
-          ip_address?: string | null
-          last_verified_at?: string | null
-          location_id?: string | null
-          mac_address?: string | null
-          manufacturer?: string | null
-          model?: string | null
-          monthly_cost?: number | null
+          image_path?: string | null
+          ip_address?: unknown
+          last_audit_at?: string | null
+          last_seen_at?: string | null
+          location_id?: string
+          mac_address?: unknown
+          model_id?: string | null
+          monitor_interval_seconds?: number
+          monitor_method?: string
+          monitor_target?: string | null
+          monitoring_enabled?: boolean
           name?: string
+          next_audit_date?: string | null
           notes?: string | null
-          operating_system?: string | null
-          placement?: string | null
+          order_number?: string | null
+          parent_asset_id?: string | null
           purchase_cost?: number | null
           purchase_date?: string | null
-          remote_access_id?: string | null
-          renewal_date?: string | null
-          serial_number?: string | null
-          status?: string
+          serial?: string | null
+          status_label_id?: string
+          sticker_condition?: string
+          sticker_last_verified_at?: string | null
+          supplier_id?: string | null
           updated_at?: string
-          vendor?: string | null
-          warranty_expires?: string | null
+          warranty_end_date?: string | null
+          warranty_end_manual?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "it_assets_account_id_asset_tag_fkey"
+            columns: ["account_id", "asset_tag"]
+            isOneToOne: false
+            referencedRelation: "it_asset_tags"
+            referencedColumns: ["account_id", "tag"]
+          },
           {
             foreignKeyName: "it_assets_account_id_fkey"
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assets_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "it_site_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "it_categories"
             referencedColumns: ["id"]
           },
           {
@@ -3521,6 +3817,546 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assets_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "it_asset_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assets_parent_asset_id_fkey"
+            columns: ["parent_asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assets_status_label_id_fkey"
+            columns: ["status_label_id"]
+            isOneToOne: false
+            referencedRelation: "it_status_labels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assets_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "it_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_assignments: {
+        Row: {
+          account_id: string
+          asset_id: string
+          assigned_id: string
+          assigned_label: string | null
+          assigned_type: string
+          checked_in_at: string | null
+          checked_in_by: string | null
+          checked_out_at: string
+          checked_out_by: string | null
+          checkin_note: string | null
+          created_at: string
+          created_by: string | null
+          expected_return_at: string | null
+          id: string
+          location_id: string
+          note: string | null
+          photo_path: string | null
+          signature_path: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          asset_id: string
+          assigned_id: string
+          assigned_label?: string | null
+          assigned_type: string
+          checked_in_at?: string | null
+          checked_in_by?: string | null
+          checked_out_at?: string
+          checked_out_by?: string | null
+          checkin_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          expected_return_at?: string | null
+          id?: string
+          location_id: string
+          note?: string | null
+          photo_path?: string | null
+          signature_path?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string
+          assigned_id?: string
+          assigned_label?: string | null
+          assigned_type?: string
+          checked_in_at?: string | null
+          checked_in_by?: string | null
+          checked_out_at?: string
+          checked_out_by?: string | null
+          checkin_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          expected_return_at?: string | null
+          id?: string
+          location_id?: string
+          note?: string | null
+          photo_path?: string | null
+          signature_path?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_assignments_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assignments_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assignments_checked_in_by_fkey"
+            columns: ["checked_in_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assignments_checked_out_by_fkey"
+            columns: ["checked_out_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assignments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_attachments: {
+        Row: {
+          account_id: string
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          entity_id: string
+          entity_type: string
+          id: string
+          kind: string
+          location_id: string | null
+          mime_type: string | null
+          storage_path: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          account_id: string
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          kind?: string
+          location_id?: string | null
+          mime_type?: string | null
+          storage_path: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          account_id?: string
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          kind?: string
+          location_id?: string | null
+          mime_type?: string | null
+          storage_path?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_attachments_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_attachments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_attachments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_categories: {
+        Row: {
+          account_id: string
+          alert_delay_minutes: number | null
+          audit_interval_months: number | null
+          created_at: string
+          created_by: string | null
+          default_fieldset_id: string | null
+          default_monitoring: boolean
+          deleted_at: string | null
+          icon: string
+          id: string
+          kind: string
+          label_template_id: string | null
+          name: string
+          requires_ip: boolean
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          alert_delay_minutes?: number | null
+          audit_interval_months?: number | null
+          created_at?: string
+          created_by?: string | null
+          default_fieldset_id?: string | null
+          default_monitoring?: boolean
+          deleted_at?: string | null
+          icon?: string
+          id?: string
+          kind?: string
+          label_template_id?: string | null
+          name: string
+          requires_ip?: boolean
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          alert_delay_minutes?: number | null
+          audit_interval_months?: number | null
+          created_at?: string
+          created_by?: string | null
+          default_fieldset_id?: string | null
+          default_monitoring?: boolean
+          deleted_at?: string | null
+          icon?: string
+          id?: string
+          kind?: string
+          label_template_id?: string | null
+          name?: string
+          requires_ip?: boolean
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_categories_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_categories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_categories_default_fieldset_id_fkey"
+            columns: ["default_fieldset_id"]
+            isOneToOne: false
+            referencedRelation: "it_fieldsets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_categories_label_template_id_fkey"
+            columns: ["label_template_id"]
+            isOneToOne: false
+            referencedRelation: "it_label_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_consumable_events: {
+        Row: {
+          account_id: string
+          consumable_id: string
+          created_at: string
+          created_by: string | null
+          delta: number
+          id: string
+          location_id: string
+          note: string | null
+          reason: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          account_id: string
+          consumable_id: string
+          created_at?: string
+          created_by?: string | null
+          delta: number
+          id?: string
+          location_id: string
+          note?: string | null
+          reason: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          consumable_id?: string
+          created_at?: string
+          created_by?: string | null
+          delta?: number
+          id?: string
+          location_id?: string
+          note?: string | null
+          reason?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_consumable_events_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_consumable_events_consumable_id_fkey"
+            columns: ["consumable_id"]
+            isOneToOne: false
+            referencedRelation: "it_consumables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_consumable_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_consumable_events_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_consumable_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_consumables: {
+        Row: {
+          account_id: string
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          is_sticker_stock: boolean
+          location_id: string
+          min_qty: number
+          model_number: string | null
+          name: string
+          qty_on_hand: number
+          reorder_url: string | null
+          supplier_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_sticker_stock?: boolean
+          location_id: string
+          min_qty?: number
+          model_number?: string | null
+          name: string
+          qty_on_hand?: number
+          reorder_url?: string | null
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_sticker_stock?: boolean
+          location_id?: string
+          min_qty?: number
+          model_number?: string | null
+          name?: string
+          qty_on_hand?: number
+          reorder_url?: string | null
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_consumables_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_consumables_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "it_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_consumables_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_consumables_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_consumables_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "it_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_custom_fields: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          editable_during_audit: boolean
+          field_type: string
+          help_text: string | null
+          id: string
+          is_required: boolean
+          key: string
+          name: string
+          options: Json
+          show_in_list: boolean
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          editable_during_audit?: boolean
+          field_type: string
+          help_text?: string | null
+          id?: string
+          is_required?: boolean
+          key: string
+          name: string
+          options?: Json
+          show_in_list?: boolean
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          editable_during_audit?: boolean
+          field_type?: string
+          help_text?: string | null
+          id?: string
+          is_required?: boolean
+          key?: string
+          name?: string
+          options?: Json
+          show_in_list?: boolean
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_custom_fields_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_custom_fields_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -3588,6 +4424,1195 @@ export type Database = {
             columns: ["tech_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_fieldset_fields: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          field_id: string
+          fieldset_id: string
+          id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          field_id: string
+          fieldset_id: string
+          id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          field_id?: string
+          fieldset_id?: string
+          id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_fieldset_fields_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_fieldset_fields_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_fieldset_fields_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "it_custom_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_fieldset_fields_fieldset_id_fkey"
+            columns: ["fieldset_id"]
+            isOneToOne: false
+            referencedRelation: "it_fieldsets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_fieldsets: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_fieldsets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_fieldsets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_health_events: {
+        Row: {
+          account_id: string
+          asset_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          latency_ms: number | null
+          location_id: string
+          note: string | null
+          observed_at: string
+          source: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          asset_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          latency_ms?: number | null
+          location_id: string
+          note?: string | null
+          observed_at?: string
+          source: string
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          latency_ms?: number | null
+          location_id?: string
+          note?: string | null
+          observed_at?: string
+          source?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_health_events_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_health_events_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_health_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_health_events_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_label_print_jobs: {
+        Row: {
+          account_id: string
+          asset_ids: string[]
+          copies: number
+          created_at: string
+          created_by: string | null
+          id: string
+          location_id: string | null
+          pdf_path: string | null
+          printed_at: string
+          printed_by: string | null
+          quantity: number
+          tag_ids: string[]
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          asset_ids?: string[]
+          copies?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string | null
+          pdf_path?: string | null
+          printed_at?: string
+          printed_by?: string | null
+          quantity: number
+          tag_ids?: string[]
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          asset_ids?: string[]
+          copies?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string | null
+          pdf_path?: string | null
+          printed_at?: string
+          printed_by?: string | null
+          quantity?: number
+          tag_ids?: string[]
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_label_print_jobs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_label_print_jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_label_print_jobs_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_label_print_jobs_printed_by_fkey"
+            columns: ["printed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_label_print_jobs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "it_label_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_label_templates: {
+        Row: {
+          account_id: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          is_default: boolean
+          is_outdoor: boolean
+          kind: string
+          layout: Json
+          name: string
+          offset_x_mm: number
+          offset_y_mm: number
+          page_spec: Json
+          scale: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_default?: boolean
+          is_outdoor?: boolean
+          kind: string
+          layout: Json
+          name: string
+          offset_x_mm?: number
+          offset_y_mm?: number
+          page_spec: Json
+          scale?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_default?: boolean
+          is_outdoor?: boolean
+          kind?: string
+          layout?: Json
+          name?: string
+          offset_x_mm?: number
+          offset_y_mm?: number
+          page_spec?: Json
+          scale?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_label_templates_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_label_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_maintenance_types: {
+        Row: {
+          account_id: string
+          color: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_maintenance_types_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_maintenance_types_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_maintenances: {
+        Row: {
+          account_id: string
+          asset_id: string
+          completion_date: string | null
+          cost: number | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          downtime_minutes: number | null
+          id: string
+          is_warranty: boolean
+          location_id: string
+          maintenance_type_id: string | null
+          notes: string | null
+          start_date: string
+          supplier_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          asset_id: string
+          completion_date?: string | null
+          cost?: number | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          downtime_minutes?: number | null
+          id?: string
+          is_warranty?: boolean
+          location_id: string
+          maintenance_type_id?: string | null
+          notes?: string | null
+          start_date?: string
+          supplier_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string
+          completion_date?: string | null
+          cost?: number | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          downtime_minutes?: number | null
+          id?: string
+          is_warranty?: boolean
+          location_id?: string
+          maintenance_type_id?: string | null
+          notes?: string | null
+          start_date?: string
+          supplier_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_maintenances_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_maintenances_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_maintenances_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_maintenances_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_maintenances_maintenance_type_id_fkey"
+            columns: ["maintenance_type_id"]
+            isOneToOne: false
+            referencedRelation: "it_maintenance_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_maintenances_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "it_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_manufacturers: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          name: string
+          support_phone: string | null
+          support_url: string | null
+          updated_at: string
+          warranty_lookup_url: string | null
+          website: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          name: string
+          support_phone?: string | null
+          support_url?: string | null
+          updated_at?: string
+          warranty_lookup_url?: string | null
+          website?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          name?: string
+          support_phone?: string | null
+          support_url?: string | null
+          updated_at?: string
+          warranty_lookup_url?: string | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_manufacturers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_manufacturers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_reminder_rules: {
+        Row: {
+          account_id: string
+          channels: string[]
+          created_at: string
+          created_by: string | null
+          days_before: number[]
+          digest: boolean
+          enabled: boolean
+          id: string
+          kind: string
+          recipients: Json
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          channels?: string[]
+          created_at?: string
+          created_by?: string | null
+          days_before?: number[]
+          digest?: boolean
+          enabled?: boolean
+          id?: string
+          kind: string
+          recipients?: Json
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          channels?: string[]
+          created_at?: string
+          created_by?: string | null
+          days_before?: number[]
+          digest?: boolean
+          enabled?: boolean
+          id?: string
+          kind?: string
+          recipients?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_reminder_rules_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_reminder_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_reminder_sends: {
+        Row: {
+          account_id: string
+          channel: string
+          created_at: string
+          created_by: string | null
+          due_date: string
+          entity_id: string
+          entity_type: string
+          id: string
+          kind: string
+          recipient_id: string
+          rule_id: string
+          sent_at: string
+          threshold_days: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          channel: string
+          created_at?: string
+          created_by?: string | null
+          due_date: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          kind: string
+          recipient_id: string
+          rule_id: string
+          sent_at?: string
+          threshold_days: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          channel?: string
+          created_at?: string
+          created_by?: string | null
+          due_date?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          kind?: string
+          recipient_id?: string
+          rule_id?: string
+          sent_at?: string
+          threshold_days?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_reminder_sends_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_reminder_sends_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_reminder_sends_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "it_reminder_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_saved_views: {
+        Row: {
+          account_id: string
+          columns: Json
+          created_at: string
+          created_by: string | null
+          entity: string
+          filters: Json
+          id: string
+          is_shared: boolean
+          name: string
+          sort: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          columns?: Json
+          created_at?: string
+          created_by?: string | null
+          entity: string
+          filters?: Json
+          id?: string
+          is_shared?: boolean
+          name: string
+          sort?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          account_id?: string
+          columns?: Json
+          created_at?: string
+          created_by?: string | null
+          entity?: string
+          filters?: Json
+          id?: string
+          is_shared?: boolean
+          name?: string
+          sort?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_saved_views_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_saved_views_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_saved_views_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_settings: {
+        Row: {
+          account_id: string
+          audit_interval_months: number
+          audit_warning_days: number
+          created_at: string
+          created_by: string | null
+          id: string
+          label_show_logo: boolean
+          short_code: string
+          site_prefixes: Json
+          support_phone: string | null
+          tag_padding: number
+          tag_prefix: string
+          updated_at: string
+          use_site_prefix: boolean
+        }
+        Insert: {
+          account_id: string
+          audit_interval_months?: number
+          audit_warning_days?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label_show_logo?: boolean
+          short_code: string
+          site_prefixes?: Json
+          support_phone?: string | null
+          tag_padding?: number
+          tag_prefix?: string
+          updated_at?: string
+          use_site_prefix?: boolean
+        }
+        Update: {
+          account_id?: string
+          audit_interval_months?: number
+          audit_warning_days?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label_show_logo?: boolean
+          short_code?: string
+          site_prefixes?: Json
+          support_phone?: string | null
+          tag_padding?: number
+          tag_prefix?: string
+          updated_at?: string
+          use_site_prefix?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_settings_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_site_areas: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          location_id: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          location_id: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          location_id?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_site_areas_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_site_areas_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_site_areas_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_status_labels: {
+        Row: {
+          account_id: string
+          color: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          is_default: boolean
+          name: string
+          sort_order: number
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_default?: boolean
+          name: string
+          sort_order?: number
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          is_default?: boolean
+          name?: string
+          sort_order?: number
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_status_labels_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_status_labels_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_subscription_assets: {
+        Row: {
+          account_id: string
+          asset_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          subscription_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          asset_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          subscription_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          subscription_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_subscription_assets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_subscription_assets_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_subscription_assets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_subscription_assets_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "it_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_subscriptions: {
+        Row: {
+          account_id: string
+          account_number: string | null
+          auto_renew: boolean
+          billing_cycle: string
+          cancel_notice_days: number | null
+          category_id: string | null
+          cost: number | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          location_id: string | null
+          name: string
+          notes: string | null
+          owner_user_id: string | null
+          renewal_date: string | null
+          seats: number | null
+          start_date: string | null
+          supplier_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          account_number?: string | null
+          auto_renew?: boolean
+          billing_cycle?: string
+          cancel_notice_days?: number | null
+          category_id?: string | null
+          cost?: number | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          location_id?: string | null
+          name: string
+          notes?: string | null
+          owner_user_id?: string | null
+          renewal_date?: string | null
+          seats?: number | null
+          start_date?: string | null
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          account_number?: string | null
+          auto_renew?: boolean
+          billing_cycle?: string
+          cancel_notice_days?: number | null
+          category_id?: string | null
+          cost?: number | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          location_id?: string | null
+          name?: string
+          notes?: string | null
+          owner_user_id?: string | null
+          renewal_date?: string | null
+          seats?: number | null
+          start_date?: string | null
+          supplier_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_subscriptions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_subscriptions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "it_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_subscriptions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_subscriptions_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_subscriptions_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_subscriptions_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "it_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_suppliers: {
+        Row: {
+          account_id: string
+          account_number: string | null
+          contact_name: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          account_id: string
+          account_number?: string | null
+          contact_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          account_id?: string
+          account_number?: string | null
+          contact_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_suppliers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_suppliers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_tag_counters: {
+        Row: {
+          account_id: string
+          last_value: number
+          prefix: string
+        }
+        Insert: {
+          account_id: string
+          last_value?: number
+          prefix: string
+        }
+        Update: {
+          account_id?: string
+          last_value?: number
+          prefix?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_tag_counters_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -8057,6 +10082,86 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      it_bootstrap: {
+        Args: never
+        Returns: {
+          account_id: string
+          audit_interval_months: number
+          audit_warning_days: number
+          created_at: string
+          created_by: string | null
+          id: string
+          label_show_logo: boolean
+          short_code: string
+          site_prefixes: Json
+          support_phone: string | null
+          tag_padding: number
+          tag_prefix: string
+          updated_at: string
+          use_site_prefix: boolean
+        }
+        SetofOptions: {
+          from: "*"
+          to: "it_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      it_can_read: { Args: { loc: string }; Returns: boolean }
+      it_can_write: { Args: { loc: string }; Returns: boolean }
+      it_find_duplicates: {
+        Args: { p_exclude?: string; p_mac: string; p_serial: string }
+        Returns: {
+          asset_id: string
+          asset_name: string
+          asset_tag: string
+          can_open: boolean
+          field: string
+          site_name: string
+        }[]
+      }
+      it_generate_tags: {
+        Args: { p_count: number; p_location?: string }
+        Returns: {
+          account_id: string
+          asset_id: string | null
+          batch_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          last_printed_at: string | null
+          location_id: string | null
+          printed_count: number
+          source: string
+          status: string
+          tag: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "it_asset_tags"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      it_is_admin: { Args: never; Returns: boolean }
+      it_is_staff: { Args: never; Returns: boolean }
+      it_next_tag: {
+        Args: { p_account: string; p_location: string }
+        Returns: string
+      }
+      it_resolve_tag: {
+        Args: { p_short: string; p_tag: string }
+        Returns: Json
+      }
+      it_reveal_secret: {
+        Args: { p_asset: string; p_field: string }
+        Returns: string
+      }
+      it_set_secret: {
+        Args: { p_asset: string; p_field: string; p_value: string }
+        Returns: undefined
       }
       kiosk_punch: {
         Args: { p_employee_id: string; p_pin: string }

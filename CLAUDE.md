@@ -113,7 +113,8 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0180.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0187.
+  tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
 WashLyfe Operator/          native iOS Xcode project (SwiftUI + WKWebView)
@@ -238,8 +239,10 @@ session or do their own auth: `tips-public`, `enter-demo`, `work-request-portal`
 
 ## Demo
 
-Demo account (`accounts.is_demo = true`). Logins (password `washlyfe-demo`):
-`owner@`, `manager@`, `employee@demo.washlyfe.com`. Or hit `/demo`.
+Demo account (`accounts.is_demo = true`, "WashLyfe Demo"): `owner@`, `manager@`,
+`employee@demo.washlyfe.com`. The password is a server secret, not in the repo.
+Visitors enter through `/demo` (magic link, then the `enter-demo` function
+swaps in the demo session).
 
 ## House rules
 

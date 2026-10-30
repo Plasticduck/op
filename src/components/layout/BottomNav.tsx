@@ -87,7 +87,9 @@ export function BottomNav({ role }: { role: PermRole }) {
   // detail screens get the full bottom area + native keyboard handling. The
   // user can still navigate back to the list with the in-page back button.
   const { pathname } = useLocation()
-  const hideOnMobile = /^\/app\/(messages|work-orders|work-orders-new|assets|parts)\/[0-9a-f-]+/i.test(pathname)
+  const hideOnMobile =
+    /^\/app\/(messages|work-orders|work-orders-new|assets|parts)\/[0-9a-f-]+/i.test(pathname) ||
+    /^\/app\/it-inventory\/[0-9a-f]{8}-/i.test(pathname)
 
   useEffect(() => {
     if (open) {
