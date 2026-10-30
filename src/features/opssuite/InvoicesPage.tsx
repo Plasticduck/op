@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { BadgeCheck, Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck, UserCog, Plus } from 'lucide-react'
+import { BadgeCheck, Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck, UserCog, Plus, Pencil } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
@@ -879,6 +879,9 @@ function InvoiceModal({
   // AP checks an approved invoice, then marks it Verified (or sends it back).
   const verifying = canVerify && status === 'needs_verification'
   const [confirmVerify, setConfirmVerify] = useState(false)
+  // While verifying, sites and GL codes show as chosen until AP opens them.
+  const [editSites, setEditSites] = useState(false)
+  const [editGl, setEditGl] = useState(false)
   // Two-level approval: when a secondary approver was named, the first approval
   // hands off to them (awaiting_secondary) instead of finalizing.
   const hasSecondary = (invoice.secondary_approver_ids?.length ?? 0) > 0
@@ -963,6 +966,49 @@ function InvoiceModal({
     site_allocations: allocations() as unknown as OpsInvoiceUpdate['site_allocations'],
   })
 
+  // The GL codes list plus, when several are chosen, the amount per code.
+  const glPicker = (
+    <div className="flex flex-col gap-3">
+      <CheckList
+        options={glCodes.map((c) => ({ id: c, label: c }))}
+        selected={glList}
+        onChange={setGlSelection}
+        empty="No GL codes available"
+      />
+      {multiGl && (
+        <div className="rounded-md border border-border bg-content p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-ink">Amount per GL code</span>
+            <button type="button" onClick={() => setGlAlloc(evenSplit(total, glList))} className="text-xs font-medium text-accent hover:underline">
+              Split evenly
+            </button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {glList.map((c) => (
+              <div key={c} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{c}</span>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink-subtle">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={glAlloc[c] ?? ''}
+                    onChange={(e) => setGlAlloc((p) => ({ ...p, [c]: e.target.value }))}
+                    className="h-9 w-32 rounded-md border border-border bg-card pl-5 pr-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className={cn('mt-2 flex items-center justify-between text-xs', glAllEntered && glBalanced ? 'text-ok' : 'text-danger')}>
+            <span>Allocated {currency(glAllocSum)} of {currency(total)}</span>
+            <span>{!glAllEntered ? 'Enter each amount' : glBalanced ? 'Balanced' : `${currency(Math.abs(total - glAllocSum))} ${glAllocSum > total ? 'over' : 'left'}`}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <Modal open onClose={onClose} title="Invoice" size="lg">
       <div className="flex flex-col gap-4">
@@ -1042,8 +1088,28 @@ function InvoiceModal({
           />
         </Field>
 
+        {/* AP verifying: what the approver chose, each list opening on Edit. */}
+        {verifying && (
+          <>
+            <EditableBlock label="Site(s)" editing={editSites} onToggle={() => setEditSites((v) => !v)}>
+              {editSites ? (
+                <CheckList options={classes.map((c) => ({ id: c, label: c }))} selected={siteClasses} onChange={setSiteClasses} empty="No classes available" />
+              ) : (
+                <PickedList empty="No site chosen."
+                  items={siteClasses.map((cls) => ({ label: cls, amount: multiSite ? Number(alloc[cls]) || 0 : null }))} />
+              )}
+            </EditableBlock>
+            <EditableBlock label="GL code(s)" editing={editGl} onToggle={() => setEditGl((v) => !v)}>
+              {editGl ? glPicker : (
+                <PickedList empty="No GL code chosen."
+                  items={glList.map((c) => ({ label: c, amount: multiGl ? Number(glAlloc[c]) || 0 : null }))} />
+              )}
+            </EditableBlock>
+          </>
+        )}
+
         {/* Site(s): chosen by the approver (not by the manager during assignment). */}
-        {!editable && (
+        {!editable && !verifying && (
           <Field label="Site(s)" required={requireSiteGl}>
             <CheckList
               options={classes.map((c) => ({ id: c, label: c }))}
@@ -1056,49 +1122,9 @@ function InvoiceModal({
         )}
 
         {/* GL code(s): applied by the approver, who can split across several codes. */}
-        {!editable && (
+        {!editable && !verifying && (
           <Field label="GL code(s)" required={glEditable}>
-            {glEditable ? (
-              <div className="flex flex-col gap-3">
-                <CheckList
-                  options={glCodes.map((c) => ({ id: c, label: c }))}
-                  selected={glList}
-                  onChange={setGlSelection}
-                  empty="No GL codes available"
-                />
-                {multiGl && (
-                  <div className="rounded-md border border-border bg-content p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-ink">Amount per GL code</span>
-                      <button type="button" onClick={() => setGlAlloc(evenSplit(total, glList))} className="text-xs font-medium text-accent hover:underline">
-                        Split evenly
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {glList.map((c) => (
-                        <div key={c} className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate text-sm text-ink">{c}</span>
-                          <div className="relative">
-                            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-ink-subtle">$</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={glAlloc[c] ?? ''}
-                              onChange={(e) => setGlAlloc((p) => ({ ...p, [c]: e.target.value }))}
-                              className="h-9 w-32 rounded-md border border-border bg-card pl-5 pr-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className={cn('mt-2 flex items-center justify-between text-xs', glAllEntered && glBalanced ? 'text-ok' : 'text-danger')}>
-                      <span>Allocated {currency(glAllocSum)} of {currency(total)}</span>
-                      <span>{!glAllEntered ? 'Enter each amount' : glBalanced ? 'Balanced' : `${currency(Math.abs(total - glAllocSum))} ${glAllocSum > total ? 'over' : 'left'}`}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
+            {glEditable ? glPicker : (
               <div className="flex flex-col gap-1 text-sm text-ink">
                 {initGl.length ? (
                   initGl.map((g) => (
@@ -1141,8 +1167,8 @@ function InvoiceModal({
           </Field>
         )}
 
-        {/* Approver (or AP verifying) enters the per-site split when an invoice spans >1 site. */}
-        {reviewing && multiSite && (
+        {/* Approver (or AP editing sites) enters the per-site split when an invoice spans >1 site. */}
+        {reviewing && multiSite && (!verifying || editSites) && (
           <div className="rounded-md border border-border bg-content p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-ink">Split amount across sites</span>
@@ -1488,6 +1514,45 @@ function CheckList({ options, selected, onChange, disabled, empty }: {
             />
             <span className="text-ink">{o.label}</span>
           </label>
+        ))
+      )}
+    </div>
+  )
+}
+
+// A required box with an Edit / Done button on top (AP verifying an invoice).
+function EditableBlock({ label, editing, onToggle, children }: {
+  label: string
+  editing: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-ink-muted">{label}<span className="text-danger"> *</span></span>
+        <Button variant="secondary" size="sm" onClick={onToggle}>
+          {editing ? <><Check className="size-4" /> Done</> : <><Pencil className="size-4" /> Edit</>}
+        </Button>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// What's chosen, read-only, with each amount when the total is split.
+function PickedList({ items, empty }: { items: { label: string; amount: number | null }[]; empty: string }) {
+  return (
+    <div className="rounded-md border border-border bg-card p-1">
+      {items.length === 0 ? (
+        <p className="px-2 py-1.5 text-sm text-danger">{empty}</p>
+      ) : (
+        items.map((it) => (
+          <div key={it.label} className="flex items-center gap-2 rounded px-2 py-1.5">
+            <CheckCircle2 className="size-4 shrink-0 text-accent" />
+            <span className="min-w-0 flex-1 text-ink">{it.label}</span>
+            {it.amount != null && <span className="tabular-nums text-ink-muted">{currency(it.amount)}</span>}
+          </div>
         ))
       )}
     </div>
