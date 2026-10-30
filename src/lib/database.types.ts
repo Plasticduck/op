@@ -3355,6 +3355,176 @@ export type Database = {
           },
         ]
       }
+      it_asset_events: {
+        Row: {
+          account_id: string
+          actor_id: string | null
+          actor_name: string | null
+          asset_id: string
+          created_at: string
+          id: string
+          kind: string
+          summary: string
+        }
+        Insert: {
+          account_id: string
+          actor_id?: string | null
+          actor_name?: string | null
+          asset_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          summary: string
+        }
+        Update: {
+          account_id?: string
+          actor_id?: string | null
+          actor_name?: string | null
+          asset_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          summary?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_asset_events_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_asset_events_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_assets: {
+        Row: {
+          account_id: string
+          asset_number: number
+          assigned_to: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          hostname: string | null
+          id: string
+          ip_address: string | null
+          last_verified_at: string | null
+          location_id: string | null
+          mac_address: string | null
+          manufacturer: string | null
+          model: string | null
+          monthly_cost: number | null
+          name: string
+          notes: string | null
+          operating_system: string | null
+          placement: string | null
+          purchase_cost: number | null
+          purchase_date: string | null
+          remote_access_id: string | null
+          renewal_date: string | null
+          serial_number: string | null
+          status: string
+          updated_at: string
+          vendor: string | null
+          warranty_expires: string | null
+        }
+        Insert: {
+          account_id: string
+          asset_number?: number
+          assigned_to?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          hostname?: string | null
+          id?: string
+          ip_address?: string | null
+          last_verified_at?: string | null
+          location_id?: string | null
+          mac_address?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          monthly_cost?: number | null
+          name: string
+          notes?: string | null
+          operating_system?: string | null
+          placement?: string | null
+          purchase_cost?: number | null
+          purchase_date?: string | null
+          remote_access_id?: string | null
+          renewal_date?: string | null
+          serial_number?: string | null
+          status?: string
+          updated_at?: string
+          vendor?: string | null
+          warranty_expires?: string | null
+        }
+        Update: {
+          account_id?: string
+          asset_number?: number
+          assigned_to?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          hostname?: string | null
+          id?: string
+          ip_address?: string | null
+          last_verified_at?: string | null
+          location_id?: string | null
+          mac_address?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          monthly_cost?: number | null
+          name?: string
+          notes?: string | null
+          operating_system?: string | null
+          placement?: string | null
+          purchase_cost?: number | null
+          purchase_date?: string | null
+          remote_access_id?: string | null
+          renewal_date?: string | null
+          serial_number?: string | null
+          status?: string
+          updated_at?: string
+          vendor?: string | null
+          warranty_expires?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_assets_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_assets_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       it_field_checklists: {
         Row: {
           account_id: string

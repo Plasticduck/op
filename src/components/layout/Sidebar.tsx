@@ -44,6 +44,7 @@ import {
   Tags as TagsIcon,
   MessageCircle,
   MessageSquareWarning,
+  MonitorSmartphone,
   Droplets,
   PackageOpen,
   ShoppingCart,
@@ -421,6 +422,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'IT Field Checklist',
         icon: ClipboardCheck,
         roles: ['owner', 'manager', 'technician'],
+      },
+      {
+        to: '/app/it-inventory',
+        label: 'IT Inventory',
+        icon: MonitorSmartphone,
+        roles: ['owner', 'manager', 'technician'],
+        emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
       },
     ],
   },

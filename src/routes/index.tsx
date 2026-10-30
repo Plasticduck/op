@@ -136,6 +136,7 @@ const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
 const AskOperatorPage = lz(() => import('@/features/ask/AskOperatorPage'))
 const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
 const ItFieldChecklistPage = lz(() => import('@/features/it/ItFieldChecklistPage'))
+const ItInventoryPage = lz(() => import('@/features/it/ItInventoryPage'))
 const LaborDashboardPage = lz(() => import('@/features/ops/labor/LaborDashboardPage'))
 const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
 const SchedulePortalPage = lz(() => import('@/features/people/schedule/SchedulePortalPage'))
@@ -223,6 +224,8 @@ export const router = createBrowserRouter([
           { path: 'issuetrak', element: tech(<IssuetrakPage />) },
           { path: 'it-field-checklist', element: tech(<ItFieldChecklistPage />) },
           { path: 'it-field-checklist/:id', element: tech(<ItFieldChecklistPage />) },
+          { path: 'it-inventory', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/:id', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'insights', element: tech(<InsightsPage />) },
           { path: 'reports', element: tech(<ReportingPage />) },
           { path: 'reports/:reportKey', element: tech(<PreBuiltReportPage />) },
