@@ -219,6 +219,40 @@ export const itInventory = {
     supabase.from('it_assets').update({ sticker_condition: condition, sticker_last_verified_at: new Date().toISOString() }).eq('id', id),
   updateTemplate: (id: string, patch: T['it_label_templates']['Update']) =>
     supabase.from('it_label_templates').update(patch).eq('id', id),
+  addTemplate: (row: T['it_label_templates']['Insert']) =>
+    supabase.from('it_label_templates').insert(row).select('*').single(),
+  // One default stock per account: clear the others, then set this one.
+  setDefaultTemplate: async (accountId: string, id: string) => {
+    const off = await supabase.from('it_label_templates').update({ is_default: false })
+      .eq('account_id', accountId).eq('is_default', true).neq('id', id)
+    if (off.error) return off
+    return supabase.from('it_label_templates').update({ is_default: true }).eq('id', id)
+  },
+
+  // The sticker logo (already black and white) at <account>/branding/...
+  // Replacing it removes the old file.
+  setStickerLogo: async (settingsId: string, accountId: string, png: Blob, oldPath: string | null) => {
+    const path = `${accountId}/branding/sticker-logo-${crypto.randomUUID()}.png`
+    const up = await supabase.storage.from(BUCKET).upload(path, png, { contentType: 'image/png' })
+    if (up.error) return { error: up.error.message }
+    const { error } = await supabase.from('it_settings').update({ label_logo_path: path }).eq('id', settingsId)
+    if (error) {
+      await supabase.storage.from(BUCKET).remove([path])
+      return { error: error.message }
+    }
+    if (oldPath) await supabase.storage.from(BUCKET).remove([oldPath])
+    return { error: null }
+  },
+  removeStickerLogo: async (settingsId: string, path: string) => {
+    const { error } = await supabase.from('it_settings').update({ label_logo_path: null }).eq('id', settingsId)
+    if (error) return { error: error.message }
+    await supabase.storage.from(BUCKET).remove([path])
+    return { error: null }
+  },
+  downloadFile: async (path: string) => {
+    const { data } = await supabase.storage.from(BUCKET).download(path)
+    return data
+  },
   // Blank tags for a pre-printed sticker order (next numbers in sequence).
   generateTags: (count: number, locationId?: string | null) =>
     supabase.rpc('it_generate_tags', { p_count: count, p_location: locationId ?? undefined }),

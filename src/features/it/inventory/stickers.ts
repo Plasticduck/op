@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import type { LabelContent, LabelLayoutSpec, LabelSpec } from '@/lib/labels/layout'
-import type { PrintTemplate } from '@/lib/labels/labelPdf'
-import type { ItAssetRow, ItLabelTemplate } from '@/lib/queries/itInventory'
+import type { PrintTemplate, StickerLogo } from '@/lib/labels/labelPdf'
+import { readStickerLogo } from '@/lib/labels/stickerLogo'
+import { itInventory, type ItAssetRow, type ItLabelTemplate } from '@/lib/queries/itInventory'
 import type { ItRefs } from './useItRefs'
 import { tagUrl } from './format'
 
@@ -58,4 +60,24 @@ export function defaultTemplateFor(assets: ItAssetRow[], refs: ItRefs): ItLabelT
 export function isOutdoorAsset(a: ItAssetRow, refs: ItRefs): boolean {
   const tid = refs.category.get(a.category_id)?.label_template_id
   return !!tid && !!refs.templates.find((t) => t.id === tid)?.is_outdoor
+}
+
+// The account's sticker logo, ready to print, or null (none, turned off, or
+// still loading). Fetched once per file for the session.
+const logoCache = new Map<string, Promise<StickerLogo | null>>()
+export function useStickerLogo(refs: ItRefs | null): StickerLogo | null {
+  const path = refs?.settings.label_show_logo ? refs.settings.label_logo_path : null
+  const [loaded, setLoaded] = useState<{ path: string; logo: StickerLogo | null } | null>(null)
+  useEffect(() => {
+    if (!path) return
+    let alive = true
+    let p = logoCache.get(path)
+    if (!p) {
+      p = itInventory.downloadFile(path).then((b) => (b ? readStickerLogo(b) : null)).catch(() => null)
+      logoCache.set(path, p)
+    }
+    void p.then((logo) => { if (alive) setLoaded({ path, logo }) })
+    return () => { alive = false }
+  }, [path])
+  return path && loaded?.path === path ? loaded.logo : null
 }

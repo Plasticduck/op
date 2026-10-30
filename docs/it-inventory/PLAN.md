@@ -115,7 +115,7 @@ monitor; see above).
 | H | Repairs: maintenance records and types, back to the prior status when done, downtime, cost rollups | done 2026-10-30. "Log repair" on the asset page and a Repairs tab (open jobs with Mark done and Edit, finished jobs, total spent and downtime). Logging can take the item out of service (Out for Repair now, its earlier status back when the job is marked done, downtime counted); past jobs can be logged as done with hours out. Repairs and service page (from the Overview tile and the Equipment menu): open now, spent in 90 days and this year, downtime, filters, CSV export, cost by site and by kind of gear over 12 months. Timeline shows logged / done / edited / removed jobs |
 | I | Accessories (count-based, checked out to people or devices) | done 2026-10-30. On the Supplies tab behind a Supplies / Accessories switch (supplies get used up; accessories come back). Total, out and left per site, low at the minimum, check out a number to a person on the roster or a device at the site (with due back and a note), who has them (overdue in red), check in, returned history, add / edit / remove. "Accessories with it" on a device's page. Five accessory kinds seeded (Charger or Cable, Case or Mount, Keyboard or Mouse, Headset or Radio, Other Accessory) |
 | J | Photo to form (make, model, serial from a label photo) | done 2026-10-30. "Read a label" at the top of the Add / Edit / Clone equipment form (one unit at a time): take a photo of the model and serial sticker and the form fills Model, Model number, Manufacturer, Category, Serial and MAC for the person to check, with a list of what was filled, Undo, and a warning on anything hard to read. Picks a model or manufacturer already on file when it's the same one ("SEIKO EPSON CORP." is Epson). New models save the model number too |
-| K | Company logo on stickers, more label sizes | next |
+| K | Company logo on stickers, more label sizes | done 2026-10-30. Stickers > Printer setup: "Your logo" (Admins: upload one or use the company logo, an Ink slider to choose how colors turn black, live preview as it prints, replace, remove), "Logo on this stock" per size (managers and technicians too, since it's part of lining up), "Add a size" for any roll or letter sheet (inches or mm, margins and gaps, checks it fits the page, live sample), "Use by default" and "Remove" (Admins). Five more sizes seeded: Zebra / Rollo 2 x 1 and 3 x 2 in, DYMO 30336 and 30252, Brother DK-1201; Avery 8160 / 8163 named on 5160 / 5163 |
 
 Audits are their own tables (`it_audit_runs`, `it_audit_items`), not checklist
 runs; `checklist_run_id` stays for the spec's data model but is unused. Crew
@@ -148,6 +148,19 @@ fill a serial or MAC from memory, and to put the name people use in Model
 aa:bb:cc:dd:ee:ff or dropped. A photo with no model or serial answers 422 with
 what to fix. The app shrinks the photo to 2000 px before sending.
 
+Sticker logo: stored black and white (anything darker than the Ink setting
+prints black, transparent counts as white), trimmed to its ink, as a PNG in
+the private bucket at `<account>/branding/sticker-logo-<uuid>.png`, path in
+`it_settings.label_logo_path` (Admins only, by the settings policy). It prints
+when the stock's `layout.show` has `logo`, `label_show_logo` is on (default;
+no screen changes it), and `layout.ts` finds room: a band at the top of the
+text column beside the QR, at most a quarter of its height, dropped when the
+tag at 7 pt plus a line of name wouldn't fit under it. Never on outdoor
+stock. jsPDF embeds it once per PDF (image alias), however many stickers.
+Seeded stock that shows it: Zebra 3 x 2, DYMO 30252, Brother DK-1201,
+Avery 5163; other stock can turn it on. Added sizes use the compact style
+under 26 mm tall, add the phone line from 40 mm, and assume letter paper.
+
 Accessories (`it_accessories`, `it_accessory_assignments`, view
 `it_accessory_stock` for out / left): rules are in triggers. A check-out locks
 the accessory row, so two people can't take the last one; it can't exceed
@@ -160,7 +173,7 @@ in the low-stock reminders (supplies are).
 
 ## Testing
 
-`supabase/tests/it_inventory_rls.sql` (132 checks) impersonates real users of
+`supabase/tests/it_inventory_rls.sql` (141 checks) impersonates real users of
 the demo account and another account inside a rolled-back transaction:
 cross-account and cross-site isolation for owner / manager / employee / anon,
 immutable activity log, tag uniqueness and retirement, serial / MAC dedupe,
@@ -246,6 +259,13 @@ Sticker rules that keep scans reliable (in `layout.ts`): QR 4-module quiet
 zone (ECC M; Q on outdoor), Code 128 10-module quiet zones, bars never under
 0.19 mm (the barcode is dropped rather than printed unreadable), tags never
 truncated (shrunk to fit), QR rows overlap slightly so printers leave no seams.
+`node scripts/test-label-scans.mjs` decodes every seeded size (10), five tags,
+with no logo, a wide logo and a tall logo (drawn as a solid block), at 203 and
+300 dpi: 300 scans, and fails if a logo touches the QR or barcode or shows on
+outdoor stock. The Stickers screen was checked in headless Chrome with the
+real Mighty Wash logo files (28 checks: company logo and upload, Ink, save,
+one image per sheet, the per-stock switch, outdoor, adding a roll and a
+sheet with the fit check, default, remove, phone, desktop and dark).
 
 ## Migrations
 
@@ -266,5 +286,6 @@ truncated (shrunk to fit), QR rows overlap slightly so printers leave no seams.
 | 0193_it_reminders_cron | `it-reminders` at 8 AM Central |
 | 0195_it_audits | `it_audit_runs` / `it_audit_items` with RLS and a guard trigger; `it_start_audit`, `it_audit_scan`, `it_complete_audit`, `it_cancel_audit`; audit photo uploads for anyone in the account |
 | 0196_it_repairs | `it_maintenances.prior_status_id` / `out_of_service_at`; `it_log_repair`, `it_finish_repair` |
+| 0198_it_sticker_logo_sizes | `it_settings.label_logo_path`; five more sizes for existing accounts, Avery 8160 / 8163 names; `it_bootstrap` seeds all ten |
 | 0197_it_accessories | `it_accessories`, `it_accessory_assignments`, `it_accessory_stock` view, guard triggers; accessory categories (existing accounts here, new ones via `it_bootstrap`) |
 | 0194_it_tracker_not_monitor | removes the device heartbeats (functions, table, sweep cron); `it_overview` counts "not working" reports and each site's overdue audits |

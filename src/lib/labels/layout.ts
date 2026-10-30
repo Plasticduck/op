@@ -8,7 +8,9 @@ import { CODE128_QUIET, code128Widths } from '@/lib/barcode/code128'
 //
 // Scan reliability comes first: the QR keeps a 4-module quiet zone, the
 // Code 128 keeps its 10-module quiet zones, and bars are never drawn narrower
-// than 0.19 mm (the barcode is left off rather than printed unreadable).
+// than 0.19 mm (the barcode is left off rather than printed unreadable). A
+// logo only ever takes the top of the text column beside the QR, and is left
+// off when the tag wouldn't fit under it.
 
 export type LabelSpec = {
   page: { w_mm: number; h_mm: number } | null // null = roll, one label per page
@@ -120,14 +122,34 @@ function textColumn(c: LabelContent, show: string[], x: number, y: number, w: nu
   return out
 }
 
-// One label at (0, 0), sized spec.label. Also returns what scanning depends on.
-export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutSpec): Drawing & { qrModuleMm: number; barMm: number | null } {
+// The logo's box at the top of a text column (aspect = width / height), or
+// null when it would crowd out the tag and a line of name, or come out too
+// thin to make out.
+function logoBand(aspect: number, x: number, y: number, w: number, h: number): Rect | null {
+  let lh = clamp(h * 0.24, 3, 10)
+  let lw = lh * aspect
+  if (lw > w) {
+    lw = w
+    lh = lw / aspect
+  }
+  if (lh < 2.2) return null
+  if (h - lh - 0.8 < lineMm(7) + 0.4 + lineMm(5.5)) return null
+  return { x, y, w: lw, h: lh }
+}
+
+export type LabelDrawing = Drawing & { qrModuleMm: number; barMm: number | null; logo: Rect | null }
+
+// One label at (0, 0), sized spec.label. Also returns what scanning depends on,
+// and where the logo goes when there is one (logoAspect) and the layout shows it.
+export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutSpec, logoAspect?: number | null): LabelDrawing {
   const W = spec.label.w_mm
   const H = spec.label.h_mm
   const pad = clamp(Math.min(W, H) * 0.05, 1.2, 3)
   const show = layout.show
   const d: Drawing = { rects: [], texts: [], strokes: [] }
   let barMm: number | null = null
+  let logo: Rect | null = null
+  const wantLogo = !!logoAspect && logoAspect > 0 && show.includes('logo')
 
   if (layout.style === 'outdoor') {
     // Big QR with extra error correction (survives dirt and fading), tag under it.
@@ -137,7 +159,7 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
     d.rects.push(...qr.rects)
     const tagPt = clamp((band * 0.5) / PT_MM / 1.18, 7, 16)
     d.texts.push(...textColumn(c, show.filter((s) => s === 'tag' || s === 'name'), pad, pad + box + 0.5, W - 2 * pad, band - 0.5, tagPt, 'center'))
-    return { ...d, qrModuleMm: qr.moduleMm, barMm }
+    return { ...d, qrModuleMm: qr.moduleMm, barMm, logo }
   }
 
   const wantBar = show.includes('barcode')
@@ -159,9 +181,17 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
         textH -= hb + 0.8
       }
     }
+    let ty = pad
+    if (wantLogo) {
+      logo = logoBand(logoAspect, x0, pad, cw, textH)
+      if (logo) {
+        ty += logo.h + 0.8
+        textH -= logo.h + 0.8
+      }
+    }
     const tagPt = clamp((textH * 0.3) / PT_MM / 1.18, 7, layout.style === 'compact' ? 11 : 16)
-    d.texts.push(...textColumn(c, show, x0, pad, cw, textH, tagPt, 'left'))
-    return { ...d, qrModuleMm: qr.moduleMm, barMm }
+    d.texts.push(...textColumn(c, show, x0, ty, cw, textH, tagPt, 'left'))
+    return { ...d, qrModuleMm: qr.moduleMm, barMm, logo }
   }
 
   // Stacked: QR and text on top, barcode across the full width underneath.
@@ -181,9 +211,18 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
   const qr = qrRects(c.url, pad, pad, box, 'M')
   d.rects.push(...qr.rects)
   const x0 = pad + box + 1
-  const tagPt = clamp((topH * 0.3) / PT_MM / 1.18, 7, 14)
-  d.texts.push(...textColumn(c, show, x0, pad, W - x0 - pad, topH, tagPt, 'left'))
-  return { ...d, qrModuleMm: qr.moduleMm, barMm }
+  let ty = pad
+  let textH = topH
+  if (wantLogo) {
+    logo = logoBand(logoAspect, x0, pad, W - x0 - pad, topH)
+    if (logo) {
+      ty += logo.h + 0.8
+      textH -= logo.h + 0.8
+    }
+  }
+  const tagPt = clamp((textH * 0.3) / PT_MM / 1.18, 7, 14)
+  d.texts.push(...textColumn(c, show, x0, ty, W - x0 - pad, textH, tagPt, 'left'))
+  return { ...d, qrModuleMm: qr.moduleMm, barMm, logo }
 }
 
 // Where label number i (0-based, after skipping `startAt` used positions on

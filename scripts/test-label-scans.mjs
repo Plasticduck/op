@@ -2,7 +2,9 @@
 // of tags, lays out the sticker with the real layout code (src/lib/labels),
 // rasterizes it at thermal (203 dpi) and laser (300 dpi) resolution, and
 // decodes it with zxing (the library behind the in-app scanner). Fails if the
-// QR doesn't read back as the sticker URL or the Code 128 as the tag.
+// QR doesn't read back as the sticker URL or the Code 128 as the tag. Stock
+// that shows a logo is also tried with a wide and a tall logo, drawn as a
+// solid black block, and fails if the logo touches the QR or the barcode.
 //
 // Run: node scripts/test-label-scans.mjs
 
@@ -16,14 +18,22 @@ prepareZXingModule({
   overrides: { wasmBinary: readFileSync(require.resolve('zxing-wasm/reader/zxing_reader.wasm')) },
 })
 
-// Same specs as it_bootstrap() in supabase/migrations/0187_it_bootstrap.sql.
+// Same specs as it_bootstrap() in supabase/migrations/0198_it_sticker_logo_sizes.sql.
+const STD = ['qr', 'barcode', 'tag', 'name', 'site']
 const TEMPLATES = [
-  ['Roll 2.25 x 1.25 in', { page: null, label: { w_mm: 57.15, h_mm: 31.75 } }, { style: 'standard', show: ['qr', 'barcode', 'tag', 'name', 'site'] }],
-  ['Brother QL 62 x 29 mm', { page: null, label: { w_mm: 62, h_mm: 29 } }, { style: 'standard', show: ['qr', 'barcode', 'tag', 'name', 'site'] }],
-  ['Avery 5160', { page: { w_mm: 215.9, h_mm: 279.4 }, label: { w_mm: 66.675, h_mm: 25.4 } }, { style: 'compact', show: ['qr', 'barcode', 'tag', 'name', 'site'] }],
-  ['Avery 5163', { page: { w_mm: 215.9, h_mm: 279.4 }, label: { w_mm: 101.6, h_mm: 50.8 } }, { style: 'standard', show: ['qr', 'barcode', 'tag', 'name', 'site', 'phone', 'logo'] }],
-  ['Outdoor 2 x 2 in', { page: null, label: { w_mm: 50.8, h_mm: 50.8 } }, { style: 'outdoor', show: ['qr', 'tag', 'name'] }],
+  ['Roll 2.25 x 1.25 in', { page: null, label: { w_mm: 57.15, h_mm: 31.75 } }, { style: 'standard', show: [...STD, 'logo'] }],
+  ['Roll 2 x 1 in', { page: null, label: { w_mm: 50.8, h_mm: 25.4 } }, { style: 'standard', show: [...STD, 'logo'] }],
+  ['Roll 3 x 2 in', { page: null, label: { w_mm: 76.2, h_mm: 50.8 } }, { style: 'standard', show: [...STD, 'phone', 'logo'] }],
+  ['DYMO 30336', { page: null, label: { w_mm: 53.975, h_mm: 25.4 } }, { style: 'standard', show: [...STD, 'logo'] }],
+  ['DYMO 30252', { page: null, label: { w_mm: 88.9, h_mm: 28.575 } }, { style: 'standard', show: [...STD, 'logo'] }],
+  ['Brother QL 62 x 29 mm', { page: null, label: { w_mm: 62, h_mm: 29 } }, { style: 'standard', show: [...STD, 'logo'] }],
+  ['Brother QL 29 x 90 mm', { page: null, label: { w_mm: 90.3, h_mm: 29 } }, { style: 'standard', show: [...STD, 'logo'] }],
+  ['Avery 5160', { page: { w_mm: 215.9, h_mm: 279.4 }, label: { w_mm: 66.675, h_mm: 25.4 } }, { style: 'compact', show: [...STD, 'logo'] }],
+  ['Avery 5163', { page: { w_mm: 215.9, h_mm: 279.4 }, label: { w_mm: 101.6, h_mm: 50.8 } }, { style: 'standard', show: [...STD, 'phone', 'logo'] }],
+  ['Outdoor 2 x 2 in', { page: null, label: { w_mm: 50.8, h_mm: 50.8 } }, { style: 'outdoor', show: ['qr', 'tag', 'name', 'logo'] }],
 ]
+// No logo, a wide wordmark (3:1) and a tall mark (0.65:1).
+const LOGOS = [null, 3, 0.65]
 const TAGS = ['MW-000123', 'LBK3-0042', 'WD-000001', 'CCW-1234567', 'MIGHTYWA-0000012345']
 const SHORT = 'mightywash'
 
@@ -56,14 +66,24 @@ function raster(rects, wMm, hMm, dpi) {
   return { data, width: W, height: H, colorSpace: 'srgb' }
 }
 
+const overlaps = (a, b, gap) => a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap
+
 let failures = 0
 for (const [name, partial, layout] of TEMPLATES) {
   const spec = { cols: 1, rows: 1, margin_top_mm: 0, margin_left_mm: 0, pitch_x_mm: 0, pitch_y_mm: 0, ...partial }
-  for (const tag of TAGS) {
+  for (const [tag, aspect] of TAGS.flatMap((t) => LOGOS.map((l) => [t, l]))) {
     const url = `https://operator.washlyfe.com/t/${SHORT}/${tag}`
-    const d = drawLabel({ tag, url, name: 'Pay Lane 1 pay station', site: 'MW12 Lubbock 50th St', phone: '806-555-0100' }, spec, layout)
+    const d = drawLabel({ tag, url, name: 'Pay Lane 1 pay station', site: 'MW12 Lubbock 50th St', phone: '806-555-0100' }, spec, layout, aspect)
+    if (aspect && d.logo) {
+      // The QR's box (quiet zone included) is square from the top-left padding.
+      const clash = d.rects.some((r) => overlaps(r, d.logo, 0.5)) || d.logo.x < d.qrModuleMm * 4
+      if (clash) failures++
+      if (clash) console.log(`FAIL  ${name} logo ${aspect}:1 overlaps the QR or barcode`)
+    }
+    if (aspect && layout.style === 'outdoor' && d.logo) { failures++; console.log(`FAIL  ${name} has a logo on outdoor stock`) }
+    const logoNote = aspect ? `logo ${String(aspect).padEnd(4)} ${d.logo ? `${d.logo.w.toFixed(1)}x${d.logo.h.toFixed(1)}mm` : 'left off'}` : 'no logo'
     for (const dpi of [203, 300]) {
-      const img = raster(d.rects, spec.label.w_mm, spec.label.h_mm, dpi)
+      const img = raster(d.logo ? [...d.rects, d.logo] : d.rects, spec.label.w_mm, spec.label.h_mm, dpi)
       const found = await readBarcodesFromImageData(img, { formats: ['QRCode', 'Code128'], tryHarder: true, maxNumberOfSymbols: 4 })
       const qr = found.find((f) => f.format === 'QRCode')?.text
       const bar = found.find((f) => f.format === 'Code128')?.text
@@ -71,7 +91,7 @@ for (const [name, partial, layout] of TEMPLATES) {
       const ok = qr === url && (!wantBar || bar === tag)
       if (!ok) failures++
       console.log(
-        `${ok ? 'PASS' : 'FAIL'}  ${name.padEnd(22)} ${tag.padEnd(20)} ${dpi}dpi  ` +
+        `${ok ? 'PASS' : 'FAIL'}  ${name.padEnd(22)} ${tag.padEnd(20)} ${logoNote.padEnd(22)} ${dpi}dpi  ` +
         `qr ${d.qrModuleMm.toFixed(2)}mm/module ${qr === url ? 'read' : 'NOT READ'}  ` +
         (wantBar ? `code128 ${d.barMm.toFixed(2)}mm ${bar === tag ? 'read' : `NOT READ (${bar ?? 'none'})`}` : (layout.show.includes('barcode') ? 'code128 left off (too narrow)' : 'no barcode')),
       )

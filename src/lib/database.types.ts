@@ -5642,6 +5642,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          label_logo_path: string | null
           label_show_logo: boolean
           reminders_enabled: boolean
           short_code: string
@@ -5659,6 +5660,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          label_logo_path?: string | null
           label_show_logo?: boolean
           reminders_enabled?: boolean
           short_code: string
@@ -5676,6 +5678,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          label_logo_path?: string | null
           label_show_logo?: boolean
           reminders_enabled?: boolean
           short_code?: string
@@ -10625,6 +10628,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          label_logo_path: string | null
           label_show_logo: boolean
           reminders_enabled: boolean
           short_code: string

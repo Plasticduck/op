@@ -1030,6 +1030,84 @@ do $$ begin
 end $$;
 reset role;
 
+-- ---- Sticker logo and sizes (Phase 2) --------------------------------------------------------
+-- A new account gets every size (B was set up above); existing ones got the new sizes.
+do $$ begin
+  if (select count(*) from public.it_label_templates where account_id = current_setting('t.b')::uuid and deleted_at is null) <> 10
+     or not exists (select 1 from public.it_label_templates
+                     where account_id = current_setting('t.b')::uuid and name = 'Brother QL 29 x 90 mm (DK-1201)')
+     or (select count(*) from public.it_label_templates where account_id = current_setting('t.b')::uuid and is_default) <> 1 then
+    raise exception 'FAIL 160: a new account did not get every sticker size';
+  end if;
+  if not exists (select 1 from public.it_label_templates
+                  where account_id = current_setting('t.a')::uuid and name = 'Roll 3 x 2 in (Zebra, Rollo)' and layout -> 'show' ? 'logo')
+     or exists (select 1 from public.it_label_templates where name like 'Avery 5160 sheet%') then
+    raise exception 'FAIL 161: existing accounts did not get the new sizes';
+  end if;
+end $$;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+update public.it_settings set label_logo_path = current_setting('t.a') || '/branding/sticker-logo-test.png'
+ where account_id = current_setting('t.a')::uuid;
+with x as (
+  insert into public.it_label_templates (account_id, name, kind, page_spec, layout, sort_order)
+  values (current_setting('t.a')::uuid, 'Test 1.5 x 1 in', 'roll',
+          '{"page": null, "label": {"w_mm": 38.1, "h_mm": 25.4}, "cols": 1, "rows": 1, "margin_top_mm": 0, "margin_left_mm": 0, "pitch_x_mm": 38.1, "pitch_y_mm": 25.4}',
+          '{"style": "compact", "show": ["qr", "tag", "logo"]}', 900)
+  returning id
+) select set_config('t.tpl', id::text, true) from x;
+reset role;
+do $$ begin
+  if (select label_logo_path from public.it_settings where account_id = current_setting('t.a')::uuid) is null
+     or coalesce(current_setting('t.tpl', true), '') = '' then
+    raise exception 'FAIL 162: an admin could not set the logo or add a size';
+  end if;
+end $$;
+-- Managers line up printers (what a stock shows included) but don't add sizes or change the logo.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+update public.it_settings set label_logo_path = null where account_id = current_setting('t.a')::uuid;
+update public.it_label_templates set layout = '{"style": "compact", "show": ["qr", "tag"]}' where id = current_setting('t.tpl')::uuid;
+do $$ begin
+  insert into public.it_label_templates (account_id, name, kind, page_spec, layout)
+  values (current_setting('t.a')::uuid, 'Manager size', 'roll', '{}', '{}');
+  raise exception 'FAIL 163: a manager added a sticker size';
+exception when others then
+  if sqlerrm like 'FAIL%' then raise; end if;
+end $$;
+reset role;
+do $$ begin
+  if (select label_logo_path from public.it_settings where account_id = current_setting('t.a')::uuid) is null then
+    raise exception 'FAIL 164: a manager removed the sticker logo';
+  end if;
+  if (select layout -> 'show' ? 'logo' from public.it_label_templates where id = current_setting('t.tpl')::uuid) then
+    raise exception 'FAIL 165: a manager could not change what a stock shows';
+  end if;
+end $$;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+update public.it_label_templates set offset_x_mm = 5 where id = current_setting('t.tpl')::uuid;
+reset role;
+do $$ begin
+  if (select offset_x_mm from public.it_label_templates where id = current_setting('t.tpl')::uuid) <> 0 then
+    raise exception 'FAIL 166: crew changed printer setup';
+  end if;
+end $$;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.b_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+update public.it_settings set label_logo_path = 'x' where account_id = current_setting('t.a')::uuid;
+do $$ begin
+  if exists (select 1 from public.it_label_templates where account_id = current_setting('t.a')::uuid) then
+    raise exception 'FAIL 167: another company can see these sticker sizes';
+  end if;
+end $$;
+reset role;
+do $$ begin
+  if (select label_logo_path from public.it_settings where account_id = current_setting('t.a')::uuid) = 'x' then
+    raise exception 'FAIL 168: another company changed the sticker logo';
+  end if;
+end $$;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;

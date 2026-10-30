@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowLeft, Download, Loader2, Printer, Save, Sticker, Tags, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, Plus, Printer, Save, Sticker, Tags, Trash2, Upload, X } from 'lucide-react'
 import { PdfPagePreview } from '@/components/data/PdfPagePreview'
 import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { Field } from '@/components/forms/Field'
@@ -10,19 +10,24 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Input } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/lib/auth'
-import { buildCalibrationPdf, buildLabelsPdf } from '@/lib/labels/labelPdf'
+import { buildCalibrationPdf, buildLabelsPdf, type StickerLogo } from '@/lib/labels/labelPdf'
+import { drawLabel, type LabelContent, type LabelLayoutSpec, type LabelSpec } from '@/lib/labels/layout'
+import { DEFAULT_INK, readStickerLogo, stickerLogoFrom } from '@/lib/labels/stickerLogo'
 import { useLocations } from '@/lib/locations'
 import { cn } from '@/lib/utils'
+import type { Json } from '@/lib/database.types'
 import { itInventory, type ItAssetRow, type ItConsumable, type ItLabelTemplate, type ItTag } from '@/lib/queries/itInventory'
 import { PrintDialog } from './PrintDialog'
 import { needsSticker, tagUrl } from './format'
-import { accountDefaultTemplate, isOutdoorAsset, toPrintTemplate, walkOrder } from './stickers'
+import { accountDefaultTemplate, isOutdoorAsset, toPrintTemplate, useStickerLogo, walkOrder } from './stickers'
 import { useItRefs, type ItRefs } from './useItRefs'
 
 // Stickers: the site print queue (everything without a good sticker), the
-// blank tag pool for pre-printed sticker orders, and printer calibration.
+// blank tag pool for pre-printed sticker orders, and printer setup (sticker
+// sizes, calibration and the company logo).
 
 type Tab = 'queue' | 'blank' | 'setup'
 const TABS: { key: Tab; label: string }[] = [
@@ -72,7 +77,7 @@ export function StickersPage() {
         ) : tab === 'blank' ? (
           <BlankTags refs={refs} onFlash={setFlash} />
         ) : (
-          <PrinterSetup refs={refs} onSaved={() => { void reload(); setFlash('Printer setup saved. New stickers use it.') }} />
+          <PrinterSetup refs={refs} onSaved={(m) => { void reload(); setFlash(m) }} />
         )}
       </div>
     </div>
@@ -406,19 +411,78 @@ function BlankTags({ refs, onFlash }: { refs: ItRefs; onFlash: (m: string) => vo
 
 // ---- Printer setup -------------------------------------------------------------------
 
-function PrinterSetup({ refs, onSaved }: { refs: ItRefs; onSaved: () => void }) {
+function PrinterSetup({ refs, onSaved }: { refs: ItRefs; onSaved: (message: string) => void }) {
+  const { profile } = useAuth()
+  const admin = profile?.role === 'owner'
   const [id, setId] = useState(accountDefaultTemplate(refs)?.id ?? '')
-  const row = refs.templates.find((t) => t.id === id)
+  const [adding, setAdding] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const logo = useStickerLogo(refs)
+  // A stock removed a moment ago falls back to the default.
+  const row = refs.templates.find((t) => t.id === id) ?? accountDefaultTemplate(refs)
+
+  const makeDefault = async () => {
+    if (!row || !profile) return
+    setBusy(true)
+    setError(null)
+    const { error: err } = await itInventory.setDefaultTemplate(profile.account_id, row.id)
+    setBusy(false)
+    if (err) setError(err.message)
+    else onSaved(`${row.name} is now the default sticker stock.`)
+  }
+  const remove = async () => {
+    if (!row) return
+    setRemoving(false)
+    setBusy(true)
+    setError(null)
+    const { error: err } = await itInventory.updateTemplate(row.id, { deleted_at: new Date().toISOString() })
+    setBusy(false)
+    if (err) setError(err.message)
+    else { setId(accountDefaultTemplate(refs)?.id ?? ''); onSaved(`Removed ${row.name}.`) }
+  }
+
   return (
-    <div className="space-y-4">
-      <Field label="Sticker stock" className="sm:max-w-md">
-        {(fid) => (
-          <Select id={fid} value={id} onChange={(e) => setId(e.target.value)}>
-            {refs.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-        )}
-      </Field>
-      {row && <Calibrate key={row.id} row={row} refs={refs} onSaved={onSaved} />}
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <Field label="Sticker stock" className="sm:max-w-md sm:flex-1">
+            {(fid) => (
+              <Select id={fid} value={row?.id ?? ''} onChange={(e) => setId(e.target.value)}>
+                {refs.templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' (default)' : ''}</option>)}
+              </Select>
+            )}
+          </Field>
+          {admin && (
+            <div className="flex flex-wrap gap-2">
+              {row && !row.is_default && (
+                <Button variant="secondary" size="sm" onClick={() => void makeDefault()} disabled={busy}>Use by default</Button>
+              )}
+              <Button variant="secondary" size="sm" onClick={() => setAdding(true)}><Plus className="size-4" /> Add a size</Button>
+              {row && !row.is_default && (
+                <Button variant="ghost" size="sm" onClick={() => setRemoving(true)} disabled={busy}><Trash2 className="size-4" /> Remove</Button>
+              )}
+            </div>
+          )}
+        </div>
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        {row && <Calibrate key={row.id} row={row} refs={refs} logo={logo} onSaved={() => onSaved('Printer setup saved. New stickers use it.')} />}
+      </div>
+      <LogoSettings refs={refs} logo={logo} onSaved={onSaved} />
+      {adding && profile && (
+        <AddSizeDialog refs={refs} accountId={profile.account_id} logo={logo} onClose={() => setAdding(false)}
+          onAdded={(t) => { setAdding(false); setId(t.id); onSaved(`Added ${t.name}. Print a test page to line it up.`) }} />
+      )}
+      <ConfirmDialog
+        open={removing}
+        title={`Remove ${row?.name ?? 'this size'}?`}
+        description="It comes off the list of sticker stock. Gear that used it prints on the default instead."
+        confirmLabel="Remove"
+        destructive
+        onCancel={() => setRemoving(false)}
+        onConfirm={() => void remove()}
+      />
     </div>
   )
 }
@@ -428,50 +492,68 @@ const num = (v: string, lo: number, hi: number, d: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d
 }
 
-function Calibrate({ row, refs, onSaved }: { row: ItLabelTemplate; refs: ItRefs; onSaved: () => void }) {
+const withLogo = (layout: LabelLayoutSpec, on: boolean): LabelLayoutSpec =>
+  ({ ...layout, show: [...layout.show.filter((s) => s !== 'logo'), ...(on ? ['logo'] : [])] })
+
+function sampleLabel(refs: ItRefs, site: string | undefined): LabelContent {
+  const tag = `${refs.settings.tag_prefix}-${'0'.repeat(Math.max(0, refs.settings.tag_padding - 3))}123`
+  return { tag, url: tagUrl(refs.settings.short_code, tag), name: 'Pay Lane 1 pay station', site: site ?? 'Your site', phone: refs.settings.support_phone }
+}
+
+function Calibrate({ row, refs, logo, onSaved }: { row: ItLabelTemplate; refs: ItRefs; logo: StickerLogo | null; onSaved: () => void }) {
   const { profile } = useAuth()
   const { locations } = useLocations()
   const canEdit = profile?.role === 'owner' || profile?.role === 'manager' || profile?.role === 'technician'
+  const saved = toPrintTemplate(row)
+  const outdoor = saved.layout.style === 'outdoor'
   const [ox, setOx] = useState(String(Number(row.offset_x_mm)))
   const [oy, setOy] = useState(String(Number(row.offset_y_mm)))
   const [pct, setPct] = useState(String(Math.round(Number(row.scale) * 1000) / 10))
+  const [showLogo, setShowLogo] = useState(saved.layout.show.includes('logo'))
   const [testPdf, setTestPdf] = useState<ArrayBuffer | null>(null)
   const [samplePdf, setSamplePdf] = useState<ArrayBuffer | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const tpl = useMemo(() => ({
-    ...toPrintTemplate(row),
-    offset_x_mm: num(ox, -20, 20, 0),
-    offset_y_mm: num(oy, -20, 20, 0),
-    scale: num(pct, 50, 150, 100) / 100,
-  }), [row, ox, oy, pct])
+  const tpl = useMemo(() => {
+    const base = toPrintTemplate(row)
+    return {
+      ...base,
+      layout: withLogo(base.layout, showLogo),
+      offset_x_mm: num(ox, -20, 20, 0),
+      offset_y_mm: num(oy, -20, 20, 0),
+      scale: num(pct, 50, 150, 100) / 100,
+    }
+  }, [row, ox, oy, pct, showLogo])
   const sheet = !!tpl.page_spec.page
+  const sample = useMemo(() => sampleLabel(refs, locations[0]?.name), [refs, locations])
+  const logoFits = useMemo(
+    () => !!logo && !!drawLabel(sample, tpl.page_spec, tpl.layout, logo.aspect).logo,
+    [logo, sample, tpl],
+  )
 
   useEffect(() => {
     let alive = true
-    const tag = `${refs.settings.tag_prefix}-${'0'.repeat(Math.max(0, refs.settings.tag_padding - 3))}123`
     const t = window.setTimeout(() => {
       void buildCalibrationPdf(tpl).then((d) => { if (alive) setTestPdf(d.output('arraybuffer')) })
       // One label on its own, so a sheet stock's sample isn't a whole page.
       const one = tpl.page_spec.page
         ? { ...tpl, page_spec: { ...tpl.page_spec, page: null }, offset_x_mm: 0, offset_y_mm: 0, scale: 1 }
         : tpl
-      void buildLabelsPdf(one, [{
-        tag, url: tagUrl(refs.settings.short_code, tag), name: 'Pay Lane 1 pay station',
-        site: locations[0]?.name ?? 'Your site', phone: refs.settings.support_phone,
-      }]).then(({ doc }) => { if (alive) setSamplePdf(doc.output('arraybuffer')) })
+      void buildLabelsPdf(one, [sample], { logo }).then(({ doc }) => { if (alive) setSamplePdf(doc.output('arraybuffer')) })
     }, 150)
     return () => { alive = false; window.clearTimeout(t) }
-  }, [tpl, refs, locations])
+  }, [tpl, sample, logo])
 
   const dirty = tpl.offset_x_mm !== Number(row.offset_x_mm) || tpl.offset_y_mm !== Number(row.offset_y_mm) || tpl.scale !== Number(row.scale)
+    || showLogo !== saved.layout.show.includes('logo')
 
   const save = async () => {
     setSaving(true)
     setError(null)
     const { error: err } = await itInventory.updateTemplate(row.id, {
       offset_x_mm: tpl.offset_x_mm, offset_y_mm: tpl.offset_y_mm, scale: Math.round(tpl.scale * 1000) / 1000,
+      layout: tpl.layout as unknown as Json,
     })
     setSaving(false)
     if (err) setError(err.message)
@@ -507,6 +589,24 @@ function Calibrate({ row, refs, onSaved }: { row: ItLabelTemplate; refs: ItRefs;
             {(id) => <Input id={id} type="number" step={0.5} inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)} disabled={!canEdit} />}
           </Field>
         </div>
+        {outdoor ? (
+          <p className="text-xs text-ink-muted">Outdoor stickers keep the QR as big as it can be, so there's no logo on them.</p>
+        ) : (
+          <div>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={showLogo} onChange={(e) => setShowLogo(e.target.checked)} disabled={!canEdit}
+                className="size-4 rounded border-border text-accent focus:ring-accent" />
+              Logo on this stock
+            </label>
+            {showLogo && (
+              <p className="mt-1 pl-6 text-xs text-ink-muted">
+                {!logo ? 'Add your logo below and it prints here.'
+                  : logoFits ? 'It goes above the tag, beside the QR.'
+                    : "No room for it on this size, so it's left off."}
+              </p>
+            )}
+          </div>
+        )}
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => void printTest()}><Printer className="size-4" /> Print test page</Button>
@@ -526,5 +626,322 @@ function Calibrate({ row, refs, onSaved }: { row: ItLabelTemplate; refs: ItRefs;
         <PdfPagePreview data={testPdf} maxWidth={320} />
       </div>
     </div>
+  )
+}
+
+// ---- Logo ------------------------------------------------------------------------------
+
+// What prints: black on white paper, whatever the theme.
+function LogoChip({ src, loading }: { src?: string | null; loading?: boolean }) {
+  if (src) {
+    return (
+      <div className="flex h-20 w-48 shrink-0 items-center justify-center rounded-md border border-border-strong bg-white p-2">
+        <img src={src} alt="Your logo as it prints" className="h-auto max-h-16 w-auto max-w-44 object-contain" />
+      </div>
+    )
+  }
+  return (
+    <div className="grid h-20 w-48 shrink-0 place-items-center rounded-md border border-dashed border-border-strong text-xs text-ink-subtle">
+      {loading ? <Loader2 className="size-4 animate-spin" /> : 'No logo yet'}
+    </div>
+  )
+}
+
+function LogoSettings({ refs, logo, onSaved }: { refs: ItRefs; logo: StickerLogo | null; onSaved: (message: string) => void }) {
+  const { profile } = useAuth()
+  const admin = profile?.role === 'owner'
+  const input = useRef<HTMLInputElement>(null)
+  // A picked image, turned black and white at `ink` until it's saved or dropped.
+  const [source, setSource] = useState<Blob | null>(null)
+  const [ink, setInk] = useState(DEFAULT_INK)
+  const [draft, setDraft] = useState<{ png: Blob; dataUrl: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const path = refs.settings.label_logo_path
+
+  useEffect(() => {
+    if (!source) return
+    let alive = true
+    const t = window.setTimeout(() => {
+      stickerLogoFrom(source, ink)
+        .then(async (png) => {
+          const { dataUrl } = await readStickerLogo(png)
+          if (alive) { setDraft({ png, dataUrl }); setError(null) }
+        })
+        .catch((e: unknown) => { if (alive) { setDraft(null); setError(e instanceof Error ? e.message : String(e)) } })
+    }, 120)
+    return () => { alive = false; window.clearTimeout(t) }
+  }, [source, ink])
+
+  const pick = (b: Blob) => { setSource(b); setInk(DEFAULT_INK); setDraft(null); setError(null) }
+  const drop = () => { setSource(null); setDraft(null); setError(null) }
+
+  const takeCompanyLogo = async () => {
+    if (!profile?.brand_logo_url) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(profile.brand_logo_url)
+      if (!res.ok) throw new Error(String(res.status))
+      pick(await res.blob())
+    } catch {
+      setError("Couldn't load the company logo. Upload it instead.")
+    } finally {
+      setBusy(false)
+    }
+  }
+  const save = async () => {
+    if (!draft || !profile) return
+    setBusy(true)
+    setError(null)
+    const { error: err } = await itInventory.setStickerLogo(refs.settings.id, profile.account_id, draft.png, path)
+    setBusy(false)
+    if (err) setError(err)
+    else { drop(); onSaved('Logo saved. It prints on stickers that have room for it.') }
+  }
+  const remove = async () => {
+    if (!path) return
+    setBusy(true)
+    setError(null)
+    const { error: err } = await itInventory.removeStickerLogo(refs.settings.id, path)
+    setBusy(false)
+    if (err) setError(err)
+    else onSaved('Logo removed from stickers.')
+  }
+
+  return (
+    <section className="space-y-3 border-t border-border pt-5">
+      <div>
+        <h2 className="text-sm font-semibold text-ink">Your logo</h2>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Prints in black and white above the tag, on sticker stock that has room for it. Simple, bold logos print best.
+        </p>
+      </div>
+      <input ref={input} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) pick(f) }} />
+      {source ? (
+        <div className="space-y-3">
+          <LogoChip src={draft?.dataUrl} loading={!draft && !error} />
+          <div className="sm:max-w-xs">
+            <label htmlFor="logo-ink" className="text-sm font-medium text-ink">Ink</label>
+            <input id="logo-ink" type="range" min={0.3} max={0.95} step={0.01} value={ink}
+              onChange={(e) => setInk(Number(e.target.value))} className="mt-1 w-full accent-accent" />
+            <div className="flex justify-between text-xs text-ink-muted"><span>Lighter</span><span>Darker</span></div>
+            <p className="mt-1 text-xs text-ink-muted">Colors darker than this print black. Go lighter if the logo comes out as a solid block.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void save()} disabled={!draft || busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save logo
+            </Button>
+            <Button variant="secondary" onClick={drop} disabled={busy}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <LogoChip src={logo?.dataUrl} loading={!!path && !logo} />
+          {admin ? (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" onClick={() => input.current?.click()} disabled={busy}>
+                <Upload className="size-4" /> {path ? 'Replace' : 'Upload a logo'}
+              </Button>
+              {profile?.brand_logo_url && (
+                <Button variant="secondary" size="sm" onClick={() => void takeCompanyLogo()} disabled={busy}>Use the company logo</Button>
+              )}
+              {path && (
+                <Button variant="ghost" size="sm" onClick={() => void remove()} disabled={busy}><Trash2 className="size-4" /> Remove</Button>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-ink-muted">An admin can change it.</p>
+          )}
+        </div>
+      )}
+      {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+    </section>
+  )
+}
+
+// ---- Add a size --------------------------------------------------------------------------
+
+const LETTER = { w_mm: 215.9, h_mm: 279.4 }
+
+function AddSizeDialog({ refs, accountId, logo, onClose, onAdded }: {
+  refs: ItRefs
+  accountId: string
+  logo: StickerLogo | null
+  onClose: () => void
+  onAdded: (row: ItLabelTemplate) => void
+}) {
+  const { locations } = useLocations()
+  const [name, setName] = useState('')
+  const [kind, setKind] = useState<'roll' | 'sheet'>('roll')
+  const [unit, setUnit] = useState<'in' | 'mm'>('in')
+  const [w, setW] = useState('')
+  const [h, setH] = useState('')
+  const [cols, setCols] = useState('')
+  const [rows, setRows] = useState('')
+  const [top, setTop] = useState('')
+  const [left, setLeft] = useState('')
+  const [gapX, setGapX] = useState('0')
+  const [gapY, setGapY] = useState('0')
+  const [outdoor, setOutdoor] = useState(false)
+  const [preview, setPreview] = useState<ArrayBuffer | null>(null)
+  const [tried, setTried] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const mm = (v: string) => {
+    const n = Number(v.replace(',', '.').trim())
+    return v.trim() && Number.isFinite(n) ? Math.round((unit === 'in' ? n * 25.4 : n) * 1000) / 1000 : NaN
+  }
+  const u = unit === 'in' ? 'in' : 'mm'
+  // The spec and layout the fields describe, or what's wrong with them.
+  const built = useMemo(() => {
+    const e: Record<string, string> = {}
+    const lw = mm(w)
+    const lh = mm(h)
+    const size = (v: number) => Number.isFinite(v) && v >= 12 && v <= 200
+    if (!size(lw)) e.w = unit === 'in' ? 'Between 0.5 and 8 in.' : 'Between 12 and 200 mm.'
+    if (!size(lh)) e.h = unit === 'in' ? 'Between 0.5 and 8 in.' : 'Between 12 and 200 mm.'
+    let spec: LabelSpec | null = null
+    if (!e.w && !e.h) {
+      if (kind === 'roll') {
+        spec = { page: null, label: { w_mm: lw, h_mm: lh }, cols: 1, rows: 1, margin_top_mm: 0, margin_left_mm: 0, pitch_x_mm: lw, pitch_y_mm: lh }
+      } else {
+        const c = Number(cols)
+        const r = Number(rows)
+        const t = mm(top)
+        const l = mm(left)
+        const gx = mm(gapX || '0')
+        const gy = mm(gapY || '0')
+        if (!Number.isInteger(c) || c < 1 || c > 10) e.cols = '1 to 10.'
+        if (!Number.isInteger(r) || r < 1 || r > 40) e.rows = '1 to 40.'
+        if (!Number.isFinite(t) || t < 0) e.top = 'Enter the top margin.'
+        if (!Number.isFinite(l) || l < 0) e.left = 'Enter the left margin.'
+        if (!Number.isFinite(gx) || gx < 0) e.gapX = 'Enter 0 or more.'
+        if (!Number.isFinite(gy) || gy < 0) e.gapY = 'Enter 0 or more.'
+        if (!Object.keys(e).length) {
+          if (l + c * lw + (c - 1) * gx > LETTER.w_mm + 0.5) e.cols = "That many don't fit across a letter page."
+          if (t + r * lh + (r - 1) * gy > LETTER.h_mm + 0.5) e.rows = "That many don't fit down a letter page."
+          spec = { page: LETTER, label: { w_mm: lw, h_mm: lh }, cols: c, rows: r, margin_top_mm: t, margin_left_mm: l, pitch_x_mm: lw + gx, pitch_y_mm: lh + gy }
+        }
+      }
+    }
+    const layout: LabelLayoutSpec = outdoor
+      ? { style: 'outdoor', show: ['qr', 'tag', 'name'] }
+      : { style: lh < 26 ? 'compact' : 'standard', show: ['qr', 'barcode', 'tag', 'name', 'site', ...(lh >= 40 ? ['phone'] : []), 'logo'] }
+    return { errors: e, spec: Object.keys(e).length ? null : spec, layout }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, unit, w, h, cols, rows, top, left, gapX, gapY, outdoor])
+
+  useEffect(() => {
+    if (!built.spec) return
+    let alive = true
+    const one = { name: 'preview', page_spec: { ...built.spec, page: null }, layout: built.layout, offset_x_mm: 0, offset_y_mm: 0, scale: 1 }
+    const t = window.setTimeout(() => {
+      void buildLabelsPdf(one, [sampleLabel(refs, locations[0]?.name)], { logo }).then(({ doc }) => {
+        if (alive) setPreview(doc.output('arraybuffer'))
+      })
+    }, 200)
+    return () => { alive = false; window.clearTimeout(t) }
+  }, [built, refs, locations, logo])
+
+  const errs: Record<string, string> = tried ? { ...built.errors, ...(name.trim() ? {} : { name: 'Give it a name.' }) } : {}
+  const save = async () => {
+    setTried(true)
+    if (!built.spec || !name.trim()) return
+    setSaving(true)
+    setError(null)
+    const { data, error: err } = await itInventory.addTemplate({
+      account_id: accountId,
+      name: name.trim(),
+      kind,
+      page_spec: built.spec as unknown as Json,
+      layout: built.layout as unknown as Json,
+      is_outdoor: outdoor,
+      sort_order: Math.max(0, ...refs.templates.map((t) => t.sort_order)) + 10,
+    })
+    setSaving(false)
+    if (err || !data) setError(err?.message ?? "Couldn't add it.")
+    else onAdded(data)
+  }
+
+  const per = built.spec?.page ? built.spec.cols * built.spec.rows : null
+  return (
+    <Modal open onClose={onClose} size="lg" title="Add a sticker size"
+      description="Copy the sizes from the label box or the maker's template.">
+      <div className="grid gap-5 sm:grid-cols-[1fr_220px]">
+        <div className="space-y-3">
+          <Field label="Name" required error={errs.name}>
+            {(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Zebra 1.5 x 1 in" autoFocus />}
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Kind">
+              {(id) => (
+                <Select id={id} value={kind} onChange={(e) => setKind(e.target.value as 'roll' | 'sheet')}>
+                  <option value="roll">Roll (one at a time)</option>
+                  <option value="sheet">Sheet (letter page)</option>
+                </Select>
+              )}
+            </Field>
+            <Field label="Measured in">
+              {(id) => (
+                <Select id={id} value={unit} onChange={(e) => setUnit(e.target.value as 'in' | 'mm')}>
+                  <option value="in">Inches</option>
+                  <option value="mm">Millimeters</option>
+                </Select>
+              )}
+            </Field>
+            <Field label={`Label width (${u})`} error={errs.w}>
+              {(id) => <Input id={id} inputMode="decimal" value={w} onChange={(e) => setW(e.target.value)} placeholder={unit === 'in' ? '2' : '50.8'} />}
+            </Field>
+            <Field label={`Label height (${u})`} error={errs.h}>
+              {(id) => <Input id={id} inputMode="decimal" value={h} onChange={(e) => setH(e.target.value)} placeholder={unit === 'in' ? '1' : '25.4'} />}
+            </Field>
+          </div>
+          {kind === 'sheet' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Labels across" error={errs.cols}>
+                {(id) => <Input id={id} inputMode="numeric" value={cols} onChange={(e) => setCols(e.target.value)} placeholder="3" />}
+              </Field>
+              <Field label="Labels down" error={errs.rows}>
+                {(id) => <Input id={id} inputMode="numeric" value={rows} onChange={(e) => setRows(e.target.value)} placeholder="10" />}
+              </Field>
+              <Field label={`Top margin (${u})`} error={errs.top}>
+                {(id) => <Input id={id} inputMode="decimal" value={top} onChange={(e) => setTop(e.target.value)} placeholder={unit === 'in' ? '0.5' : '12.7'} />}
+              </Field>
+              <Field label={`Left margin (${u})`} error={errs.left}>
+                {(id) => <Input id={id} inputMode="decimal" value={left} onChange={(e) => setLeft(e.target.value)} placeholder={unit === 'in' ? '0.1875' : '4.76'} />}
+              </Field>
+              <Field label={`Gap across (${u})`} error={errs.gapX} hint="Space between labels side by side.">
+                {(id) => <Input id={id} inputMode="decimal" value={gapX} onChange={(e) => setGapX(e.target.value)} />}
+              </Field>
+              <Field label={`Gap down (${u})`} error={errs.gapY} hint="Space between rows.">
+                {(id) => <Input id={id} inputMode="decimal" value={gapY} onChange={(e) => setGapY(e.target.value)} />}
+              </Field>
+            </div>
+          )}
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={outdoor} onChange={(e) => setOutdoor(e.target.checked)}
+              className="size-4 rounded border-border text-accent focus:ring-accent" />
+            Outdoor stock (bigger QR, no barcode)
+          </label>
+          {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        </div>
+        <div>
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">Sample sticker</div>
+          {built.spec
+            ? <PdfPagePreview data={preview} maxWidth={220} />
+            : <p className="text-sm text-ink-muted">Enter the label size to see it.</p>}
+          {per && <p className="mt-2 text-xs text-ink-muted">{per} per page.</p>}
+        </div>
+      </div>
+      <div className="mt-5 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+        <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button onClick={() => void save()} disabled={saving}>
+          {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Add size
+        </Button>
+      </div>
+    </Modal>
   )
 }

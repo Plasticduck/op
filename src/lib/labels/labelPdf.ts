@@ -9,12 +9,14 @@ import {
   type LabelContent,
   type LabelLayoutSpec,
   type LabelSpec,
+  type Rect,
 } from './layout'
 
 // Sticker PDFs from the label layout. Black on white, vectors only, so they
 // print sharp on thermal and laser printers alike. Every mark goes through the
 // template's calibration (page mm = offset + scale x position), so the test
-// page, the preview and the real stickers line up the same way.
+// page, the preview and the real stickers line up the same way. The one image
+// is the company logo, already black and white (see stickerLogo.ts).
 
 export type PrintTemplate = {
   name: string
@@ -24,6 +26,9 @@ export type PrintTemplate = {
   offset_y_mm: number
   scale: number
 }
+
+// A PNG data URL and its width / height.
+export type StickerLogo = { dataUrl: string; aspect: number }
 
 type Xf = { ox: number; oy: number; s: number }
 
@@ -39,9 +44,11 @@ function addPage(doc: JsPDF, spec: LabelSpec) {
   else doc.addPage([spec.label.w_mm, spec.label.h_mm], spec.label.w_mm > spec.label.h_mm ? 'landscape' : 'portrait')
 }
 
-function paint(doc: JsPDF, d: Drawing, slotX: number, slotY: number, t: Xf) {
+function paint(doc: JsPDF, d: Drawing, slotX: number, slotY: number, t: Xf, logo?: { box: Rect; img: StickerLogo } | null) {
   const X = (x: number) => t.ox + t.s * (slotX + x)
   const Y = (y: number) => t.oy + t.s * (slotY + y)
+  // Embedded once per PDF (the alias), however many stickers.
+  if (logo) doc.addImage(logo.img.dataUrl, 'PNG', X(logo.box.x), Y(logo.box.y), logo.box.w * t.s, logo.box.h * t.s, 'sticker-logo', 'FAST')
   doc.setFillColor(0, 0, 0)
   doc.setDrawColor(0, 0, 0)
   doc.setTextColor(0, 0, 0)
@@ -82,11 +89,12 @@ function paint(doc: JsPDF, d: Drawing, slotX: number, slotY: number, t: Xf) {
 const xf = (t: PrintTemplate): Xf => ({ ox: Number(t.offset_x_mm) || 0, oy: Number(t.offset_y_mm) || 0, s: Number(t.scale) || 1 })
 
 // Stickers for each item, `copies` of each (secondary stickers share a tag).
-// `startAt` skips positions already used on the first sheet.
+// `startAt` skips positions already used on the first sheet. `logo` prints
+// where the template shows it and there's room.
 export async function buildLabelsPdf(
   t: PrintTemplate,
   items: LabelContent[],
-  opts: { copies?: number; startAt?: number } = {},
+  opts: { copies?: number; startAt?: number; logo?: StickerLogo | null } = {},
 ): Promise<{ doc: JsPDF; labels: number }> {
   const spec = t.page_spec
   const doc = await newDoc(spec)
@@ -94,15 +102,17 @@ export async function buildLabelsPdf(
   const startAt = spec.page ? Math.max(0, Math.min(labelsPerPage(spec) - 1, opts.startAt ?? 0)) : 0
   let i = 0
   let page = 0
+  const logo = t.layout.show.includes('logo') ? opts.logo ?? null : null
   for (const item of items) {
-    const d = drawLabel(item, spec, t.layout)
+    const d = drawLabel(item, spec, t.layout, logo?.aspect)
+    const placed = d.logo && logo ? { box: d.logo, img: logo } : null
     for (let k = 0; k < copies; k++) {
       const slot = labelSlot(spec, i, startAt)
       while (page < slot.page) {
         addPage(doc, spec)
         page++
       }
-      paint(doc, d, slot.x, slot.y, xf(t))
+      paint(doc, d, slot.x, slot.y, xf(t), placed)
       i++
     }
   }

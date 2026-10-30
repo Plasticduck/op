@@ -13,7 +13,7 @@ import { buildLabelsPdf } from '@/lib/labels/labelPdf'
 import { labelsPerPage } from '@/lib/labels/layout'
 import { useLocations } from '@/lib/locations'
 import { itInventory, type ItAssetRow, type ItTag } from '@/lib/queries/itInventory'
-import { assetLabel, blankLabel, defaultTemplateFor, accountDefaultTemplate, toPrintTemplate, walkOrder } from './stickers'
+import { assetLabel, blankLabel, defaultTemplateFor, accountDefaultTemplate, toPrintTemplate, useStickerLogo, walkOrder } from './stickers'
 import type { ItRefs } from './useItRefs'
 
 // Print stickers for some assets, or blank tags from the pool. The preview is
@@ -50,6 +50,7 @@ export function PrintDialog({
   const [preview, setPreview] = useState<ArrayBuffer | null>(null)
   const [printing, setPrinting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const logo = useStickerLogo(refs)
 
   const row = refs.templates.find((t) => t.id === templateId)
   const tpl = row ? toPrintTemplate(row) : null
@@ -66,20 +67,20 @@ export function PrintDialog({
     let alive = true
     const firstPage = sheet ? items.slice(0, Math.ceil((per - start) / nCopies)) : items.slice(0, 1)
     const id = window.setTimeout(() => {
-      void buildLabelsPdf(tpl, firstPage, { copies: nCopies, startAt: start }).then(({ doc }) => {
+      void buildLabelsPdf(tpl, firstPage, { copies: nCopies, startAt: start, logo }).then(({ doc }) => {
         if (alive) setPreview(doc.output('arraybuffer'))
       })
     }, 120)
     return () => { alive = false; window.clearTimeout(id) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateId, nCopies, start, items])
+  }, [templateId, nCopies, start, items, logo])
 
   const print = async () => {
     if (!tpl || !row || !profile) return
     setPrinting(true)
     setError(null)
     try {
-      const { doc, labels } = await buildLabelsPdf(tpl, items, { copies: nCopies, startAt: start })
+      const { doc, labels } = await buildLabelsPdf(tpl, items, { copies: nCopies, startAt: start, logo })
       doc.save(`stickers-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`)
       const sites = new Set(ordered.map((a) => a.location_id))
       const { error: err } = await itInventory.recordPrint({
