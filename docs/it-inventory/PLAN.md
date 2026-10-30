@@ -114,8 +114,8 @@ monitor; see above).
 | G | Physical audits, inside IT Inventory (Kevan: not in the checklist list) | done 2026-10-30. Audits tab: each site with how much is overdue or due, start / continue, past audits. The walk: continuous scanning by area in walk order, "you're in" area (an item found elsewhere moves there at the end), sticker readable / faded / missing, tap an item for missing / damaged, note, photo and fields marked "editable during audit"; another site's sticker offers "Move it here" to people who manage both; unknown stickers are noted. Finishing needs every item resolved ("mark the rest missing"), then sets last / next audit dates per category interval, sticker condition (faded or missing goes to the print queue), area and fields, with an "audited" Timeline row per item. The report offers Mark lost, Change status, Print stickers and Add it. Settings > Audits: interval, warning days, per-kind overrides. Not done: AI photo checks on audit photos, and the overdue signal on the dashboard scorecard (it would change site grades) |
 | H | Repairs: maintenance records and types, back to the prior status when done, downtime, cost rollups | done 2026-10-30. "Log repair" on the asset page and a Repairs tab (open jobs with Mark done and Edit, finished jobs, total spent and downtime). Logging can take the item out of service (Out for Repair now, its earlier status back when the job is marked done, downtime counted); past jobs can be logged as done with hours out. Repairs and service page (from the Overview tile and the Equipment menu): open now, spent in 90 days and this year, downtime, filters, CSV export, cost by site and by kind of gear over 12 months. Timeline shows logged / done / edited / removed jobs |
 | I | Accessories (count-based, checked out to people or devices) | done 2026-10-30. On the Supplies tab behind a Supplies / Accessories switch (supplies get used up; accessories come back). Total, out and left per site, low at the minimum, check out a number to a person on the roster or a device at the site (with due back and a note), who has them (overdue in red), check in, returned history, add / edit / remove. "Accessories with it" on a device's page. Five accessory kinds seeded (Charger or Cable, Case or Mount, Keyboard or Mouse, Headset or Radio, Other Accessory) |
-| J | Photo to form (make, model, serial from a label photo) | next |
-| K | Company logo on stickers, more label sizes | |
+| J | Photo to form (make, model, serial from a label photo) | done 2026-10-30. "Read a label" at the top of the Add / Edit / Clone equipment form (one unit at a time): take a photo of the model and serial sticker and the form fills Model, Model number, Manufacturer, Category, Serial and MAC for the person to check, with a list of what was filled, Undo, and a warning on anything hard to read. Picks a model or manufacturer already on file when it's the same one ("SEIKO EPSON CORP." is Epson). New models save the model number too |
+| K | Company logo on stickers, more label sizes | next |
 
 Audits are their own tables (`it_audit_runs`, `it_audit_items`), not checklist
 runs; `checklist_run_id` stays for the spec's data model but is unused. Crew
@@ -136,6 +136,17 @@ of service (someone retiring it in the meantime wins). Downtime runs to now,
 or to the end of the day it was done if that date is in the past (Central).
 Spend counts finished jobs on the day they were done; estimates on open jobs
 don't count.
+
+Label reading (`it-read-label` edge function): IT staff only (Admin, manager,
+technician). The photo goes to Claude (Opus 5.5, low effort, a JSON schema
+output, server-side refusal fallback) with the account's manufacturer and
+category names, and comes back as plain fields; nothing is stored, not even the
+photo, and nothing is saved until the person saves the form (the spec: never
+auto-save AI guesses). The prompt says to report only what's printed, never to
+fill a serial or MAC from memory, and to put the name people use in Model
+(TM-T88VI) and the other code in Model number (M332A). MACs are normalized to
+aa:bb:cc:dd:ee:ff or dropped. A photo with no model or serial answers 422 with
+what to fix. The app shrinks the photo to 2000 px before sending.
 
 Accessories (`it_accessories`, `it_accessory_assignments`, view
 `it_accessory_stock` for out / left): rules are in triggers. A check-out locks
@@ -211,6 +222,16 @@ twice through PostgREST returned it once, then nothing. The slice F screens
 were checked in headless Chrome at phone and desktop width, light and dark,
 with data captured from the demo account (64 checks: tiles and their links,
 totals, sorting, the forms and the calls they make, no sideways scroll).
+
+Label reading was checked on 2026-10-30 against the deployed function with
+three rendered label photos (tilted, slightly soft): an Epson printer label
+read as Epson / TM-T88VI / M332A / its serial / Receipt Printer, a Ubiquiti
+switch label as Ubiquiti / USW-24-POE / part number / serial / MAC / Switch,
+and a conveyor caution sign was turned away with what to photograph instead.
+The form was checked in headless Chrome with the reader mocked (27 checks:
+filling a new model, matching a manufacturer and an existing model, the
+hard-to-read hints, the duplicate-serial warning, Undo, a failed read, saving
+the model number, light and dark, phone width).
 
 Scanning was checked end to end on 2026-10-30 in headless Chrome with a fake
 camera playing a printed sticker: `BarcodeScanner` read it through the

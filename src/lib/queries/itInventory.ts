@@ -124,6 +124,20 @@ export type RemindersPreview = {
   }[]
 }
 
+// What it-read-label found on a device's label. Empty strings for what isn't there.
+export type LabelReading = {
+  manufacturer: string
+  model: string
+  model_number: string
+  serial: string
+  mac: string
+  category_id: string | null
+  category_name: string | null
+  // Fields whose characters were hard to read.
+  unsure: ('manufacturer' | 'model' | 'model_number' | 'serial' | 'mac' | 'category')[]
+  note: string
+}
+
 // functions.invoke puts non-2xx bodies on error.context (see lib/fnError.ts).
 async function scanResult<R>(data: unknown, error: unknown): Promise<{ data: R | null; message: string | null }> {
   if (!error) return { data: data as R, message: null }
@@ -502,6 +516,19 @@ export const itInventory = {
   remindersTest: async () => {
     const { data, error } = await supabase.functions.invoke('it-reminders', { body: { test: true } })
     return scanResult<{ ok: true; sms: { ok: boolean; error?: string }; email: { ok: boolean; error?: string } }>(data, error)
+  },
+
+  // A photo of a device's label, read by AI into make, model, serial and MAC for
+  // the person to check. Nothing is saved.
+  readLabel: async (file: File) => {
+    const image = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader()
+      r.onload = () => resolve(String(r.result).replace(/^data:[^;]+;base64,/, ''))
+      r.onerror = () => reject(r.error)
+      r.readAsDataURL(file)
+    })
+    const { data, error } = await supabase.functions.invoke('it-read-label', { body: { image, media_type: file.type } })
+    return scanResult<LabelReading>(data, error)
   },
 
   // Photos: <account>/asset/<asset>/<uuid>.jpg in the private it-inventory bucket.

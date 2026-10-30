@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Camera, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
+import { AlertTriangle, Camera, ChevronDown, ChevronRight, Loader2, ScanText, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -10,7 +10,7 @@ import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { shrinkPhoto } from '@/lib/shrinkPhoto'
 import type { Json } from '@/lib/database.types'
-import { itInventory, type DuplicateHit, type ItAssetInsert, type ItAssetRow, type ItCustomField } from '@/lib/queries/itInventory'
+import { itInventory, type DuplicateHit, type ItAssetInsert, type ItAssetRow, type ItCustomField, type LabelReading } from '@/lib/queries/itInventory'
 import type { ItRefs } from './useItRefs'
 import { fieldOptions, fieldsFor } from './customFields'
 import { friendlyError, isIp, normalizeMac } from './format'
@@ -27,6 +27,8 @@ type Form = {
   location_id: string
   category_id: string
   model: string
+  // Saved with a new model only.
+  model_number: string
   manufacturer: string
   name: string
   asset_tag: string
@@ -47,11 +49,35 @@ type Form = {
 
 const MAX_UNITS = 50
 
+// Reading a label: which form fields it can fill, by name for the summary.
+type LabelField = 'model' | 'model_number' | 'manufacturer' | 'category_id' | 'serial' | 'mac'
+const LABEL_NAMES: Record<LabelField, string> = {
+  model: 'Model', model_number: 'Model number', manufacturer: 'Manufacturer', category_id: 'Category',
+  serial: 'Serial number', mac: 'MAC address',
+}
+const FROM_READING: Record<LabelReading['unsure'][number], LabelField> = {
+  model: 'model', model_number: 'model_number', manufacturer: 'manufacturer', category: 'category_id', serial: 'serial', mac: 'mac',
+}
+type LabelResult = { filled: LabelField[]; unsure: LabelField[]; before: Form }
+
+// Labels say "SEIKO EPSON CORP." where the list says "Epson".
+const CORP = /\b(inc|incorporated|corp|corporation|co|company|ltd|limited|llc|gmbh|ag|plc|group|technologies|technology|electronics|international)\b/g
+const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(CORP, ' ').split(/\s+/).filter(Boolean)
+const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+function matchManufacturer<M extends { name: string }>(text: string, list: M[]): M | null {
+  const w = words(text)
+  if (!w.length) return null
+  return list.find((m) => words(m.name).join(' ') === w.join(' '))
+    ?? list.find((m) => { const mw = words(m.name); return mw.length > 0 && mw.every((x) => w.includes(x)) })
+    ?? null
+}
+
 function initialForm(mode: AssetFormMode, refs: ItRefs, siteId: string, asset?: ItAssetRow | null, tag?: string): Form {
   const defaultStatus = refs.statuses.find((s) => s.is_default)?.id ?? refs.statuses[0]?.id ?? ''
   if (!asset) {
     return {
-      location_id: siteId, category_id: '', model: '', manufacturer: '', name: '', asset_tag: tag ?? '', quantity: '1',
+      location_id: siteId, category_id: '', model: '', model_number: '', manufacturer: '', name: '', asset_tag: tag ?? '', quantity: '1',
       status_label_id: defaultStatus, area_id: '', serial: '', mac: '', ip: '', hostname: '', purchase_date: '',
       purchase_cost: '', supplier: '', order_number: '', warranty_end_date: '', notes: '',
     }
@@ -62,6 +88,7 @@ function initialForm(mode: AssetFormMode, refs: ItRefs, siteId: string, asset?: 
     location_id: asset.location_id,
     category_id: asset.category_id,
     model: model?.name ?? '',
+    model_number: '',
     manufacturer: (model?.manufacturer_id && refs.manufacturer.get(model.manufacturer_id)?.name) || '',
     name: asset.name,
     asset_tag: clone ? '' : asset.asset_tag,
@@ -121,6 +148,10 @@ export function AssetForm({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const photoInput = useRef<HTMLInputElement>(null)
+  const labelInput = useRef<HTMLInputElement>(null)
+  const [reading, setReading] = useState(false)
+  const [label, setLabel] = useState<LabelResult | null>(null)
+  const [labelError, setLabelError] = useState<string | null>(null)
   const photoUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo])
   useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl) }, [photoUrl])
 
@@ -143,12 +174,73 @@ export function AssetForm({
   const areas = refs.areas.filter((a) => a.location_id === form.location_id)
   const cfs = fieldsFor(refs, matchedModel?.category_id ?? form.category_id, matchedModel?.id ?? (newModel ? null : asset?.model_id))
 
-  const checkDuplicates = async () => {
-    const mac = form.mac.trim() ? normalizeMac(form.mac) : null
-    if (!form.serial.trim() && !mac) { setDups([]); return }
-    const { data } = await itInventory.findDuplicates(form.serial.trim() || null, mac, mode === 'edit' ? asset?.id : null)
+  const checkDuplicates = async (serialText = form.serial, macText = form.mac) => {
+    const mac = macText.trim() ? normalizeMac(macText) : null
+    if (!serialText.trim() && !mac) { setDups([]); return }
+    const { data } = await itInventory.findDuplicates(serialText.trim() || null, mac, mode === 'edit' ? asset?.id : null)
     setDups((data as DuplicateHit[] | null) ?? [])
   }
+
+  // Fill in what the label says, picking a model or manufacturer already on
+  // file when it's the same one. Nothing is saved until the person saves.
+  const applyLabel = (r: LabelReading) => {
+    const next: Partial<Record<LabelField, string>> = {}
+    const maker = matchManufacturer(r.manufacturer, refs.manufacturers)
+    const keys = [r.model, r.model_number].map(squash).filter(Boolean)
+    const hits = refs.models.filter((m) => keys.includes(squash(m.name)) || (!!m.model_number && keys.includes(squash(m.model_number))))
+    const known = hits.find((m) => maker && m.manufacturer_id === maker.id) ?? hits[0]
+    if (known) {
+      next.model = known.name
+      next.model_number = ''
+      next.category_id = known.category_id
+      next.manufacturer = refs.manufacturer.get(known.manufacturer_id ?? '')?.name ?? ''
+    } else {
+      if (r.model || r.model_number) {
+        next.model = r.model || r.model_number
+        next.model_number = r.model ? r.model_number : ''
+      }
+      if (r.manufacturer) next.manufacturer = maker?.name ?? r.manufacturer
+      if (!form.category_id && r.category_id && refs.categories.some((c) => c.id === r.category_id)) next.category_id = r.category_id
+    }
+    if (r.serial) next.serial = r.serial
+    if (r.mac) next.mac = r.mac
+    // What changed and has a value. A known model brings its own category and
+    // manufacturer, which the form doesn't show as fields.
+    const filled = (Object.keys(next) as LabelField[])
+      .filter((k) => next[k] && next[k] !== form[k] && !(known && (k === 'category_id' || k === 'manufacturer')))
+    const unsure = filled.filter((k) => r.unsure.some((u) => FROM_READING[u] === k))
+    setLabel({ filled, unsure, before: form })
+    setForm((f) => ({ ...f, ...next }))
+    if (filled.some((k) => k === 'serial' || k === 'mac' || k === 'model_number')) setMore(true)
+    if (filled.includes('serial') || filled.includes('mac')) void checkDuplicates(next.serial ?? form.serial, next.mac ?? form.mac)
+  }
+
+  const readLabel = async (file: File) => {
+    setReading(true)
+    setLabelError(null)
+    try {
+      const small = await shrinkPhoto(file, 2000)
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(small.type)) {
+        setLabelError("That kind of photo can't be read. Take the photo with the camera instead.")
+        return
+      }
+      const { data, message } = await itInventory.readLabel(small)
+      if (!data) setLabelError(message ?? "Couldn't read that label. Try another photo.")
+      else applyLabel(data)
+    } catch (e) {
+      setLabelError(e instanceof Error ? e.message : "Couldn't read that label. Try another photo.")
+    } finally {
+      setReading(false)
+    }
+  }
+
+  const undoLabel = () => {
+    if (!label) return
+    setForm(label.before)
+    setLabel(null)
+    void checkDuplicates(label.before.serial, label.before.mac)
+  }
+  const labelHint = (k: LabelField) => (label?.unsure.includes(k) ? 'Hard to read on the label. Check it.' : undefined)
 
   const validate = (): boolean => {
     const e: Partial<Record<keyof Form, string>> = {}
@@ -220,6 +312,7 @@ export function AssetForm({
           category_id: form.category_id,
           manufacturer_id: manufacturerId,
           name: form.model.trim(),
+          model_number: form.model_number.trim() || null,
         })
         if (err) throw new Error(err.message)
         modelId = data.id
@@ -296,6 +389,42 @@ export function AssetForm({
     <Modal open onClose={onClose} size="lg" title={title}
       description={mode === 'add' ? 'Site, category and a name are all you need. Add the rest now or later.' : undefined}>
       <div className="space-y-4">
+        {units === 1 && (
+          <div className="space-y-2">
+            <input ref={labelInput} type="file" accept="image/*" capture="environment" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void readLabel(f) }} />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <Button variant="secondary" size="sm" onClick={() => labelInput.current?.click()} disabled={reading || saving}>
+                {reading ? <Loader2 className="size-4 animate-spin" /> : <ScanText className="size-4" />}
+                {reading ? 'Reading the label…' : 'Read a label'}
+              </Button>
+              <p className="text-xs text-ink-muted">Photo of the sticker with the model and serial. We fill in what it says for you to check.</p>
+            </div>
+            {labelError && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{labelError}</p>}
+            {label && (
+              <div role="status" className="space-y-1 rounded-md bg-accent-soft px-3 py-2 text-sm text-ink">
+                <div className="flex items-start gap-2">
+                  <ScanText className="mt-0.5 size-4 shrink-0 text-accent" />
+                  <p className="min-w-0 flex-1">
+                    {label.filled.length
+                      ? `Filled in from the label: ${label.filled.map((k) => LABEL_NAMES[k]).join(', ')}. Check them against the label before saving.`
+                      : "Nothing new on the label. What's here already matches."}
+                  </p>
+                  {label.filled.length > 0 && (
+                    <button type="button" onClick={undoLabel} className="shrink-0 font-medium text-accent hover:underline">Undo</button>
+                  )}
+                </div>
+                {label.unsure.length > 0 && (
+                  <p className="flex items-start gap-2 text-warn">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    Hard to read: {label.unsure.map((k) => LABEL_NAMES[k]).join(', ')}. Look closely at 0 and O, 1 and I.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Site" required error={errors.location_id}>
             {(id) => (
@@ -316,7 +445,7 @@ export function AssetForm({
             )}
           </Field>
           <Field label="Model" error={errors.model}
-            hint={newModel ? 'New model. It will be saved for next time.' : matchedModel ? 'Category comes from the model.' : 'Start typing to pick one you have used before.'}>
+            hint={labelHint('model') ?? (newModel ? 'New model. It will be saved for next time.' : matchedModel ? 'Category comes from the model.' : 'Start typing to pick one you have used before.')}>
             {(id) => (
               <>
                 <Input id={id} list="it-models" value={form.model} onChange={set('model')} placeholder="e.g. XPT pay station" autoComplete="off" />
@@ -329,7 +458,7 @@ export function AssetForm({
             )}
           </Field>
           {newModel ? (
-            <Field label="Manufacturer" hint="Optional">
+            <Field label="Manufacturer" hint={labelHint('manufacturer') ?? 'Optional'}>
               {(id) => (
                 <>
                   <Input id={id} list="it-manufacturers" value={form.manufacturer} onChange={set('manufacturer')} autoComplete="off" />
@@ -410,10 +539,15 @@ export function AssetForm({
               </Field>
             </Section>
             <Section title="Identity">
-              <Field label="Serial number">
+              {newModel && (
+                <Field label="Model number" hint={labelHint('model_number') ?? 'Part or catalog number. Saved with the new model.'}>
+                  {(id) => <Input id={id} value={form.model_number} onChange={set('model_number')} className="font-mono" autoComplete="off" />}
+                </Field>
+              )}
+              <Field label="Serial number" hint={labelHint('serial')}>
                 {(id) => <Input id={id} value={form.serial} onChange={set('serial')} onBlur={() => void checkDuplicates()} className="font-mono" disabled={units > 1} />}
               </Field>
-              <Field label="MAC address" error={errors.mac}>
+              <Field label="MAC address" error={errors.mac} hint={labelHint('mac')}>
                 {(id) => (
                   <Input id={id} value={form.mac} onChange={set('mac')} onBlur={() => void checkDuplicates()} className="font-mono"
                     placeholder="aa:bb:cc:dd:ee:ff" invalid={!!errors.mac} disabled={units > 1} />
