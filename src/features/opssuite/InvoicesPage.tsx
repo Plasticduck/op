@@ -884,11 +884,14 @@ function InvoiceModal({
   const hasSecondary = (invoice.secondary_approver_ids?.length ?? 0) > 0
   const atSecondaryStage = !!invoice.awaiting_secondary
   const forwardToSecondary = hasSecondary && !atSecondaryStage
-  // Sites are editable during assignment and by the approver at review, required
-  // at the approver stage. GL is now approver-only (the manager no longer sets it).
-  const siteGlEditable = editable || canApprove
-  const requireSiteGl = canApprove
-  const glEditable = canApprove
+  // Sites are editable during assignment, and sites and GL codes (with their
+  // splits) by the approver at review and by AP while verifying; required at
+  // both of those stages. The manager no longer sets GL.
+  const reviewing = canApprove || verifying
+  const siteGlEditable = editable || reviewing
+  const requireSiteGl = reviewing
+  const glEditable = reviewing
+  const finishing = verifying ? 'verifying' : 'approving'
   const multiSite = siteClasses.length > 1
   // When an invoice has a file, the approver has to open it before approving.
   const mustView = canApprove && !!invoice.file_path && !viewed
@@ -1138,8 +1141,8 @@ function InvoiceModal({
           </Field>
         )}
 
-        {/* Approver enters the per-site split when an invoice spans >1 site. */}
-        {canApprove && multiSite && (
+        {/* Approver (or AP verifying) enters the per-site split when an invoice spans >1 site. */}
+        {reviewing && multiSite && (
           <div className="rounded-md border border-border bg-content p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-ink">Split amount across sites</span>
@@ -1232,13 +1235,13 @@ function InvoiceModal({
           <p className="text-xs text-danger">Add a Memo before sending for approval.</p>
         )}
         {requireSiteGl && missingRequired && (
-          <p className="text-xs text-danger">Set at least one site and at least one GL code before approving.</p>
+          <p className="text-xs text-danger">Set at least one site and at least one GL code before {finishing}.</p>
         )}
-        {canApprove && multiSite && !balanced && (
-          <p className="text-xs text-danger">The per-site amounts must add up to {currency(total)} before approving.</p>
+        {reviewing && multiSite && !balanced && (
+          <p className="text-xs text-danger">The per-site amounts must add up to {currency(total)} before {finishing}.</p>
         )}
-        {canApprove && multiGl && (!glAllEntered || !glBalanced) && (
-          <p className="text-xs text-danger">Enter a dollar amount for every GL code, adding up to {currency(total)}, before approving.</p>
+        {reviewing && multiGl && (!glAllEntered || !glBalanced) && (
+          <p className="text-xs text-danger">Enter a dollar amount for every GL code, adding up to {currency(total)}, before {finishing}.</p>
         )}
         {mustView && (
           <p className="text-xs text-danger">Open and view the invoice file (button up top) before approving.</p>
@@ -1298,7 +1301,7 @@ function InvoiceModal({
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" disabled={busy} onClick={onClose}>Close</Button>
 
-            {(editable || canApprove) && (
+            {(editable || reviewing) && (
               <Button variant="secondary" disabled={busy} onClick={() => void act(id, editable ? assignPatch() : reviewPatch(), { keepOpen: true })}>
                 Save
               </Button>
@@ -1328,10 +1331,10 @@ function InvoiceModal({
             )}
             {verifying && (
               <>
-                <Button variant={reason.trim() ? 'danger' : 'secondary'} className={reason.trim() ? undefined : 'text-danger'} disabled={busy || !reason.trim()} onClick={() => void act(id, { status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
+                <Button variant={reason.trim() ? 'danger' : 'secondary'} className={reason.trim() ? undefined : 'text-danger'} disabled={busy || !reason.trim()} onClick={() => void act(id, { ...reviewPatch(), status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
                   <XCircle className="size-4" /> Send back
                 </Button>
-                <Button disabled={busy} onClick={() => setConfirmVerify(true)}>
+                <Button disabled={busy || approveBlocked} onClick={() => setConfirmVerify(true)}>
                   <BadgeCheck className="size-4" /> Verified
                 </Button>
               </>
@@ -1347,7 +1350,7 @@ function InvoiceModal({
         onCancel={() => setConfirmVerify(false)}
         onConfirm={() => {
           setConfirmVerify(false)
-          void act(id, { status: 'approved', verified_by: currentUserId, verified_by_name: currentUserName, verified_at: nowIso() })
+          void act(id, { ...reviewPatch(), status: 'approved', verified_by: currentUserId, verified_by_name: currentUserName, verified_at: nowIso() })
         }}
       />
     </Modal>
