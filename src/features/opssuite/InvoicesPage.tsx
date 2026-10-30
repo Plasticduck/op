@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck, UserCog, Plus } from 'lucide-react'
+import { BadgeCheck, Check, Copy, Mail, FileText, Send, CheckCircle2, XCircle, Download, CornerUpLeft, TriangleAlert, ChevronDown, Trash2, RotateCcw, ShieldCheck, UserCog, Plus } from 'lucide-react'
 import { currency, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
@@ -16,6 +16,7 @@ import { invoiceGlCodes } from '@/lib/queries/invoiceGlCodes'
 import { invoiceClasses } from '@/lib/queries/invoiceClasses'
 import { supabase } from '@/lib/supabase'
 import { Modal } from '@/components/ui/Modal'
+import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/utils'
@@ -43,9 +44,12 @@ const INVOICE_FULL_ACCESS_EMAILS = new Set([
   'mikala@mighty-wash.com',
 ])
 
+// The final approval moves an invoice to needs_verification; AP marks it
+// Verified, which moves it to approved (migration 0200).
 type InvoiceStatus =
   | 'unassigned'
   | 'assigned'
+  | 'needs_verification'
   | 'approved'
   | 'exported'
   | 'needs_attention'
@@ -67,7 +71,7 @@ type InvoiceRow = {
 }
 
 const KNOWN_STATUSES = new Set<InvoiceStatus>([
-  'unassigned', 'assigned', 'approved', 'exported', 'needs_attention',
+  'unassigned', 'assigned', 'needs_verification', 'approved', 'exported', 'needs_attention',
 ])
 
 // Map an ops_invoices row to the table shape. Emailed-in invoices arrive
@@ -104,7 +108,7 @@ function toRow(r: OpsInvoice, locName: Map<string, string>): InvoiceRow {
 }
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
-  unassigned: 'Unassigned', assigned: 'Assigned', approved: 'Approved',
+  unassigned: 'Unassigned', assigned: 'Assigned', needs_verification: 'Needs Verification', approved: 'Approved',
   exported: 'Exported', needs_attention: 'Needs Attention',
 }
 
@@ -121,7 +125,7 @@ type TabDef = {
 }
 
 // Statuses that count as "approved and submitted" for the Invoice History tab.
-const HISTORY_STATUSES = new Set<InvoiceStatus>(['approved', 'exported'])
+const HISTORY_STATUSES = new Set<InvoiceStatus>(['needs_verification', 'approved', 'exported'])
 
 const TABS: TabDef[] = [
   {
@@ -143,9 +147,15 @@ const TABS: TabDef[] = [
     empty: 'Nothing needs attention right now.',
   },
   {
+    key: 'needs_verification',
+    label: 'Needs Verification',
+    subtitle: 'Approved by the approver. Check every entry for mistakes, then mark it Verified to move it to Approved.',
+    empty: 'Nothing waiting to be verified.',
+  },
+  {
     key: 'approved',
     label: 'Approved',
-    subtitle: 'Approved invoices, ready to export to accounting.',
+    subtitle: 'Approved and verified invoices, ready to export to accounting.',
     empty: 'No approved invoices yet.',
   },
   {
@@ -507,6 +517,8 @@ export default function InvoicesPage() {
                   'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold',
                   t.key === 'needs_attention' && counts[t.key] > 0
                     ? 'bg-danger text-white'
+                    : t.key === 'needs_verification' && counts[t.key] > 0 && fullAccess
+                      ? 'bg-warn-soft text-warn'
                     : isActive
                       ? 'bg-accent text-white'
                       : 'bg-ink/10 text-ink-muted',
@@ -743,6 +755,7 @@ export default function InvoicesPage() {
           currentUserName={profile?.name ?? ''}
           isOwner={profile?.role === 'owner'}
           canManage={canManage}
+          canVerify={fullAccess && canManage}
           isDeleteAdmin={(profile?.email ?? '').toLowerCase() === 'kevan@washlyfe.com'}
           busy={busy}
           onClose={() => setOpenId(null)}
@@ -777,7 +790,7 @@ export default function InvoicesPage() {
 // ---- Workflow modal --------------------------------------------------------
 
 function InvoiceModal({
-  invoice, duplicateOfInvoice, users, approverEmails, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, isDeleteAdmin, busy, onClose, onFile, onDownload, act, onDelete, onRequestDelete,
+  invoice, duplicateOfInvoice, users, approverEmails, vendors, glCodes, classes, currentUserId, currentUserName, isOwner, canManage, canVerify, isDeleteAdmin, busy, onClose, onFile, onDownload, act, onDelete, onRequestDelete,
 }: {
   invoice: OpsInvoice
   duplicateOfInvoice: OpsInvoice | null
@@ -792,6 +805,8 @@ function InvoiceModal({
   currentUserName: string
   isOwner: boolean
   canManage: boolean
+  // AP: the full-access list (in MW) who verify approved invoices.
+  canVerify: boolean
   isDeleteAdmin: boolean
   busy: boolean
   onClose: () => void
@@ -861,6 +876,9 @@ function InvoiceModal({
   // Any assigned approver (or an owner) can approve; the first to do so
   // finalizes it and enters the per-site split.
   const canApprove = status === 'assigned' && (isOwner || initApprovers.includes(currentUserId ?? ''))
+  // AP checks an approved invoice, then marks it Verified (or sends it back).
+  const verifying = canVerify && status === 'needs_verification'
+  const [confirmVerify, setConfirmVerify] = useState(false)
   // Two-level approval: when a secondary approver was named, the first approval
   // hands off to them (awaiting_secondary) instead of finalizing.
   const hasSecondary = (invoice.secondary_approver_ids?.length ?? 0) > 0
@@ -1182,14 +1200,23 @@ function InvoiceModal({
             )}
           </p>
         )}
+        {status === 'needs_verification' && (
+          <p className="text-sm text-ink-muted">
+            Approved by <span className="font-medium text-ink">{invoice.decided_by_name ?? 'an approver'}</span>{invoice.decided_at ? ` on ${shortDate(invoice.decided_at)}` : ''}.
+            {' '}{verifying ? 'Check every entry, then mark it Verified to move it to Approved.' : 'Waiting for AP to verify it.'}
+          </p>
+        )}
         {status === 'approved' && (
-          <p className="text-sm text-ok">Approved by {invoice.decided_by_name ?? 'an approver'}. Export from the Approved tab.</p>
+          <p className="text-sm text-ok">
+            Approved by {invoice.decided_by_name ?? 'an approver'}
+            {invoice.verified_by_name ? `, verified by ${invoice.verified_by_name}${invoice.verified_at ? ` on ${shortDate(invoice.verified_at)}` : ''}` : ''}. Export from the Approved tab.
+          </p>
         )}
         {status === 'exported' && (
           <p className="text-sm text-ink-muted">Exported by {invoice.exported_by_name ?? 'a teammate'}{invoice.exported_at ? ` on ${shortDate(invoice.exported_at)}` : ''}.</p>
         )}
 
-        {canApprove && (
+        {(canApprove || verifying) && (
           <Field label="Rejection reason (if sending back)">
             <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why it needs a fix..." />
           </Field>
@@ -1294,14 +1321,35 @@ function InvoiceModal({
                 </Button>
                 <Button disabled={busy || approveBlocked || mustView} onClick={() => void act(id, forwardToSecondary
                   ? { ...reviewPatch(), approver_ids: invoice.secondary_approver_ids, approver_names: invoice.secondary_approver_names, assigned_to: invoice.secondary_approver_ids?.[0] ?? null, assigned_to_name: invoice.secondary_approver_names?.[0] ?? null, assigned_at: nowIso(), awaiting_secondary: true, first_approved_by: currentUserId, first_approved_by_name: currentUserName, first_approved_at: nowIso() }
-                  : { ...reviewPatch(), status: 'approved', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null, awaiting_secondary: false })}>
+                  : { ...reviewPatch(), status: 'needs_verification', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: null, awaiting_secondary: false })}>
                   <CheckCircle2 className="size-4" /> {forwardToSecondary ? 'Approve & send to 2nd approver' : 'Approve'}
+                </Button>
+              </>
+            )}
+            {verifying && (
+              <>
+                <Button variant={reason.trim() ? 'danger' : 'secondary'} className={reason.trim() ? undefined : 'text-danger'} disabled={busy || !reason.trim()} onClick={() => void act(id, { status: 'needs_attention', decided_by: currentUserId, decided_by_name: currentUserName, decided_at: nowIso(), decision_reason: reason.trim() })}>
+                  <XCircle className="size-4" /> Send back
+                </Button>
+                <Button disabled={busy} onClick={() => setConfirmVerify(true)}>
+                  <BadgeCheck className="size-4" /> Verified
                 </Button>
               </>
             )}
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmVerify}
+        title="Mark this invoice as verified?"
+        description={`${invoice.vendor_name ?? 'This invoice'}${invoice.amount != null ? `, ${currency(Number(invoice.amount) || 0)}` : ''}. It moves to the Approved tab, ready to export.`}
+        confirmLabel="Yes, it's verified"
+        onCancel={() => setConfirmVerify(false)}
+        onConfirm={() => {
+          setConfirmVerify(false)
+          void act(id, { status: 'approved', verified_by: currentUserId, verified_by_name: currentUserName, verified_at: nowIso() })
+        }}
+      />
     </Modal>
   )
 }
@@ -1458,6 +1506,7 @@ function StatusPill({ status }: { status: InvoiceStatus }) {
   const tone =
     status === 'approved' || status === 'exported' ? 'bg-ok-soft text-ok'
       : status === 'needs_attention' ? 'bg-danger-soft text-danger'
+        : status === 'needs_verification' ? 'bg-warn-soft text-warn'
         : status === 'assigned' ? 'bg-accent-soft text-accent'
           : 'bg-ink/10 text-ink-muted'
   return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', tone)}>{STATUS_LABEL[status]}</span>

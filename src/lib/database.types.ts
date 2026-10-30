@@ -6984,6 +6984,9 @@ export type Database = {
           submitted_by: string | null
           submitted_by_name: string | null
           vendor_name: string | null
+          verified_at: string | null
+          verified_by: string | null
+          verified_by_name: string | null
         }
         Insert: {
           account_id: string
@@ -7034,6 +7037,9 @@ export type Database = {
           submitted_by?: string | null
           submitted_by_name?: string | null
           vendor_name?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+          verified_by_name?: string | null
         }
         Update: {
           account_id?: string
@@ -7084,6 +7090,9 @@ export type Database = {
           submitted_by?: string | null
           submitted_by_name?: string | null
           vendor_name?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+          verified_by_name?: string | null
         }
         Relationships: [
           {
@@ -7131,6 +7140,13 @@ export type Database = {
           {
             foreignKeyName: "ops_invoices_submitted_by_fkey"
             columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ops_invoices_verified_by_fkey"
+            columns: ["verified_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -10743,6 +10759,9 @@ export type Database = {
           submitted_by: string | null
           submitted_by_name: string | null
           vendor_name: string | null
+          verified_at: string | null
+          verified_by: string | null
+          verified_by_name: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -10802,6 +10821,9 @@ export type Database = {
           submitted_by: string | null
           submitted_by_name: string | null
           vendor_name: string | null
+          verified_at: string | null
+          verified_by: string | null
+          verified_by_name: string | null
         }[]
         SetofOptions: {
           from: "*"
