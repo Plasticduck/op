@@ -328,6 +328,11 @@ begin
   if not exists (select 1 from public.it_activity_log where asset_id = aid and action = 'label_printed') then
     raise exception 'FAIL 37: printing was not logged on the asset';
   end if;
+  -- ...and uses up one sticker from that site's Sticker Stock (seeded at 0).
+  if (select qty_on_hand from public.it_consumables
+       where location_id = current_setting('t.site_in')::uuid and is_sticker_stock and deleted_at is null) <> -1 then
+    raise exception 'FAIL 38: printing did not count down the site''s sticker stock';
+  end if;
 end $$;
 reset role;
 

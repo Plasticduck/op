@@ -54,8 +54,8 @@ Other decisions:
 | Slice | Scope | Status |
 |---|---|---|
 | A | DESIGN-NOTES.md; migrations 0181-0187 (all Phase 1 tables, RLS, triggers, activity log, bootstrap seed, RPCs); RLS tests; asset list, detail (status / assignment / health badges, Overview + Timeline tabs), Quick Add, full form, clone, add N identical, duplicate warnings | done 2026-10-30. Custom field definitions and fieldset rendering moved to E (settings screen) |
-| B | Tag pool (generate, import), QR + Code128, label PDFs (Avery 5160 / 5163 sheets, 2.25 x 1.25 in roll, Brother 62 mm, outdoor), calibration + live preview, print queue | next |
-| C | Scanner component (shared), `/t/:short/:tag` resolver, manual entry, public report-a-problem page into Work Requests, persistent Scan button, iOS camera permission | |
+| B | Tag pool (generate, import), QR + Code128, label PDFs (Avery 5160 / 5163 sheets, 2.25 x 1.25 in roll, Brother 62 mm, outdoor), calibration + live preview, print queue | done 2026-10-30. Stickers screen (print queue with sticker stock, blank tags, printer setup), Print sticker on assets and lists, sticker condition on the asset page; printing counts down Sticker Stock (0188) |
+| C | Scanner component (shared), `/t/:short/:tag` resolver, manual entry, public report-a-problem page into Work Requests, persistent Scan button, iOS camera permission | next |
 | D | Check-out / check-in (area, person, parent asset), status changes, retire flow, bulk actions | |
 | E | Global search (trigram, Cmd-K), filters, column chooser, saved views + defaults, CSV export, CSV import wizard | |
 | F | Subscriptions + consumables screens, nightly reminders (SMS + email digest, dedupe ledger), org + site dashboard tiles, kiosk heartbeat + manual down; open to owners and managers | |
@@ -70,6 +70,19 @@ deployable-only check-out, add-N tags, scan resolution, pre-printed tags, and
 print bookkeeping. Run it after any IT Inventory migration; it must end with
 ALL PASS and leave no rows behind.
 
+`node scripts/test-label-scans.mjs` lays out every seeded sticker size with the
+real layout code (`src/lib/labels`), rasterizes it at 203 and 300 dpi, and
+decodes it with zxing (the scanner's engine): the QR must read back as the
+sticker URL and the Code 128 as the tag. Run it after any label change. On
+2026-10-30 the full PDF path was also checked once in headless Chrome (pdf.js
+render, zxing decode, calibration offsets within 0.25 mm, 50 stickers in
+under 40 ms).
+
+Sticker rules that keep scans reliable (in `layout.ts`): QR 4-module quiet
+zone (ECC M; Q on outdoor), Code 128 10-module quiet zones, bars never under
+0.19 mm (the barcode is dropped rather than printed unreadable), tags never
+truncated (shrunk to fit), QR rows overlap slightly so printers leave no seams.
+
 ## Migrations
 
 | File | Contents |
@@ -81,4 +94,5 @@ ALL PASS and leave no rows behind.
 | 0185_it_activity_log | append-only log written by triggers on every entity; app roles cannot change it |
 | 0186_it_views_reminders | saved views, reminder rules, reminder send ledger |
 | 0187_it_bootstrap | per-account seed (`it_bootstrap()`), tag resolve, duplicate check, tag pool RPCs |
+| 0188_it_sticker_stock_on_print | printing stickers counts down each site's Sticker Stock |
 | later | work_requests.it_asset_id (C), reminders cron (F) |

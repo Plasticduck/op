@@ -52,6 +52,8 @@ and put it in `src/components/`, not in this folder. Spec: `docs/it-inventory/SP
 | Toast | none shared; pages use inline `bg-ok-soft text-ok` / `bg-danger-soft text-danger` banners. Follow that |
 | Tabs | no shared component; detail pages use the underline pattern from `ops/assets/AssetDetail` (`border-b-2 border-accent text-accent`). Lists use the segmented control (`rounded-lg border bg-card p-0.5`, active `bg-accent-soft text-accent`) |
 | QR | `data/QrCodeImage` |
+| PDF preview | `data/PdfPagePreview` (added for stickers): renders the real generated PDF with pdf.js, so previews match print |
+| Barcodes, labels | `lib/barcode/code128.ts`, `lib/labels/layout.ts` + `labelPdf.ts` (shared, not module-only) |
 | Photos | `data/AttachmentViewer` |
 | Icons | `lucide-react` only, through this module's `icons.ts` map |
 

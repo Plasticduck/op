@@ -225,6 +225,7 @@ export const router = createBrowserRouter([
           { path: 'it-field-checklist', element: tech(<ItFieldChecklistPage />) },
           { path: 'it-field-checklist/:id', element: tech(<ItFieldChecklistPage />) },
           { path: 'it-inventory', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/stickers', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'it-inventory/:id', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'insights', element: tech(<InsightsPage />) },
           { path: 'reports', element: tech(<ReportingPage />) },

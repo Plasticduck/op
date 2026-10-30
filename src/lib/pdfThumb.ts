@@ -15,6 +15,37 @@ async function loadPdfjs() {
   return pdfjsPromise
 }
 
+// Draw one page of an in-memory PDF onto a canvas at `cssWidth` CSS pixels
+// wide (sharp on high-DPI screens). Used for live previews of generated PDFs,
+// so what's on screen is the exact file that prints.
+export async function renderPdfDataToCanvas(
+  data: ArrayBuffer,
+  canvas: HTMLCanvasElement,
+  opts: { page?: number; cssWidth: number },
+): Promise<{ pages: number } | null> {
+  try {
+    const pdfjs = await loadPdfjs()
+    // pdf.js takes ownership of the buffer it's given; hand it a copy.
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) }).promise
+    const page = await doc.getPage(Math.min(opts.page ?? 1, doc.numPages))
+    const base = page.getViewport({ scale: 1 })
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+    const viewport = page.getViewport({ scale: (opts.cssWidth / base.width) * dpr })
+    canvas.width = Math.ceil(viewport.width)
+    canvas.height = Math.ceil(viewport.height)
+    canvas.style.width = `${opts.cssWidth}px`
+    canvas.style.height = `${Math.round(viewport.height / dpr)}px`
+    const ctx = canvas.getContext('2d')
+    if (!ctx) { void doc.destroy(); return null }
+    await page.render({ canvasContext: ctx, viewport, background: 'white' }).promise
+    const pages = doc.numPages
+    void doc.destroy()
+    return { pages }
+  } catch {
+    return null
+  }
+}
+
 // Cache by URL's path so thumbnails survive re-renders and re-visits. Keyed on
 // the storage path (signed URLs change), passed in as `cacheKey`.
 const cache = new Map<string, string>()

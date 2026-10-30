@@ -13,6 +13,7 @@ import {
   EllipsisVertical,
   Loader2,
   Pencil,
+  Printer,
   Sticker,
   Trash2,
   X,
@@ -39,8 +40,16 @@ import {
   tagUrl,
   warrantyState,
 } from './format'
+import { PrintDialog } from './PrintDialog'
 import { Timeline } from './Timeline'
 import { useItRefs } from './useItRefs'
+
+// Checking the sticker on the device. Faded or missing puts it in the print queue.
+const STICKER_STATES = [
+  { key: 'ok', label: 'Readable', on: 'bg-ok-soft text-ok', done: 'Sticker checked.' },
+  { key: 'faded', label: 'Faded', on: 'bg-warn-soft text-warn', done: 'Marked faded. It is in the print queue.' },
+  { key: 'missing', label: 'Missing', on: 'bg-danger-soft text-danger', done: 'Marked missing. It is in the print queue.' },
+] as const
 
 // One asset. Answers, top to bottom: what is it, where is it, who has it, is it
 // healthy, is it under warranty, and what happened to it (Timeline). Status,
@@ -64,6 +73,7 @@ export function AssetDetail({ id }: { id: string }) {
   const [menu, setMenu] = useState<null | 'more' | 'status'>(null)
   const [confirm, setConfirm] = useState<null | 'archive' | 'delete'>(null)
   const [busy, setBusy] = useState(false)
+  const [printing, setPrinting] = useState(false)
   const [flash, setFlash] = useState<string | null>(routeState?.flash ?? null)
   const [error, setError] = useState<string | null>(null)
   const photoInput = useRef<HTMLInputElement>(null)
@@ -222,6 +232,7 @@ export function AssetDetail({ id }: { id: string }) {
                 </div>
               )}
             </div>
+            <Button variant="secondary" size="sm" onClick={() => setPrinting(true)}><Printer className="size-3.5" /> Print sticker</Button>
             <Button variant="secondary" size="sm" onClick={() => setForm('clone')}><CopyPlus className="size-3.5" /> Clone</Button>
             <Button variant="secondary" size="sm" onClick={() => photoInput.current?.click()} disabled={busy}>
               <Camera className="size-3.5" /> Photo
@@ -300,12 +311,28 @@ export function AssetDetail({ id }: { id: string }) {
                     ? `${asset.tag.printed_count} time${asset.tag.printed_count === 1 ? '' : 's'}${asset.tag.last_printed_at ? `, last ${format(new Date(asset.tag.last_printed_at), 'MMM d, yyyy')}` : ''}`
                     : <span className="inline-flex items-center gap-1.5 text-warn"><Sticker className="size-4" /> Not printed yet</span>}
                 </Row>
-                <Row label="Condition">
-                  {asset.sticker_condition === 'unknown' ? null : (
+                <Row label="On the device">
+                  {canEdit && !archived ? (
+                    <span className="inline-flex rounded-lg border border-border bg-card p-0.5">
+                      {STICKER_STATES.map((s) => (
+                        <button key={s.key} type="button" disabled={busy}
+                          onClick={() => void run(() => itInventory.setSticker(asset.id, s.key), s.done)}
+                          className={cn(
+                            'rounded-md px-2.5 py-1 text-xs font-medium transition',
+                            asset.sticker_condition === s.key ? s.on : 'text-ink-muted hover:text-ink',
+                          )}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </span>
+                  ) : asset.sticker_condition === 'unknown' ? null : (
                     <Badge tone={asset.sticker_condition === 'ok' ? 'ok' : 'warn'}>
-                      {asset.sticker_condition === 'ok' ? 'Readable' : asset.sticker_condition === 'faded' ? 'Faded' : 'Missing'}
+                      {STICKER_STATES.find((s) => s.key === asset.sticker_condition)?.label}
                     </Badge>
                   )}
+                </Row>
+                <Row label="Last checked">
+                  {asset.sticker_last_verified_at ? format(new Date(asset.sticker_last_verified_at), 'MMM d, yyyy') : null}
                 </Row>
                 <div className="flex items-center gap-3 px-3 py-2.5 sm:hidden">
                   <QrCodeImage value={url} size={96} />
@@ -335,6 +362,11 @@ export function AssetDetail({ id }: { id: string }) {
           )}
         </div>
       </div>
+
+      {printing && (
+        <PrintDialog refs={refs} assets={[asset]} onClose={() => setPrinting(false)}
+          onPrinted={(m) => { setPrinting(false); setFlash(m); void load() }} />
+      )}
 
       {form && (
         <AssetForm

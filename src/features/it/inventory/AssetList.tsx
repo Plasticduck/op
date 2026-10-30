@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Boxes, Loader2, Plus, Search, Sticker, X } from 'lucide-react'
+import { Boxes, Loader2, Plus, Printer, Search, Sticker, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { itInventory, type ItAssetRow } from '@/lib/queries/itInventory'
 import { AssetForm } from './AssetForm'
 import { ItIcon } from './ItIcon'
+import { PrintDialog } from './PrintDialog'
 import { assignmentBadge, healthBadge, needsSticker, statusTone, warrantyState } from './format'
 import { useItRefs, type ItRefs } from './useItRefs'
 
@@ -33,6 +34,7 @@ export function AssetList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState<null | { tag?: string }>(null)
+  const [printing, setPrinting] = useState<ItAssetRow[] | null>(null)
   const [flash, setFlash] = useState<string | null>((routerLocation.state as { flash?: string } | null)?.flash ?? null)
 
   const q = params.get('q') ?? ''
@@ -150,7 +152,14 @@ export function AssetList() {
       <PageHeader
         title="IT Inventory"
         subtitle="Every device at your sites, its sticker, and its history."
-        actions={<Button onClick={() => setAdding({})} disabled={!refs}><Plus className="size-4" /> Add</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => navigate('/app/it-inventory/stickers')}>
+              <Sticker className="size-4" /> Stickers
+            </Button>
+            <Button onClick={() => setAdding({})} disabled={!refs}><Plus className="size-4" /> Add</Button>
+          </>
+        }
       />
 
       {flash && (
@@ -215,12 +224,22 @@ export function AssetList() {
           <>
             <AssetCards rows={filtered} refs={refs} siteName={siteName} showSite={site === 'all'} onOpen={open} />
             <AssetTable rows={filtered} refs={refs} siteName={siteName} onOpen={open} />
-            <p className="mt-2 text-xs text-ink-muted">
-              {filtered.length} of {inSite.length} {site === 'all' ? 'across all sites' : `at ${siteName.get(site) ?? 'this site'}`}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
+              <span>{filtered.length} of {inSite.length} {site === 'all' ? 'across all sites' : `at ${siteName.get(site) ?? 'this site'}`}</span>
+              {status !== 'archived' && (
+                <button type="button" onClick={() => setPrinting(filtered)} className="inline-flex items-center gap-1 font-medium text-accent hover:underline">
+                  <Printer className="size-3.5" /> Print stickers for these {filtered.length}
+                </button>
+              )}
+            </div>
           </>
         )}
       </div>
+
+      {printing && refs && (
+        <PrintDialog refs={refs} assets={printing} onClose={() => setPrinting(null)}
+          onPrinted={(m) => { setPrinting(null); setFlash(m); void load() }} />
+      )}
 
       {adding && refs && (
         <AssetForm
@@ -234,7 +253,7 @@ export function AssetList() {
             setAdding(null)
             if (created.length === 1) {
               navigate(`/app/it-inventory/${created[0].id}`, {
-                state: { back: routerLocation.search, flash: `Added ${created[0].asset_tag}. Its sticker is waiting in the print queue.` },
+                state: { back: routerLocation.search, flash: `Added ${created[0].asset_tag}. Print its sticker now, or later from the print queue.` },
               })
               return
             }
