@@ -75,13 +75,13 @@ export function matches(r: ItAssetRow, f: AssetFilters, refs: ItRefs, haystack: 
   return true
 }
 
-// The built-in views (spec: Offline now, Warranty expiring, Audit overdue,
+// The built-in views (spec: Offline now (here: Not working), Warranty expiring, Audit overdue,
 // Out for repair, Checked out to people, Needs sticker). Saved views from
 // people live in it_saved_views.
 export type ViewParams = Record<string, string>
 export const DEFAULT_VIEWS: { id: string; name: string; params: ViewParams }[] = [
   { id: 'all', name: 'Everything active', params: {} },
-  { id: 'offline', name: 'Offline now', params: { health: 'offline' } },
+  { id: 'offline', name: 'Not working', params: { health: 'offline' } },
   { id: 'warranty', name: `Warranty ending in ${WARRANTY_WINDOW_DAYS} days`, params: { warranty: 'expiring' } },
   { id: 'audit', name: 'Audit overdue', params: { audit: 'overdue' } },
   { id: 'repair', name: 'Out for repair', params: { status: 'name:Out for Repair' } },

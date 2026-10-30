@@ -569,20 +569,6 @@ begin
     raise exception 'FAIL 66: the owner''s site rows don''t add up to the total';
   end if;
 end $$;
--- Linking a device turns on heartbeat monitoring.
-do $$
-declare
-  a public.it_assets%rowtype;
-begin
-  perform set_config('t.key', public.it_link_device(current_setting('t.tablet')::uuid, 'Test iPad'), true);
-  select * into a from public.it_assets where id = current_setting('t.tablet')::uuid;
-  if not a.monitoring_enabled or a.monitor_method <> 'heartbeat' or length(current_setting('t.key')) < 32 then
-    raise exception 'FAIL 67: linking a device did not turn on heartbeat monitoring';
-  end if;
-  if exists (select 1 from public.it_device_links) then
-    raise exception 'FAIL 68: people can read device keys';
-  end if;
-end $$;
 reset role;
 
 select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
@@ -594,18 +580,6 @@ begin
   if exists (select 1 from jsonb_array_elements(o -> 'by_site') e where e ->> 'id' <> current_setting('t.site_in')) then
     raise exception 'FAIL 69: a manager''s overview counts another site';
   end if;
-  begin
-    perform public.it_link_device(current_setting('t.asset_out')::uuid, 'x');
-    raise exception 'FAIL 70: a manager linked a device at another site';
-  exception when others then
-    if sqlerrm like 'FAIL%' then raise; end if;
-  end;
-  begin
-    perform public.it_health_sweep();
-    raise exception 'FAIL 71: a manager ran the health sweep';
-  exception when others then
-    if sqlerrm like 'FAIL%' then raise; end if;
-  end;
   begin
     perform * from public.it_reminder_candidates(current_setting('t.a')::uuid, current_date, 60);
     raise exception 'FAIL 72: a manager read reminder candidates';
@@ -654,50 +628,8 @@ begin
 end $$;
 reset role;
 
--- Heartbeats: signed out, with the device key only.
-select set_config('request.jwt.claims', '', true);
-set local role anon;
-do $$
-declare
-  r jsonb;
-begin
-  r := public.it_heartbeat(current_setting('t.key'));
-  if not (r ->> 'ok')::boolean then
-    raise exception 'FAIL 79: a linked device''s heartbeat was refused: %', r;
-  end if;
-  if (public.it_heartbeat(repeat('0', 64)) ->> 'ok')::boolean then
-    raise exception 'FAIL 80: a made-up key was accepted';
-  end if;
-end $$;
-reset role;
-do $$
-declare
-  a public.it_assets%rowtype;
-begin
-  select * into a from public.it_assets where id = current_setting('t.tablet')::uuid;
-  if a.health_state <> 'online' or a.last_seen_at is null then
-    raise exception 'FAIL 81: a heartbeat did not mark the device online (%)', a.health_state;
-  end if;
-  if not exists (select 1 from public.it_activity_log
-                  where asset_id = a.id and action = 'health_changed' and actor_user_id is null and actor_system = 'heartbeat') then
-    raise exception 'FAIL 82: coming online was not logged as the heartbeat';
-  end if;
-  -- Silent for longer than twice its interval: the sweep marks it offline, once.
-  update public.it_assets set last_seen_at = now() - interval '10 minutes' where id = a.id;
-  perform public.it_health_sweep();
-  if (select health_state from public.it_assets where id = a.id) <> 'offline' then
-    raise exception 'FAIL 83: the sweep did not mark a silent device offline';
-  end if;
-  if public.it_health_sweep() <> 0 then
-    raise exception 'FAIL 84: the sweep marked the same device offline twice';
-  end if;
-  perform public.it_heartbeat(current_setting('t.key'));
-  if (select health_state from public.it_assets where id = a.id) <> 'online' then
-    raise exception 'FAIL 85: a heartbeat after an outage did not bring it back online';
-  end if;
-end $$;
-
--- Crew report it down; heartbeats don't override a person until someone says it's fixed.
+-- Not working: crew report it, it shows on the Timeline with their note, and
+-- marking it working clears it. People can't record anything but manual reports.
 select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
 set local role authenticated;
 do $$ begin
@@ -724,36 +656,28 @@ do $$ begin
             current_setting('t.a_mgr')::uuid);
   end if;
   if (select health_state from public.it_assets where id = current_setting('t.tablet')::uuid) <> 'offline' then
-    raise exception 'FAIL 87: reporting it down did not mark it offline';
+    raise exception 'FAIL 87: reporting it not working did not mark it';
   end if;
   if not exists (select 1 from public.it_activity_log where asset_id = current_setting('t.tablet')::uuid
                   and action = 'health_changed' and after ->> 'note' = 'Screen is cracked') then
-    raise exception 'FAIL 88: the down report''s note is not on the Timeline';
-  end if;
-  perform public.it_heartbeat(current_setting('t.key'));
-  if (select health_state from public.it_assets where id = current_setting('t.tablet')::uuid) <> 'offline' then
-    raise exception 'FAIL 89: a heartbeat overrode a person''s down report';
+    raise exception 'FAIL 88: the report''s note is not on the Timeline';
   end if;
 end $$;
 select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
 set local role authenticated;
+do $$ begin
+  if ((public.it_overview(current_setting('t.site_in')::uuid) -> 'attention' ->> 'not_working')::int) < 1 then
+    raise exception 'FAIL 89: the overview does not count the item reported not working';
+  end if;
+end $$;
 insert into public.it_health_events (account_id, asset_id, state, source, note)
 values (current_setting('t.a')::uuid, current_setting('t.tablet')::uuid, 'online', 'manual', 'Replaced the screen');
 do $$ begin
-  if (select health_state from public.it_assets where id = current_setting('t.tablet')::uuid) <> 'online' then
-    raise exception 'FAIL 90: marking it working did not bring a monitored device back online';
-  end if;
-  perform public.it_unlink_device(current_setting('t.tablet')::uuid);
-  if (select monitoring_enabled or health_state <> 'unknown' from public.it_assets where id = current_setting('t.tablet')::uuid) then
-    raise exception 'FAIL 91: unlinking did not stop monitoring';
+  if (select health_state from public.it_assets where id = current_setting('t.tablet')::uuid) <> 'unknown' then
+    raise exception 'FAIL 90: marking it working did not clear the report';
   end if;
 end $$;
 reset role;
-do $$ begin
-  if (public.it_heartbeat(current_setting('t.key')) ->> 'ok')::boolean then
-    raise exception 'FAIL 92: an unlinked device''s key still works';
-  end if;
-end $$;
 
 -- Reminder candidates: warranty, renewal (on the cancel-by date) and low stock.
 do $$

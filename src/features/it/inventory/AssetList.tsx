@@ -50,7 +50,7 @@ import { ItIcon } from './ItIcon'
 import { PrintDialog } from './PrintDialog'
 import { ScanSheet } from './ScanSheet'
 import { SectionNav } from './SectionNav'
-import { assignmentBadge, friendlyError, healthBadge, needsSticker, statusTone, WARRANTY_WINDOW_DAYS } from './format'
+import { assignmentBadge, friendlyError, healthBadge, needsSticker, notWorking, statusTone, WARRANTY_WINDOW_DAYS } from './format'
 import { useItRefs, type ItRefs } from './useItRefs'
 
 // From the overview's "Not working" counts and the like.
@@ -563,7 +563,7 @@ function FilterPanel({ f, refs, setParam, onClear }: {
         {sel('model', 'Model', models.map((m) => [m.id, m.name]))}
         {sel('mfr', 'Manufacturer', refs.manufacturers.map((m) => [m.id, m.name]))}
         {sel('out', 'Checked out', [['out', 'Checked out'], ['in', 'Not checked out'], ['user', 'To a person'], ['area', 'To an area'], ['asset', 'To another device'], ['site', 'To another site']])}
-        {sel('health', 'Health', [['online', 'Online'], ['degraded', 'Degraded'], ['offline', 'Offline'], ['unknown', 'Unknown']])}
+        {sel('health', 'Working order', [['offline', 'Not working'], ['unknown', 'No problem reported']])}
         {sel('warranty', 'Warranty', [['active', 'Under warranty'], ['expiring', `Ending in ${WARRANTY_WINDOW_DAYS} days`], ['expired', 'Expired'], ['none', 'No warranty date']])}
         {sel('audit', 'Audit', [['overdue', 'Overdue'], ['due', 'Due soon'], ['ok', 'Not due yet']])}
         {sel('sticker', 'Sticker', [['needs', 'Needs a sticker'], ['faded', 'Faded'], ['missing', 'Missing'], ['ok', 'Readable']])}
@@ -713,7 +713,7 @@ function AssetCards({ rows, refs, siteName, showSite, onOpen, sel }: {
               <span className="mt-1.5 flex flex-wrap gap-1">
                 <Badge tone={statusTone(s)}>{s?.name ?? 'Status'}</Badge>
                 {r.assigned_type && <Badge tone="accent">{assignmentBadge(r).label}</Badge>}
-                {r.health_state !== 'unknown' && <Badge tone={health.tone}>{health.label}</Badge>}
+                {notWorking(r.health_state) && <Badge tone={health.tone}>{health.label}</Badge>}
               </span>
             </span>
           </button>

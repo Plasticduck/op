@@ -67,10 +67,12 @@ export type ItPerson = Pick<T['users']['Row'], 'id' | 'name' | 'role' | 'email' 
 type Count = number
 export type ItOverview = {
   total: Count
-  attention: { offline: Count; repair: Count; warranty: Count; audits: Count; stickers: Count; renewals: Count; low_stock: Count }
-  health: { monitored: Count; online: Count; offline: Count; degraded: Count }
-  by_site: { id: string; name: string; total: Count; monitored: Count; online: Count; offline: Count; repair: Count; not_working: Count }[]
-  by_category: { id: string; name: string; icon: string | null; total: Count; offline: Count }[]
+  attention: { not_working: Count; repair: Count; warranty: Count; audits: Count; stickers: Count; renewals: Count; low_stock: Count }
+  by_site: {
+    id: string; name: string; total: Count; not_working: Count; repair: Count
+    audits_overdue: Count; next_audit: string | null; last_audit: string | null
+  }[]
+  by_category: { id: string; name: string; icon: string | null; total: Count; not_working: Count }[]
   spend: { monthly: number; unpriced: Count; by_site: { id: string | null; name: string; monthly: number | null; items: Count }[] }
   repair_spend_90d: number
 }
@@ -362,11 +364,7 @@ export const itInventory = {
   // A count that matches what's on record still counts as counted.
   markCounted: (id: string) => supabase.from('it_consumables').update({ counted_at: new Date().toISOString() }).eq('id', id),
 
-  // ---- Device health ----
-  // Run on the device itself: returns the key it keeps to report in with.
-  linkDevice: (assetId: string, device: string) => supabase.rpc('it_link_device', { p_asset: assetId, p_device: device }),
-  unlinkDevice: (assetId: string) => supabase.rpc('it_unlink_device', { p_asset: assetId }),
-  heartbeat: (key: string) => supabase.rpc('it_heartbeat', { p_key: key }),
+  // ---- Working order ----
   // "It's not working" / "It's working again". Holds until the opposite report.
   // (The site is set from the asset by trigger; it's here for the types.)
   reportHealth: (accountId: string, asset: { id: string; location_id: string }, state: 'offline' | 'online', note?: string) =>

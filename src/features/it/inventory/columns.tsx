@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import type { ItAssetRow } from '@/lib/queries/itInventory'
 import { ItIcon } from './ItIcon'
 import type { ItRefs } from './useItRefs'
-import { daysUntil, fmtDay, healthBadge, needsSticker, statusTone, warrantyState } from './format'
+import { daysUntil, fmtDay, healthBadge, needsSticker, notWorking, statusTone, warrantyState } from './format'
 
 // The list's columns. `get` is the plain value used for sorting and CSV export;
 // `cell` is what the table shows (defaults to `get`).
@@ -76,8 +76,8 @@ export function allColumns(refs: ItRefs): Col[] {
     },
     { key: 'out', label: 'Checked out to', get: (r) => r.assigned_label, cell: (r) => <span className="text-ink-muted">{muted(r.assigned_label)}</span> },
     {
-      key: 'health', label: 'Health', get: (r) => (r.health_state === 'unknown' ? null : healthBadge(r.health_state).label),
-      cell: (r) => { if (r.health_state === 'unknown') return muted(null); const h = healthBadge(r.health_state); return <Badge tone={h.tone}>{h.label}</Badge> },
+      key: 'health', label: 'Working order', get: (r) => (notWorking(r.health_state) ? healthBadge(r.health_state).label : null),
+      cell: (r) => { if (!notWorking(r.health_state)) return muted(null); const h = healthBadge(r.health_state); return <Badge tone={h.tone}>{h.label}</Badge> },
     },
     {
       key: 'warranty', label: 'Warranty', get: (r) => r.warranty_end_date,

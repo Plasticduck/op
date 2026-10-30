@@ -24,7 +24,7 @@ import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItActivity, type ItAsset } from '@/lib/queries/itInventory'
 import type { ItRefs } from './useItRefs'
-import { fmtDay, healthBadge } from './format'
+import { fmtDay, healthBadge, notWorking } from './format'
 
 // An asset's history, read from it_activity_log (written by database triggers,
 // so nothing that changed the asset is missing from it).
@@ -34,7 +34,7 @@ const ACTIONS: Record<string, { label: string; icon: LucideIcon; tone?: 'ok' | '
   imported: { label: 'Imported', icon: Upload, tone: 'ok' },
   updated: { label: 'Edited', icon: Pencil },
   status_changed: { label: 'Status changed', icon: RefreshCw, tone: 'accent' },
-  health_changed: { label: 'Health changed', icon: Activity, tone: 'warn' },
+  health_changed: { label: 'Working order changed', icon: Activity, tone: 'warn' },
   checked_out: { label: 'Checked out', icon: LogOut, tone: 'accent' },
   checked_in: { label: 'Checked in', icon: LogIn, tone: 'accent' },
   label_printed: { label: 'Sticker printed', icon: Printer },
@@ -49,7 +49,7 @@ const ACTIONS: Record<string, { label: string; icon: LucideIcon; tone?: 'ok' | '
 
 const FILTERS: { key: string; label: string; actions: string[] | null }[] = [
   { key: '', label: 'All activity', actions: null },
-  { key: 'status', label: 'Status and health', actions: ['status_changed', 'health_changed'] },
+  { key: 'status', label: 'Status and working order', actions: ['status_changed', 'health_changed'] },
   { key: 'checkout', label: 'Check-outs', actions: ['checked_out', 'checked_in'] },
   { key: 'sticker', label: 'Stickers', actions: ['label_printed', 'tag_applied', 'tag_retired'] },
   { key: 'problems', label: 'Problem reports', actions: ['problem_reported'] },
@@ -62,14 +62,10 @@ const FIELD_LABELS: Record<string, string> = {
   model_id: 'Model', serial: 'Serial', ip_address: 'IP address', mac_address: 'MAC address', hostname: 'Hostname',
   purchase_date: 'Purchase date', purchase_cost: 'Cost', supplier_id: 'Bought from', order_number: 'Order number',
   warranty_end_date: 'Warranty ends', eol_date: 'End of life', notes: 'Notes', sticker_condition: 'Sticker',
-  sticker_last_verified_at: 'Sticker checked', health_state: 'Health', image_path: 'Photo', parent_asset_id: 'Part of',
+  sticker_last_verified_at: 'Sticker checked', health_state: 'Working order', image_path: 'Photo', parent_asset_id: 'Part of',
   next_audit_date: 'Next audit', last_audit_at: 'Last audit', deleted_at: 'Archived', custom_values: 'Custom fields',
   monitoring_enabled: 'Monitoring', monitor_method: 'Monitor method', monitor_target: 'Monitor target',
   status: 'Tag status', secret_field: 'Secret field', value: 'Value',
-}
-
-const MONITOR_METHODS: Record<string, string> = {
-  none: 'none', heartbeat: 'device reports in', ping: 'ping', tcp: 'port check', http: 'web check',
 }
 
 export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRefs; siteName: Map<string, string> }) {
@@ -104,8 +100,7 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
       case 'deleted_at': return 'yes'
       case 'sticker_last_verified_at':
       case 'last_audit_at': return format(new Date(s), 'MMM d, yyyy')
-      case 'health_state': return healthBadge(s).label
-      case 'monitor_method': return MONITOR_METHODS[s] ?? s
+      case 'health_state': return healthBadge(s).label.toLowerCase()
     }
     if (typeof v === 'boolean') return v ? 'on' : 'off'
     if (/_date$/.test(key) && /^\d{4}-\d{2}-\d{2}$/.test(s)) return fmtDay(s)
@@ -154,14 +149,13 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
       case 'problem_reported':
         return { summary: after.description ? `"${String(after.description)}"` : null, changes: [] }
       case 'health_changed': {
-        // Online / Offline, with who or what said so in the note.
-        const state = String(after.health_state ?? '')
-        const keys = Object.keys(after).filter((k) => !['note', 'health_state', 'health_changed_at'].includes(k))
+        // Marked not working / working, with the reporter's note.
+        const down = notWorking(String(after.health_state ?? ''))
         return {
-          label: healthBadge(state).label,
-          tone: state === 'online' ? 'ok' : state === 'offline' ? 'danger' : state === 'degraded' ? 'warn' : undefined,
+          label: down ? 'Marked not working' : 'Marked working',
+          tone: down ? 'danger' : 'ok',
           summary: after.note ? `"${String(after.note)}"` : null,
-          changes: keys.map((k) => ({ label: FIELD_LABELS[k] ?? k.replace(/_/g, ' '), from: fmtVal(k, before[k]), to: fmtVal(k, after[k]) })),
+          changes: [],
         }
       }
     }

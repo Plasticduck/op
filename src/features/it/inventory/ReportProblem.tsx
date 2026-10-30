@@ -10,7 +10,7 @@ import { itInventory } from '@/lib/queries/itInventory'
 // Report a problem with a device. Becomes a Work Request linked to the asset
 // (the existing issue flow) and shows on the asset's Timeline. Used on the
 // public sticker page and from the asset page. "Not working at all" also marks
-// it down (health: offline) until someone marks it working again.
+// it not working (health: offline) until someone marks it working again.
 
 const QUICK = [
   "It won't turn on",
@@ -78,7 +78,7 @@ export function ProblemForm({
         <input type="checkbox" checked={down} onChange={(e) => setDown(e.target.checked)} className="mt-0.5 size-4 rounded border-border text-accent focus:ring-accent" />
         <span>
           It's not working at all
-          <span className="block text-xs text-ink-muted">Shows it as down until someone marks it working.</span>
+          <span className="block text-xs text-ink-muted">Shows it as not working until someone marks it working again.</span>
         </span>
       </label>
       {!signedIn && (

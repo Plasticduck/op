@@ -42,7 +42,7 @@ export function ItDashboardTiles({ locationId }: { locationId: string | null }) 
       <StatCardRow
         className="grid-cols-2 lg:grid-cols-4"
         items={[
-          { label: 'Offline now', value: a.offline, to: list({ health: 'offline' }) },
+          { label: 'Not working', value: a.not_working, to: list({ health: 'offline' }) },
           { label: 'Out for repair', value: a.repair, to: list({ status: 'name:Out for Repair' }) },
           {
             label: 'Coming due',

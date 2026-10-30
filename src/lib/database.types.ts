@@ -4367,55 +4367,6 @@ export type Database = {
           },
         ]
       }
-      it_device_links: {
-        Row: {
-          account_id: string
-          asset_id: string
-          device_info: string | null
-          key_hash: string
-          linked_at: string
-          linked_by: string | null
-        }
-        Insert: {
-          account_id: string
-          asset_id: string
-          device_info?: string | null
-          key_hash: string
-          linked_at?: string
-          linked_by?: string | null
-        }
-        Update: {
-          account_id?: string
-          asset_id?: string
-          device_info?: string | null
-          key_hash?: string
-          linked_at?: string
-          linked_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "it_device_links_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "it_device_links_asset_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: true
-            referencedRelation: "it_assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "it_device_links_linked_by_fkey"
-            columns: ["linked_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       it_field_checklists: {
         Row: {
           account_id: string
@@ -10230,8 +10181,6 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      it_health_sweep: { Args: never; Returns: number }
-      it_heartbeat: { Args: { p_key: string }; Returns: Json }
       it_import_assets: {
         Args: { p_commit: boolean; p_create?: Json; p_rows: Json }
         Returns: Json
@@ -10246,12 +10195,7 @@ export type Database = {
       }
       it_is_admin: { Args: never; Returns: boolean }
       it_is_staff: { Args: never; Returns: boolean }
-      it_link_device: {
-        Args: { p_asset: string; p_device?: string }
-        Returns: string
-      }
       it_log_import: { Args: { p_summary: Json }; Returns: string }
-      it_manual_down: { Args: { p_asset: string }; Returns: boolean }
       it_move: {
         Args: {
           p_area?: string
@@ -10310,7 +10254,6 @@ export type Database = {
         Args: { p_asset_ids: string[]; p_note?: string; p_status_id: string }
         Returns: Json
       }
-      it_unlink_device: { Args: { p_asset: string }; Returns: undefined }
       kiosk_punch: {
         Args: { p_employee_id: string; p_pin: string }
         Returns: string

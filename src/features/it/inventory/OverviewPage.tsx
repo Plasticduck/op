@@ -13,7 +13,7 @@ import { currency } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItAssetRow, type ItOverview } from '@/lib/queries/itInventory'
-import { friendlyError, statusTone, WARRANTY_WINDOW_DAYS } from './format'
+import { friendlyError, notWorking, statusTone, WARRANTY_WINDOW_DAYS } from './format'
 import { ItIcon } from './ItIcon'
 import { SectionNav } from './SectionNav'
 import { RENEWAL_WINDOW_DAYS } from './subscriptions'
@@ -72,7 +72,7 @@ export function OverviewPage() {
         !error && <div className="grid place-items-center py-16 text-ink-muted"><Loader2 className="size-5 animate-spin" /></div>
       ) : data.total === 0 && data.spend.by_site.length === 0 ? (
         <EmptyState className="mt-6" icon={Boxes} title={siteName ? `Nothing recorded at ${siteName} yet` : 'Nothing recorded yet'}
-          description="Add equipment or import a spreadsheet, and this page fills in: what's offline, what's out for repair, what's coming due."
+          description="Add equipment or import a spreadsheet, and this page fills in: what's not working, what's out for repair, what's coming due."
           action={staff ? (
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => navigate('/app/it-inventory')}>Add equipment</Button>
@@ -86,7 +86,7 @@ export function OverviewPage() {
             <StatCardRow
               className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7"
               items={[
-                { label: 'Offline now', value: a!.offline, to: list({ health: 'offline' }) },
+                { label: 'Not working', value: a!.not_working, to: list({ health: 'offline' }) },
                 { label: 'Out for repair', value: a!.repair, to: list({ status: 'name:Out for Repair' }) },
                 { label: 'Warranty ending', value: a!.warranty, hint: `Next ${WARRANTY_WINDOW_DAYS} days`, to: list({ warranty: 'expiring' }) },
                 { label: 'Renewals due', value: a!.renewals, hint: `Next ${RENEWAL_WINDOW_DAYS} days`, to: `/app/it-inventory/subscriptions?${new URLSearchParams({ site, due: '1' })}` },
@@ -98,15 +98,9 @@ export function OverviewPage() {
           </section>
 
           <StatCardRow
-            className="grid-cols-2 lg:grid-cols-4"
+            className="grid-cols-1 sm:grid-cols-3"
             items={[
               { label: 'Equipment', value: data.total.toLocaleString(), to: list() },
-              {
-                label: 'Reporting in',
-                value: data.health.monitored ? `${data.health.online} of ${data.health.monitored}` : '–',
-                hint: data.health.monitored ? 'Linked devices online now' : 'No devices linked yet',
-                to: data.health.monitored ? list({ health: 'online' }) : undefined,
-              },
               {
                 label: 'Subscriptions a month',
                 value: currency(data.spend.monthly),
@@ -153,9 +147,9 @@ function BySite({ data }: { data: ItOverview }) {
             <tr>
               <th className="px-3 py-2 font-semibold">Site</th>
               <th className="px-3 py-2 text-right font-semibold">Equipment</th>
-              <th className="px-3 py-2 text-right font-semibold">Offline</th>
-              <th className="px-3 py-2 text-right font-semibold">Out for repair</th>
               <th className="px-3 py-2 text-right font-semibold">Not working</th>
+              <th className="px-3 py-2 text-right font-semibold">Out for repair</th>
+              <th className="px-3 py-2 text-right font-semibold">Audit overdue</th>
               <th className="px-3 py-2 text-right font-semibold">Subscriptions / mo</th>
             </tr>
           </thead>
@@ -164,9 +158,9 @@ function BySite({ data }: { data: ItOverview }) {
               <tr key={s.id} className="hover:bg-content">
                 <td className="whitespace-nowrap px-3 py-2"><Link to={`/app/it-inventory/overview?site=${s.id}`} className="font-medium text-ink hover:underline">{s.name}</Link></td>
                 <td className="px-3 py-2 text-right"><Num n={s.total} to={at(s.id)} /></td>
-                <td className="px-3 py-2 text-right"><Num n={s.offline} to={at(s.id, { health: 'offline' })} tone="danger" /></td>
+                <td className="px-3 py-2 text-right"><Num n={s.not_working} to={at(s.id, { health: 'offline' })} tone="danger" /></td>
                 <td className="px-3 py-2 text-right"><Num n={s.repair} to={at(s.id, { status: 'name:Out for Repair' })} tone="warn" /></td>
-                <td className="px-3 py-2 text-right"><Num n={s.not_working} to={at(s.id, { status: 'type:undeployable' })} tone="warn" /></td>
+                <td className="px-3 py-2 text-right"><Num n={s.audits_overdue} to={at(s.id, { audit: 'overdue' })} tone="warn" /></td>
                 <td className="px-3 py-2 text-right">
                   {spend.get(s.id) ? (
                     <Link to={`/app/it-inventory/subscriptions?site=${s.id}`} className="text-ink hover:underline">{currency(spend.get(s.id))}</Link>
@@ -196,7 +190,7 @@ function ByCategory({ data, list }: { data: ItOverview; list: (extra?: Record<st
             className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-sm transition hover:border-border-strong hover:bg-content/40">
             <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent/15 text-accent"><ItIcon name={c.icon} className="size-4" /></span>
             <span className="min-w-0 flex-1 truncate text-ink">{c.name}</span>
-            {c.offline > 0 && <Badge tone="danger">{c.offline} offline</Badge>}
+            {c.not_working > 0 && <Badge tone="danger">{c.not_working} not working</Badge>}
             <span className="tabular-nums font-semibold text-ink">{c.total}</span>
           </Link>
         ))}
@@ -205,7 +199,6 @@ function ByCategory({ data, list }: { data: ItOverview; list: (extra?: Record<st
   )
 }
 
-const DOT: Record<string, string> = { online: 'bg-ok', offline: 'bg-danger', degraded: 'bg-warn' }
 const PER_CARD = 8
 
 // One site's equipment, grouped by area in walk order.
@@ -241,8 +234,8 @@ function ByArea({ locationId, refs, list }: { locationId: string; refs: ItRefs; 
               <h3 className="text-sm font-semibold text-ink">{g.name}</h3>
               <span className="text-xs tabular-nums text-ink-muted">
                 {g.items.length}
-                {g.items.some((r) => r.health_state === 'offline') && (
-                  <span className="ml-1.5 text-danger">{g.items.filter((r) => r.health_state === 'offline').length} offline</span>
+                {g.items.some((r) => notWorking(r.health_state)) && (
+                  <span className="ml-1.5 text-danger">{g.items.filter((r) => notWorking(r.health_state)).length} not working</span>
                 )}
               </span>
             </div>
@@ -252,9 +245,8 @@ function ByArea({ locationId, refs, list }: { locationId: string; refs: ItRefs; 
                 return (
                   <li key={r.id}>
                     <Link to={`/app/it-inventory/${r.id}`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-content">
-                      <span className={cn('size-2 shrink-0 rounded-full', DOT[r.health_state] ?? 'bg-border-strong')}
-                        title={r.health_state === 'unknown' ? 'Health unknown' : r.health_state} />
                       <span className="min-w-0 flex-1 truncate text-ink">{r.name}</span>
+                      {notWorking(r.health_state) && <Badge tone="danger">Not working</Badge>}
                       {st && st.type !== 'deployable' && <Badge tone={statusTone(st)}>{st.name}</Badge>}
                       <span className="shrink-0 font-mono text-[11px] text-ink-subtle">{r.asset_tag}</span>
                     </Link>

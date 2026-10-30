@@ -83,20 +83,15 @@ Other decisions:
   "Not counted" and never counts as low. `low_since` is set by trigger when a
   counted supply drops to its minimum (min 0 = no reminder) and cleared when
   it's back above; reminders use it as the due date (once per dip).
-- Health (Phase 1): a tablet or kiosk browser is linked to its asset from that
-  asset's page on the device (`it_link_device`, key kept in the browser's
-  localStorage, only its hash stored). `src/lib/itHeartbeat.ts`, started in
-  `main.tsx`, reports in every minute while Operator is open, signed in or not
-  (`it_heartbeat`, granted to anon; the key is the credential). `it_health_sweep`
-  (pg_cron every 2 minutes) marks a device offline after 2 x its interval
-  (120 s, so 4 minutes) without one. People mark things "not working" or
-  "working" (asset page, or "It's not working at all" on a problem report,
-  including the public sticker page); a person's "not working" holds even if
-  the device keeps reporting in, until someone marks it working.
-  `it_health_events` keeps state changes and manual reports, not every
-  heartbeat (a minute-by-minute row per tablet would be millions of rows for
-  no gain); `last_seen_at` carries the latest heartbeat. Offline alerts by
-  text are Phase 2 with the site probe (the `offline` rule stays off).
+- IT Inventory tracks; it does not monitor (Kevan, 2026-10-30: Mighty Wash
+  already gets downtime alerts elsewhere). The spec's heartbeats, site probe,
+  ping / TCP / HTTP checks, offline and recovery texts, and Phase 3 network
+  discovery are out of scope. 0192 shipped device heartbeats; 0194 removed
+  them. "Health" is what people report: "Not working" (asset page, a problem
+  report, or the public sticker page) until someone marks it working, which
+  clears it to no known problem. `it_health_events` keeps those reports; the
+  asset's Timeline shows "Marked not working" / "Marked working" with the note.
+  The header badge only appears when something is reported not working.
 
 ## Phase 1 slices
 
@@ -107,11 +102,11 @@ Other decisions:
 | C | Scanner component (shared), `/t/:short/:tag` resolver, manual entry, public report-a-problem page into Work Requests, persistent Scan button, iOS camera permission | done 2026-10-30. `components/scan/BarcodeScanner` (torch, autofocus, beep / buzz, continuous mode), module ScanSheet + floating Scan button, Report problem on assets, Work Requests link back to the device; iOS shell needs a new build to pick up the camera permission |
 | D | Check-out / check-in (area, person, parent asset), status changes, retire flow, bulk actions | done 2026-10-30. Check out to a person (site roster, optional signature), area, another device or another site, with due-back date, note, condition photo; check in with the status it came back in; status change with a note; Retire (checks in first, retires the tag) and Move; list selection (tap or scan to select) with bulk Check out / Check in / Status / Move / Print / Remove. "Archive" is now "Remove" (for mistakes), distinct from Retire |
 | E | Global search (trigram, Cmd-K), filters, column chooser, saved views + defaults, CSV export, CSV import wizard | done 2026-10-30. `it_search` in Cmd-K (exact tag / serial first); list filters (area, model, manufacturer, checked out, health, warranty, audit, sticker, purchase dates, custom fields), column chooser, header sort, 200-row pages, CSV export, built-in + saved (personal / shared) views; import wizard for equipment, models and subscriptions (auto-matched columns, dry run, per-row errors and downloadable report, create-missing options, sticker printing for new items); Settings (tag prefix / digits / sticker phone) and custom fields per category, including Vault secrets |
-| F | Subscriptions + consumables screens, nightly reminders (SMS + email digest, dedupe ledger), org + site dashboard tiles, kiosk heartbeat + manual down; open to owners and managers | done 2026-10-30, except opening it up (waiting on Kevan). Module tabs (Overview, Equipment, Subscriptions, Supplies); Overview for all sites (needs-attention tiles, by site, by category, monthly subscription spend, repairs in 90 days) and one site (area by area); Subscriptions (cost, monthly and yearly totals, cancel-by, mark renewed, devices covered, CSV export); Supplies (count, restock, use, history, low); Reminders settings (on/off, kinds, days, text/email, who, preview, send me a test); `it-reminders` edge function; IT tiles on the main dashboard (All sites and the site view); device heartbeats, mark working / not working, "Covered by" on the asset page |
+| F | Subscriptions + consumables screens, nightly reminders (SMS + email digest, dedupe ledger), org + site dashboard tiles, kiosk heartbeat + manual down; open to owners and managers | done 2026-10-30, except opening it up (waiting on Kevan). Heartbeats were built and then removed (0194: tracker, not monitor). Module tabs (Overview, Equipment, Subscriptions, Supplies); Overview for all sites (needs-attention tiles, by site, by category, monthly subscription spend, repairs in 90 days) and one site (area by area); Subscriptions (cost, monthly and yearly totals, cancel-by, mark renewed, devices covered, CSV export); Supplies (count, restock, use, history, low); Reminders settings (on/off, kinds, days, text/email, who, preview, send me a test); `it-reminders` edge function; IT tiles on the main dashboard (All sites and the site view); mark working / not working, "Covered by" on the asset page |
 
 ## Testing
 
-`supabase/tests/it_inventory_rls.sql` (97 checks) impersonates real users of
+`supabase/tests/it_inventory_rls.sql` (86 checks) impersonates real users of
 the demo account and another account inside a rolled-back transaction:
 cross-account and cross-site isolation for owner / manager / employee / anon,
 immutable activity log, tag uniqueness and retirement, serial / MAC dedupe,
@@ -127,11 +122,9 @@ subscriptions), search, Vault secrets (owner-only, reveals logged, values
 never in the log), and slice F: overview numbers scoped like the lists (a
 manager sees only their site, anon nothing), supplies (uncounted is never low,
 counting / using / restocking move it in and out of low, stock moves aren't
-logged as edits), heartbeats (signed out with the key only, a made-up key
-refused, the sweep marks a silent device offline once, a heartbeat brings it
-back, crew can report it down but can't fake a heartbeat, a person's down
-report holds against heartbeats, unlinking stops the key working, a manager
-can't link a device at another site or run the sweep), and reminder
+logged as edits), working order (crew can report something not working,
+the note reaches the Timeline, the overview counts it, marking it working
+clears it, people can't record anything but manual reports), and reminder
 candidates (warranty, cancel-by date, low stock; nothing from other accounts;
 not readable by app roles).
 
@@ -189,3 +182,4 @@ truncated (shrunk to fit), QR rows overlap slightly so printers leave no seams.
 | 0191_it_search_import | `it_search` (invoker, trigram); `it_import_assets` / `it_import_models` / `it_import_subscriptions` (definer with explicit per-site checks: invoker RLS made 500 rows take 44 s, now 1.7 s); `it_find_site`, `it_num`, `it_log_import` |
 | 0192_it_overview_health | `it_overview` (dashboard numbers, invoker); `it_settings.reminders_enabled`; supplies `counted_at` / `low_since`; health events change the asset's badge; `it_device_links` + `it_link_device` / `it_unlink_device` / `it_heartbeat`; `it_health_sweep` (cron every 2 min) and a daily 90-day prune; `it_reminder_candidates` (service role only) |
 | 0193_it_reminders_cron | `it-reminders` at 8 AM Central |
+| 0194_it_tracker_not_monitor | removes the device heartbeats (functions, table, sweep cron); `it_overview` counts "not working" reports and each site's overdue audits |

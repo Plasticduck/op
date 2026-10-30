@@ -42,11 +42,12 @@ import {
   fmtDay,
   friendlyError,
   healthBadge,
+  notWorking,
   statusTone,
   tagUrl,
   warrantyState,
 } from './format'
-import { CoveredBy, HealthSection } from './HealthPanel'
+import { CoveredBy, WorkingSection } from './WorkingPanel'
 import { PrintDialog } from './PrintDialog'
 import { ReportProblemDialog } from './ReportProblem'
 import { Timeline } from './Timeline'
@@ -60,8 +61,8 @@ const STICKER_STATES = [
 ] as const
 
 // One asset. Answers, top to bottom: what is it, where is it, who has it, is it
-// healthy, is it under warranty, and what happened to it (Timeline). Status,
-// check-out and health are three separate badges so they never get confused.
+// working, is it under warranty, and what happened to it (Timeline). Status,
+// check-out and "not working" are separate badges so they never get confused.
 
 type Tab = 'overview' | 'timeline'
 
@@ -202,7 +203,7 @@ export function AssetDetail({ id }: { id: string }) {
             <div className="mt-1 flex flex-wrap gap-1">
               <Badge tone={statusTone(status)}>{status?.name ?? 'Status'}</Badge>
               <Badge tone={assignment.tone}>{assignment.label}</Badge>
-              <Badge tone={health.tone}>{health.label}</Badge>
+              {notWorking(asset.health_state) && <Badge tone={health.tone}>{health.label}</Badge>}
             </div>
           </div>
           <div className="hidden shrink-0 sm:block" title={url}><QrCodeImage value={url} size={64} /></div>
@@ -355,7 +356,7 @@ export function AssetDetail({ id }: { id: string }) {
                 </Section>
               )}
 
-              <HealthSection asset={asset} accountId={profile?.account_id ?? ''} canEdit={canEdit}
+              <WorkingSection asset={asset} accountId={profile?.account_id ?? ''}
                 onChanged={(m) => { setFlash(m); void load() }} />
 
               <CoveredBy assetId={asset.id} />

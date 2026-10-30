@@ -22,12 +22,14 @@ export function assignmentBadge(a: Pick<ItAsset, 'assigned_type' | 'assigned_lab
   return { label: `Checked out to ${a.assigned_label ?? 'someone'}`, tone: 'accent' }
 }
 
+// Working order is what people report: "not working" until someone marks it
+// working again (IT Inventory doesn't monitor devices; see PLAN.md).
 export function healthBadge(state: string | null | undefined): { label: string; tone: Tone } {
-  if (state === 'online') return { label: 'Online', tone: 'ok' }
-  if (state === 'degraded') return { label: 'Degraded', tone: 'warn' }
-  if (state === 'offline') return { label: 'Offline', tone: 'danger' }
-  return { label: 'Health unknown', tone: 'neutral' }
+  if (state === 'offline') return { label: 'Not working', tone: 'danger' }
+  if (state === 'degraded') return { label: 'Partly working', tone: 'warn' }
+  return { label: 'Working', tone: 'neutral' }
 }
+export const notWorking = (state: string | null | undefined) => state === 'offline' || state === 'degraded'
 
 export const WARRANTY_WINDOW_DAYS = 60
 
