@@ -90,7 +90,7 @@ export function OverviewPage() {
                 { label: 'Out for repair', value: a!.repair, to: list({ status: 'name:Out for Repair' }) },
                 { label: 'Warranty ending', value: a!.warranty, hint: `Next ${WARRANTY_WINDOW_DAYS} days`, to: list({ warranty: 'expiring' }) },
                 { label: 'Renewals due', value: a!.renewals, hint: `Next ${RENEWAL_WINDOW_DAYS} days`, to: `/app/it-inventory/subscriptions?${new URLSearchParams({ site, due: '1' })}` },
-                { label: 'Audits overdue', value: a!.audits, to: list({ audit: 'overdue' }) },
+                { label: 'Audits overdue', value: a!.audits, to: '/app/it-inventory/audits' },
                 { label: 'Low supplies', value: a!.low_stock, to: `/app/it-inventory/supplies?${new URLSearchParams({ site, low: '1' })}` },
                 { label: 'Stickers to print', value: a!.stickers, to: list({ sticker: 'needs' }) },
               ]}

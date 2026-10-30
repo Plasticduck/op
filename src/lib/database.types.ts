@@ -4038,6 +4038,229 @@ export type Database = {
           },
         ]
       }
+      it_audit_items: {
+        Row: {
+          account_id: string
+          ai_verification_result: Json | null
+          asset_id: string | null
+          audit_run_id: string
+          checked_at: string | null
+          checked_by: string | null
+          created_at: string
+          created_by: string | null
+          custom_values: Json
+          expected: boolean
+          found_area_id: string | null
+          id: string
+          listed_area_id: string | null
+          location_id: string
+          note: string | null
+          other_site_id: string | null
+          photo_path: string | null
+          result: string
+          sticker_condition: string | null
+          tag: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          ai_verification_result?: Json | null
+          asset_id?: string | null
+          audit_run_id: string
+          checked_at?: string | null
+          checked_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          custom_values?: Json
+          expected?: boolean
+          found_area_id?: string | null
+          id?: string
+          listed_area_id?: string | null
+          location_id: string
+          note?: string | null
+          other_site_id?: string | null
+          photo_path?: string | null
+          result?: string
+          sticker_condition?: string | null
+          tag?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          ai_verification_result?: Json | null
+          asset_id?: string | null
+          audit_run_id?: string
+          checked_at?: string | null
+          checked_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          custom_values?: Json
+          expected?: boolean
+          found_area_id?: string | null
+          id?: string
+          listed_area_id?: string | null
+          location_id?: string
+          note?: string | null
+          other_site_id?: string | null
+          photo_path?: string | null
+          result?: string
+          sticker_condition?: string | null
+          tag?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_audit_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_items_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_items_audit_run_id_fkey"
+            columns: ["audit_run_id"]
+            isOneToOne: false
+            referencedRelation: "it_audit_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_items_checked_by_fkey"
+            columns: ["checked_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_items_found_area_id_fkey"
+            columns: ["found_area_id"]
+            isOneToOne: false
+            referencedRelation: "it_site_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_items_listed_area_id_fkey"
+            columns: ["listed_area_id"]
+            isOneToOne: false
+            referencedRelation: "it_site_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_items_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_items_other_site_id_fkey"
+            columns: ["other_site_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_audit_runs: {
+        Row: {
+          account_id: string
+          checklist_run_id: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          location_id: string
+          note: string | null
+          started_at: string
+          started_by: string | null
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          checklist_run_id?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id: string
+          note?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          checklist_run_id?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string
+          note?: string | null
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_audit_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_runs_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_runs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_runs_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_audit_runs_started_by_fkey"
+            columns: ["started_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       it_categories: {
         Row: {
           account_id: string
@@ -10102,6 +10325,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      it_audit_scan: {
+        Args: { p_area?: string; p_run: string; p_tag: string }
+        Returns: Json
+      }
       it_bootstrap: {
         Args: never
         Returns: {
@@ -10130,6 +10357,7 @@ export type Database = {
       }
       it_can_read: { Args: { loc: string }; Returns: boolean }
       it_can_write: { Args: { loc: string }; Returns: boolean }
+      it_cancel_audit: { Args: { p_run: string }; Returns: undefined }
       it_check_in: {
         Args: { p_asset_ids: string[]; p_note?: string; p_status_id?: string }
         Returns: Json
@@ -10143,6 +10371,10 @@ export type Database = {
           p_target: string
           p_type: string
         }
+        Returns: Json
+      }
+      it_complete_audit: {
+        Args: { p_note?: string; p_run: string }
         Returns: Json
       }
       it_find_duplicates: {
@@ -10254,6 +10486,7 @@ export type Database = {
         Args: { p_asset_ids: string[]; p_note?: string; p_status_id: string }
         Returns: Json
       }
+      it_start_audit: { Args: { p_location: string }; Returns: string }
       kiosk_punch: {
         Args: { p_employee_id: string; p_pin: string }
         Returns: string

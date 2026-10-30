@@ -706,6 +706,143 @@ begin
   end if;
 end $$;
 
+-- ---- Audits (Phase 2) -------------------------------------------------------------------------
+-- A field the walk may update, and one it may not.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+insert into public.it_custom_fields (account_id, name, key, field_type, editable_during_audit)
+values (current_setting('t.a')::uuid, 'Firmware (test)', 'fw_audit_test', 'text', true),
+       (current_setting('t.a')::uuid, 'Locked (test)', 'locked_audit_test', 'text', false);
+select set_config('t.expected', (select count(*)::text from public.it_assets a
+  left join public.it_status_labels s on s.id = a.status_label_id
+  where a.location_id = current_setting('t.site_in')::uuid and a.deleted_at is null and coalesce(s.type, '') <> 'archived'), true);
+select set_config('t.tag_out', (select asset_tag from public.it_assets where id = current_setting('t.asset_out')::uuid), true);
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  run uuid := public.it_start_audit(current_setting('t.site_in')::uuid);
+  r   jsonb;
+begin
+  perform set_config('t.run', run::text, true);
+  if (select count(*) from public.it_audit_items where audit_run_id = run) <> current_setting('t.expected')::int then
+    raise exception 'FAIL 100: the audit list is not every active item at the site (% vs %)',
+      (select count(*) from public.it_audit_items where audit_run_id = run), current_setting('t.expected');
+  end if;
+  if public.it_start_audit(current_setting('t.site_in')::uuid) <> run then
+    raise exception 'FAIL 101: starting again opened a second audit for the same site';
+  end if;
+  begin
+    perform public.it_start_audit(current_setting('t.site_out')::uuid);
+    raise exception 'FAIL 102: a manager started an audit at a site they don''t have';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+
+  r := public.it_audit_scan(run, lower(current_setting('t.tag_in')));
+  if r ->> 'result' <> 'found' or (r ->> 'again')::boolean then
+    raise exception 'FAIL 103: scanning an item on the list did not mark it found: %', r;
+  end if;
+  if not (public.it_audit_scan(run, current_setting('t.tag_in')) ->> 'again')::boolean then
+    raise exception 'FAIL 104: scanning it twice was not recognized as a repeat';
+  end if;
+  r := public.it_audit_scan(run, current_setting('t.tag_out'));
+  if r ->> 'result' <> 'wrong_location' or r ->> 'site' is null or r ->> 'name' is not null or (r ->> 'can_move')::boolean then
+    raise exception 'FAIL 105: an item from a site the manager can''t see should be wrong place, site name only, no move: %', r;
+  end if;
+  if public.it_audit_scan(run, 'ZZ-NOT-A-TAG') ->> 'result' <> 'unregistered' then
+    raise exception 'FAIL 106: an unknown sticker was not noted';
+  end if;
+  begin
+    perform public.it_complete_audit(run);
+    raise exception 'FAIL 107: an audit finished with items still unchecked';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+    if sqlerrm not like '%still need a result%' then raise exception 'FAIL 107: wrong message: %', sqlerrm; end if;
+  end;
+  begin
+    update public.it_audit_items set asset_id = null where audit_run_id = run and result = 'found';
+    raise exception 'FAIL 108: an auditor changed which item a row is about';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  -- The found item: faded sticker, found in another area, two field edits.
+  update public.it_audit_items
+     set sticker_condition = 'faded',
+         found_area_id = (select id from public.it_site_areas where location_id = current_setting('t.site_in')::uuid
+                           and id is distinct from listed_area_id order by sort_order limit 1),
+         custom_values = '{"fw_audit_test": "2.1", "locked_audit_test": "nope"}'
+   where audit_run_id = run and asset_id = current_setting('t.asset_in')::uuid;
+  perform set_config('t.found_area', (select found_area_id::text from public.it_audit_items
+    where audit_run_id = run and asset_id = current_setting('t.asset_in')::uuid), true);
+  update public.it_audit_items set result = 'missing' where audit_run_id = run and result = 'not_checked';
+  perform set_config('t.missing', (select asset_id::text from public.it_audit_items
+    where audit_run_id = run and result = 'missing' limit 1), true);
+  r := public.it_complete_audit(run, 'Test walk');
+  if (r ->> 'found')::int < 1 or (r ->> 'wrong_location')::int <> 1 or (r ->> 'unregistered')::int <> 1 or (r ->> 'stickers')::int <> 1 then
+    raise exception 'FAIL 109: the audit summary is off: %', r;
+  end if;
+end $$;
+reset role;
+do $$
+declare
+  a public.it_assets%rowtype;
+begin
+  select * into a from public.it_assets where id = current_setting('t.asset_in')::uuid;
+  if a.last_audit_at is null or a.next_audit_date <> (current_date + interval '6 months')::date then
+    raise exception 'FAIL 110: finishing did not set the audit dates (% / %)', a.last_audit_at, a.next_audit_date;
+  end if;
+  if a.sticker_condition <> 'faded' or a.area_id::text <> current_setting('t.found_area') then
+    raise exception 'FAIL 111: finishing did not apply the sticker and the area it was found in';
+  end if;
+  if a.custom_values ->> 'fw_audit_test' <> '2.1' or a.custom_values ? 'locked_audit_test' then
+    raise exception 'FAIL 112: only fields editable during audits should change: %', a.custom_values;
+  end if;
+  if not exists (select 1 from public.it_activity_log where asset_id = a.id and action = 'audited' and after ->> 'note' like 'Found in % (moved there). Sticker faded%') then
+    raise exception 'FAIL 113: the found item''s Timeline doesn''t say what the audit found';
+  end if;
+  if current_setting('t.missing', true) <> '' and not exists (
+    select 1 from public.it_activity_log where asset_id = current_setting('t.missing')::uuid and action = 'audited' and after ->> 'note' like 'Missing at %') then
+    raise exception 'FAIL 114: a missing item''s Timeline doesn''t say it was missing';
+  end if;
+  if (select status from public.it_audit_runs where id = current_setting('t.run')::uuid) <> 'completed' then
+    raise exception 'FAIL 115: the audit is not marked finished';
+  end if;
+end $$;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  begin
+    perform public.it_audit_scan(current_setting('t.run')::uuid, current_setting('t.tag_in'));
+    raise exception 'FAIL 116: scanned into a finished audit';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  begin
+    update public.it_audit_items set result = 'found' where audit_run_id = current_setting('t.run')::uuid and result = 'missing';
+    raise exception 'FAIL 117: changed a finished audit';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+end $$;
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.b_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if exists (select 1 from public.it_audit_runs) or exists (select 1 from public.it_audit_items) then
+    raise exception 'FAIL 118: another company can see this audit';
+  end if;
+  begin
+    perform public.it_audit_scan(current_setting('t.run')::uuid, 'X');
+    raise exception 'FAIL 119: another company scanned into this audit';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+end $$;
+reset role;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;

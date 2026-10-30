@@ -70,9 +70,12 @@ and put it in `src/components/`, not in this folder. Spec: `docs/it-inventory/SP
   small tag line + badges above a 17px title, Edit + overflow menu on the right,
   underline tabs below, scrolling body.
 - Bottom nav on phones (`BottomNav`) hides on full-screen detail routes.
-- The module's four screens (Overview, Equipment, Subscriptions, Supplies)
-  share the page title "IT Inventory" with a segmented control under it
-  (`SectionNav`). Stickers, Import and Settings are tools with a back link.
+- The module's screens (Overview, Equipment, Audits, Subscriptions,
+  Supplies) share the page title "IT Inventory" with a segmented control under
+  it (`SectionNav`), which scrolls sideways on phones. Stickers, Import and
+  Settings are tools with a back link. An open audit is a full-screen page
+  like an asset (`AuditRunPage`), with its own scanner instead of the
+  floating Scan button.
 - The main dashboard shows the IT tiles (`ItDashboardTiles`) on All sites and
   on a site's view, for people who can open the module, once there's
   equipment. Same StatCard tiles as the rest of the dashboard.

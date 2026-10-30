@@ -104,9 +104,32 @@ Other decisions:
 | E | Global search (trigram, Cmd-K), filters, column chooser, saved views + defaults, CSV export, CSV import wizard | done 2026-10-30. `it_search` in Cmd-K (exact tag / serial first); list filters (area, model, manufacturer, checked out, health, warranty, audit, sticker, purchase dates, custom fields), column chooser, header sort, 200-row pages, CSV export, built-in + saved (personal / shared) views; import wizard for equipment, models and subscriptions (auto-matched columns, dry run, per-row errors and downloadable report, create-missing options, sticker printing for new items); Settings (tag prefix / digits / sticker phone) and custom fields per category, including Vault secrets |
 | F | Subscriptions + consumables screens, nightly reminders (SMS + email digest, dedupe ledger), org + site dashboard tiles, kiosk heartbeat + manual down; open to owners and managers | done 2026-10-30, except opening it up (waiting on Kevan). Heartbeats were built and then removed (0194: tracker, not monitor). Module tabs (Overview, Equipment, Subscriptions, Supplies); Overview for all sites (needs-attention tiles, by site, by category, monthly subscription spend, repairs in 90 days) and one site (area by area); Subscriptions (cost, monthly and yearly totals, cancel-by, mark renewed, devices covered, CSV export); Supplies (count, restock, use, history, low); Reminders settings (on/off, kinds, days, text/email, who, preview, send me a test); `it-reminders` edge function; IT tiles on the main dashboard (All sites and the site view); mark working / not working, "Covered by" on the asset page |
 
+## Phase 2
+
+The spec's Phase 2, minus the site probe and offline alerts (tracker, not
+monitor; see above).
+
+| Slice | Scope | Status |
+|---|---|---|
+| G | Physical audits, inside IT Inventory (Kevan: not in the checklist list) | done 2026-10-30. Audits tab: each site with how much is overdue or due, start / continue, past audits. The walk: continuous scanning by area in walk order, "you're in" area (an item found elsewhere moves there at the end), sticker readable / faded / missing, tap an item for missing / damaged, note, photo and fields marked "editable during audit"; another site's sticker offers "Move it here" to people who manage both; unknown stickers are noted. Finishing needs every item resolved ("mark the rest missing"), then sets last / next audit dates per category interval, sticker condition (faded or missing goes to the print queue), area and fields, with an "audited" Timeline row per item. The report offers Mark lost, Change status, Print stickers and Add it. Settings > Audits: interval, warning days, per-kind overrides. Not done: AI photo checks on audit photos, and the overdue signal on the dashboard scorecard (it would change site grades) |
+| H | Repairs: maintenance records and types, back to the prior status when done, downtime, cost rollups | next |
+| I | Accessories (count-based, checked out to people or devices) | |
+| J | Photo to form (make, model, serial from a label photo) | |
+| K | Company logo on stickers, more label sizes | |
+
+Audits are their own tables (`it_audit_runs`, `it_audit_items`), not checklist
+runs; `checklist_run_id` stays for the spec's data model but is unused. Crew
+can audit (spec: read, scan, audit, report), so `it_start_audit`,
+`it_audit_scan` and `it_complete_audit` check `it_can_read`, and equipment
+only changes inside `it_complete_audit`. Items are updated directly (RLS
+plus a guard trigger that allows only result, sticker, area, fields, photo and
+note while the audit is open). One open audit per site; a second person who
+starts it joins the same one. Audit photos go to `<account>/audit/` in the
+`it-inventory` bucket, which any account member may upload to.
+
 ## Testing
 
-`supabase/tests/it_inventory_rls.sql` (86 checks) impersonates real users of
+`supabase/tests/it_inventory_rls.sql` (106 checks) impersonates real users of
 the demo account and another account inside a rolled-back transaction:
 cross-account and cross-site isolation for owner / manager / employee / anon,
 immutable activity log, tag uniqueness and retirement, serial / MAC dedupe,
@@ -124,7 +147,14 @@ manager sees only their site, anon nothing), supplies (uncounted is never low,
 counting / using / restocking move it in and out of low, stock moves aren't
 logged as edits), working order (crew can report something not working,
 the note reaches the Timeline, the overview counts it, marking it working
-clears it, people can't record anything but manual reports), and reminder
+clears it, people can't record anything but manual reports), audits (the
+list is every active item at the site, one open audit per site, managers
+can't audit other sites, a scan marks found and a repeat says so, another
+site's sticker shows only that site's name to someone who can't see it,
+unknown stickers are noted, it won't finish with unchecked items, rows can't
+be re-pointed, finishing sets dates / sticker / area / only audit-editable
+fields and writes Timeline rows for found and missing items, a finished audit
+can't be changed, other companies see nothing), and reminder
 candidates (warranty, cancel-by date, low stock; nothing from other accounts;
 not readable by app roles).
 
@@ -182,4 +212,5 @@ truncated (shrunk to fit), QR rows overlap slightly so printers leave no seams.
 | 0191_it_search_import | `it_search` (invoker, trigram); `it_import_assets` / `it_import_models` / `it_import_subscriptions` (definer with explicit per-site checks: invoker RLS made 500 rows take 44 s, now 1.7 s); `it_find_site`, `it_num`, `it_log_import` |
 | 0192_it_overview_health | `it_overview` (dashboard numbers, invoker); `it_settings.reminders_enabled`; supplies `counted_at` / `low_since`; health events change the asset's badge; `it_device_links` + `it_link_device` / `it_unlink_device` / `it_heartbeat`; `it_health_sweep` (cron every 2 min) and a daily 90-day prune; `it_reminder_candidates` (service role only) |
 | 0193_it_reminders_cron | `it-reminders` at 8 AM Central |
+| 0195_it_audits | `it_audit_runs` / `it_audit_items` with RLS and a guard trigger; `it_start_audit`, `it_audit_scan`, `it_complete_audit`, `it_cancel_audit`; audit photo uploads for anyone in the account |
 | 0194_it_tracker_not_monitor | removes the device heartbeats (functions, table, sweep cron); `it_overview` counts "not working" reports and each site's overdue audits |

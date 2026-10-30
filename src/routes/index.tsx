@@ -234,6 +234,8 @@ export const router = createBrowserRouter([
           { path: 'it-inventory/overview', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'it-inventory/subscriptions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'it-inventory/supplies', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/audits', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/audits/:runId', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'it-inventory/:id', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'insights', element: tech(<InsightsPage />) },
           { path: 'reports', element: tech(<ReportingPage />) },

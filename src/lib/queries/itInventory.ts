@@ -77,6 +77,23 @@ export type ItOverview = {
   repair_spend_90d: number
 }
 
+export type ItAuditRun = T['it_audit_runs']['Row']
+export type AuditSummary = {
+  total: number; found: number; missing: number; damaged: number; wrong_location: number
+  unregistered: number; moved: number; stickers: number
+}
+// An audit row with the item it's about (null for stickers not in the
+// inventory, or items at a site you can't see).
+export type ItAuditItem = T['it_audit_items']['Row'] & {
+  asset: Pick<ItAsset, 'id' | 'asset_tag' | 'name' | 'category_id' | 'model_id' | 'area_id' | 'location_id'
+    | 'status_label_id' | 'assigned_type' | 'assigned_label' | 'custom_values'> | null
+}
+const AUDIT_ITEM_SELECT = '*, asset:it_assets(id, asset_tag, name, category_id, model_id, area_id, location_id, status_label_id, assigned_type, assigned_label, custom_values)'
+export type AuditScan =
+  | { result: 'found' | 'damaged'; item_id: string; asset_id: string; tag: string; name: string; again: boolean; listed_area_id: string | null; found_area_id: string | null }
+  | { result: 'wrong_location'; item_id: string; asset_id: string; tag: string; name: string | null; site: string; can_move: boolean }
+  | { result: 'unregistered'; item_id: string; tag: string; unused: boolean }
+
 export type RemindersPreview = {
   ok: true
   today: string
@@ -257,6 +274,7 @@ export const itInventory = {
 
   // ---- Settings and custom fields (admins) ----
   updateSettings: (id: string, patch: T['it_settings']['Update']) => supabase.from('it_settings').update(patch).eq('id', id),
+  updateCategory: (id: string, patch: T['it_categories']['Update']) => supabase.from('it_categories').update(patch).eq('id', id),
   saveField: (row: T['it_custom_fields']['Insert'] & { id?: string }) =>
     row.id
       ? supabase.from('it_custom_fields').update(row).eq('id', row.id).select('*').single()
@@ -363,6 +381,41 @@ export const itInventory = {
   removeConsumable: (id: string) => supabase.from('it_consumables').update({ deleted_at: new Date().toISOString() }).eq('id', id),
   // A count that matches what's on record still counts as counted.
   markCounted: (id: string) => supabase.from('it_consumables').update({ counted_at: new Date().toISOString() }).eq('id', id),
+
+  // ---- Audits (walk a site, scan every sticker) ----
+  auditRuns: () =>
+    supabase.from('it_audit_runs').select('*').order('started_at', { ascending: false }).limit(200),
+  auditRun: (id: string) => supabase.from('it_audit_runs').select('*').eq('id', id).maybeSingle(),
+  auditItems: (runId: string) =>
+    fetchAll<ItAuditItem>((f, t) =>
+      supabase.from('it_audit_items').select(AUDIT_ITEM_SELECT).eq('audit_run_id', runId).order('created_at').range(f, t)),
+  // Opens the site's audit, or the one already open there.
+  startAudit: (locationId: string) => supabase.rpc('it_start_audit', { p_location: locationId }),
+  auditScan: async (runId: string, tag: string, areaId: string | null) => {
+    const { data, error } = await supabase.rpc('it_audit_scan', { p_run: runId, p_tag: tag, p_area: areaId ?? undefined })
+    return { data: (data as AuditScan | null) ?? null, error: error?.message ?? null }
+  },
+  // Result, sticker, area found in, audit fields, photo, note.
+  updateAuditItem: (id: string, patch: T['it_audit_items']['Update']) =>
+    supabase.from('it_audit_items').update(patch).eq('id', id),
+  // The rest of the list in one go ("mark the rest missing").
+  markUnchecked: (runId: string, result: 'missing' | 'found') =>
+    supabase.from('it_audit_items').update({ result }).eq('audit_run_id', runId).eq('result', 'not_checked'),
+  completeAudit: async (runId: string, note?: string) => {
+    const { data, error } = await supabase.rpc('it_complete_audit', { p_run: runId, p_note: note || undefined })
+    return { data: (data as AuditSummary | null) ?? null, error: error?.message ?? null }
+  },
+  cancelAudit: (runId: string) => supabase.rpc('it_cancel_audit', { p_run: runId }),
+  uploadAuditPhoto: async (accountId: string, runId: string, file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${accountId}/audit/${runId}/${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || 'image/jpeg' })
+    return error ? { path: null, error: error.message } : { path, error: null }
+  },
+  assetsByIdsFull: (ids: string[]) =>
+    ids.length
+      ? supabase.from('it_assets').select(ASSET_SELECT).in('id', ids)
+      : Promise.resolve({ data: [] as ItAssetRow[], error: null }),
 
   // ---- Working order ----
   // "It's not working" / "It's working again". Holds until the opposite report.
