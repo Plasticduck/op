@@ -54,6 +54,7 @@ and put it in `src/components/`, not in this folder. Spec: `docs/it-inventory/SP
 | QR | `data/QrCodeImage` |
 | PDF preview | `data/PdfPagePreview` (added for stickers): renders the real generated PDF with pdf.js, so previews match print |
 | Barcodes, labels | `lib/barcode/code128.ts`, `lib/labels/layout.ts` + `labelPdf.ts` (shared, not module-only) |
+| CSV / spreadsheets | `lib/csv.ts` (added for import / export): RFC 4180 parse, Excel-friendly export, .xlsx via the lazy `xlsx` import |
 | Signature | `forms/SignaturePad` (added for check-out): finger / stylus, ink follows the theme, exports black on white |
 | Camera scanner | `components/scan/BarcodeScanner` (added for scanning): viewfinder from tokens, torch, beep / buzz (`lib/scan/feedback`), continuous mode for audits and bulk |
 | Photos | `data/AttachmentViewer` |

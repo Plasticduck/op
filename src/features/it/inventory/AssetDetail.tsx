@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils'
 import { itInventory, type ItAssetRow, type ItAssignment } from '@/lib/queries/itInventory'
 import { AssetForm, type AssetFormMode } from './AssetForm'
 import { CheckInDialog, CheckOutDialog, MoveDialog, StatusDialog } from './ItemActions'
+import { fieldsFor } from './customFields'
 import { ItIcon } from './ItIcon'
 import {
   assignmentBadge,
@@ -79,6 +80,8 @@ export function AssetDetail({ id }: { id: string }) {
   const [menu, setMenu] = useState<null | 'more'>(null)
   const [dialog, setDialog] = useState<null | 'checkout' | 'checkin' | 'status' | 'retire' | 'move'>(null)
   const [out, setOut] = useState<ItAssignment | null>(null)
+  // Secret custom fields an admin has revealed (null = none saved). Each reveal is logged.
+  const [revealed, setRevealed] = useState<Record<string, string | null>>({})
   const [confirm, setConfirm] = useState<null | 'archive' | 'delete'>(null)
   const [busy, setBusy] = useState(false)
   const [printing, setPrinting] = useState(false)
@@ -152,6 +155,10 @@ export function AssetDetail({ id }: { id: string }) {
   // inet / macaddr come back from PostgREST as text; the generated types say unknown.
   const ip = asset.ip_address as string | null
   const mac = asset.mac_address as string | null
+  // Its category's and model's custom fields, plus any other field it has a value for.
+  const customVals = (asset.custom_values as Record<string, unknown> | null) ?? {}
+  const applies = new Set(fieldsFor(refs, asset.category_id, asset.model_id).map((f) => f.id))
+  const detailFields = refs.fields.filter((f) => applies.has(f.id) || (customVals[f.key] != null && customVals[f.key] !== ''))
 
   const addPhoto = async (file: File) => {
     if (!profile) return
@@ -308,6 +315,44 @@ export function AssetDetail({ id }: { id: string }) {
                 <Row label="IP address" copy={ip} mono>{ip}</Row>
                 <Row label="Hostname" copy={asset.hostname} mono>{asset.hostname}</Row>
               </Section>
+
+              {detailFields.length > 0 && (
+                <Section title="Details">
+                  {detailFields.map((f) => {
+                    if (f.field_type === 'secret') {
+                      const shown = revealed[f.id]
+                      return (
+                        <Row key={f.id} label={f.name} mono={shown !== undefined && shown !== null} copy={shown ?? null}>
+                          {shown === undefined ? (
+                            <span className="inline-flex items-center gap-2 text-ink-muted">
+                              Hidden
+                              {profile?.role === 'owner' && (
+                                <button type="button" className="text-xs font-medium text-accent hover:underline"
+                                  onClick={() => void itInventory.revealSecret(asset.id, f.id).then(({ data, error: err }) => {
+                                    if (err) setError(err.message)
+                                    else setRevealed((r) => ({ ...r, [f.id]: (data as string | null) ?? null }))
+                                  })}>
+                                  Reveal
+                                </button>
+                              )}
+                            </span>
+                          ) : shown ?? <span className="text-ink-subtle">Not set</span>}
+                        </Row>
+                      )
+                    }
+                    const v = customVals[f.key]
+                    return (
+                      <Row key={f.id} label={f.name} mono={f.field_type === 'ip'}>
+                        {v == null || v === '' ? null
+                          : f.field_type === 'boolean' ? (v ? 'Yes' : 'No')
+                            : f.field_type === 'date' ? fmtDay(String(v))
+                              : f.field_type === 'url' ? <a href={String(v)} target="_blank" rel="noreferrer" className="text-accent hover:underline">{String(v)}</a>
+                                : String(v)}
+                      </Row>
+                    )
+                  })}
+                </Section>
+              )}
 
               <Section title="Health">
                 <Row label="Right now"><Badge tone={health.tone}>{health.label}</Badge></Row>

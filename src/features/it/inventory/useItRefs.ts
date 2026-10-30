@@ -28,6 +28,8 @@ export type ItRefs = {
   suppliers: ItSupplier[]
   templates: ItLabelTemplate[]
   fields: ItCustomField[]
+  // fieldset id -> custom field ids (categories and models point at fieldsets)
+  fieldsetFields: Map<string, string[]>
   category: Map<string, ItCategory>
   status: Map<string, ItStatusLabel>
   area: Map<string, ItArea>
@@ -47,7 +49,7 @@ async function fetchRefs(staff: boolean): Promise<ItRefs> {
     const { error } = await itInventory.bootstrap()
     if (error) throw new Error(error.message)
   }
-  const [settings, categories, statuses, areas, models, manufacturers, suppliers, templates, fields] = await Promise.all([
+  const [settings, categories, statuses, areas, models, manufacturers, suppliers, templates, fields, links] = await Promise.all([
     itInventory.settings(),
     itInventory.categories(),
     itInventory.statusLabels(),
@@ -57,8 +59,9 @@ async function fetchRefs(staff: boolean): Promise<ItRefs> {
     itInventory.suppliers(),
     itInventory.labelTemplates(),
     itInventory.customFields(),
+    itInventory.fieldsetLinks(),
   ])
-  const firstError = [settings, categories, statuses, areas, models, manufacturers, suppliers, templates, fields].find((r) => r.error)
+  const firstError = [settings, categories, statuses, areas, models, manufacturers, suppliers, templates, fields, links].find((r) => r.error)
   if (firstError?.error) throw new Error(firstError.error.message)
   if (!settings.data) throw new Error("IT Inventory isn't set up for your company yet. Ask an admin to open it once.")
   const c = categories.data ?? []
@@ -66,6 +69,8 @@ async function fetchRefs(staff: boolean): Promise<ItRefs> {
   const m = models.data
   const mf = manufacturers.data ?? []
   const sp = suppliers.data ?? []
+  const fieldsetFields = new Map<string, string[]>()
+  for (const l of links.data ?? []) fieldsetFields.set(l.fieldset_id, [...(fieldsetFields.get(l.fieldset_id) ?? []), l.field_id])
   return {
     settings: settings.data,
     categories: c,
@@ -76,6 +81,7 @@ async function fetchRefs(staff: boolean): Promise<ItRefs> {
     suppliers: sp,
     templates: templates.data ?? [],
     fields: fields.data ?? [],
+    fieldsetFields,
     category: byId(c),
     status: byId(s),
     area: byId(areas.data),

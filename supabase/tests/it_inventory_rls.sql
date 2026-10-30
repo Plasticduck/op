@@ -407,6 +407,136 @@ begin
 end $$;
 reset role;
 
+-- CSV import and search.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  site_name text := (select name from public.locations where id = current_setting('t.site_in')::uuid);
+  rows      jsonb;
+  res       jsonb;
+  before_n  integer := (select count(*) from public.it_assets);
+  counter_before bigint := (select coalesce(sum(last_value), 0) from public.it_tag_counters);
+begin
+  rows := jsonb_build_array(
+    jsonb_build_object('row', 2, 'name', 'Imported router', 'site', site_name, 'category', 'Router/Firewall',
+                       'manufacturer', 'Ubiquiti', 'model', 'UDM Pro Test', 'serial', 'IMP-1', 'ip', '10.0.0.1'),
+    jsonb_build_object('row', 3, 'name', 'Bad mac', 'site', site_name, 'category', 'Switch', 'mac', 'not-a-mac'),
+    jsonb_build_object('row', 4, 'tag', current_setting('t.tag_in'), 'site', site_name, 'notes', 'Updated by import'),
+    jsonb_build_object('row', 5, 'name', 'No tag no serial', 'site', site_name, 'category', 'Display'),
+    jsonb_build_object('row', 6, 'name', 'Mystery', 'site', 'Nowhere At All', 'category', 'Display'));
+
+  -- Dry run: per-row results, nothing saved, no tag numbers used.
+  res := public.it_import_assets(rows, false, '{"models": true}');
+  if (res -> 0 ->> 'action') <> 'create' or (res -> 1 ->> 'action') <> 'error' or (res -> 2 ->> 'action') <> 'update'
+     or (res -> 3 ->> 'action') <> 'create' or (res -> 4 ->> 'error') not like 'Site%not found' then
+    raise exception 'FAIL 47: dry run gave the wrong per-row results: %', res;
+  end if;
+  if (select count(*) from public.it_assets) <> before_n
+     or exists (select 1 from public.it_asset_models where name = 'UDM Pro Test')
+     or (select coalesce(sum(last_value), 0) from public.it_tag_counters) <> counter_before then
+    raise exception 'FAIL 48: a dry run saved something';
+  end if;
+  if (public.it_import_assets(rows, false, '{}') -> 0 ->> 'error') not like 'Model "UDM Pro Test" is new%' then
+    raise exception 'FAIL 49: a new model was accepted without permission to create models';
+  end if;
+
+  -- Commit, then the same file again: no duplicates.
+  perform public.it_import_assets(rows, true, '{"models": true}');
+  if (select count(*) from public.it_assets) <> before_n + 2 then
+    raise exception 'FAIL 50: commit should add exactly the two new items';
+  end if;
+  if (select notes from public.it_assets where asset_tag = current_setting('t.tag_in') and account_id = current_setting('t.a')::uuid) <> 'Updated by import' then
+    raise exception 'FAIL 51: a row with an existing tag did not update it';
+  end if;
+  res := public.it_import_assets(rows, true, '{"models": true}');
+  if (select count(*) from public.it_assets) <> before_n + 2
+     or (res -> 0 ->> 'action') <> 'update' or (res -> 3 ->> 'action') <> 'update' then
+    raise exception 'FAIL 52: importing the same file twice made duplicates: %', res;
+  end if;
+  if not exists (select 1 from public.it_activity_log where action = 'imported' and entity_type = 'asset'
+                 and after ->> 'name' = 'Imported router') then
+    raise exception 'FAIL 53: imported rows were not logged as imported';
+  end if;
+
+  -- Search: exact tag first, and by model name.
+  if not coalesce((select exact from public.it_search(lower(current_setting('t.tag_in'))) limit 1), false) then
+    raise exception 'FAIL 54: an exact tag search was not flagged exact';
+  end if;
+  if not exists (select 1 from public.it_search('UDM Pro') where name = 'Imported router') then
+    raise exception 'FAIL 55: search did not find an item by its model';
+  end if;
+  if public.it_log_import('{"entity": "assets", "file": "test.csv"}') is null then
+    raise exception 'FAIL 56: the import summary was not logged';
+  end if;
+end $$;
+reset role;
+
+-- Imports check site access themselves (they run with owner rights for speed).
+-- Names the manager can't look up are read here first, as the owner of the db.
+select set_config('t.site_out_name', (select name from public.locations where id = current_setting('t.site_out')::uuid), true);
+select set_config('t.site_in_name', (select name from public.locations where id = current_setting('t.site_in')::uuid), true);
+select set_config('t.tag_out', (select asset_tag from public.it_assets where id = current_setting('t.asset_out')::uuid), true);
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  res jsonb;
+begin
+  res := public.it_import_assets(jsonb_build_array(
+    jsonb_build_object('row', 2, 'name', 'Sneaky import', 'site', current_setting('t.site_out_name'), 'category', 'Display'),
+    jsonb_build_object('row', 3, 'tag', current_setting('t.tag_out'), 'site', current_setting('t.site_in_name'), 'notes', 'pulled over')
+  ), true, '{}');
+  if (res -> 0 ->> 'error') not like 'You don''t manage%' then
+    raise exception 'FAIL 57: a manager imported into a site they don''t manage: %', res;
+  end if;
+  if (res -> 1 ->> 'error') not like '%site you don''t manage%' then
+    raise exception 'FAIL 58: a manager pulled another site''s item in through an import: %', res;
+  end if;
+  if (public.it_import_subscriptions(jsonb_build_array(jsonb_build_object('row', 2, 'name', 'Company-wide thing')), true, '{}') -> 0 ->> 'error')
+     not like 'Only an admin%' then
+    raise exception 'FAIL 59: a manager added an every-site subscription';
+  end if;
+end $$;
+reset role;
+
+-- Secret custom fields: Vault-backed, owner-only, every reveal logged.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  fid uuid;
+begin
+  insert into public.it_custom_fields (account_id, name, key, field_type)
+  values (current_setting('t.a')::uuid, 'Admin password', 'admin_password_test', 'secret') returning id into fid;
+  perform set_config('t.secret_field', fid::text, true);
+  perform public.it_set_secret(current_setting('t.asset_in')::uuid, fid, 'hunter2-test');
+  if public.it_reveal_secret(current_setting('t.asset_in')::uuid, fid) <> 'hunter2-test' then
+    raise exception 'FAIL 60: the owner could not read back a secret';
+  end if;
+  if not exists (select 1 from public.it_activity_log where asset_id = current_setting('t.asset_in')::uuid and action = 'secret_revealed') then
+    raise exception 'FAIL 61: revealing a secret was not logged';
+  end if;
+  if exists (select 1 from public.it_activity_log where after::text like '%hunter2-test%' or before::text like '%hunter2-test%') then
+    raise exception 'FAIL 62: a secret value leaked into the activity log';
+  end if;
+end $$;
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  perform public.it_reveal_secret(current_setting('t.asset_in')::uuid, current_setting('t.secret_field')::uuid);
+  raise exception 'FAIL 63: a manager revealed a secret';
+exception when others then
+  if sqlerrm like 'FAIL%' then raise; end if;
+end $$;
+do $$ begin
+  if exists (select 1 from public.it_asset_secrets) then
+    raise exception 'FAIL 64: a manager can read the secrets table';
+  end if;
+end $$;
+reset role;
+
 -- Crew can't check things out.
 select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
 set local role authenticated;

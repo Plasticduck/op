@@ -9,8 +9,10 @@ import { Field } from '@/components/forms/Field'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { shrinkPhoto } from '@/lib/shrinkPhoto'
-import { itInventory, type DuplicateHit, type ItAssetInsert, type ItAssetRow } from '@/lib/queries/itInventory'
+import type { Json } from '@/lib/database.types'
+import { itInventory, type DuplicateHit, type ItAssetInsert, type ItAssetRow, type ItCustomField } from '@/lib/queries/itInventory'
 import type { ItRefs } from './useItRefs'
+import { fieldOptions, fieldsFor } from './customFields'
 import { friendlyError, isIp, normalizeMac } from './format'
 
 // Add, edit or clone an asset. Quick by default: site, category (or model) and
@@ -106,6 +108,13 @@ export function AssetForm({
   const [form, setForm] = useState<Form>(() =>
     initialForm(mode, refs, defaultSiteId ?? locations[0]?.id ?? '', asset, initialTag))
   const [more, setMore] = useState(mode !== 'add')
+  // Custom field values as text while editing; secrets go to Vault on save.
+  const [custom, setCustom] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries((asset?.custom_values as Record<string, unknown> | null) ?? {})
+      .map(([k, v]) => [k, typeof v === 'boolean' ? (v ? 'yes' : 'no') : String(v ?? '')])))
+  const [secrets, setSecrets] = useState<Record<string, string>>({})
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
+  const admin = profile?.role === 'owner'
   const [photo, setPhoto] = useState<File | null>(null)
   const [dups, setDups] = useState<DuplicateHit[]>([])
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({})
@@ -132,6 +141,7 @@ export function AssetForm({
   const modelOptions = refs.models.filter((m) => !form.category_id || m.category_id === form.category_id)
   const modelWarrantyMonths = matchedModel?.default_warranty_months ?? null
   const areas = refs.areas.filter((a) => a.location_id === form.location_id)
+  const cfs = fieldsFor(refs, matchedModel?.category_id ?? form.category_id, matchedModel?.id ?? (newModel ? null : asset?.model_id))
 
   const checkDuplicates = async () => {
     const mac = form.mac.trim() ? normalizeMac(form.mac) : null
@@ -153,7 +163,35 @@ export function AssetForm({
       e.quantity = 'Leave tag, serial and MAC empty when adding several at once. Each one gets its own tag.'
     }
     setErrors(e)
-    return Object.keys(e).length === 0
+    const ce: Record<string, string> = {}
+    for (const f of cfs) {
+      if (f.is_required && f.field_type !== 'secret' && !(custom[f.key] ?? '').trim()) ce[f.key] = 'Required.'
+    }
+    setCustomErrors(ce)
+    if (Object.keys(ce).length) setMore(true)
+    return Object.keys(e).length === 0 && Object.keys(ce).length === 0
+  }
+
+  // Non-secret values typed for this item's fields, merged over what it had.
+  const customValues = (): Record<string, unknown> => {
+    const out: Record<string, unknown> = { ...((asset?.custom_values as Record<string, unknown> | null) ?? {}) }
+    for (const f of cfs) {
+      if (f.field_type === 'secret') continue
+      const v = (custom[f.key] ?? '').trim()
+      if (!v) delete out[f.key]
+      else out[f.key] = f.field_type === 'number' ? Number(v) : f.field_type === 'boolean' ? v === 'yes' : v
+    }
+    return out
+  }
+  const saveSecrets = async (ids: string[]) => {
+    for (const f of cfs) {
+      const v = secrets[f.id]
+      if (f.field_type !== 'secret' || !v) continue
+      for (const id of ids) {
+        const { error: err } = await itInventory.setSecret(id, f.id, v)
+        if (err) throw new Error(`Saved, but ${f.name} wasn't: ${err.message}`)
+      }
+    }
   }
 
   const save = async () => {
@@ -218,11 +256,13 @@ export function AssetForm({
         // Empty = follow the model's warranty from the purchase date.
         warranty_end_date: form.warranty_end_date || null,
         notes: form.notes.trim() || null,
+        custom_values: customValues() as Json,
       }
 
       if (mode === 'edit' && asset) {
         const { error: err } = await itInventory.updateAsset(asset.id, fields)
         if (err) throw new Error(err.message)
+        await saveSecrets([asset.id])
         if (refsChanged) onRefsChanged()
         onSaved([{ id: asset.id, asset_tag: asset.asset_tag }])
         return
@@ -235,6 +275,7 @@ export function AssetForm({
       }))
       const { data, error: err } = await itInventory.createAssets(rows)
       if (err || !data) throw new Error(err?.message ?? 'Could not save.')
+      await saveSecrets(data.map((d) => d.id))
       if (photo && data.length === 1) {
         const up = await itInventory.uploadAssetPhoto(profile.account_id, data[0].id, form.location_id, await shrinkPhoto(photo))
         if (up.error) setError(`Saved, but the photo didn't upload: ${up.error}`)
@@ -408,6 +449,21 @@ export function AssetForm({
                 {(id) => <Input id={id} type="date" value={form.warranty_end_date} onChange={set('warranty_end_date')} />}
               </Field>
             </Section>
+            {cfs.some((f) => f.field_type !== 'secret' || admin) && (
+              <Section title="Details">
+                {cfs.map((f) => (f.field_type === 'secret' && !admin ? null : (
+                  <Field key={f.id} label={f.name} required={f.is_required && f.field_type !== 'secret'}
+                    hint={f.field_type === 'secret' ? (mode === 'edit' ? "Hidden. Leave blank to keep what's saved." : 'Only admins can see this.') : f.help_text ?? undefined}
+                    error={customErrors[f.key]}>
+                    {(id) => <CustomInput id={id} field={f}
+                      value={f.field_type === 'secret' ? secrets[f.id] ?? '' : custom[f.key] ?? ''}
+                      onChange={(v) => (f.field_type === 'secret'
+                        ? setSecrets((s) => ({ ...s, [f.id]: v }))
+                        : setCustom((c) => ({ ...c, [f.key]: v })))} />}
+                  </Field>
+                )))}
+              </Section>
+            )}
             <Field label="Notes">
               {(id) => (
                 <textarea id={id} value={form.notes} onChange={set('notes')} rows={3}
@@ -444,6 +500,30 @@ export function AssetForm({
         </div>
       </div>
     </Modal>
+  )
+}
+
+function CustomInput({ id, field, value, onChange }: { id: string; field: ItCustomField; value: string; onChange: (v: string) => void }) {
+  const t = field.field_type
+  if (t === 'boolean') {
+    return (
+      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Not set</option><option value="yes">Yes</option><option value="no">No</option>
+      </Select>
+    )
+  }
+  if (t === 'select') {
+    return (
+      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Not set</option>
+        {fieldOptions(field).map((o) => <option key={o} value={o}>{o}</option>)}
+      </Select>
+    )
+  }
+  return (
+    <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} autoComplete="off"
+      type={t === 'number' ? 'number' : t === 'date' ? 'date' : t === 'url' ? 'url' : t === 'secret' ? 'password' : 'text'}
+      inputMode={t === 'number' ? 'decimal' : undefined} className={t === 'ip' || t === 'secret' ? 'font-mono' : undefined} />
   )
 }
 

@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { fnErrorMessage } from '@/lib/fnError'
-import type { Database } from '@/lib/database.types'
+import type { Database, Json } from '@/lib/database.types'
 
 // IT Inventory (docs/it-inventory). Every rule that matters is enforced in the
 // database: RLS by site (it_can_read / it_can_write), tags generated and never
@@ -43,6 +43,10 @@ export type DuplicateHit = {
 }
 
 export type ItAssignment = T['it_assignments']['Row']
+export type ItSavedView = T['it_saved_views']['Row']
+export type ImportEntity = 'assets' | 'models' | 'subscriptions'
+export type ImportResult = { row: number; action: 'create' | 'update' | 'error'; asset_id?: string; id?: string; tag?: string; error?: string }
+export type SearchHit = { id: string; asset_tag: string; name: string; site: string; category: string; matched: string | null; exact: boolean }
 export type BulkItem = { asset_id: string; ok: boolean; error?: string | null }
 
 function bulkResult(r: { data: unknown; error: { message: string } | null }): { items: BulkItem[]; error: string | null } {
@@ -190,6 +194,63 @@ export const itInventory = {
     })
     return { error: err?.message ?? null }
   },
+
+  // ---- Search, saved views, import ----
+  // Tag, name, serial, model, manufacturer, IP, MAC, hostname, notes; an exact
+  // tag or serial comes first with exact = true.
+  search: (q: string, limit = 8) => supabase.rpc('it_search', { p_q: q, p_limit: limit }),
+  savedViews: () => supabase.from('it_saved_views').select('*').eq('entity', 'asset').order('name'),
+  saveView: (row: T['it_saved_views']['Insert']) => supabase.from('it_saved_views').insert(row).select('*').single(),
+  deleteView: (id: string) => supabase.from('it_saved_views').delete().eq('id', id),
+  // One call per chunk (each its own transaction). commit false = dry run.
+  importRows: async (entity: ImportEntity, rows: Record<string, unknown>[], commit: boolean, create: Record<string, boolean>) => {
+    const fn = entity === 'assets' ? 'it_import_assets' : entity === 'models' ? 'it_import_models' : 'it_import_subscriptions'
+    const { data, error } = await supabase.rpc(fn, { p_rows: rows as unknown as Json, p_commit: commit, p_create: create as unknown as Json })
+    return { results: (data as ImportResult[] | null) ?? [], error: error?.message ?? null }
+  },
+  logImport: (summary: Record<string, unknown>) => supabase.rpc('it_log_import', { p_summary: summary as unknown as Json }),
+  uploadImportReport: async (accountId: string, csv: string) => {
+    const path = `${accountId}/import/${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID()}.csv`
+    const { error } = await supabase.storage.from(BUCKET).upload(path, new Blob([csv], { type: 'text/csv' }), { contentType: 'text/csv' })
+    return error ? null : path
+  },
+
+  // ---- Settings and custom fields (admins) ----
+  updateSettings: (id: string, patch: T['it_settings']['Update']) => supabase.from('it_settings').update(patch).eq('id', id),
+  saveField: (row: T['it_custom_fields']['Insert'] & { id?: string }) =>
+    row.id
+      ? supabase.from('it_custom_fields').update(row).eq('id', row.id).select('*').single()
+      : supabase.from('it_custom_fields').insert(row).select('*').single(),
+  removeField: (id: string) => supabase.from('it_custom_fields').update({ deleted_at: new Date().toISOString() }).eq('id', id),
+  fieldsetLinks: () => supabase.from('it_fieldset_fields').select('fieldset_id, field_id'),
+  // Which categories a field shows on. Each category gets its own fieldset the
+  // first time it needs one; this keeps the links in step with the choice.
+  setFieldCategories: async (accountId: string, fieldId: string, categoryIds: string[], categories: ItCategory[]) => {
+    const want = new Set(categoryIds)
+    for (const c of categories) {
+      let fieldset = c.default_fieldset_id
+      if (want.has(c.id) && !fieldset) {
+        const { data, error } = await supabase.from('it_fieldsets').insert({ account_id: accountId, name: c.name }).select('id').single()
+        if (error) return error.message
+        fieldset = data.id
+        const { error: e2 } = await supabase.from('it_categories').update({ default_fieldset_id: fieldset }).eq('id', c.id)
+        if (e2) return e2.message
+      }
+      if (!fieldset) continue
+      if (want.has(c.id)) {
+        const { error } = await supabase.from('it_fieldset_fields')
+          .upsert({ account_id: accountId, fieldset_id: fieldset, field_id: fieldId }, { onConflict: 'fieldset_id,field_id', ignoreDuplicates: true })
+        if (error) return error.message
+      } else {
+        await supabase.from('it_fieldset_fields').delete().eq('fieldset_id', fieldset).eq('field_id', fieldId)
+      }
+    }
+    return null
+  },
+  setSecret: (assetId: string, fieldId: string, value: string) =>
+    supabase.rpc('it_set_secret', { p_asset: assetId, p_field: fieldId, p_value: value }),
+  revealSecret: (assetId: string, fieldId: string) =>
+    supabase.rpc('it_reveal_secret', { p_asset: assetId, p_field: fieldId }),
 
   // ---- Sticker scans and problem reports (it-scan-public edge function) ----
   // Public: only the asset's name, category and site come back. Signed-in

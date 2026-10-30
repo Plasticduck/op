@@ -64,5 +64,6 @@ export function friendlyError(message: string): string {
   if (/invalid input syntax for type inet/.test(message)) return "That IP address doesn't look right."
   if (/invalid input syntax for type macaddr/.test(message)) return "That MAC address doesn't look right."
   if (/row-level security/.test(message)) return "You don't have access to make that change at this site."
+  if (/permission denied/.test(message)) return "You don't have access to do that. Try signing in again."
   return message
 }

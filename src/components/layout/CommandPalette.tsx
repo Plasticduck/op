@@ -6,7 +6,10 @@ import { useCompany } from '@/lib/company'
 import { pageAllowed, permRoleInList } from '@/lib/permissions'
 import { permRole } from '@/lib/rbac'
 import { NAV_GROUPS, navEmailOk, navFlagOn, navItemLabel } from '@/components/layout/Sidebar'
+import { itInventory, type SearchHit } from '@/lib/queries/itInventory'
 import { cn } from '@/lib/utils'
+
+type Row = { to: string; label: string; group: string; sub?: string }
 
 // Cmd+K / Ctrl+K global jump-to-page. Searches across every nav item the
 // current role can see and pushes the matching route on Enter. Arrow keys move
@@ -24,7 +27,7 @@ export function CommandPalette() {
   const items = useMemo(() => {
     if (!profile) return []
     const role = permRole(profile.role, profile.role_category)
-    const flat: Array<{ to: string; label: string; group: string }> = []
+    const flat: Row[] = []
     for (const g of NAV_GROUPS) {
       if (!permRoleInList(role, g.roles)) continue
       for (const i of g.items) {
@@ -45,13 +48,34 @@ export function CommandPalette() {
     return flat
   }, [profile, settings.pagePermissions, settings.userPermissions])
 
+  // IT Inventory equipment, for people who can open it: searched on the server
+  // (tag, name, serial, model, IP, MAC...). An exact tag or serial, which is
+  // what a USB barcode scanner types, goes to the top so Enter opens it.
+  const canSearchIt = items.some((i) => i.to === '/app/it-inventory')
+  const [hits, setHits] = useState<SearchHit[]>([])
+  useEffect(() => {
+    const q = query.trim()
+    if (!open || !canSearchIt || q.length < 2) { setHits([]); return }
+    let alive = true
+    const t = window.setTimeout(() => {
+      void itInventory.search(q, 8).then(({ data }) => { if (alive) setHits((data as SearchHit[] | null) ?? []) })
+    }, 180)
+    return () => { alive = false; window.clearTimeout(t) }
+  }, [query, open, canSearchIt])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return items
-    return items.filter(
-      (i) => i.label.toLowerCase().includes(q) || i.group.toLowerCase().includes(q),
-    )
-  }, [items, query])
+    const pages: Row[] = q
+      ? items.filter((i) => i.label.toLowerCase().includes(q) || i.group.toLowerCase().includes(q))
+      : items
+    const gear: Row[] = hits.map((h) => ({
+      to: `/app/it-inventory/${h.id}`,
+      label: `${h.asset_tag}  ${h.name}`,
+      group: 'IT equipment',
+      sub: [h.site, h.category].filter(Boolean).join(' · '),
+    }))
+    return hits[0]?.exact ? [...gear, ...pages] : [...pages, ...gear]
+  }, [items, query, hits])
 
   // Global key listener for the open shortcut + a custom event the topbar
   // dispatches when its "Jump to a page" button is clicked.
@@ -138,7 +162,7 @@ export function CommandPalette() {
             type="text"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
-            placeholder="Jump to a page..."
+            placeholder={canSearchIt ? 'Jump to a page, or find equipment by tag, serial, IP...' : 'Jump to a page...'}
             className="flex-1 bg-transparent text-sm text-ink placeholder:text-ink-subtle focus:outline-none"
           />
           <kbd className="rounded border border-border bg-content px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">esc</kbd>
@@ -166,8 +190,11 @@ export function CommandPalette() {
                         active ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-content',
                       )}
                     >
-                      <span>{row.label}</span>
-                      {active && <CornerDownLeft className="size-3.5 opacity-70" />}
+                      <span className="min-w-0">
+                        <span className="block truncate">{row.label}</span>
+                        {row.sub && <span className="block truncate text-xs text-ink-muted">{row.sub}</span>}
+                      </span>
+                      {active && <CornerDownLeft className="size-3.5 shrink-0 opacity-70" />}
                     </button>
                   )
                 })}

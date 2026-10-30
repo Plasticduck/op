@@ -5,12 +5,14 @@ import { primeScanSound } from '@/lib/scan/feedback'
 import { cn } from '@/lib/utils'
 import { AssetDetail } from './AssetDetail'
 import { AssetList } from './AssetList'
+import { ImportPage } from './ImportPage'
 import { ScanSheet } from './ScanSheet'
+import { SettingsPage } from './SettingsPage'
 import { StickersPage } from './StickersPage'
 
-// IT Inventory (docs/it-inventory/SPEC.md). /app/it-inventory is the list,
-// /app/it-inventory/stickers the sticker tools, /app/it-inventory/:id one asset.
-// On phones a Scan button floats on every screen of the module, one tap away.
+// IT Inventory (docs/it-inventory/SPEC.md). /app/it-inventory is the list;
+// /stickers, /import and /settings are the tools; /:id is one asset. On phones
+// a Scan button floats on every screen of the module, one tap away.
 export default function ItInventoryPage() {
   const { id } = useParams()
   const { pathname } = useLocation()
@@ -21,13 +23,16 @@ export default function ItInventoryPage() {
   }, [])
   const closeScan = useCallback(() => setScanning(false), [])
 
-  const stickers = /\/it-inventory\/stickers\/?$/.test(pathname)
+  const tool = pathname.match(/\/it-inventory\/(stickers|import|settings)\/?$/)?.[1]
   // Asset pages hide the bottom nav, so the button can sit lower there.
-  const detail = !!id && !stickers
+  const detail = !!id && !tool
 
   return (
     <>
-      {stickers ? <StickersPage /> : id ? <AssetDetail key={id} id={id} /> : <AssetList onScan={openScan} />}
+      {tool === 'stickers' ? <StickersPage />
+        : tool === 'import' ? <ImportPage />
+          : tool === 'settings' ? <SettingsPage />
+            : id ? <AssetDetail key={id} id={id} /> : <AssetList onScan={openScan} />}
       <button
         type="button"
         onClick={openScan}

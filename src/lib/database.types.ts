@@ -10146,6 +10146,7 @@ export type Database = {
           site_name: string
         }[]
       }
+      it_find_site: { Args: { p_name: string }; Returns: string }
       it_generate_tags: {
         Args: { p_count: number; p_location?: string }
         Returns: {
@@ -10170,8 +10171,21 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      it_import_assets: {
+        Args: { p_commit: boolean; p_create?: Json; p_rows: Json }
+        Returns: Json
+      }
+      it_import_models: {
+        Args: { p_commit: boolean; p_create?: Json; p_rows: Json }
+        Returns: Json
+      }
+      it_import_subscriptions: {
+        Args: { p_commit: boolean; p_create?: Json; p_rows: Json }
+        Returns: Json
+      }
       it_is_admin: { Args: never; Returns: boolean }
       it_is_staff: { Args: never; Returns: boolean }
+      it_log_import: { Args: { p_summary: Json }; Returns: string }
       it_move: {
         Args: {
           p_area?: string
@@ -10185,6 +10199,7 @@ export type Database = {
         Args: { p_account: string; p_location: string }
         Returns: string
       }
+      it_num: { Args: { p: string }; Returns: number }
       it_resolve_tag: {
         Args: { p_short: string; p_tag: string }
         Returns: Json
@@ -10192,6 +10207,18 @@ export type Database = {
       it_reveal_secret: {
         Args: { p_asset: string; p_field: string }
         Returns: string
+      }
+      it_search: {
+        Args: { p_limit?: number; p_q: string }
+        Returns: {
+          asset_tag: string
+          category: string
+          exact: boolean
+          id: string
+          matched: string
+          name: string
+          site: string
+        }[]
       }
       it_set_secret: {
         Args: { p_asset: string; p_field: string; p_value: string }
