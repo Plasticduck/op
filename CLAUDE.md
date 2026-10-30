@@ -7,27 +7,42 @@ making changes. `AGENTS.md` points here; keep both in sync if you split them.
 
 **Operator** (internal codename TunnelSync; the live product is branded
 "Operator", the company is WashLyfe) is a B2B SaaS for car-wash operators:
-maintenance + people + reporting, modeled closely on MaintainX for the
+maintenance + people + finance + reporting, modeled closely on MaintainX for the
 work-order/asset/parts side. Single React SPA on Supabase, deployed to Vercel
 at **operator.washlyfe.com**, with a thin native iOS WebView shell.
 
 Multi-tenant: every row is scoped to an `account` (one car-wash company) and
-usually a `location` (one physical site). Three roles: `owner`, `manager`,
-`employee`.
+usually a `location` (one physical site). Mighty Wash is the main live tenant,
+and many newer pages (Site Performance, MSA, FlexWash, Lube Shop, payroll,
+fleet) are built on Mighty Wash's own systems.
+
+Four base roles: `owner` (labeled "Admin" in the UI), `manager`, `employee`,
+`technician`. A manager can also carry a `role_category` (`regional_manager`,
+`executive`, `finance`) that changes what they see in the app but not what RLS
+allows. See **Access control** below.
 
 ## Stack
 
 - **Frontend:** React 19 + Vite + TypeScript, Tailwind v4, React Router v7
   (data router), TanStack Table, React Hook Form + Zod, date-fns, lucide-react,
-  `qrcode`.
+  `qrcode`, Leaflet (maps), jsPDF + jspdf-autotable (PDF exports), `xlsx`,
+  `pdfjs-dist`.
 - **Backend:** Supabase — Postgres with **row-level security on every table**,
   Auth, Storage (private buckets + signed URLs), Edge Functions (Deno).
-- **AI:** Claude via edge functions (`generate-insights`, `suggest-schedule`,
-  `suggest-social-post`, `analyze-market-deals`). Model id lives in each
-  function; default `claude-sonnet-4-6`.
-- **Payments:** Stripe — subscription billing (Checkout + Customer Portal +
-  webhook) and **Stripe Connect** for per-site cashless tips (direct charges,
-  money settles in each site's own bank).
+- **AI:** Claude via edge functions: `ask-operator` (Operator AI), `generate-insights`,
+  `suggest-schedule`, `suggest-social-post`, `analyze-market-deals`,
+  `verify-checklist-photo`, `extract-drb-gsr`, `invoice-inbound`,
+  `fetch-competitor-data`, `classify-work-order`. Model id lives in each
+  function; default `claude-sonnet-4-6` (`ask-operator` also honors an
+  `ANTHROPIC_MODEL` secret; `classify-work-order` uses `claude-opus-5-5`).
+- **Payments:** Stripe — subscription billing (embedded pricing table on the
+  Billing page, Checkout from the BillingGate lock screen, Customer Portal,
+  webhook, per-site quantity for Multi-Site) and **Stripe Connect** for per-site
+  cashless tips (direct charges, money settles in each site's own bank).
+- **Integrations (via edge functions):** DRB SiteWatch, FlexWash partner API,
+  MaintainX, iSolved payroll, Issuetrak, Spot AI cameras, Verizon Connect
+  Reveal, Twilio SMS, Google Places + Calendar, GatherUp, Census +
+  OpenStreetMap. Each degrades to `no_key` when its secret is missing.
 - **Native:** `WashLyfe Operator/` is a SwiftUI + WKWebView iOS shell that loads
   the live site and bridges Web Push / local notifications.
 
@@ -41,47 +56,66 @@ npx tsc -b           # typecheck only
 npx eslint src --quiet   # lint
 ```
 
-There is no test runner. **Verify changes with `npx tsc -b`, `npx eslint src
---quiet`, and `npm run build`** — all three must pass. Manual smoke flows live
-in `docs/smoke-tests.md`.
+There is no test runner and no CI. **Verify changes with `npx tsc -b`, `npx
+eslint src --quiet`, and `npm run build`** — all three must pass. Manual smoke
+flows live in `docs/smoke-tests.md`.
 
 ## Repo map
 
 ```
 src/
-  routes/index.tsx          Router. lazy lz(), mgr() = owner|manager gate, s() = Suspense.
+  routes/index.tsx          Router. lazy lz() (stale-chunk reload guard), s() = Suspense,
+                            mgr() = owner|manager, tech() = +technician, emp() = +employee.
+  routes/guards.tsx         RequireAuth, RequireRole, RequirePermRole, RequireEmails,
+                            RequireEmailsOrRoles, RequireSitePerformance, RequireGmBonus, ...
   components/
-    layout/                 AppShell, Sidebar, BottomNav, TopBar, CommandPalette (Cmd-K)
+    layout/                 AppShell, Sidebar (nav catalog), BottomNav, TopBar,
+                            CommandPalette (Cmd-K), BillingGate
     ui/                     Button, Input, Select, Modal, Badge, Logo, ...
     data/                   DataTable, StatCardRow, Charts (inline-SVG), MonthGrid, QrCodeImage
     forms/  feedback/
   features/
     auth/                   login / signup / forgot / accept-invite (AuthLayout)
+    ask/                    Operator AI: plain-English questions over account data
     dashboard/              role-switched dashboard (owner/manager vs employee)
     marketing/              public landing / pricing / demo / legal (WashLyfe brand)
-    ops/                    MaintainX-style: work-orders, assets, parts, categories,
-                            vendors, checklists, closeouts, downtime, documents,
-                            contacts, supplies
-    opssuite/               site reviews/audits, invoices, inventory, market research, violations
-    people/                 employees, schedule (drag+drop), timeclock (kiosk + geofence/face),
-                            timesheets, reviews, counseling, injuries, uniforms, time-off,
-                            calendar, breaks
-    messages/               GroupMe-style chat: site rooms + DMs + groups, @mentions, images
-    tips/                   cashless tipping (public TipPage + admin TipsAdminPage)
-    social/                 social media calendar + AI post suggestions
-    insights/  reports/  settings/
+    ops/                    MaintainX-style: work-orders (+ Work Orders NEW), assets, parts,
+                            categories, vendors, teams, procedures, PM, work requests +
+                            public request portal, checklists, closeouts, downtime,
+                            documents, contacts, supplies, labor dashboard
+    opssuite/               Largest area. Site Performance, MSA, FlexWash sales/chargebacks,
+                            interior, Lube Shop, house accounts, member lookup, site reviews/
+                            audits, violations, signage, invoices, inventory, market research/
+                            explorer, bonuses, commissions, goal tracker, fleet map, site visits,
+                            per diem, mileage, event pay, capital requests
+    people/                 employees, schedule (drag+drop) + public schedule portal,
+                            timeclock (kiosk + geofence/face), timesheets, reviews, training,
+                            counseling, injuries, uniforms, time-off, calendar, breaks
+    hr/                     iSolved labor pages: Labor Data, On the Clock, Salaried Labor
+    it/                     Issuetrak, IT Field Checklist
+    maintenance/            Chemicals, Maintenance Orders
+    facilities/             Service Board
+    cameras/                Spot AI camera feeds
+    messages/               Slack-style chat: site rooms + DMs + groups, @mentions,
+                            reactions, pins, threads, files
+    tips/                   cashless tipping (public TipPage, TipsAdminPage, TipsNewPage pool)
+    social/  insights/  reports/  settings/
   lib/
     supabase.ts             client singleton (ANON key only)
-    auth.ts                 useAuth() -> { profile: {id, account_id, role, location_ids,...} }
-    rbac.ts                 Role type + helpers
+    auth.tsx                useAuth() -> { profile: {id, account_id, role, role_category, location_ids,...} }
+    rbac.ts                 Role / RoleCategory / PermRole types + helpers
+    permissions.ts          pageAllowed(), SECTION_CATALOG (see Access control)
     locations.tsx           LocationProvider + useLocations() (active-site switcher)
+    company.tsx / notifications.tsx / billingGate.ts   shell providers + app-lock state
     queries/*.ts            ONE typed module per domain — all DB access goes through these
+    reports/*.ts            jsPDF exports (site audit/review/violation, OSHA, chemicals, ...)
     database.types.ts       GENERATED from Postgres — never hand-edit
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. 0001..0042 and counting.
-  functions/<name>/index.ts Deno edge functions
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0180.
+  functions/<name>/index.ts Deno edge functions (~80)
+  config.toml               per-function verify_jwt overrides
 WashLyfe Operator/          native iOS Xcode project (SwiftUI + WKWebView)
 docs/smoke-tests.md
 ```
@@ -100,7 +134,8 @@ categories, vendors) share one pattern:
 - Grid: `lg:grid-cols-[400px_1fr]`. On mobile only one pane shows
   (`showListOnMobile = !routeId`; list is `hidden lg:flex` when a detail is open).
 - These routes are registered in **`AppShell.FULL_BLEED_PATTERNS`** so the shell
-  removes its padding and lets the page own its scroll. If you add such a page,
+  removes its padding and lets the page own its scroll. If you add such a page
+  (or any page that owns its own scroll, like a full-screen map or Operator AI),
   add its pattern there too, or scrolling/overflow will break.
 - `BottomNav` (mobile) hides itself on `/app/(messages|work-orders|assets|parts)/:id`
   detail routes so the screen is full-height.
@@ -118,10 +153,33 @@ with a `-soft` background variant. Brand blue is `#2563eb` (`accent`).
 public marketing pages pass `brand="washlyfe"`. Don't change which brand shows
 where without being asked.
 
+## Access control
+
+Three layers, from coarse to authoritative:
+
+1. **Router guards** (`routes/guards.tsx`, plus `mgr()` / `tech()` / `emp()`
+   in `routes/index.tsx`) gate on base role, `PermRole`, or account flags.
+2. **`pageAllowed()`** in `src/lib/permissions.ts` decides which pages a user
+   sees. It is enforced in Sidebar, CommandPalette, BottomNav, and the AppShell
+   route gate. Resolution is per-user, then per-role, then default; it can only
+   restrict within a role's pages. Items with `optIn` are hidden unless enabled.
+   Overrides live in `company_settings.pagePermissions` / `userPermissions` and
+   are edited on the Team settings page. Section-level gating uses
+   `SECTION_CATALOG` + `useSectionAllowed`.
+3. **Postgres RLS** is the real floor. It only knows the base `Role`, never
+   `role_category`, so a regional manager is a manager at the database level.
+
+**Pre-launch pages** are limited to named people by email: `RequireEmails` /
+`RequireEmailsOrRoles` on the route **and** an `emails:` list on the Sidebar
+item. To open a page up, change both, or it will show in the nav but bounce,
+or work by URL but stay hidden.
+
 ## Database & migrations
 
 - Migrations are **sequential, append-only** SQL: `supabase/migrations/NNNN_name.sql`.
-  Never edit a migration that's already been applied; add a new one.
+  Never edit a migration that's already been applied; add a new one. Use the
+  next number after the highest existing file. A few numbers (0022, 0050, 0093,
+  0157-0162) have two files from parallel work; don't add more duplicates.
 - Apply with the Supabase CLI: `npx supabase db push` (needs the project linked
   + `.env.server`). This project was historically applied via the Supabase
   Management API; either way, end state is the same.
@@ -142,8 +200,12 @@ where without being asked.
 ## Edge functions (Deno)
 
 `supabase/functions/<name>/index.ts`. Deploy: `npx supabase functions deploy
-<name>` (add `--no-verify-jwt` for public ones the customer hits unauthenticated:
-`tips-public`, `enter-demo`). Conventions:
+<name>`. Add `--no-verify-jwt` for functions that are hit without a Supabase
+session or do their own auth: `tips-public`, `enter-demo`, `work-request-portal`,
+`public-schedules`, `accept-invite`, `stripe-webhook`, `invoice-inbound`,
+`sms-optin`, the `google-oauth-*` / `google-calendar-*` functions, and the
+`billing-*` functions. Each such function says so in its header comment;
+`config.toml` also sets `verify_jwt = false` for some. Conventions:
 - A CORS `ALLOWED_ORIGINS` allowlist (operator.washlyfe.com + localhost ports)
   and a per-request `json()` helper.
 - Secrets come from `Deno.env.get(...)` (set via `supabase secrets set`), NEVER
@@ -166,10 +228,12 @@ where without being asked.
 
 ## Deploy
 
-- Frontend → Vercel: `npx vercel deploy --prod --yes`. Live at
+- Frontend → Vercel, via the Git integration: **pushing to `main` is the
+  production deploy.** Don't also run `vercel deploy --prod`. Live at
   operator.washlyfe.com. Verify by fetching the deployed bundle and grepping for
   expected strings (this is how changes have been confirmed throughout).
-- Edge functions → `supabase functions deploy <name>`.
+- Edge functions → `supabase functions deploy <name>` (separate from the push).
+- Migrations → applied separately (see above), then regenerate types.
 - iOS shell → Xcode, the `WashLyfe Operator/` project.
 
 ## Demo

@@ -23,5 +23,9 @@ house rules.
 - **Secrets:** only `VITE_*` reaches the client. Never commit `.env*` or
   hardcode keys.
 - **Copy:** no em dashes in user-facing text.
+- **Deploy:** pushing to `main` deploys the frontend (Vercel Git integration).
+  Edge functions and migrations deploy separately.
+- **Pre-launch pages** are gated by email on both the route and the Sidebar
+  item; change both to open one up.
 
 See [CLAUDE.md](./CLAUDE.md) for everything else.
