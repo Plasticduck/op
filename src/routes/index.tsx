@@ -6,6 +6,7 @@ import { RouteProgress } from '@/components/feedback/TopLoadingBar'
 import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSitePerformance, RequireSuperAdmin, RequireEmails, RequireEmailsOrRoles, RedirectIfAuthed } from '@/routes/guards'
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
+import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
 
 // Lazily load a route chunk, but if the fetch fails because the chunk no longer
 // exists at that URL (a new deploy rotated the hashed filenames, or the dev
@@ -227,17 +228,17 @@ export const router = createBrowserRouter([
           { path: 'issuetrak', element: tech(<IssuetrakPage />) },
           { path: 'it-field-checklist', element: tech(<ItFieldChecklistPage />) },
           { path: 'it-field-checklist/:id', element: tech(<ItFieldChecklistPage />) },
-          { path: 'it-inventory', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/stickers', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/import', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/settings', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/overview', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/subscriptions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/supplies', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/repairs', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/audits', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/audits/:runId', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
-          { path: 'it-inventory/:id', element: <RequireEmails allow={['kevan@washlyfe.com']}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/stickers', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/import', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/settings', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/overview', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/subscriptions', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/supplies', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/repairs', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/audits', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/audits/:runId', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
+          { path: 'it-inventory/:id', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'insights', element: tech(<InsightsPage />) },
           { path: 'reports', element: tech(<ReportingPage />) },
           { path: 'reports/:reportKey', element: tech(<PreBuiltReportPage />) },

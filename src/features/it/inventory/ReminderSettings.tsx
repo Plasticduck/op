@@ -7,14 +7,17 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItPerson, type ItReminderRule, type RemindersPreview } from '@/lib/queries/itInventory'
+import { IT_INVENTORY_EMAILS } from './access'
 import { friendlyError } from './format'
 import type { ItRefs } from './useItRefs'
 
 // Settings > Reminders: the morning texts and emails (it-reminders edge
 // function, 8 AM Central). Off until an admin turns them on. Per kind: on or
-// off, how many days ahead, text and/or email. Who gets them is one choice for
-// all kinds: Admins and technicians hear about every site, managers about
-// their own sites, plus anyone named.
+// off, how many days ahead, text and/or email. While IT Inventory is limited
+// to a list of people, they're who gets them (it-reminders has the same
+// list). Otherwise who gets them is one choice for all kinds: Admins and
+// technicians hear about every site, managers about their own sites, plus
+// anyone named.
 
 const KINDS = [
   { kind: 'warranty', label: 'Warranties ending', days: true },
@@ -68,8 +71,10 @@ export function ReminderSettings({ refs, admin, onSaved }: { refs: ItRefs; admin
 
   // Who that adds up to, and how many of them can get texts.
   const reach = useMemo(() => {
-    const picked = people.filter((p) => (who.roles.includes(p.role) && p.role !== 'employee') || who.user_ids.includes(p.id))
-    return { total: picked.length, texts: picked.filter((p) => p.sms_opt_in && p.phone).length }
+    const picked = IT_INVENTORY_EMAILS
+      ? people.filter((p) => IT_INVENTORY_EMAILS.includes((p.email ?? '').toLowerCase()) && p.role !== 'employee')
+      : people.filter((p) => (who.roles.includes(p.role) && p.role !== 'employee') || who.user_ids.includes(p.id))
+    return { names: picked.map((p) => p.name), total: picked.length, texts: picked.filter((p) => p.sms_opt_in && p.phone).length }
   }, [people, who])
 
   const setDraft = (kind: string, patch: Partial<Draft>) => setDrafts((d) => ({ ...d, [kind]: { ...d[kind], ...patch } }))
@@ -192,40 +197,46 @@ export function ReminderSettings({ refs, admin, onSaved }: { refs: ItRefs; admin
 
       <div className="mt-4">
         <div className="mb-1.5 text-sm font-medium text-ink">Who gets them</div>
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {ROLES.map((r) => {
-            const n = people.filter((p) => p.role === r.role).length
-            return (
-              <label key={r.role} className="flex items-center gap-2 text-sm text-ink">
-                <input type="checkbox" checked={who.roles.includes(r.role)} onChange={() => toggleRole(r.role)} disabled={!admin}
-                  className="size-4 rounded border-border text-accent focus:ring-accent" />
-                {r.label} <span className="text-xs text-ink-muted">({n}, {r.hint})</span>
-              </label>
-            )
-          })}
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          {who.user_ids.map((id) => {
-            const p = people.find((x) => x.id === id)
-            return (
-              <span key={id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-content px-2.5 py-1 text-xs text-ink">
-                {p?.name ?? 'Someone'}
-                {admin && (
-                  <button type="button" aria-label={`Remove ${p?.name ?? 'person'}`} className="text-ink-subtle hover:text-ink"
-                    onClick={() => setWho((w) => ({ ...w, user_ids: w.user_ids.filter((x) => x !== id) }))}><X className="size-3" /></button>
-                )}
-              </span>
-            )
-          })}
-          {admin && (
-            <Select value="" onChange={(e) => { const id = e.target.value; if (id) setWho((w) => ({ ...w, user_ids: [...w.user_ids, id] })) }}
-              className="h-8 w-auto text-sm" aria-label="Also send to">
-              <option value="">Also send to…</option>
-              {people.filter((p) => p.role !== 'employee' && !who.user_ids.includes(p.id) && !who.roles.includes(p.role))
-                .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
-          )}
-        </div>
+        {IT_INVENTORY_EMAILS ? (
+          <p className="text-sm text-ink">Everyone who can open IT Inventory: {reach.names.join(', ') || 'no one yet'}.</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {ROLES.map((r) => {
+                const n = people.filter((p) => p.role === r.role).length
+                return (
+                  <label key={r.role} className="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" checked={who.roles.includes(r.role)} onChange={() => toggleRole(r.role)} disabled={!admin}
+                      className="size-4 rounded border-border text-accent focus:ring-accent" />
+                    {r.label} <span className="text-xs text-ink-muted">({n}, {r.hint})</span>
+                  </label>
+                )
+              })}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {who.user_ids.map((id) => {
+                const p = people.find((x) => x.id === id)
+                return (
+                  <span key={id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-content px-2.5 py-1 text-xs text-ink">
+                    {p?.name ?? 'Someone'}
+                    {admin && (
+                      <button type="button" aria-label={`Remove ${p?.name ?? 'person'}`} className="text-ink-subtle hover:text-ink"
+                        onClick={() => setWho((w) => ({ ...w, user_ids: w.user_ids.filter((x) => x !== id) }))}><X className="size-3" /></button>
+                    )}
+                  </span>
+                )
+              })}
+              {admin && (
+                <Select value="" onChange={(e) => { const id = e.target.value; if (id) setWho((w) => ({ ...w, user_ids: [...w.user_ids, id] })) }}
+                  className="h-8 w-auto text-sm" aria-label="Also send to">
+                  <option value="">Also send to…</option>
+                  {people.filter((p) => p.role !== 'employee' && !who.user_ids.includes(p.id) && !who.roles.includes(p.role))
+                    .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              )}
+            </div>
+          </>
+        )}
         <p className="mt-2 text-xs text-ink-muted">
           {reach.total} {reach.total === 1 ? 'person' : 'people'}; {reach.texts} can get texts (mobile number on file and opted in). The rest get email only.
         </p>

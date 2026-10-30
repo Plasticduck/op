@@ -118,6 +118,19 @@ function crossed(rule: Rule, days: number): number | null {
   return hits.length ? hits[0] : null
 }
 
+// Who can open IT Inventory while it rolls out. Same list as
+// src/features/it/inventory/access.ts; change both together. While there is
+// a list, reminders go to exactly these people (Kevan, 2026-10-30) and the
+// rule's roles and names don't apply. null = everyone by the rule.
+const ACCESS_EMAILS: string[] | null = [
+  'kevan@washlyfe.com',
+  'jjowers@mighty-wash.com',
+  'ncarter@mighty-wash.com',
+  'blake@mighty-wash.com',
+  'nkerstell@mighty-wash.com',
+]
+const ACCESS = ACCESS_EMAILS ? new Set(ACCESS_EMAILS) : null
+
 // Managers hear about their own sites; Admins and technicians about every
 // site. People named on the rule, and a subscription's owner, are included
 // if they can see the item.
@@ -127,6 +140,10 @@ function recipients(rule: Rule, c: Candidate, people: Person[]): Person[] {
   if (c.info.owner_user_id) named.add(String(c.info.owner_user_id))
   const allSites = (p: Person) => p.role === 'owner' || p.role === 'technician'
   const atSite = (p: Person) => !!c.location_id && (p.location_ids ?? []).includes(c.location_id)
+  if (ACCESS) {
+    return people.filter((p) => ACCESS.has((p.email ?? '').toLowerCase()) && p.role !== 'employee'
+      && (c.location_id === null || allSites(p) || atSite(p)))
+  }
   return people.filter((p) => {
     if (named.has(p.id)) return c.location_id === null || allSites(p) || atSite(p)
     if (!roles.includes(p.role) || p.role === 'employee') return false
@@ -197,7 +214,7 @@ ${note ? `<p style="font-size:14px;color:#555">${esc(note)}</p>` : ''}
 <p style="font-size:15px">${items.length === 1 ? 'One thing is' : `${items.length} things are`} coming up in IT Inventory.</p>
 ${sections}
 <p style="margin-top:24px"><a href="${APP_URL}/app/it-inventory/overview" style="background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-size:14px">Open IT Inventory</a></p>
-<p style="font-size:12px;color:#888;margin-top:24px">You get these as ${person.role === 'owner' ? 'an Admin' : `a ${person.role}`} on Operator. An admin can change who gets them, and when, in IT Inventory &gt; Settings.</p>
+<p style="font-size:12px;color:#888;margin-top:24px">${ACCESS ? 'You get these because you can open IT Inventory on Operator.' : `You get these as ${person.role === 'owner' ? 'an Admin' : `a ${person.role}`} on Operator.`} An admin can change what they cover, and when, in IT Inventory &gt; Settings.</p>
 </div>`
 }
 

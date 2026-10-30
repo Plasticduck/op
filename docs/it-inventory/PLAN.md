@@ -61,9 +61,16 @@ Other decisions:
   (`supabase/tests/it_inventory_rls.sql`); there is no pgTAP/Docker setup.
 - The iOS shell needs `NSCameraUsageDescription` for in-app scanning; stock
   camera scans of the QR URL work without it.
-- Pre-launch: visible to kevan@washlyfe.com only (route `RequireEmails` plus
-  the Sidebar item's `emails`) until Kevan says to open it. Opening it also
-  shows the IT tiles on the main dashboard (they follow the nav item).
+- Rollout (Kevan, 2026-10-30): open to five people by email, listed once in
+  `src/features/it/inventory/access.ts` (`IT_INVENTORY_EMAILS`): kevan@washlyfe.com,
+  jjowers@, ncarter@, blake@ and nkerstell@mighty-wash.com. The routes'
+  `RequireEmails` and the Sidebar item's `emails` both use it, and so do the
+  things that follow the nav item (Cmd-K, the IT dashboard tiles, the sticker
+  landing page). Reminders go to exactly these people: `it-reminders` has the
+  same list as `ACCESS_EMAILS`, so change both together. Opening it to every
+  Admin, manager and technician means dropping the route wrapper and the
+  Sidebar `emails`, and setting `ACCESS_EMAILS` to null (reminders then follow
+  the rule's roles again).
 - Reminders (`it-reminders` edge function, 8 AM Central via pg_cron at 13:00
   and 14:00 UTC with an hour guard) send nothing for an account until an admin
   turns them on in Settings (`it_settings.reminders_enabled`, default off). The
@@ -72,9 +79,11 @@ Other decisions:
   missed morning catches up the next day. Each reminder is claimed in
   `it_reminder_sends` (unique key) before it's sent, and un-claimed if the send
   fails. Digest (default): one text and one email per person per day.
-  Recipients: Admins and technicians for every site, managers for their own
-  sites, plus people named on the rule and a subscription's owner. Texts only
-  go to people with a mobile number who opted in to texts.
+  Recipients: while there's a rollout list (above), exactly those people, at
+  the sites they can see; Settings then names them instead of offering roles.
+  Without the list: Admins and technicians for every site, managers for their
+  own sites, plus people named on the rule and a subscription's owner. Texts
+  only go to people with a mobile number who opted in to texts.
 - A subscription that renews by itself with a notice period is due on its
   cancel-by date (renewal minus notice); otherwise on its renewal date.
   "Mark renewed" moves the renewal date one billing cycle.
