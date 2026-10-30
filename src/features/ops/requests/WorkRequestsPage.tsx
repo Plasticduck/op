@@ -148,6 +148,7 @@ export default function WorkRequestsPage() {
                     {r.requester_name && <span>From {r.requester_name}</span>}
                     <span>{format(new Date(r.created_at), 'MMM d, h:mm a')}</span>
                     {r.work_order_id && <button onClick={() => navigate(`/app/work-orders/${r.work_order_id}`)} className="text-accent hover:underline">View work order</button>}
+                    {r.it_asset_id && <button onClick={() => navigate(`/app/it-inventory/${r.it_asset_id}`)} className="text-accent hover:underline">View IT device</button>}
                   </div>
                 </div>
                 {r.status === 'pending' && (

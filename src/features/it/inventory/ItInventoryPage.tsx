@@ -1,13 +1,45 @@
+import { useCallback, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
+import { ScanLine } from 'lucide-react'
+import { primeScanSound } from '@/lib/scan/feedback'
+import { cn } from '@/lib/utils'
 import { AssetDetail } from './AssetDetail'
 import { AssetList } from './AssetList'
+import { ScanSheet } from './ScanSheet'
 import { StickersPage } from './StickersPage'
 
 // IT Inventory (docs/it-inventory/SPEC.md). /app/it-inventory is the list,
 // /app/it-inventory/stickers the sticker tools, /app/it-inventory/:id one asset.
+// On phones a Scan button floats on every screen of the module, one tap away.
 export default function ItInventoryPage() {
   const { id } = useParams()
   const { pathname } = useLocation()
-  if (/\/it-inventory\/stickers\/?$/.test(pathname)) return <StickersPage />
-  return id ? <AssetDetail key={id} id={id} /> : <AssetList />
+  const [scanning, setScanning] = useState(false)
+  const openScan = useCallback(() => {
+    primeScanSound() // iOS: sound has to start from a tap
+    setScanning(true)
+  }, [])
+  const closeScan = useCallback(() => setScanning(false), [])
+
+  const stickers = /\/it-inventory\/stickers\/?$/.test(pathname)
+  // Asset pages hide the bottom nav, so the button can sit lower there.
+  const detail = !!id && !stickers
+
+  return (
+    <>
+      {stickers ? <StickersPage /> : id ? <AssetDetail key={id} id={id} /> : <AssetList onScan={openScan} />}
+      <button
+        type="button"
+        onClick={openScan}
+        aria-label="Scan a sticker"
+        className={cn(
+          'fixed right-4 z-30 grid size-14 place-items-center rounded-full bg-accent text-white shadow-lg transition hover:bg-accent-hover lg:hidden',
+          detail ? 'bottom-[calc(1rem+env(safe-area-inset-bottom))]' : 'bottom-[calc(5rem+env(safe-area-inset-bottom))]',
+        )}
+      >
+        <ScanLine className="size-6" />
+      </button>
+      {scanning && <ScanSheet onClose={closeScan} />}
+    </>
+  )
 }

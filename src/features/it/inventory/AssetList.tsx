@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Boxes, Loader2, Plus, Printer, Search, Sticker, X } from 'lucide-react'
+import { Boxes, Loader2, Plus, Printer, ScanLine, Search, Sticker, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -23,7 +23,7 @@ import { useItRefs, type ItRefs } from './useItRefs'
 // Bluetooth barcode scanner does) jumps straight to that item. Filters live in
 // the URL so the back button and shared links keep them.
 
-export function AssetList() {
+export function AssetList({ onScan }: { onScan: () => void }) {
   const navigate = useNavigate()
   const routerLocation = useLocation()
   const { locations, activeLocation } = useLocations()
@@ -52,14 +52,16 @@ export function AssetList() {
       return next
     }, { replace: true })
 
-  // A blank sticker scanned elsewhere lands here as ?add=1&tag=...
+  // A blank sticker scanned anywhere (even while this list is open) lands
+  // here as ?add=1&tag=...
+  const addParam = params.get('add')
   useEffect(() => {
-    if (params.get('add') === '1') {
+    if (addParam === '1') {
       setAdding({ tag: params.get('tag') ?? undefined })
       setParam({ add: '', tag: '' })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [addParam])
 
   const load = useCallback(async () => {
     const { data, error: err } = await itInventory.listAssets()
@@ -156,6 +158,10 @@ export function AssetList() {
           <>
             <Button variant="secondary" onClick={() => navigate('/app/it-inventory/stickers')}>
               <Sticker className="size-4" /> Stickers
+            </Button>
+            {/* Phones get the floating Scan button instead. */}
+            <Button variant="secondary" onClick={onScan} className="hidden lg:inline-flex">
+              <ScanLine className="size-4" /> Scan
             </Button>
             <Button onClick={() => setAdding({})} disabled={!refs}><Plus className="size-4" /> Add</Button>
           </>

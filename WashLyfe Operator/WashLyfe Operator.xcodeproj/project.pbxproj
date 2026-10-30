@@ -439,6 +439,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = WashLyfe;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "WashLyfe Operator uses the camera to scan equipment stickers and take photos.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "WashLyfe Operator uses your location to surface your nearest site and accurate site weather.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -472,6 +473,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = WashLyfe;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "WashLyfe Operator uses the camera to scan equipment stickers and take photos.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "WashLyfe Operator uses your location to surface your nearest site and accurate site weather.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

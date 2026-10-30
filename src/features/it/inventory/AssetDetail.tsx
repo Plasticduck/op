@@ -12,6 +12,7 @@ import {
   CopyPlus,
   EllipsisVertical,
   Loader2,
+  MessageSquareWarning,
   Pencil,
   Printer,
   Sticker,
@@ -41,6 +42,7 @@ import {
   warrantyState,
 } from './format'
 import { PrintDialog } from './PrintDialog'
+import { ReportProblemDialog } from './ReportProblem'
 import { Timeline } from './Timeline'
 import { useItRefs } from './useItRefs'
 
@@ -74,6 +76,7 @@ export function AssetDetail({ id }: { id: string }) {
   const [confirm, setConfirm] = useState<null | 'archive' | 'delete'>(null)
   const [busy, setBusy] = useState(false)
   const [printing, setPrinting] = useState(false)
+  const [reporting, setReporting] = useState(false)
   const [flash, setFlash] = useState<string | null>(routeState?.flash ?? null)
   const [error, setError] = useState<string | null>(null)
   const photoInput = useRef<HTMLInputElement>(null)
@@ -209,9 +212,13 @@ export function AssetDetail({ id }: { id: string }) {
           )}
         </div>
 
-        {/* Primary actions */}
-        {canEdit && !archived && (
+        {/* Primary actions. Anyone who can see it can report a problem. */}
+        {!archived && (
           <div className="flex flex-wrap gap-2 border-b border-border px-3 py-2">
+            <Button variant="secondary" size="sm" onClick={() => setReporting(true)}>
+              <MessageSquareWarning className="size-3.5" /> Report problem
+            </Button>
+            {canEdit && (<>
             <div className="relative">
               <Button variant="secondary" size="sm" disabled={busy} onClick={() => setMenu(menu === 'status' ? null : 'status')}>
                 Change status <ChevronDown className="size-3.5" />
@@ -237,6 +244,7 @@ export function AssetDetail({ id }: { id: string }) {
             <Button variant="secondary" size="sm" onClick={() => photoInput.current?.click()} disabled={busy}>
               <Camera className="size-3.5" /> Photo
             </Button>
+            </>)}
           </div>
         )}
 
@@ -254,7 +262,7 @@ export function AssetDetail({ id }: { id: string }) {
         </div>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-4 lg:pb-4">
           {flash && (
             <div className="mb-4 flex items-start justify-between gap-3 rounded-md bg-ok-soft px-3 py-2 text-sm text-ok">
               <span>{flash}</span>
@@ -362,6 +370,12 @@ export function AssetDetail({ id }: { id: string }) {
           )}
         </div>
       </div>
+
+      {reporting && (
+        <ReportProblemDialog short={settings.short_code} tag={asset.asset_tag} name={asset.name}
+          onClose={() => setReporting(false)}
+          onReported={() => { setReporting(false); setFlash("Reported. It's in Work Requests and on this item's Timeline."); void load() }} />
+      )}
 
       {printing && (
         <PrintDialog refs={refs} assets={[asset]} onClose={() => setPrinting(false)}

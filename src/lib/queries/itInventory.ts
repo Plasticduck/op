@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { fnErrorMessage } from '@/lib/fnError'
 import type { Database } from '@/lib/database.types'
 
 // IT Inventory (docs/it-inventory). Every rule that matters is enforced in the
@@ -39,6 +40,15 @@ export type DuplicateHit = {
   asset_name: string | null
   site_name: string
   can_open: boolean
+}
+
+export type PublicAsset = { tag: string; name: string; category: string | null; site: string | null }
+
+// functions.invoke puts non-2xx bodies on error.context (see lib/fnError.ts).
+async function scanResult<R>(data: unknown, error: unknown): Promise<{ data: R | null; message: string | null }> {
+  if (!error) return { data: data as R, message: null }
+  const msg = await fnErrorMessage(error as Parameters<typeof fnErrorMessage>[0], data as { message?: string } | null, 'Something went wrong. Try again.')
+  return { data: null, message: msg }
 }
 
 const BUCKET = 'it-inventory'
@@ -127,6 +137,22 @@ export const itInventory = {
   stickerStock: () => supabase.from('it_consumables').select('*').eq('is_sticker_stock', true).is('deleted_at', null),
   adjustStock: (row: { account_id: string; location_id: string; consumable_id: string; delta: number; reason: 'restock' | 'used' | 'adjustment'; note?: string }) =>
     supabase.from('it_consumable_events').insert(row),
+
+  // ---- Sticker scans and problem reports (it-scan-public edge function) ----
+  // Public: only the asset's name, category and site come back. Signed-in
+  // callers are recorded as the reporter (invoke sends their session).
+  scanInfo: async (short: string, tag: string) => {
+    const { data, error } = await supabase.functions.invoke('it-scan-public', { body: { action: 'info', short, tag } })
+    return scanResult<{ ok: true; company: string | null; asset: PublicAsset }>(data, error)
+  },
+  reportProblem: async (row: { short: string; tag: string; description: string; name?: string; contact?: string }) => {
+    const { data, error } = await supabase.functions.invoke('it-scan-public', { body: { action: 'report', ...row } })
+    return scanResult<{ ok: true }>(data, error)
+  },
+  reportUnknownSticker: async (row: { tag: string; description: string; location_id: string }) => {
+    const { data, error } = await supabase.functions.invoke('it-scan-public', { body: { action: 'report_unknown', ...row } })
+    return scanResult<{ ok: true }>(data, error)
+  },
 
   // Photos: <account>/asset/<asset>/<uuid>.jpg in the private it-inventory bucket.
   uploadAssetPhoto: async (accountId: string, assetId: string, locationId: string, file: File) => {

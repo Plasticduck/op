@@ -273,6 +273,20 @@ private struct WebContainer: UIViewRepresentable {
             }
         }
 
+        /// Camera for scanning equipment stickers (and photo capture). Our own
+        /// site gets it without WebKit's extra per-page prompt; iOS still asks
+        /// once using NSCameraUsageDescription. Anything else gets the prompt.
+        func webView(
+            _ webView: WKWebView,
+            requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+            initiatedByFrame frame: WKFrameInfo,
+            type: WKMediaCaptureType,
+            decisionHandler: @escaping (WKPermissionDecision) -> Void
+        ) {
+            let ours = origin.protocol == "https" && origin.host.lowercased() == "operator.washlyfe.com"
+            decisionHandler(ours && type == .camera ? .grant : .prompt)
+        }
+
         /// `target=_blank` links normally request a new WKWebView; we don't
         /// have one to give them, so hand off to Safari instead of silently
         /// dropping the navigation.

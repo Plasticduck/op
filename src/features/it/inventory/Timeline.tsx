@@ -9,6 +9,7 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  MessageSquareWarning,
   Pencil,
   Plus,
   Printer,
@@ -43,6 +44,7 @@ const ACTIONS: Record<string, { label: string; icon: LucideIcon; tone?: 'ok' | '
   audited: { label: 'Audited', icon: ClipboardCheck, tone: 'ok' },
   deleted: { label: 'Archived', icon: Archive, tone: 'danger' },
   secret_revealed: { label: 'Secret field viewed', icon: Eye, tone: 'warn' },
+  problem_reported: { label: 'Problem reported', icon: MessageSquareWarning, tone: 'danger' },
 }
 
 const FILTERS: { key: string; label: string; actions: string[] | null }[] = [
@@ -50,6 +52,7 @@ const FILTERS: { key: string; label: string; actions: string[] | null }[] = [
   { key: 'status', label: 'Status and health', actions: ['status_changed', 'health_changed'] },
   { key: 'checkout', label: 'Check-outs', actions: ['checked_out', 'checked_in'] },
   { key: 'sticker', label: 'Stickers', actions: ['label_printed', 'tag_applied', 'tag_retired'] },
+  { key: 'problems', label: 'Problem reports', actions: ['problem_reported'] },
   { key: 'maintenance', label: 'Maintenance', actions: ['maintenance_logged'] },
   { key: 'edits', label: 'Edits', actions: ['created', 'imported', 'updated', 'deleted', 'secret_revealed'] },
 ]
@@ -123,6 +126,8 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
         return { summary: String(after.title ?? ''), changes: [] }
       case 'secret_revealed':
         return { summary: String(after.field ?? ''), changes: [] }
+      case 'problem_reported':
+        return { summary: after.description ? `"${String(after.description)}"` : null, changes: [] }
     }
     if (r.entity_type !== 'asset' && r.action !== 'updated') return { summary: null, changes: [] }
     const keys = Object.keys(after).filter((k) => k !== 'deleted_at' || r.action !== 'deleted')

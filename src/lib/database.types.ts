@@ -9753,6 +9753,7 @@ export type Database = {
           description: string | null
           equipment_id: string | null
           id: string
+          it_asset_id: string | null
           location_id: string
           priority: string
           requester_email: string | null
@@ -9769,6 +9770,7 @@ export type Database = {
           description?: string | null
           equipment_id?: string | null
           id?: string
+          it_asset_id?: string | null
           location_id: string
           priority?: string
           requester_email?: string | null
@@ -9785,6 +9787,7 @@ export type Database = {
           description?: string | null
           equipment_id?: string | null
           id?: string
+          it_asset_id?: string | null
           location_id?: string
           priority?: string
           requester_email?: string | null
@@ -9808,6 +9811,13 @@ export type Database = {
             columns: ["equipment_id"]
             isOneToOne: false
             referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_requests_it_asset_id_fkey"
+            columns: ["it_asset_id"]
+            isOneToOne: false
+            referencedRelation: "it_assets"
             referencedColumns: ["id"]
           },
           {

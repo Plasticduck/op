@@ -20,7 +20,6 @@
     "@supabase/supabase-js": "^2.106.0",
     "@tanstack/react-table": "^8.21.3",
     "@types/pg": "^8.20.0",
-    "barcode-detector": "3.2.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.2.1",
@@ -36,7 +35,8 @@
     "react-hook-form": "^7.76.0",
     "react-router-dom": "^7.15.1",
     "xlsx": "^0.18.5",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "zxing-wasm": "3.1.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

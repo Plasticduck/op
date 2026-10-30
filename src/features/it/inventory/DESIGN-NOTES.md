@@ -54,6 +54,7 @@ and put it in `src/components/`, not in this folder. Spec: `docs/it-inventory/SP
 | QR | `data/QrCodeImage` |
 | PDF preview | `data/PdfPagePreview` (added for stickers): renders the real generated PDF with pdf.js, so previews match print |
 | Barcodes, labels | `lib/barcode/code128.ts`, `lib/labels/layout.ts` + `labelPdf.ts` (shared, not module-only) |
+| Camera scanner | `components/scan/BarcodeScanner` (added for scanning): viewfinder from tokens, torch, beep / buzz (`lib/scan/feedback`), continuous mode for audits and bulk |
 | Photos | `data/AttachmentViewer` |
 | Icons | `lucide-react` only, through this module's `icons.ts` map |
 
