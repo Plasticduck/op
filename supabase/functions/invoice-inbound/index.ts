@@ -147,6 +147,28 @@ function json(body: unknown, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
+// What a file really is, from its first bytes. Some senders label a PDF
+// "application/octet-stream" and name it without ".pdf" (e.g.
+// "20261008_2840140252_317.00"), which used to get it skipped as unreadable.
+function sniffType(bytes: Uint8Array): string | null {
+  const head = String.fromCharCode(...bytes.subarray(0, 1024))
+  if (head.includes('%PDF-')) return 'application/pdf'
+  if (bytes[0] === 0x89 && head.slice(1, 4) === 'PNG') return 'image/png'
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  if (head.startsWith('GIF8')) return 'image/gif'
+  if (head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') return 'image/webp'
+  return null
+}
+const EXT: Record<string, string> = {
+  'application/pdf': '.pdf', 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp',
+}
+
+// An attachment's name, declared type and base64 content, across providers' field names.
+const nameOf = (a: Any, idx: number) =>
+  String(a.filename ?? a.name ?? a.fileName ?? a.Name ?? `attachment_${idx}`).replace(/[^\w.\-]+/g, '_')
+const typeOf = (a: Any) => String(a.contentType ?? a.content_type ?? a.type ?? a.ContentType ?? 'application/octet-stream')
+const contentOf = (a: Any): unknown => a.content ?? a.content_base64 ?? a.contentBase64 ?? a.contentBytes ?? a.ContentBytes ?? a.data
+
 // Pull an email address + display name out of the many shapes providers use.
 function parseAddress(v: Any): { email: string; name: string } {
   if (!v) return { email: '', name: '' }
@@ -291,9 +313,9 @@ Deno.serve(async (req) => {
 
   for (let idx = 0; idx < atts.length; idx++) {
     const a = atts[idx]
-    const name = String(a.filename ?? a.name ?? a.fileName ?? a.Name ?? `attachment_${idx}`).replace(/[^\w.\-]+/g, '_')
-    const ctype = String(a.contentType ?? a.content_type ?? a.type ?? a.ContentType ?? 'application/octet-stream')
-    const b64raw = a.content ?? a.content_base64 ?? a.contentBase64 ?? a.contentBytes ?? a.ContentBytes ?? a.data
+    const name = nameOf(a, idx)
+    let ctype = typeOf(a)
+    const b64raw = contentOf(a)
     const attKey = `${idx}:${name}`
     if (seenKeys.has(attKey)) { skipped.push({ file: name, reason: 'already_filed' }); continue }
     if (!b64raw || typeof b64raw !== 'string') { skipped.push({ file: name, reason: 'no_content' }); continue }
@@ -304,6 +326,13 @@ Deno.serve(async (req) => {
       bytes = new Uint8Array(bin.length)
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
     } catch { skipped.push({ file: name, reason: 'bad_base64' }); continue }
+
+    // Trust the bytes over a generic or wrong label, and give the stored copy
+    // the right extension so it opens.
+    const sniffed = sniffType(bytes)
+    if (sniffed && !ctype.includes('pdf') && !ctype.startsWith('image/')) ctype = sniffed
+    const ext = EXT[ctype]
+    const fileName = ext && !name.toLowerCase().endsWith(ext) && !(ext === '.jpg' && /\.jpe?g$/i.test(name)) ? name + ext : name
 
     const isPdf = ctype.includes('pdf')
     const isImg = ctype.startsWith('image/')
@@ -330,7 +359,7 @@ Deno.serve(async (req) => {
     vendorName = applyAlias(vendorName)
 
     const invoiceId = crypto.randomUUID()
-    const path = `${accountId}/${invoiceId}/${name}`
+    const path = `${accountId}/${invoiceId}/${fileName}`
     const { error: upErr } = await svc.storage.from('ops-invoices').upload(path, bytes, { contentType: ctype, upsert: true })
     if (upErr) { skipped.push({ file: name, reason: 'upload_failed' }); continue }
 
@@ -355,7 +384,7 @@ Deno.serve(async (req) => {
       email_subject: subject || null,
       email_message_id: messageId,
       email_attachment_key: attKey,
-      file_name: name,
+      file_name: fileName,
       file_type: ctype,
       file_path: path,
       duplicate_of: duplicateOf,
@@ -370,6 +399,42 @@ Deno.serve(async (req) => {
     }
     filed.push(invoiceId)
     seenKeys.add(attKey)
+  }
+
+  // An email with files that filed nothing (every file unreadable, or read as
+  // "not an invoice"): file it anyway with its first file, so a person decides
+  // instead of the email quietly vanishing. Once per message.
+  if (atts.length > 0 && filed.length === 0 && !skipped.some((s) => s.reason === 'already_filed')
+      && !(messageId && seenKeys.has('__fallback__'))) {
+    const invoiceId = crypto.randomUUID()
+    const idx = atts.findIndex((a: Any) => typeof contentOf(a) === 'string')
+    let file: { path: string; name: string; type: string } | null = null
+    if (idx >= 0) {
+      try {
+        const bin = atob(String(contentOf(atts[idx])).replace(/^data:[^;]+;base64,/, ''))
+        const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0))
+        const fname = nameOf(atts[idx], idx)
+        const ftype = typeOf(atts[idx])
+        const path = `${accountId}/${invoiceId}/${fname}`
+        const { error: upErr } = await svc.storage.from('ops-invoices').upload(path, bytes, { contentType: ftype, upsert: true })
+        if (!upErr) file = { path, name: fname, type: ftype }
+      } catch { /* file it without the attachment */ }
+    }
+    let vendorName = applyAlias(emailVendor)
+    if (anthropicKey && vendors.length) {
+      const matched = await matchVendor(anthropicKey, model, from, subject, vendors)
+      if (matched) vendorName = applyAlias(matched)
+    }
+    const { error: insErr } = await svc.from('ops_invoices').insert({
+      id: invoiceId, account_id: accountId, vendor_name: vendorName, amount: emailAmount,
+      invoice_date: null, invoice_number: null, status: 'unassigned',
+      email_from: from.email || null, email_subject: subject || null,
+      email_message_id: messageId, email_attachment_key: messageId ? '__fallback__' : null,
+      file_name: file?.name ?? null, file_type: file?.type ?? null, file_path: file?.path ?? null, duplicate_of: null,
+      submitted_by_name: 'Emailed in',
+    })
+    if (!insErr) filed.push(invoiceId)
+    else if (file) await svc.storage.from('ops-invoices').remove([file.path]).catch(() => {})
   }
 
   // Body-only email (no attachments): keep the legacy single metadata row so a

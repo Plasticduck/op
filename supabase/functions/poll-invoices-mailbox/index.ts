@@ -6,6 +6,11 @@
 // re-imported. A message that fails is left unread to retry next run rather than
 // aborting the batch. Capped per run; the next run picks up the rest.
 //
+// The response lists what happened to each message (invoices filed, files
+// skipped and why), so a quiet "filed nothing" shows in net._http_response.
+// Body { replaySince: ISO time } re-reads messages received since then, read or
+// not (invoice-inbound files each attachment once, so it's safe to repeat).
+//
 // Secrets: GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET,
 //   INVOICE_MAILBOX (e.g. mwinvoices@washlyfe.com). Reuses INVOICE_INBOUND_SECRET
 //   and SUPABASE_URL (for the webhook URL).
@@ -69,8 +74,16 @@ Deno.serve(async (req) => {
   }
   const gh = { Authorization: `Bearer ${token}` }
 
+  let reqBody: { replaySince?: string } = {}
+  try { reqBody = await req.json() } catch { /* cron sends {} */ }
+  const since = reqBody.replaySince && !Number.isNaN(Date.parse(reqBody.replaySince))
+    ? new Date(reqBody.replaySince).toISOString().replace(/\.\d{3}Z$/, 'Z')
+    : null
+  const filter = since
+    ? `hasAttachments eq true and receivedDateTime ge ${since}`
+    : 'isRead eq false and hasAttachments eq true'
   const listUrl = `${GRAPH}/users/${mb}/mailFolders/inbox/messages` +
-    `?$filter=${encodeURIComponent('isRead eq false and hasAttachments eq true')}` +
+    `?$filter=${encodeURIComponent(filter)}` +
     `&$top=${MAX_PER_RUN}&$select=id,subject,from,internetMessageId,bodyPreview`
   const listRes = await fetch(listUrl, { headers: gh })
   // deno-lint-ignore no-explicit-any
@@ -81,6 +94,7 @@ Deno.serve(async (req) => {
   let filed = 0
   let failed = 0
   const errors: string[] = []
+  const results: unknown[] = []
 
   for (const m of messages) {
     const id = m.id as string
@@ -101,7 +115,7 @@ Deno.serve(async (req) => {
       // non-PDF inline parts (signature images, etc.) are dropped as noise.
       const attachments = (attJson.value ?? [])
         // deno-lint-ignore no-explicit-any
-        .filter((a: any) => a.contentBytes && (a.contentType === 'application/pdf' || !a.isInline))
+        .filter((a: any) => a.contentBytes && (a.contentType === 'application/pdf' || /\.pdf$/i.test(a.name ?? '') || !a.isInline))
         // deno-lint-ignore no-explicit-any
         .map((a: any) => ({ name: a.name, contentType: a.contentType, contentBytes: a.contentBytes }))
 
@@ -123,6 +137,14 @@ Deno.serve(async (req) => {
       })
       // deno-lint-ignore no-explicit-any
       const postJson: any = await postRes.json().catch(() => ({}))
+      results.push({
+        subject: payload.subject,
+        attachments: (attJson.value ?? []).length,
+        sent: attachments.length,
+        filed: postJson.filed ?? 0,
+        skipped: postJson.skipped ?? [],
+        ...(postJson.error ? { error: postJson.error } : {}),
+      })
       if (!postRes.ok || postJson.error) {
         failed++
         errors.push(`${id}: ${postJson.error ?? postRes.status}`)
@@ -142,5 +164,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ found: messages.length, filed, failed, errors: errors.slice(0, 5) }, 200)
+  return json({ found: messages.length, filed, failed, errors: errors.slice(0, 5), results }, 200)
 })
