@@ -8,6 +8,7 @@ import { AssetList } from './AssetList'
 import { AuditRunPage } from './AuditRunPage'
 import { AuditsPage } from './AuditsPage'
 import { ImportPage } from './ImportPage'
+import { RepairsPage } from './RepairsPage'
 import { OverviewPage } from './OverviewPage'
 import { ScanSheet } from './ScanSheet'
 import { SettingsPage } from './SettingsPage'
@@ -17,8 +18,8 @@ import { SuppliesPage } from './SuppliesPage'
 
 // IT Inventory (docs/it-inventory/SPEC.md). /app/it-inventory is the
 // equipment list; /overview, /audits, /subscriptions and /supplies are its
-// sibling screens; /audits/:runId is one audit; /stickers, /import and
-// /settings are the tools; /:id is one asset. On phones a Scan button floats
+// sibling screens; /audits/:runId is one audit; /stickers, /import,
+// /repairs and /settings are the tools; /:id is one asset. On phones a Scan button floats
 // on every screen of the module, one tap away, except during an audit (which
 // has its own scanner).
 export default function ItInventoryPage() {
@@ -31,7 +32,7 @@ export default function ItInventoryPage() {
   }, [])
   const closeScan = useCallback(() => setScanning(false), [])
 
-  const tool = pathname.match(/\/it-inventory\/(stickers|import|settings|overview|subscriptions|supplies|audits)\/?$/)?.[1]
+  const tool = pathname.match(/\/it-inventory\/(stickers|import|settings|overview|subscriptions|supplies|audits|repairs)\/?$/)?.[1]
   // Asset pages hide the bottom nav, so the button can sit lower there.
   const detail = !!id && !tool
 
@@ -44,6 +45,7 @@ export default function ItInventoryPage() {
               : tool === 'subscriptions' ? <SubscriptionsPage />
                 : tool === 'supplies' ? <SuppliesPage />
                   : tool === 'audits' ? <AuditsPage />
+                    : tool === 'repairs' ? <RepairsPage />
                     : runId ? <AuditRunPage key={runId} runId={runId} />
                       : id ? <AssetDetail key={id} id={id} /> : <AssetList onScan={openScan} />}
       {!runId && <button

@@ -112,8 +112,8 @@ monitor; see above).
 | Slice | Scope | Status |
 |---|---|---|
 | G | Physical audits, inside IT Inventory (Kevan: not in the checklist list) | done 2026-10-30. Audits tab: each site with how much is overdue or due, start / continue, past audits. The walk: continuous scanning by area in walk order, "you're in" area (an item found elsewhere moves there at the end), sticker readable / faded / missing, tap an item for missing / damaged, note, photo and fields marked "editable during audit"; another site's sticker offers "Move it here" to people who manage both; unknown stickers are noted. Finishing needs every item resolved ("mark the rest missing"), then sets last / next audit dates per category interval, sticker condition (faded or missing goes to the print queue), area and fields, with an "audited" Timeline row per item. The report offers Mark lost, Change status, Print stickers and Add it. Settings > Audits: interval, warning days, per-kind overrides. Not done: AI photo checks on audit photos, and the overdue signal on the dashboard scorecard (it would change site grades) |
-| H | Repairs: maintenance records and types, back to the prior status when done, downtime, cost rollups | next |
-| I | Accessories (count-based, checked out to people or devices) | |
+| H | Repairs: maintenance records and types, back to the prior status when done, downtime, cost rollups | done 2026-10-30. "Log repair" on the asset page and a Repairs tab (open jobs with Mark done and Edit, finished jobs, total spent and downtime). Logging can take the item out of service (Out for Repair now, its earlier status back when the job is marked done, downtime counted); past jobs can be logged as done with hours out. Repairs and service page (from the Overview tile and the Equipment menu): open now, spent in 90 days and this year, downtime, filters, CSV export, cost by site and by kind of gear over 12 months. Timeline shows logged / done / edited / removed jobs |
+| I | Accessories (count-based, checked out to people or devices) | next |
 | J | Photo to form (make, model, serial from a label photo) | |
 | K | Company logo on stickers, more label sizes | |
 
@@ -127,9 +127,19 @@ note while the audit is open). One open audit per site; a second person who
 starts it joins the same one. Audit photos go to `<account>/audit/` in the
 `it-inventory` bucket, which any account member may upload to.
 
+Repairs: `it_log_repair` and `it_finish_repair` (security invoker, so RLS
+decides; managers and admins only) keep the status the item had on the job
+(`prior_status_id`) and when it went out (`out_of_service_at`). A second job
+while it's already out copies the first job's earlier status, and the item
+comes back only when the last open job is done, and only if it's still out
+of service (someone retiring it in the meantime wins). Downtime runs to now,
+or to the end of the day it was done if that date is in the past (Central).
+Spend counts finished jobs on the day they were done; estimates on open jobs
+don't count.
+
 ## Testing
 
-`supabase/tests/it_inventory_rls.sql` (106 checks) impersonates real users of
+`supabase/tests/it_inventory_rls.sql` (118 checks) impersonates real users of
 the demo account and another account inside a rolled-back transaction:
 cross-account and cross-site isolation for owner / manager / employee / anon,
 immutable activity log, tag uniqueness and retirement, serial / MAC dedupe,
@@ -154,7 +164,12 @@ site's sticker shows only that site's name to someone who can't see it,
 unknown stickers are noted, it won't finish with unchecked items, rows can't
 be re-pointed, finishing sets dates / sticker / area / only audit-editable
 fields and writes Timeline rows for found and missing items, a finished audit
-can't be changed, other companies see nothing), and reminder
+can't be changed, other companies see nothing), repairs (out of service sets
+Out for Repair and keeps the old status, a second open job keeps the original,
+finishing one of two doesn't bring it back early, finishing records date /
+cost / downtime and restores the status, no finishing twice, a past job
+changes nothing, Timeline rows, no repairs at other sites or by crew, no
+finishing before starting), and reminder
 candidates (warranty, cancel-by date, low stock; nothing from other accounts;
 not readable by app roles).
 
@@ -213,4 +228,5 @@ truncated (shrunk to fit), QR rows overlap slightly so printers leave no seams.
 | 0192_it_overview_health | `it_overview` (dashboard numbers, invoker); `it_settings.reminders_enabled`; supplies `counted_at` / `low_since`; health events change the asset's badge; `it_device_links` + `it_link_device` / `it_unlink_device` / `it_heartbeat`; `it_health_sweep` (cron every 2 min) and a daily 90-day prune; `it_reminder_candidates` (service role only) |
 | 0193_it_reminders_cron | `it-reminders` at 8 AM Central |
 | 0195_it_audits | `it_audit_runs` / `it_audit_items` with RLS and a guard trigger; `it_start_audit`, `it_audit_scan`, `it_complete_audit`, `it_cancel_audit`; audit photo uploads for anyone in the account |
+| 0196_it_repairs | `it_maintenances.prior_status_id` / `out_of_service_at`; `it_log_repair`, `it_finish_repair` |
 | 0194_it_tracker_not_monitor | removes the device heartbeats (functions, table, sweep cron); `it_overview` counts "not working" reports and each site's overdue audits |

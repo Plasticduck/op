@@ -843,6 +843,81 @@ do $$ begin
 end $$;
 reset role;
 
+-- ---- Repairs (Phase 2) -------------------------------------------------------------------------
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  tablet uuid := current_setting('t.tablet')::uuid;
+  fix    uuid := (select id from public.it_maintenance_types where account_id = current_setting('t.a')::uuid and name = 'Repair');
+  before uuid := (select status_label_id from public.it_assets where id = current_setting('t.tablet')::uuid);
+  m1 uuid; m2 uuid; m3 uuid;
+  r jsonb;
+  st text;
+begin
+  m1 := public.it_log_repair(tablet, fix, 'Replace screen', null, false, 120, null, null, null, true, null);
+  select lower(s.name) into st from public.it_assets a join public.it_status_labels s on s.id = a.status_label_id where a.id = tablet;
+  if st <> 'out for repair' then
+    raise exception 'FAIL 120: logging a repair that takes it out of service did not mark it Out for Repair (%)', st;
+  end if;
+  if (select prior_status_id from public.it_maintenances where id = m1) is distinct from before then
+    raise exception 'FAIL 121: the repair did not keep the status it had';
+  end if;
+  -- A second job while it's out remembers the original status, not Out for Repair.
+  m2 := public.it_log_repair(tablet, fix, 'Recalibrate touch', null, false, null, null, null, null, true, null);
+  if (select prior_status_id from public.it_maintenances where id = m2) is distinct from before then
+    raise exception 'FAIL 122: a second repair lost the original status';
+  end if;
+  r := public.it_finish_repair(m1, null, 150, 'New screen in');
+  if r ->> 'restored' is not null or (select status_label_id from public.it_assets where id = tablet) = before then
+    raise exception 'FAIL 123: finishing one of two open repairs brought it back early';
+  end if;
+  if (select cost <> 150 or downtime_minutes is null or completion_date <> current_date from public.it_maintenances where id = m1) then
+    raise exception 'FAIL 124: finishing did not record the date, final cost and downtime';
+  end if;
+  r := public.it_finish_repair(m2);
+  if r ->> 'restored' is null or (select status_label_id from public.it_assets where id = tablet) is distinct from before then
+    raise exception 'FAIL 125: finishing the last repair did not put it back to its earlier status';
+  end if;
+  begin
+    perform public.it_finish_repair(m1);
+    raise exception 'FAIL 126: a repair was finished twice';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  -- A past repair, logged as done, changes nothing about the item.
+  m3 := public.it_log_repair(tablet, fix, 'Firmware update', null, false, 0, current_date - 10, current_date - 9, 30, true, null);
+  if (select status_label_id from public.it_assets where id = tablet) is distinct from before
+     or (select downtime_minutes from public.it_maintenances where id = m3) <> 30 then
+    raise exception 'FAIL 127: a repair logged as already done changed the item or lost its downtime';
+  end if;
+  if (select count(*) from public.it_activity_log where asset_id = tablet and action = 'maintenance_logged') < 3 then
+    raise exception 'FAIL 128: repairs are not on the item''s Timeline';
+  end if;
+  begin
+    perform public.it_log_repair(current_setting('t.asset_out')::uuid, fix, 'x', null, false, null, null, null, null, false, null);
+    raise exception 'FAIL 129: a manager logged a repair at another site';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  begin
+    perform public.it_log_repair(tablet, fix, 'x', null, false, null, current_date, current_date - 1, null, false, null);
+    raise exception 'FAIL 130: a repair finished before it started';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+end $$;
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  perform public.it_log_repair(current_setting('t.tablet')::uuid, null, 'x', null, false, null, null, null, null, true, null);
+  raise exception 'FAIL 131: crew logged a repair';
+exception when others then
+  if sqlerrm like 'FAIL%' then raise; end if;
+end $$;
+reset role;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;

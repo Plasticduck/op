@@ -77,6 +77,16 @@ export type ItOverview = {
   repair_spend_90d: number
 }
 
+export type ItMaintenanceType = T['it_maintenance_types']['Row']
+export type ItRepair = T['it_maintenances']['Row']
+// With the item it's for (null if it's at a site you can't see).
+export type ItRepairRow = ItRepair & { asset: Pick<ItAsset, 'id' | 'asset_tag' | 'name' | 'category_id' | 'location_id'> | null }
+const REPAIR_SELECT = '*, asset:it_assets(id, asset_tag, name, category_id, location_id)'
+export type RepairInput = {
+  assetId: string; typeId: string | null; title: string; supplierId: string | null; isWarranty: boolean; cost: number | null
+  start: string | null; completed: string | null; downtimeMinutes: number | null; outOfService: boolean; notes: string | null
+}
+
 export type ItAuditRun = T['it_audit_runs']['Row']
 export type AuditSummary = {
   total: number; found: number; missing: number; damaged: number; wrong_location: number
@@ -381,6 +391,30 @@ export const itInventory = {
   removeConsumable: (id: string) => supabase.from('it_consumables').update({ deleted_at: new Date().toISOString() }).eq('id', id),
   // A count that matches what's on record still counts as counted.
   markCounted: (id: string) => supabase.from('it_consumables').update({ counted_at: new Date().toISOString() }).eq('id', id),
+
+  // ---- Repairs and service (it_maintenances) ----
+  maintenanceTypes: () => supabase.from('it_maintenance_types').select('*').is('deleted_at', null).order('sort_order'),
+  repairs: () =>
+    fetchAll<ItRepairRow>((f, t) =>
+      supabase.from('it_maintenances').select(REPAIR_SELECT).is('deleted_at', null).order('start_date', { ascending: false }).range(f, t)),
+  repairsForAsset: (assetId: string) =>
+    supabase.from('it_maintenances').select(REPAIR_SELECT).eq('asset_id', assetId).is('deleted_at', null)
+      .order('start_date', { ascending: false }),
+  // Out of service = Out for Repair now, back to its status when it's done.
+  logRepair: (r: RepairInput) =>
+    supabase.rpc('it_log_repair', {
+      p_asset: r.assetId, p_type: r.typeId as string, p_title: r.title, p_supplier: r.supplierId ?? undefined,
+      p_is_warranty: r.isWarranty, p_cost: r.cost ?? undefined, p_start: r.start ?? undefined, p_completed: r.completed ?? undefined,
+      p_downtime_minutes: r.downtimeMinutes ?? undefined, p_out_of_service: r.outOfService, p_notes: r.notes ?? undefined,
+    }),
+  finishRepair: async (id: string, completed: string | null, cost: number | null, note: string | null) => {
+    const { data, error } = await supabase.rpc('it_finish_repair', {
+      p_id: id, p_completed: completed ?? undefined, p_cost: cost ?? undefined, p_note: note ?? undefined,
+    })
+    return { data: (data as { downtime_minutes: number | null; restored: string | null } | null) ?? null, error: error?.message ?? null }
+  },
+  updateRepair: (id: string, patch: T['it_maintenances']['Update']) => supabase.from('it_maintenances').update(patch).eq('id', id),
+  removeRepair: (id: string) => supabase.from('it_maintenances').update({ deleted_at: new Date().toISOString() }).eq('id', id),
 
   // ---- Audits (walk a site, scan every sticker) ----
   auditRuns: () =>

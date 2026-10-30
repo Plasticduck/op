@@ -107,7 +107,7 @@ export function OverviewPage() {
                 hint: data.spend.unpriced ? `${data.spend.unpriced} without a monthly price` : undefined,
                 to: `/app/it-inventory/subscriptions?${new URLSearchParams({ site })}`,
               },
-              { label: 'Repairs, last 90 days', value: currency(data.repair_spend_90d), hint: 'From maintenance records' },
+              { label: 'Repairs, last 90 days', value: currency(data.repair_spend_90d), hint: 'Repairs and service', to: `/app/it-inventory/repairs?${new URLSearchParams({ site })}` },
             ]}
           />
 

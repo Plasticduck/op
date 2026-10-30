@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Sticker,
   Trash2,
+  Wrench,
   X,
 } from 'lucide-react'
 import { QrCodeImage } from '@/components/data/QrCodeImage'
@@ -49,6 +50,7 @@ import {
 } from './format'
 import { CoveredBy, WorkingSection } from './WorkingPanel'
 import { PrintDialog } from './PrintDialog'
+import { AssetRepairs, RepairDialog } from './Repairs'
 import { ReportProblemDialog } from './ReportProblem'
 import { Timeline } from './Timeline'
 import { useItRefs } from './useItRefs'
@@ -64,7 +66,7 @@ const STICKER_STATES = [
 // working, is it under warranty, and what happened to it (Timeline). Status,
 // check-out and "not working" are separate badges so they never get confused.
 
-type Tab = 'overview' | 'timeline'
+type Tab = 'overview' | 'repairs' | 'timeline'
 
 export function AssetDetail({ id }: { id: string }) {
   const navigate = useNavigate()
@@ -80,7 +82,7 @@ export function AssetDetail({ id }: { id: string }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [form, setForm] = useState<AssetFormMode | null>(null)
   const [menu, setMenu] = useState<null | 'more'>(null)
-  const [dialog, setDialog] = useState<null | 'checkout' | 'checkin' | 'status' | 'retire' | 'move'>(null)
+  const [dialog, setDialog] = useState<null | 'checkout' | 'checkin' | 'status' | 'retire' | 'move' | 'repair'>(null)
   const [out, setOut] = useState<ItAssignment | null>(null)
   // Secret custom fields an admin has revealed (null = none saved). Each reveal is logged.
   const [revealed, setRevealed] = useState<Record<string, string | null>>({})
@@ -91,7 +93,7 @@ export function AssetDetail({ id }: { id: string }) {
   const [flash, setFlash] = useState<string | null>(routeState?.flash ?? null)
   const [error, setError] = useState<string | null>(null)
   const photoInput = useRef<HTMLInputElement>(null)
-  const tab: Tab = params.get('tab') === 'timeline' ? 'timeline' : 'overview'
+  const tab: Tab = params.get('tab') === 'timeline' ? 'timeline' : params.get('tab') === 'repairs' ? 'repairs' : 'overview'
 
   const load = useCallback(async () => {
     const { data, error: err } = await itInventory.getAsset(id)
@@ -252,6 +254,9 @@ export function AssetDetail({ id }: { id: string }) {
               <Button variant="secondary" size="sm" onClick={() => setDialog('status')}><RefreshCw className="size-3.5" /> Change status</Button>
             )}
             {canEdit && (
+              <Button variant="secondary" size="sm" onClick={() => setDialog('repair')}><Wrench className="size-3.5" /> Log repair</Button>
+            )}
+            {canEdit && (
               <Button variant="secondary" size="sm" onClick={() => setPrinting(true)}><Printer className="size-3.5" /> Print sticker</Button>
             )}
             <Button variant="secondary" size="sm" onClick={() => setReporting(true)}>
@@ -262,7 +267,7 @@ export function AssetDetail({ id }: { id: string }) {
 
         {/* Tabs */}
         <div className="flex border-b border-border bg-card">
-          {(['overview', 'timeline'] as Tab[]).map((t) => (
+          {(['overview', 'repairs', 'timeline'] as Tab[]).map((t) => (
             <button key={t} type="button" onClick={() => setTab(t)}
               className={cn(
                 'flex-1 border-b-2 px-4 py-2.5 text-sm font-medium capitalize transition',
@@ -432,6 +437,9 @@ export function AssetDetail({ id }: { id: string }) {
                 </Section>
               )}
             </div>
+          ) : tab === 'repairs' ? (
+            <AssetRepairs asset={asset} refs={refs} canEdit={canEdit} onRefsChanged={() => void reloadRefs()}
+              onChanged={(m) => { setFlash(m); void load() }} />
           ) : (
             <Timeline asset={asset} refs={refs} siteName={siteName} />
           )}
@@ -451,6 +459,10 @@ export function AssetDetail({ id }: { id: string }) {
         <StatusDialog refs={refs} assets={[asset]} onClose={() => setDialog(null)}
           initialStatusId={dialog === 'retire' ? refs.statuses.find((s) => s.type === 'archived')?.id : undefined}
           onDone={(m) => { setDialog(null); setFlash(m); void load() }} />
+      )}
+      {dialog === 'repair' && (
+        <RepairDialog refs={refs} asset={asset} onClose={() => setDialog(null)} onRefsChanged={() => void reloadRefs()}
+          onSaved={(m) => { setDialog(null); setFlash(m); setTab('repairs'); void load() }} />
       )}
       {dialog === 'move' && (
         <MoveDialog refs={refs} assets={[asset]} onClose={() => setDialog(null)}

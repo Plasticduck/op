@@ -24,7 +24,7 @@ import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItActivity, type ItAsset } from '@/lib/queries/itInventory'
 import type { ItRefs } from './useItRefs'
-import { fmtDay, healthBadge, notWorking } from './format'
+import { fmtDay, fmtDowntime, healthBadge, notWorking } from './format'
 
 // An asset's history, read from it_activity_log (written by database triggers,
 // so nothing that changed the asset is missing from it).
@@ -40,7 +40,7 @@ const ACTIONS: Record<string, { label: string; icon: LucideIcon; tone?: 'ok' | '
   label_printed: { label: 'Sticker printed', icon: Printer },
   tag_applied: { label: 'Sticker tag applied', icon: Tag },
   tag_retired: { label: 'Tag retired', icon: Archive },
-  maintenance_logged: { label: 'Maintenance logged', icon: Wrench, tone: 'warn' },
+  maintenance_logged: { label: 'Repair or service logged', icon: Wrench, tone: 'warn' },
   audited: { label: 'Audited', icon: ClipboardCheck, tone: 'ok' },
   deleted: { label: 'Archived', icon: Archive, tone: 'danger' },
   secret_revealed: { label: 'Secret field viewed', icon: Eye, tone: 'warn' },
@@ -66,6 +66,8 @@ const FIELD_LABELS: Record<string, string> = {
   next_audit_date: 'Next audit', last_audit_at: 'Last audit', deleted_at: 'Archived', custom_values: 'Custom fields',
   monitoring_enabled: 'Monitoring', monitor_method: 'Monitor method', monitor_target: 'Monitor target',
   status: 'Tag status', secret_field: 'Secret field', value: 'Value',
+  title: 'What', cost: 'Cost', completion_date: 'Done on', downtime_minutes: 'Out of service', start_date: 'Started',
+  maintenance_type_id: 'Kind', is_warranty: 'Warranty',
 }
 
 export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRefs; siteName: Map<string, string> }) {
@@ -94,7 +96,10 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
       case 'model_id': return refs.model.get(s)?.name ?? 'a model'
       case 'supplier_id': return refs.supplier.get(s)?.name ?? 'a supplier'
       case 'parent_asset_id': return 'another item'
-      case 'purchase_cost': return currency(Number(v))
+      case 'purchase_cost':
+      case 'cost': return currency(Number(v))
+      case 'downtime_minutes': return fmtDowntime(Number(v)) ?? s
+      case 'maintenance_type_id': return refs.repairTypes.find((t) => t.id === s)?.name ?? 'a kind'
       case 'image_path': return 'new photo'
       case 'custom_values': return 'updated'
       case 'deleted_at': return 'yes'
@@ -123,6 +128,15 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
         summary: after.caption ? String(after.caption) : null,
         changes: [],
         photo: r.action === 'created' && after.storage_path ? String(after.storage_path) : undefined,
+      }
+    }
+    if (r.entity_type === 'maintenance' && r.action !== 'maintenance_logged') {
+      const keys = Object.keys(after).filter((k) => !['notes', 'prior_status_id', 'out_of_service_at', 'deleted_at'].includes(k))
+      return {
+        label: r.action === 'deleted' || after.deleted_at ? 'Repair removed' : after.completion_date ? 'Repair or service done' : 'Repair edited',
+        tone: after.completion_date ? 'ok' : undefined,
+        summary: null,
+        changes: r.action === 'deleted' || after.deleted_at ? [] : keys.map((k) => ({ label: FIELD_LABELS[k] ?? k.replace(/_/g, ' '), from: fmtVal(k, before[k]), to: fmtVal(k, after[k]) })),
       }
     }
     switch (r.action) {

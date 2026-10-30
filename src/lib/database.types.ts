@@ -5063,6 +5063,8 @@ export type Database = {
           location_id: string
           maintenance_type_id: string | null
           notes: string | null
+          out_of_service_at: string | null
+          prior_status_id: string | null
           start_date: string
           supplier_id: string | null
           title: string
@@ -5082,6 +5084,8 @@ export type Database = {
           location_id: string
           maintenance_type_id?: string | null
           notes?: string | null
+          out_of_service_at?: string | null
+          prior_status_id?: string | null
           start_date?: string
           supplier_id?: string | null
           title: string
@@ -5101,6 +5105,8 @@ export type Database = {
           location_id?: string
           maintenance_type_id?: string | null
           notes?: string | null
+          out_of_service_at?: string | null
+          prior_status_id?: string | null
           start_date?: string
           supplier_id?: string | null
           title?: string
@@ -5140,6 +5146,13 @@ export type Database = {
             columns: ["maintenance_type_id"]
             isOneToOne: false
             referencedRelation: "it_maintenance_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_maintenances_prior_status_id_fkey"
+            columns: ["prior_status_id"]
+            isOneToOne: false
+            referencedRelation: "it_status_labels"
             referencedColumns: ["id"]
           },
           {
@@ -10389,6 +10402,15 @@ export type Database = {
         }[]
       }
       it_find_site: { Args: { p_name: string }; Returns: string }
+      it_finish_repair: {
+        Args: {
+          p_completed?: string
+          p_cost?: number
+          p_id: string
+          p_note?: string
+        }
+        Returns: Json
+      }
       it_generate_tags: {
         Args: { p_count: number; p_location?: string }
         Returns: {
@@ -10428,6 +10450,22 @@ export type Database = {
       it_is_admin: { Args: never; Returns: boolean }
       it_is_staff: { Args: never; Returns: boolean }
       it_log_import: { Args: { p_summary: Json }; Returns: string }
+      it_log_repair: {
+        Args: {
+          p_asset: string
+          p_completed?: string
+          p_cost?: number
+          p_downtime_minutes?: number
+          p_is_warranty?: boolean
+          p_notes?: string
+          p_out_of_service?: boolean
+          p_start?: string
+          p_supplier?: string
+          p_title: string
+          p_type: string
+        }
+        Returns: string
+      }
       it_move: {
         Args: {
           p_area?: string

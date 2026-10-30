@@ -25,6 +25,7 @@ import {
   Sticker,
   Trash2,
   Upload,
+  Wrench,
   X,
 } from 'lucide-react'
 import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
@@ -289,6 +290,7 @@ export function AssetList({ onScan }: { onScan: () => void }) {
                 </button>
                 {menu === 'more' && (
                   <Menu onClose={() => setMenu(null)} align="right">
+                    <MenuButton icon={Wrench} onClick={() => navigate('/app/it-inventory/repairs')}>Repairs and service</MenuButton>
                     <MenuButton icon={Upload} onClick={() => navigate('/app/it-inventory/import')}>Import from a spreadsheet</MenuButton>
                     <MenuButton icon={Settings} onClick={() => navigate('/app/it-inventory/settings')}>Settings and custom fields</MenuButton>
                   </Menu>

@@ -31,6 +31,17 @@ export function healthBadge(state: string | null | undefined): { label: string; 
 }
 export const notWorking = (state: string | null | undefined) => state === 'offline' || state === 'degraded'
 
+// "45 min", "3 hr 10 min", "2 days 4 hr".
+export function fmtDowntime(minutes: number | null | undefined): string | null {
+  if (minutes == null) return null
+  if (minutes < 60) return `${minutes} min`
+  const d = Math.floor(minutes / 1440)
+  const h = Math.floor((minutes % 1440) / 60)
+  const m = minutes % 60
+  if (d) return `${d} day${d === 1 ? '' : 's'}${h ? ` ${h} hr` : ''}`
+  return `${h} hr${m ? ` ${m} min` : ''}`
+}
+
 export const WARRANTY_WINDOW_DAYS = 60
 
 export function warrantyState(end: string | null): { label: string; tone: Tone; days: number | null } {
