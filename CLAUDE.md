@@ -113,7 +113,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0198.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0199.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
@@ -204,8 +204,8 @@ or work by URL but stay hidden.
 <name>`. Add `--no-verify-jwt` for functions that are hit without a Supabase
 session or do their own auth: `tips-public`, `enter-demo`, `work-request-portal`, `it-scan-public`,
 `public-schedules`, `accept-invite`, `stripe-webhook`, `invoice-inbound`,
-`sms-optin`, the `google-oauth-*` / `google-calendar-*` functions, and the
-`billing-*` functions. Each such function says so in its header comment;
+`sms-optin`, `qbwc` (the QuickBooks Web Connector; see docs/quickbooks), the
+`google-oauth-*` / `google-calendar-*` functions, and the `billing-*` functions. Each such function says so in its header comment;
 `config.toml` also sets `verify_jwt = false` for some. Conventions:
 - A CORS `ALLOWED_ORIGINS` allowlist (operator.washlyfe.com + localhost ports)
   and a per-request `json()` helper.

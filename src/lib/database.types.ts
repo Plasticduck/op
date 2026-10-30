@@ -7722,6 +7722,201 @@ export type Database = {
           },
         ]
       }
+      qb_connections: {
+        Row: {
+          account_id: string
+          company_file: string | null
+          created_at: string
+          created_by: string | null
+          file_id: string
+          last_contact_at: string | null
+          last_error: string | null
+          lists_requested_at: string | null
+          lists_synced_at: string | null
+          owner_id: string
+          password_hash: string | null
+          qbxml_version: string | null
+          session_stage: string | null
+          session_started_at: string | null
+          session_ticket: string | null
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          account_id: string
+          company_file?: string | null
+          created_at?: string
+          created_by?: string | null
+          file_id?: string
+          last_contact_at?: string | null
+          last_error?: string | null
+          lists_requested_at?: string | null
+          lists_synced_at?: string | null
+          owner_id?: string
+          password_hash?: string | null
+          qbxml_version?: string | null
+          session_stage?: string | null
+          session_started_at?: string | null
+          session_ticket?: string | null
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          account_id?: string
+          company_file?: string | null
+          created_at?: string
+          created_by?: string | null
+          file_id?: string
+          last_contact_at?: string | null
+          last_error?: string | null
+          lists_requested_at?: string | null
+          lists_synced_at?: string | null
+          owner_id?: string
+          password_hash?: string | null
+          qbxml_version?: string | null
+          session_stage?: string | null
+          session_started_at?: string | null
+          session_ticket?: string | null
+          updated_at?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qb_connections_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qb_connections_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qb_jobs: {
+        Row: {
+          account_id: string
+          attempts: number
+          created_at: string
+          created_by: string | null
+          done_at: string | null
+          error: string | null
+          id: string
+          invoice_id: string | null
+          kind: string
+          payload: Json
+          qb_txn_id: string | null
+          sent_at: string | null
+          status: string
+          ticket: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          attempts?: number
+          created_at?: string
+          created_by?: string | null
+          done_at?: string | null
+          error?: string | null
+          id?: string
+          invoice_id?: string | null
+          kind?: string
+          payload: Json
+          qb_txn_id?: string | null
+          sent_at?: string | null
+          status?: string
+          ticket?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          attempts?: number
+          created_at?: string
+          created_by?: string | null
+          done_at?: string | null
+          error?: string | null
+          id?: string
+          invoice_id?: string | null
+          kind?: string
+          payload?: Json
+          qb_txn_id?: string | null
+          sent_at?: string | null
+          status?: string
+          ticket?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qb_jobs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qb_jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qb_jobs_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "ops_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qb_list_items: {
+        Row: {
+          account_id: string
+          account_number: string | null
+          account_type: string | null
+          full_name: string
+          is_active: boolean
+          list_id: string
+          list_type: string
+          name: string
+          synced_at: string
+        }
+        Insert: {
+          account_id: string
+          account_number?: string | null
+          account_type?: string | null
+          full_name: string
+          is_active?: boolean
+          list_id: string
+          list_type: string
+          name: string
+          synced_at?: string
+        }
+        Update: {
+          account_id?: string
+          account_number?: string | null
+          account_type?: string | null
+          full_name?: string
+          is_active?: boolean
+          list_id?: string
+          list_type?: string
+          name?: string
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qb_list_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reviews: {
         Row: {
           created_at: string
@@ -10842,6 +11037,22 @@ export type Database = {
         Args: { p_advance?: boolean; p_plan_id: string }
         Returns: string
       }
+      qb_check_login: {
+        Args: { p_password: string; p_username: string }
+        Returns: string
+      }
+      qb_new_password: {
+        Args: never
+        Returns: {
+          password: string
+          username: string
+        }[]
+      }
+      qb_replace_list: {
+        Args: { p_account: string; p_items: Json; p_type: string }
+        Returns: number
+      }
+      qb_request_lists: { Args: never; Returns: undefined }
       resolve_kiosk_pin: {
         Args: { p_location_id: string; p_pin: string }
         Returns: Json

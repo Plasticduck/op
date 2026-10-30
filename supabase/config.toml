@@ -424,3 +424,8 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [functions.it-scan-public]
 verify_jwt = false
+
+# QuickBooks Web Connector (SOAP). It logs in with its own user name and
+# password (qb_check_login), not a Supabase session.
+[functions.qbwc]
+verify_jwt = false

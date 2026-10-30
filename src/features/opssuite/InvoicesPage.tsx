@@ -19,6 +19,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { cn } from '@/lib/utils'
+import { billLinesOf, billNoOf, usesAskAccountant } from '@/lib/quickbooks/invoiceBill'
 
 // Each wash (account) gets its own unique inbound address,
 //   <invoice_inbox_token>@invoices.washlyfe.com
@@ -1480,37 +1481,14 @@ function mdY(iso: string | null | undefined): string {
   return y && m && d ? `${m}/${d}/${y}` : ''
 }
 
-// True when any GL code chosen for this invoice is QuickBooks' "Ask My
-// Accountant" placeholder. Those invoices get a trailing '*' on the bill number,
-// in both the export and the tables, to flag them for accounting follow-up.
-function usesAskAccountant(inv: OpsInvoice): boolean {
-  const codes = ((inv.gl_allocations as GlAlloc[] | null) ?? []).map((g) => String(g.gl_code ?? ''))
-  if (inv.gl_code) codes.push(inv.gl_code)
-  return codes.some((c) => /ask\s*my\s*accountant/i.test(c))
-}
-
-// Bill number: the AI-extracted invoice number first, then the email subject
-// ("Invoice #INV-4821" -> INV-4821), then the attachment filename. Gets a
-// trailing '*' (no space) when the invoice uses the "Ask My Accountant" GL code.
-function billNoOf(inv: OpsInvoice): string {
-  const base = (() => {
-    if (inv.invoice_number?.trim()) return inv.invoice_number.trim()
-    const subj = inv.email_subject ?? ''
-    const m = subj.match(/#\s*([A-Za-z0-9][\w-]*)/) ?? subj.match(/\b(INV[-\s]?[A-Za-z0-9-]+)\b/i)
-    if (m) return m[1].replace(/\s+/g, '')
-    if (inv.file_name) return inv.file_name.replace(/\.[^.]+$/, '')
-    return ''
-  })()
-  return base && usesAskAccountant(inv) ? base + '*' : base
-}
-
 // Build the QuickBooks CSV for a set of invoices. Fields we hold map to their QB
 // columns (Vendor, Date, GL -> Expense Account, amount -> Expense Amount, site ->
 // Expense Class); the rest stay blank, exactly like the template. An invoice
 // split across sites produces one line per site (its own amount + Class) so the
 // per-site cost allocation carries into accounting.
 // One invoice's expense lines (one per GL / site split), each keyed by QB_HEADERS.
-// Shared by the CSV and the QuickBooks IIF exports so both carry identical data.
+// The bill itself comes from lib/quickbooks/invoiceBill, which the QuickBooks
+// sync uses too, so the CSV, the IIF and the sync carry identical data.
 function qbLinesOf(inv: OpsInvoice): Record<string, string>[] {
   const base: Record<string, string> = {
     'Bill No': billNoOf(inv),
@@ -1520,29 +1498,9 @@ function qbLinesOf(inv: OpsInvoice): Record<string, string>[] {
     Memo: inv.memo ?? '',
     Currency: 'USD',
   }
-  const glAllocs = (inv.gl_allocations as GlAlloc[] | null) ?? []
-  const siteAllocs = (inv.site_allocations as Alloc[] | null) ?? []
-  if (Array.isArray(glAllocs) && glAllocs.length > 1) {
-    // Multiple GL codes: one line per code (its account + allocated amount). A
-    // single site is the Class for every line. When the site split lines up 1:1
-    // with the GL split (same count and matching amounts), each GL line takes
-    // its paired site's Class, so a multi-site invoice still carries the class.
-    const singleCls = inv.class_names?.length === 1 ? String(inv.class_names[0]) : ''
-    const paired =
-      Array.isArray(siteAllocs) && siteAllocs.length === glAllocs.length && siteAllocs.length > 1 &&
-      glAllocs.every((g, i) => Math.abs((Number(g.amount) || 0) - (Number(siteAllocs[i]?.amount) || 0)) < 0.005)
-    return glAllocs.map((g, i) => ({
-      ...base,
-      'Expense Account': String(g.gl_code ?? ''),
-      'Expense Amount': String(Number(g.amount) || 0),
-      'Expense Class': paired ? String(siteAllocs[i]?.name ?? '') : singleCls,
-    }))
-  }
-  const acct = glAllocs.length ? String(glAllocs[0].gl_code ?? '') : (inv.gl_code ?? '')
-  const b2 = { ...base, 'Expense Account': acct }
-  return Array.isArray(siteAllocs) && siteAllocs.length
-    ? siteAllocs.map((a) => ({ ...b2, 'Expense Amount': String(Number(a.amount) || 0), 'Expense Class': String(a.name ?? '') }))
-    : [{ ...b2, 'Expense Amount': String(Number(inv.amount) || 0) }]
+  return billLinesOf(inv).map((l) => ({
+    ...base, 'Expense Account': l.account, 'Expense Amount': String(l.amount), 'Expense Class': l.cls,
+  }))
 }
 
 function quickbooksCsv(invs: OpsInvoice[]): string {

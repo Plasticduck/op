@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
   Armchair,
+  BookOpenCheck,
   Cctv,
   ReceiptText,
   AlarmClockOff,
@@ -360,6 +361,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Mileage',
         icon: Car,
         roles: ['owner', 'regional_manager', 'executive', 'finance'],
+      },
+      {
+        to: '/app/quickbooks',
+        label: 'QuickBooks',
+        icon: BookOpenCheck,
+        roles: ['owner'],
+        emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
       },
       // Chargebacks page hidden pending a real Adyen dispute feed (the FlexWash
       // partner API doesn't expose disputes). Route + page kept in the repo.

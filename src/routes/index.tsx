@@ -128,6 +128,7 @@ const InteriorReportingPage = lz(() => import('@/features/opssuite/InteriorRepor
 const CamerasPage = lz(() => import('@/features/cameras/CamerasPage'))
 const BonusesPage = lz(() => import('@/features/opssuite/BonusesPage'))
 const CommissionsPage = lz(() => import('@/features/opssuite/CommissionsPage'))
+const QuickBooksPage = lz(() => import('@/features/quickbooks/QuickBooksPage'))
 const EventPayPage = lz(() => import('@/features/opssuite/EventPayPage'))
 const GoalTrackerPage = lz(() => import('@/features/opssuite/GoalTrackerPage'))
 const RechargeTimingPage = lz(() => import('@/features/opssuite/RechargeTimingPage'))
@@ -295,6 +296,7 @@ export const router = createBrowserRouter([
           { path: 'cameras', element: mgr(<CamerasPage />) },
           { path: 'bonuses', element: mgr(<RequireGmBonus><BonusesPage /></RequireGmBonus>) },
           { path: 'commissions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<CommissionsPage />)}</RequireEmails> },
+          { path: 'quickbooks', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<QuickBooksPage />)}</RequireEmails> },
           { path: 'event-pay', element: <RequirePermRole allow={['owner', 'regional_manager']}>{s(<EventPayPage />)}</RequirePermRole> },
           // Kevan enters every exec's goals, so it's his page for now.
           { path: 'goal-tracker', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<GoalTrackerPage />)}</RequireEmails> },
