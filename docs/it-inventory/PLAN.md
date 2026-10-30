@@ -61,7 +61,42 @@ Other decisions:
   (`supabase/tests/it_inventory_rls.sql`); there is no pgTAP/Docker setup.
 - The iOS shell needs `NSCameraUsageDescription` for in-app scanning; stock
   camera scans of the QR URL work without it.
-- Pre-launch: visible to kevan@washlyfe.com only until Phase 1 slice F ships.
+- Pre-launch: visible to kevan@washlyfe.com only (route `RequireEmails` plus
+  the Sidebar item's `emails`) until Kevan says to open it. Opening it also
+  shows the IT tiles on the main dashboard (they follow the nav item).
+- Reminders (`it-reminders` edge function, 8 AM Central via pg_cron at 13:00
+  and 14:00 UTC with an hour guard) send nothing for an account until an admin
+  turns them on in Settings (`it_settings.reminders_enabled`, default off). The
+  seeded rules keep the spec's thresholds. Thresholds are crossings, not exact
+  days: an item first seen 5 days out gets only the 7-day reminder, and a
+  missed morning catches up the next day. Each reminder is claimed in
+  `it_reminder_sends` (unique key) before it's sent, and un-claimed if the send
+  fails. Digest (default): one text and one email per person per day.
+  Recipients: Admins and technicians for every site, managers for their own
+  sites, plus people named on the rule and a subscription's owner. Texts only
+  go to people with a mobile number who opted in to texts.
+- A subscription that renews by itself with a notice period is due on its
+  cancel-by date (renewal minus notice); otherwise on its renewal date.
+  "Mark renewed" moves the renewal date one billing cycle.
+- Supplies: `counted_at` is the last time a person counted or restocked. A
+  supply nobody has counted (the seeded Sticker Stock rows start at 0) says
+  "Not counted" and never counts as low. `low_since` is set by trigger when a
+  counted supply drops to its minimum (min 0 = no reminder) and cleared when
+  it's back above; reminders use it as the due date (once per dip).
+- Health (Phase 1): a tablet or kiosk browser is linked to its asset from that
+  asset's page on the device (`it_link_device`, key kept in the browser's
+  localStorage, only its hash stored). `src/lib/itHeartbeat.ts`, started in
+  `main.tsx`, reports in every minute while Operator is open, signed in or not
+  (`it_heartbeat`, granted to anon; the key is the credential). `it_health_sweep`
+  (pg_cron every 2 minutes) marks a device offline after 2 x its interval
+  (120 s, so 4 minutes) without one. People mark things "not working" or
+  "working" (asset page, or "It's not working at all" on a problem report,
+  including the public sticker page); a person's "not working" holds even if
+  the device keeps reporting in, until someone marks it working.
+  `it_health_events` keeps state changes and manual reports, not every
+  heartbeat (a minute-by-minute row per tablet would be millions of rows for
+  no gain); `last_seen_at` carries the latest heartbeat. Offline alerts by
+  text are Phase 2 with the site probe (the `offline` rule stays off).
 
 ## Phase 1 slices
 
@@ -72,11 +107,11 @@ Other decisions:
 | C | Scanner component (shared), `/t/:short/:tag` resolver, manual entry, public report-a-problem page into Work Requests, persistent Scan button, iOS camera permission | done 2026-10-30. `components/scan/BarcodeScanner` (torch, autofocus, beep / buzz, continuous mode), module ScanSheet + floating Scan button, Report problem on assets, Work Requests link back to the device; iOS shell needs a new build to pick up the camera permission |
 | D | Check-out / check-in (area, person, parent asset), status changes, retire flow, bulk actions | done 2026-10-30. Check out to a person (site roster, optional signature), area, another device or another site, with due-back date, note, condition photo; check in with the status it came back in; status change with a note; Retire (checks in first, retires the tag) and Move; list selection (tap or scan to select) with bulk Check out / Check in / Status / Move / Print / Remove. "Archive" is now "Remove" (for mistakes), distinct from Retire |
 | E | Global search (trigram, Cmd-K), filters, column chooser, saved views + defaults, CSV export, CSV import wizard | done 2026-10-30. `it_search` in Cmd-K (exact tag / serial first); list filters (area, model, manufacturer, checked out, health, warranty, audit, sticker, purchase dates, custom fields), column chooser, header sort, 200-row pages, CSV export, built-in + saved (personal / shared) views; import wizard for equipment, models and subscriptions (auto-matched columns, dry run, per-row errors and downloadable report, create-missing options, sticker printing for new items); Settings (tag prefix / digits / sticker phone) and custom fields per category, including Vault secrets |
-| F | Subscriptions + consumables screens, nightly reminders (SMS + email digest, dedupe ledger), org + site dashboard tiles, kiosk heartbeat + manual down; open to owners and managers | next |
+| F | Subscriptions + consumables screens, nightly reminders (SMS + email digest, dedupe ledger), org + site dashboard tiles, kiosk heartbeat + manual down; open to owners and managers | done 2026-10-30, except opening it up (waiting on Kevan). Module tabs (Overview, Equipment, Subscriptions, Supplies); Overview for all sites (needs-attention tiles, by site, by category, monthly subscription spend, repairs in 90 days) and one site (area by area); Subscriptions (cost, monthly and yearly totals, cancel-by, mark renewed, devices covered, CSV export); Supplies (count, restock, use, history, low); Reminders settings (on/off, kinds, days, text/email, who, preview, send me a test); `it-reminders` edge function; IT tiles on the main dashboard (All sites and the site view); device heartbeats, mark working / not working, "Covered by" on the asset page |
 
 ## Testing
 
-`supabase/tests/it_inventory_rls.sql` (64 checks) impersonates real users of
+`supabase/tests/it_inventory_rls.sql` (97 checks) impersonates real users of
 the demo account and another account inside a rolled-back transaction:
 cross-account and cross-site isolation for owner / manager / employee / anon,
 immutable activity log, tag uniqueness and retirement, serial / MAC dedupe,
@@ -88,8 +123,17 @@ items don't move, crew can't check out), CSV import (dry run saves nothing and
 uses no tag numbers, new models need permission, bad rows fail alone, existing
 tags update, re-importing the same file makes no duplicates, managers can't
 import into or pull from other sites, only admins add every-site
-subscriptions), search, and Vault secrets (owner-only, reveals logged, values
-never in the log).
+subscriptions), search, Vault secrets (owner-only, reveals logged, values
+never in the log), and slice F: overview numbers scoped like the lists (a
+manager sees only their site, anon nothing), supplies (uncounted is never low,
+counting / using / restocking move it in and out of low, stock moves aren't
+logged as edits), heartbeats (signed out with the key only, a made-up key
+refused, the sweep marks a silent device offline once, a heartbeat brings it
+back, crew can report it down but can't fake a heartbeat, a person's down
+report holds against heartbeats, unlinking stops the key working, a manager
+can't link a device at another site or run the sweep), and reminder
+candidates (warranty, cancel-by date, low stock; nothing from other accounts;
+not readable by app roles).
 
 Import performance: 500 equipment rows commit in about 1.7 s and re-run in
 about 1.6 s (spec: under 60 s; the request limit is 8 s, and the wizard sends
@@ -103,6 +147,16 @@ sticker URL and the Code 128 as the tag. Run it after any label change. On
 2026-10-30 the full PDF path was also checked once in headless Chrome (pdf.js
 render, zxing decode, calibration offsets within 0.25 mm, 50 stickers in
 under 40 ms).
+
+Reminders were checked on 2026-10-30 against temporary demo data (called from
+the database with the cron's key, so nothing was sent): the preview picked the
+manager for their site's items only, the Admin for those plus the every-site
+subscription, no crew, and the right thresholds (30 days out -> the 30-day
+reminder, 5 days -> 7, cancel-by 10 days -> 30). Claiming the same reminder
+twice through PostgREST returned it once, then nothing. The slice F screens
+were checked in headless Chrome at phone and desktop width, light and dark,
+with data captured from the demo account (64 checks: tiles and their links,
+totals, sorting, the forms and the calls they make, no sideways scroll).
 
 Scanning was checked end to end on 2026-10-30 in headless Chrome with a fake
 camera playing a printed sticker: `BarcodeScanner` read it through the
@@ -133,4 +187,5 @@ truncated (shrunk to fit), QR rows overlap slightly so printers leave no seams.
 | 0189_it_problem_reports | `work_requests.it_asset_id`; `problem_reported` activity action |
 | 0190_it_checkout_status | bulk RPCs `it_check_out` / `it_check_in` / `it_set_status` / `it_move` (security invoker, per-item results); notes on log rows via `it.note`; attachment photos on the asset Timeline; check-out areas must be at the item's site |
 | 0191_it_search_import | `it_search` (invoker, trigram); `it_import_assets` / `it_import_models` / `it_import_subscriptions` (definer with explicit per-site checks: invoker RLS made 500 rows take 44 s, now 1.7 s); `it_find_site`, `it_num`, `it_log_import` |
-| later | reminders cron (F) |
+| 0192_it_overview_health | `it_overview` (dashboard numbers, invoker); `it_settings.reminders_enabled`; supplies `counted_at` / `low_since`; health events change the asset's badge; `it_device_links` + `it_link_device` / `it_unlink_device` / `it_heartbeat`; `it_health_sweep` (cron every 2 min) and a daily 90-day prune; `it_reminder_candidates` (service role only) |
+| 0193_it_reminders_cron | `it-reminders` at 8 AM Central |

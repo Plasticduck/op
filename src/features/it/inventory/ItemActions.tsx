@@ -38,7 +38,7 @@ function summarize(items: BulkItem[], assets: ItAssetRow[], verb: string): { ok:
   return { ok, message: (head + tail).trim(), failures }
 }
 
-function Footer({ busy, onClose, children }: { busy: boolean; onClose: () => void; children: ReactNode }) {
+export function Footer({ busy, onClose, children }: { busy: boolean; onClose: () => void; children: ReactNode }) {
   return (
     <div className="mt-5 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
       <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -47,7 +47,7 @@ function Footer({ busy, onClose, children }: { busy: boolean; onClose: () => voi
   )
 }
 
-function NoteField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+export function NoteField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return (
     <Field label="Note" hint="Optional. Kept on the item's history.">
       {(id) => (

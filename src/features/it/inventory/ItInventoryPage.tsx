@@ -6,13 +6,17 @@ import { cn } from '@/lib/utils'
 import { AssetDetail } from './AssetDetail'
 import { AssetList } from './AssetList'
 import { ImportPage } from './ImportPage'
+import { OverviewPage } from './OverviewPage'
 import { ScanSheet } from './ScanSheet'
 import { SettingsPage } from './SettingsPage'
 import { StickersPage } from './StickersPage'
+import { SubscriptionsPage } from './SubscriptionsPage'
+import { SuppliesPage } from './SuppliesPage'
 
-// IT Inventory (docs/it-inventory/SPEC.md). /app/it-inventory is the list;
-// /stickers, /import and /settings are the tools; /:id is one asset. On phones
-// a Scan button floats on every screen of the module, one tap away.
+// IT Inventory (docs/it-inventory/SPEC.md). /app/it-inventory is the
+// equipment list; /overview, /subscriptions and /supplies are its sibling
+// screens; /stickers, /import and /settings are the tools; /:id is one asset.
+// On phones a Scan button floats on every screen of the module, one tap away.
 export default function ItInventoryPage() {
   const { id } = useParams()
   const { pathname } = useLocation()
@@ -23,7 +27,7 @@ export default function ItInventoryPage() {
   }, [])
   const closeScan = useCallback(() => setScanning(false), [])
 
-  const tool = pathname.match(/\/it-inventory\/(stickers|import|settings)\/?$/)?.[1]
+  const tool = pathname.match(/\/it-inventory\/(stickers|import|settings|overview|subscriptions|supplies)\/?$/)?.[1]
   // Asset pages hide the bottom nav, so the button can sit lower there.
   const detail = !!id && !tool
 
@@ -32,7 +36,10 @@ export default function ItInventoryPage() {
       {tool === 'stickers' ? <StickersPage />
         : tool === 'import' ? <ImportPage />
           : tool === 'settings' ? <SettingsPage />
-            : id ? <AssetDetail key={id} id={id} /> : <AssetList onScan={openScan} />}
+            : tool === 'overview' ? <OverviewPage />
+              : tool === 'subscriptions' ? <SubscriptionsPage />
+                : tool === 'supplies' ? <SuppliesPage />
+                  : id ? <AssetDetail key={id} id={id} /> : <AssetList onScan={openScan} />}
       <button
         type="button"
         onClick={openScan}

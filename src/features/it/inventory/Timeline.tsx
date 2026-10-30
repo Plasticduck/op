@@ -24,7 +24,7 @@ import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItActivity, type ItAsset } from '@/lib/queries/itInventory'
 import type { ItRefs } from './useItRefs'
-import { fmtDay } from './format'
+import { fmtDay, healthBadge } from './format'
 
 // An asset's history, read from it_activity_log (written by database triggers,
 // so nothing that changed the asset is missing from it).
@@ -68,6 +68,10 @@ const FIELD_LABELS: Record<string, string> = {
   status: 'Tag status', secret_field: 'Secret field', value: 'Value',
 }
 
+const MONITOR_METHODS: Record<string, string> = {
+  none: 'none', heartbeat: 'device reports in', ping: 'ping', tcp: 'port check', http: 'web check',
+}
+
 export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRefs; siteName: Map<string, string> }) {
   const [rows, setRows] = useState<ItActivity[] | null>(null)
   const [filter, setFilter] = useState('')
@@ -100,6 +104,8 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
       case 'deleted_at': return 'yes'
       case 'sticker_last_verified_at':
       case 'last_audit_at': return format(new Date(s), 'MMM d, yyyy')
+      case 'health_state': return healthBadge(s).label
+      case 'monitor_method': return MONITOR_METHODS[s] ?? s
     }
     if (typeof v === 'boolean') return v ? 'on' : 'off'
     if (/_date$/.test(key) && /^\d{4}-\d{2}-\d{2}$/.test(s)) return fmtDay(s)
@@ -111,6 +117,7 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
     summary: string | null
     changes: { label: string; from: string; to: string }[]
     label?: string
+    tone?: 'ok' | 'warn' | 'danger' | 'accent'
     photo?: string
   } => {
     const after = (r.after ?? {}) as Record<string, unknown>
@@ -146,10 +153,21 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
         return { summary: String(after.field ?? ''), changes: [] }
       case 'problem_reported':
         return { summary: after.description ? `"${String(after.description)}"` : null, changes: [] }
+      case 'health_changed': {
+        // Online / Offline, with who or what said so in the note.
+        const state = String(after.health_state ?? '')
+        const keys = Object.keys(after).filter((k) => !['note', 'health_state', 'health_changed_at'].includes(k))
+        return {
+          label: healthBadge(state).label,
+          tone: state === 'online' ? 'ok' : state === 'offline' ? 'danger' : state === 'degraded' ? 'warn' : undefined,
+          summary: after.note ? `"${String(after.note)}"` : null,
+          changes: keys.map((k) => ({ label: FIELD_LABELS[k] ?? k.replace(/_/g, ' '), from: fmtVal(k, before[k]), to: fmtVal(k, after[k]) })),
+        }
+      }
     }
     if (r.entity_type !== 'asset' && r.action !== 'updated') return { summary: null, changes: [] }
     // A note set with the change (status, move, check-in) reads as a quote.
-    const keys = Object.keys(after).filter((k) => k !== 'note' && (k !== 'deleted_at' || r.action !== 'deleted'))
+    const keys = Object.keys(after).filter((k) => k !== 'note' && k !== 'health_changed_at' && (k !== 'deleted_at' || r.action !== 'deleted'))
     return {
       summary: r.action === 'updated' && before.deleted_at && !after.deleted_at ? 'Restored'
         : after.note ? `"${String(after.note)}"` : null,
@@ -176,14 +194,15 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
           {shown.map((r) => {
             const meta = ACTIONS[r.action] ?? ACTIONS.updated
             const d = describe(r)
+            const tone = d.tone ?? meta.tone
             return (
               <li key={r.id} className="flex gap-3">
                 <span className={cn(
                   'mt-0.5 grid size-7 shrink-0 place-items-center rounded-full',
-                  meta.tone === 'ok' ? 'bg-ok-soft text-ok'
-                    : meta.tone === 'warn' ? 'bg-warn-soft text-warn'
-                      : meta.tone === 'danger' ? 'bg-danger-soft text-danger'
-                        : meta.tone === 'accent' ? 'bg-accent-soft text-accent' : 'bg-content text-ink-muted',
+                  tone === 'ok' ? 'bg-ok-soft text-ok'
+                    : tone === 'warn' ? 'bg-warn-soft text-warn'
+                      : tone === 'danger' ? 'bg-danger-soft text-danger'
+                        : tone === 'accent' ? 'bg-accent-soft text-accent' : 'bg-content text-ink-muted',
                 )}>
                   <meta.icon className="size-3.5" />
                 </span>

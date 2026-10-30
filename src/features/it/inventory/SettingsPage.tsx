@@ -13,11 +13,12 @@ import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItCustomField } from '@/lib/queries/itInventory'
 import { categoriesFor, FIELD_TYPES, fieldOptions, keyFromName } from './customFields'
+import { ReminderSettings } from './ReminderSettings'
 import { useItRefs, type ItRefs } from './useItRefs'
 
-// IT Inventory settings: how tags look, what prints on stickers, and the
-// custom fields each category asks for. Owners change these; everyone on the
-// IT side can see them.
+// IT Inventory settings: how tags look, what prints on stickers, reminders,
+// and the custom fields each category asks for. Owners change these; everyone
+// on the IT side can see them.
 
 export function SettingsPage() {
   const { profile } = useAuth()
@@ -31,7 +32,7 @@ export function SettingsPage() {
         <ArrowLeft className="size-4" /> IT Inventory
       </Link>
       <div className="mt-3">
-        <PageHeader title="IT Inventory settings" subtitle={admin ? 'Tags, stickers and the extra details you track.' : 'Only an admin can change these.'} />
+        <PageHeader title="IT Inventory settings" subtitle={admin ? 'Tags, stickers, reminders and the extra details you track.' : 'Only an admin can change these.'} />
       </div>
       {flash && (
         <div className="mt-4 flex items-start justify-between gap-3 rounded-md bg-ok-soft px-3 py-2 text-sm text-ok">
@@ -46,6 +47,7 @@ export function SettingsPage() {
         <div className="mt-5 space-y-6">
           <TagSettings key={refs.settings.updated_at} refs={refs} admin={admin}
             onSaved={() => { void reload(); setFlash('Saved. New tags and stickers use it.') }} />
+          <ReminderSettings refs={refs} admin={admin} onSaved={(m) => { void reload(); setFlash(m) }} />
           <CustomFields refs={refs} admin={admin} accountId={profile?.account_id ?? ''}
             onChanged={(m) => { void reload(); setFlash(m) }} />
         </div>

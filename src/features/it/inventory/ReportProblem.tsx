@@ -9,7 +9,8 @@ import { itInventory } from '@/lib/queries/itInventory'
 
 // Report a problem with a device. Becomes a Work Request linked to the asset
 // (the existing issue flow) and shows on the asset's Timeline. Used on the
-// public sticker page and from the asset page.
+// public sticker page and from the asset page. "Not working at all" also marks
+// it down (health: offline) until someone marks it working again.
 
 const QUICK = [
   "It won't turn on",
@@ -35,6 +36,7 @@ export function ProblemForm({
   const [text, setText] = useState('')
   const [name, setName] = useState('')
   const [contact, setContact] = useState('')
+  const [down, setDown] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,7 +45,7 @@ export function ProblemForm({
     if (!description) { setError("Pick what's wrong or describe it."); return }
     setBusy(true)
     setError(null)
-    const { message } = await itInventory.reportProblem({ short, tag, description, name, contact })
+    const { message } = await itInventory.reportProblem({ short, tag, description, name, contact, down })
     setBusy(false)
     if (message) { setError(message); return }
     onDone()
@@ -72,6 +74,13 @@ export function ProblemForm({
             className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-accent" />
         )}
       </Field>
+      <label className="flex items-start gap-2.5 rounded-md border border-border bg-content/40 px-3 py-2.5 text-sm text-ink">
+        <input type="checkbox" checked={down} onChange={(e) => setDown(e.target.checked)} className="mt-0.5 size-4 rounded border-border text-accent focus:ring-accent" />
+        <span>
+          It's not working at all
+          <span className="block text-xs text-ink-muted">Shows it as down until someone marks it working.</span>
+        </span>
+      </label>
       {!signedIn && (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Your name">{(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} placeholder="Optional" />}</Field>

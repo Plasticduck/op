@@ -547,6 +547,241 @@ do $$ begin
 end $$;
 reset role;
 
+-- ---- Overview numbers, supplies, device health, reminders (slice F) ----------------------------
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+with x as (
+  insert into public.it_assets (account_id, location_id, name, category_id)
+  select current_setting('t.a')::uuid, current_setting('t.site_in')::uuid, 'Test tablet F', id
+    from public.it_categories where account_id = current_setting('t.a')::uuid and name = 'Tablet'
+  returning id
+) select set_config('t.tablet', id::text, true) from x;
+do $$
+declare
+  o jsonb := public.it_overview();
+begin
+  if (o ->> 'total')::int <> (select count(*) from public.it_assets a
+                                left join public.it_status_labels s on s.id = a.status_label_id
+                               where a.deleted_at is null and coalesce(s.type, '') <> 'archived') then
+    raise exception 'FAIL 65: the overview total doesn''t match the owner''s active equipment';
+  end if;
+  if (select sum((e ->> 'total')::int) from jsonb_array_elements(o -> 'by_site') e) <> (o ->> 'total')::int then
+    raise exception 'FAIL 66: the owner''s site rows don''t add up to the total';
+  end if;
+end $$;
+-- Linking a device turns on heartbeat monitoring.
+do $$
+declare
+  a public.it_assets%rowtype;
+begin
+  perform set_config('t.key', public.it_link_device(current_setting('t.tablet')::uuid, 'Test iPad'), true);
+  select * into a from public.it_assets where id = current_setting('t.tablet')::uuid;
+  if not a.monitoring_enabled or a.monitor_method <> 'heartbeat' or length(current_setting('t.key')) < 32 then
+    raise exception 'FAIL 67: linking a device did not turn on heartbeat monitoring';
+  end if;
+  if exists (select 1 from public.it_device_links) then
+    raise exception 'FAIL 68: people can read device keys';
+  end if;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  o jsonb := public.it_overview();
+begin
+  if exists (select 1 from jsonb_array_elements(o -> 'by_site') e where e ->> 'id' <> current_setting('t.site_in')) then
+    raise exception 'FAIL 69: a manager''s overview counts another site';
+  end if;
+  begin
+    perform public.it_link_device(current_setting('t.asset_out')::uuid, 'x');
+    raise exception 'FAIL 70: a manager linked a device at another site';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  begin
+    perform public.it_health_sweep();
+    raise exception 'FAIL 71: a manager ran the health sweep';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  begin
+    perform * from public.it_reminder_candidates(current_setting('t.a')::uuid, current_date, 60);
+    raise exception 'FAIL 72: a manager read reminder candidates';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+end $$;
+-- Supplies: an uncounted supply is never low; counting, using and restocking
+-- move it in and out of low, and none of that reads as an edit.
+do $$
+declare
+  cid uuid;
+  c   public.it_consumables%rowtype;
+begin
+  select id into cid from public.it_consumables
+   where location_id = current_setting('t.site_in')::uuid and is_sticker_stock and deleted_at is null;
+  select * into c from public.it_consumables where id = cid;
+  if c.low_since is not null or c.counted_at is not null then
+    raise exception 'FAIL 73: an uncounted supply shows as low';
+  end if;
+  if c.qty_on_hand <> 10 then
+    insert into public.it_consumable_events (account_id, consumable_id, delta, reason, note)
+    values (current_setting('t.a')::uuid, cid, 10 - c.qty_on_hand, 'adjustment', 'Counted');
+  end if;
+  select * into c from public.it_consumables where id = cid;
+  if c.qty_on_hand <> 10 or c.counted_at is null or c.low_since is distinct from current_date then
+    raise exception 'FAIL 74: counting 10 against a minimum of 25 should mark it low today (qty %, low %)', c.qty_on_hand, c.low_since;
+  end if;
+  insert into public.it_consumable_events (account_id, consumable_id, delta, reason)
+  values (current_setting('t.a')::uuid, cid, 50, 'restock');
+  if (select low_since from public.it_consumables where id = cid) is not null then
+    raise exception 'FAIL 75: restocking above the minimum did not clear low';
+  end if;
+  insert into public.it_consumable_events (account_id, consumable_id, delta, reason)
+  values (current_setting('t.a')::uuid, cid, -40, 'used');
+  if (select low_since from public.it_consumables where id = cid) is distinct from current_date then
+    raise exception 'FAIL 76: using stock down to the minimum did not mark it low';
+  end if;
+  if exists (select 1 from public.it_activity_log where entity_type = 'consumable' and entity_id = cid and action = 'updated') then
+    raise exception 'FAIL 77: stock moves were logged as edits';
+  end if;
+  if ((public.it_overview(current_setting('t.site_in')::uuid) -> 'attention' ->> 'low_stock')::int) < 1 then
+    raise exception 'FAIL 78: the overview does not count the low supply';
+  end if;
+  perform set_config('t.stock', cid::text, true);
+end $$;
+reset role;
+
+-- Heartbeats: signed out, with the device key only.
+select set_config('request.jwt.claims', '', true);
+set local role anon;
+do $$
+declare
+  r jsonb;
+begin
+  r := public.it_heartbeat(current_setting('t.key'));
+  if not (r ->> 'ok')::boolean then
+    raise exception 'FAIL 79: a linked device''s heartbeat was refused: %', r;
+  end if;
+  if (public.it_heartbeat(repeat('0', 64)) ->> 'ok')::boolean then
+    raise exception 'FAIL 80: a made-up key was accepted';
+  end if;
+end $$;
+reset role;
+do $$
+declare
+  a public.it_assets%rowtype;
+begin
+  select * into a from public.it_assets where id = current_setting('t.tablet')::uuid;
+  if a.health_state <> 'online' or a.last_seen_at is null then
+    raise exception 'FAIL 81: a heartbeat did not mark the device online (%)', a.health_state;
+  end if;
+  if not exists (select 1 from public.it_activity_log
+                  where asset_id = a.id and action = 'health_changed' and actor_user_id is null and actor_system = 'heartbeat') then
+    raise exception 'FAIL 82: coming online was not logged as the heartbeat';
+  end if;
+  -- Silent for longer than twice its interval: the sweep marks it offline, once.
+  update public.it_assets set last_seen_at = now() - interval '10 minutes' where id = a.id;
+  perform public.it_health_sweep();
+  if (select health_state from public.it_assets where id = a.id) <> 'offline' then
+    raise exception 'FAIL 83: the sweep did not mark a silent device offline';
+  end if;
+  if public.it_health_sweep() <> 0 then
+    raise exception 'FAIL 84: the sweep marked the same device offline twice';
+  end if;
+  perform public.it_heartbeat(current_setting('t.key'));
+  if (select health_state from public.it_assets where id = a.id) <> 'online' then
+    raise exception 'FAIL 85: a heartbeat after an outage did not bring it back online';
+  end if;
+end $$;
+
+-- Crew report it down; heartbeats don't override a person until someone says it's fixed.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if current_setting('t.site_in') = any (string_to_array(current_setting('t.emp_locs'), ',')) then
+    insert into public.it_health_events (account_id, asset_id, state, source, note)
+    values (current_setting('t.a')::uuid, current_setting('t.tablet')::uuid, 'offline', 'manual', 'Screen is cracked');
+    begin
+      insert into public.it_health_events (account_id, asset_id, state, source)
+      values (current_setting('t.a')::uuid, current_setting('t.tablet')::uuid, 'online', 'heartbeat');
+      raise exception 'FAIL 86: a person recorded a heartbeat';
+    exception when others then
+      if sqlerrm like 'FAIL%' then raise; end if;
+    end;
+  else
+    -- The demo employee works elsewhere; record the report as the manager instead.
+    perform set_config('t.emp_not_here', '1', true);
+  end if;
+end $$;
+reset role;
+do $$ begin
+  if current_setting('t.emp_not_here', true) = '1' then
+    insert into public.it_health_events (account_id, asset_id, state, source, note, created_by)
+    values (current_setting('t.a')::uuid, current_setting('t.tablet')::uuid, 'offline', 'manual', 'Screen is cracked',
+            current_setting('t.a_mgr')::uuid);
+  end if;
+  if (select health_state from public.it_assets where id = current_setting('t.tablet')::uuid) <> 'offline' then
+    raise exception 'FAIL 87: reporting it down did not mark it offline';
+  end if;
+  if not exists (select 1 from public.it_activity_log where asset_id = current_setting('t.tablet')::uuid
+                  and action = 'health_changed' and after ->> 'note' = 'Screen is cracked') then
+    raise exception 'FAIL 88: the down report''s note is not on the Timeline';
+  end if;
+  perform public.it_heartbeat(current_setting('t.key'));
+  if (select health_state from public.it_assets where id = current_setting('t.tablet')::uuid) <> 'offline' then
+    raise exception 'FAIL 89: a heartbeat overrode a person''s down report';
+  end if;
+end $$;
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+insert into public.it_health_events (account_id, asset_id, state, source, note)
+values (current_setting('t.a')::uuid, current_setting('t.tablet')::uuid, 'online', 'manual', 'Replaced the screen');
+do $$ begin
+  if (select health_state from public.it_assets where id = current_setting('t.tablet')::uuid) <> 'online' then
+    raise exception 'FAIL 90: marking it working did not bring a monitored device back online';
+  end if;
+  perform public.it_unlink_device(current_setting('t.tablet')::uuid);
+  if (select monitoring_enabled or health_state <> 'unknown' from public.it_assets where id = current_setting('t.tablet')::uuid) then
+    raise exception 'FAIL 91: unlinking did not stop monitoring';
+  end if;
+end $$;
+reset role;
+do $$ begin
+  if (public.it_heartbeat(current_setting('t.key')) ->> 'ok')::boolean then
+    raise exception 'FAIL 92: an unlinked device''s key still works';
+  end if;
+end $$;
+
+-- Reminder candidates: warranty, renewal (on the cancel-by date) and low stock.
+do $$
+declare
+  sid uuid;
+begin
+  update public.it_assets set warranty_end_date = current_date + 30 where id = current_setting('t.tablet')::uuid;
+  insert into public.it_subscriptions (account_id, location_id, name, cost, billing_cycle, renewal_date, auto_renew, cancel_notice_days)
+  values (current_setting('t.a')::uuid, current_setting('t.site_in')::uuid, 'Test ISP', 120, 'monthly', current_date + 40, true, 30)
+  returning id into sid;
+  if not exists (select 1 from public.it_reminder_candidates(current_setting('t.a')::uuid, current_date, 60)
+                  where kind = 'warranty' and entity_id = current_setting('t.tablet')::uuid and due_date = current_date + 30) then
+    raise exception 'FAIL 93: a warranty ending in 30 days is not a reminder candidate';
+  end if;
+  if not exists (select 1 from public.it_reminder_candidates(current_setting('t.a')::uuid, current_date, 60)
+                  where kind = 'subscription_renewal' and entity_id = sid and due_date = current_date + 10) then
+    raise exception 'FAIL 94: an auto-renewing subscription is not due on its cancel-by date';
+  end if;
+  if not exists (select 1 from public.it_reminder_candidates(current_setting('t.a')::uuid, current_date, 60)
+                  where kind = 'low_stock' and entity_id = current_setting('t.stock')::uuid) then
+    raise exception 'FAIL 95: a low supply is not a reminder candidate';
+  end if;
+  if exists (select 1 from public.it_reminder_candidates(current_setting('t.a')::uuid, current_date, 60) c
+              join public.it_assets a on a.id = c.entity_id where a.account_id <> current_setting('t.a')::uuid) then
+    raise exception 'FAIL 96: reminder candidates include another account''s equipment';
+  end if;
+end $$;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;
@@ -559,6 +794,12 @@ end $$;
 do $$ begin
   if exists (select 1 from public.it_assets) then
     raise exception 'FAIL 30: anon can read assets';
+  end if;
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  if coalesce((public.it_overview() ->> 'total')::int, 0) > 0 then
+    raise exception 'FAIL 97: anon can count equipment';
   end if;
 exception when insufficient_privilege then null;
 end $$;

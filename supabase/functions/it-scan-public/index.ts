@@ -7,7 +7,8 @@
 //
 // Actions:
 //   info           { short, tag }                               -> { ok, company, asset: { tag, name, category, site } }
-//   report         { short, tag, description, name?, contact? } -> { ok }
+//   report         { short, tag, description, name?, contact?, down? } -> { ok }
+//                  down: "it's not working at all" also marks it down (health)
 //   report_unknown { tag, description, location_id }            -> { ok }   (signed in only: a sticker we can't find)
 // A signed-in caller (Authorization: Bearer <jwt>) from the same company is
 // recorded as the reporter; anyone else is anonymous.
@@ -133,11 +134,12 @@ Deno.serve(async (req) => {
     const contact = String(body.contact ?? '').trim().slice(0, 200)
     const email = member?.email ?? (EMAIL_RE.test(contact) ? contact : null)
     const extra = contact && !EMAIL_RE.test(contact) ? `\nContact: ${contact}` : ''
+    const down = body.down === true
     const { data: wr, error } = await svc.from('work_requests').insert({
       account_id: asset.account_id,
       location_id: asset.location_id,
-      title: `${asset.name} (${asset.asset_tag}): problem reported`.slice(0, 200),
-      description: `${description}\n\nReported by scanning sticker ${asset.asset_tag}.${extra}`,
+      title: `${asset.name} (${asset.asset_tag}): ${down ? 'not working' : 'problem reported'}`.slice(0, 200),
+      description: `${description}${down ? "\n\nIt's not working at all." : ''}\n\nReported by scanning sticker ${asset.asset_tag}.${extra}`,
       priority: 'none',
       requester_name: name,
       requester_email: email,
@@ -157,6 +159,18 @@ Deno.serve(async (req) => {
       actor_system: member ? null : 'Sticker scan',
       after: { work_request_id: wr.id, description: description.slice(0, 500) },
     })
+    // "Not working at all" marks it down (a manual health report, which holds
+    // until someone marks it working, even if the device keeps reporting in).
+    if (down) {
+      await svc.from('it_health_events').insert({
+        account_id: asset.account_id,
+        asset_id: asset.id,
+        state: 'offline',
+        source: 'manual',
+        note: `Reported not working${name ? ` by ${name}` : ''}`.slice(0, 200),
+        created_by: member?.id ?? null,
+      })
+    }
     return json({ ok: true }, 200, origin)
   }
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -7,6 +8,8 @@ export type StatCardProps = {
   value: ReactNode
   delta?: { value: number; suffix?: string; direction?: 'up-good' | 'up-bad' }
   hint?: string
+  // Makes the whole card a link (to the list it counts).
+  to?: string
   className?: string
 }
 
@@ -15,6 +18,7 @@ export function StatCard({
   value,
   delta,
   hint,
+  to,
   className,
 }: StatCardProps) {
   const dir = delta?.value === 0 ? 'flat' : delta && delta.value > 0 ? 'up' : 'down'
@@ -30,13 +34,13 @@ export function StatCard({
   const DeltaIcon =
     dir === 'flat' ? Minus : dir === 'up' ? ArrowUpRight : ArrowDownRight
 
-  return (
-    <div
-      className={cn(
-        'rounded-md border border-border bg-card p-4',
-        className,
-      )}
-    >
+  const cls = cn(
+    'rounded-md border border-border bg-card p-4',
+    to && 'block transition hover:border-border-strong hover:bg-content/40',
+    className,
+  )
+  const body = (
+    <>
       <div className="text-xs font-medium uppercase tracking-wide text-ink-muted">
         {label}
       </div>
@@ -56,6 +60,13 @@ export function StatCard({
         )}
       </div>
       {hint && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
-    </div>
+    </>
+  )
+  return to ? (
+    <Link to={to} className={cls}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   )
 }

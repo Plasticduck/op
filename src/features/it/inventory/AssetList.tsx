@@ -49,8 +49,14 @@ import { CheckInDialog, CheckOutDialog, MoveDialog, StatusDialog } from './ItemA
 import { ItIcon } from './ItIcon'
 import { PrintDialog } from './PrintDialog'
 import { ScanSheet } from './ScanSheet'
+import { SectionNav } from './SectionNav'
 import { assignmentBadge, friendlyError, healthBadge, needsSticker, statusTone, WARRANTY_WINDOW_DAYS } from './format'
 import { useItRefs, type ItRefs } from './useItRefs'
+
+// From the overview's "Not working" counts and the like.
+const STATUS_TYPE_LABEL: Record<string, string> = {
+  deployable: 'Ready to use (any)', pending: 'Being set up (any)', undeployable: 'Not working (any)',
+}
 
 // The IT Inventory list. Defaults to the site you're working in (the site
 // switcher) with "All sites" for a company-wide view. One search box covers
@@ -292,6 +298,7 @@ export function AssetList({ onScan }: { onScan: () => void }) {
           </>
         }
       />
+      <SectionNav className="mt-4" />
 
       {flash && (
         <div className="mt-4 flex items-start justify-between gap-3 rounded-md bg-ok-soft px-3 py-2 text-sm text-ok">
@@ -320,6 +327,7 @@ export function AssetList({ onScan }: { onScan: () => void }) {
           <option value="">Active (not retired)</option>
           {refs?.statuses.filter((s) => s.type !== 'archived').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           {f.status.startsWith('name:') && <option value={f.status}>{f.status.slice(5)}</option>}
+          {f.status.startsWith('type:') && <option value={f.status}>{STATUS_TYPE_LABEL[f.status.slice(5)] ?? f.status.slice(5)}</option>}
           <option value="archived">Retired and archived</option>
           <option value="all">Any status</option>
         </Select>

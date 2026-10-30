@@ -43,7 +43,7 @@ and put it in `src/components/`, not in this folder. Spec: `docs/it-inventory/SP
 | Buttons | `ui/Button` (primary, secondary, ghost, danger, link; sm, md, lg, icon) |
 | Inputs | `ui/Input`, `ui/Select` (native), `forms/Field` (label, hint, error, required star) |
 | Badges | `ui/Badge` tones neutral / accent / ok / warn / danger |
-| Cards / KPIs | `data/StatCard`, `data/StatCardRow` |
+| Cards / KPIs | `data/StatCard`, `data/StatCardRow`. `to` makes a card a link (added for the overview tiles, which open the list they count) |
 | Tables | plain `<table>` in a bordered card, header row `bg-content text-[11px] uppercase tracking-wide text-ink-subtle`, rows `divide-y hover:bg-content` (as Work Orders, IT Field Checklist). `data/DataTable` exists for TanStack tables |
 | Modal | `ui/Modal` (sm / md / lg; bottom sheet on phones) |
 | Confirm / destructive | `feedback/ConfirmDialog` (`destructive` for red) |
@@ -70,6 +70,12 @@ and put it in `src/components/`, not in this folder. Spec: `docs/it-inventory/SP
   small tag line + badges above a 17px title, Edit + overflow menu on the right,
   underline tabs below, scrolling body.
 - Bottom nav on phones (`BottomNav`) hides on full-screen detail routes.
+- The module's four screens (Overview, Equipment, Subscriptions, Supplies)
+  share the page title "IT Inventory" with a segmented control under it
+  (`SectionNav`). Stickers, Import and Settings are tools with a back link.
+- The main dashboard shows the IT tiles (`ItDashboardTiles`) on All sites and
+  on a site's view, for people who can open the module, once there's
+  equipment. Same StatCard tiles as the rest of the dashboard.
 
 ## Voice
 

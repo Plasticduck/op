@@ -18,6 +18,7 @@ import { SiteScorecard } from '@/features/dashboard/SiteScorecard'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { AccountBrandLogo } from '@/features/dashboard/AccountBrandLogo'
 import { SitePerformanceCard } from '@/features/dashboard/SitePerformanceCard'
+import { ItDashboardTiles } from '@/features/it/inventory/ItDashboardTiles'
 import { WeatherLog } from '@/features/dashboard/WeatherLog'
 import { GoogleRatingTile, RecentGoogleReviews } from '@/components/data/GoogleRating'
 import { ratings, type SiteRating, type SiteReview } from '@/lib/queries/ratings'
@@ -217,6 +218,8 @@ function ManagerDashboard() {
           ]}
         />
       )}
+
+      {isManagerPlus && <ItDashboardTiles locationId={activeLocation.id} />}
 
       {isManagerPlus && <RecentSales rows={recentCloseouts} />}
 

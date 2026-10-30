@@ -56,6 +56,40 @@ function bulkResult(r: { data: unknown; error: { message: string } | null }): { 
 
 export type PublicAsset ={ tag: string; name: string; category: string | null; site: string | null }
 
+export type ItSubscription = T['it_subscriptions']['Row']
+// With the ids of the devices it covers.
+export type ItSubscriptionRow = ItSubscription & { links: { asset_id: string }[] }
+const SUB_SELECT = '*, links:it_subscription_assets(asset_id)'
+export type ItConsumableEvent = T['it_consumable_events']['Row']
+export type ItReminderRule = T['it_reminder_rules']['Row']
+export type ItPerson = Pick<T['users']['Row'], 'id' | 'name' | 'role' | 'email' | 'phone' | 'sms_opt_in' | 'location_ids'>
+
+type Count = number
+export type ItOverview = {
+  total: Count
+  attention: { offline: Count; repair: Count; warranty: Count; audits: Count; stickers: Count; renewals: Count; low_stock: Count }
+  health: { monitored: Count; online: Count; offline: Count; degraded: Count }
+  by_site: { id: string; name: string; total: Count; monitored: Count; online: Count; offline: Count; repair: Count; not_working: Count }[]
+  by_category: { id: string; name: string; icon: string | null; total: Count; offline: Count }[]
+  spend: { monthly: number; unpriced: Count; by_site: { id: string | null; name: string; monthly: number | null; items: Count }[] }
+  repair_spend_90d: number
+}
+
+export type RemindersPreview = {
+  ok: true
+  today: string
+  enabled: boolean
+  people: {
+    id: string
+    name: string
+    role: string
+    text: string[]
+    email: { to: string; subject: string } | null
+    no_text_reason: string | null
+    items: { kind: string; threshold: number; text: string }[]
+  }[]
+}
+
 // functions.invoke puts non-2xx bodies on error.context (see lib/fnError.ts).
 async function scanResult<R>(data: unknown, error: unknown): Promise<{ data: R | null; message: string | null }> {
   if (!error) return { data: data as R, message: null }
@@ -108,6 +142,10 @@ export const itInventory = {
       return (opts?.archived ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null)).order('asset_tag').range(f, t)
     }),
   getAsset: (id: string) => supabase.from('it_assets').select(ASSET_SELECT).eq('id', id).maybeSingle(),
+  // One site's equipment (the overview's area-by-area view).
+  assetsForSite: (locationId: string) =>
+    fetchAll<ItAssetRow>((f, t) =>
+      supabase.from('it_assets').select(ASSET_SELECT).eq('location_id', locationId).is('deleted_at', null).order('asset_tag').range(f, t)),
   // Leave asset_tag empty for the next generated tag. Many rows = add N identical.
   createAssets: (rows: ItAssetInsert[]) => supabase.from('it_assets').insert(rows).select('id, asset_tag'),
   updateAsset: (id: string, patch: ItAssetPatch) => supabase.from('it_assets').update(patch).eq('id', id),
@@ -259,13 +297,99 @@ export const itInventory = {
     const { data, error } = await supabase.functions.invoke('it-scan-public', { body: { action: 'info', short, tag } })
     return scanResult<{ ok: true; company: string | null; asset: PublicAsset }>(data, error)
   },
-  reportProblem: async (row: { short: string; tag: string; description: string; name?: string; contact?: string }) => {
+  reportProblem: async (row: { short: string; tag: string; description: string; name?: string; contact?: string; down?: boolean }) => {
     const { data, error } = await supabase.functions.invoke('it-scan-public', { body: { action: 'report', ...row } })
     return scanResult<{ ok: true }>(data, error)
   },
   reportUnknownSticker: async (row: { tag: string; description: string; location_id: string }) => {
     const { data, error } = await supabase.functions.invoke('it-scan-public', { body: { action: 'report_unknown', ...row } })
     return scanResult<{ ok: true }>(data, error)
+  },
+
+  // ---- Overview (dashboard tiles) ----
+  // One site, or null for every site you can see. Today is your date, so the
+  // counts match the list filters.
+  overview: async (locationId: string | null, today: string) => {
+    const { data, error } = await supabase.rpc('it_overview', { p_location: locationId ?? undefined, p_today: today })
+    return { data: (data as ItOverview | null) ?? null, error: error?.message ?? null }
+  },
+
+  // ---- Subscriptions ----
+  subscriptions: () =>
+    fetchAll<ItSubscriptionRow>((f, t) =>
+      supabase.from('it_subscriptions').select(SUB_SELECT).is('deleted_at', null).order('name').range(f, t)),
+  saveSubscription: (row: T['it_subscriptions']['Insert'] & { id?: string }) =>
+    row.id
+      ? supabase.from('it_subscriptions').update(row).eq('id', row.id).select(SUB_SELECT).single()
+      : supabase.from('it_subscriptions').insert(row).select(SUB_SELECT).single(),
+  removeSubscription: (id: string) => supabase.from('it_subscriptions').update({ deleted_at: new Date().toISOString() }).eq('id', id),
+  // Which devices it covers: add and remove links to match the list.
+  setSubscriptionAssets: async (accountId: string, subscriptionId: string, assetIds: string[], current: string[]) => {
+    const add = assetIds.filter((id) => !current.includes(id))
+    const drop = current.filter((id) => !assetIds.includes(id))
+    if (add.length) {
+      const { error } = await supabase.from('it_subscription_assets')
+        .insert(add.map((asset_id) => ({ account_id: accountId, subscription_id: subscriptionId, asset_id })))
+      if (error) return error.message
+    }
+    if (drop.length) {
+      const { error } = await supabase.from('it_subscription_assets').delete().eq('subscription_id', subscriptionId).in('asset_id', drop)
+      if (error) return error.message
+    }
+    return null
+  },
+  subscriptionsForAsset: (assetId: string) =>
+    supabase.from('it_subscription_assets')
+      .select('subscription:it_subscriptions(id, name, location_id, cost, billing_cycle, renewal_date, auto_renew, cancel_notice_days, deleted_at)')
+      .eq('asset_id', assetId),
+  assetsByIds: (ids: string[]) =>
+    ids.length
+      ? supabase.from('it_assets').select('id, asset_tag, name, location_id').in('id', ids)
+      : Promise.resolve({ data: [] as { id: string; asset_tag: string; name: string; location_id: string }[], error: null }),
+
+  // ---- Supplies (consumables) ----
+  // Stock only moves through events (restock, used, adjustment), so every
+  // change is explained; counting means an adjustment to the number on hand.
+  consumables: () =>
+    fetchAll<ItConsumable>((f, t) => supabase.from('it_consumables').select('*').is('deleted_at', null).order('name').range(f, t)),
+  consumableEvents: (consumableId: string) =>
+    supabase.from('it_consumable_events').select('*').eq('consumable_id', consumableId).order('created_at', { ascending: false }).limit(100),
+  saveConsumable: (row: T['it_consumables']['Insert'] & { id?: string }) =>
+    row.id
+      ? supabase.from('it_consumables').update(row).eq('id', row.id).select('*').single()
+      : supabase.from('it_consumables').insert(row).select('*').single(),
+  removeConsumable: (id: string) => supabase.from('it_consumables').update({ deleted_at: new Date().toISOString() }).eq('id', id),
+  // A count that matches what's on record still counts as counted.
+  markCounted: (id: string) => supabase.from('it_consumables').update({ counted_at: new Date().toISOString() }).eq('id', id),
+
+  // ---- Device health ----
+  // Run on the device itself: returns the key it keeps to report in with.
+  linkDevice: (assetId: string, device: string) => supabase.rpc('it_link_device', { p_asset: assetId, p_device: device }),
+  unlinkDevice: (assetId: string) => supabase.rpc('it_unlink_device', { p_asset: assetId }),
+  heartbeat: (key: string) => supabase.rpc('it_heartbeat', { p_key: key }),
+  // "It's not working" / "It's working again". Holds until the opposite report.
+  // (The site is set from the asset by trigger; it's here for the types.)
+  reportHealth: (accountId: string, asset: { id: string; location_id: string }, state: 'offline' | 'online', note?: string) =>
+    supabase.from('it_health_events').insert({
+      account_id: accountId, location_id: asset.location_id, asset_id: asset.id, state, source: 'manual', note: note || null,
+    }),
+  lastHealthReport: (assetId: string) =>
+    supabase.from('it_health_events').select('state, source, note, observed_at')
+      .eq('asset_id', assetId).order('observed_at', { ascending: false }).limit(1).maybeSingle(),
+
+  // ---- Reminders (admins) ----
+  reminderRules: () => supabase.from('it_reminder_rules').select('*').order('kind'),
+  updateReminderRule: (id: string, patch: T['it_reminder_rules']['Update']) =>
+    supabase.from('it_reminder_rules').update(patch).eq('id', id),
+  // Everyone in the company, for "who gets reminders" and subscription owners.
+  people: () => supabase.from('users').select('id, name, role, email, phone, sms_opt_in, location_ids').order('name'),
+  remindersPreview: async () => {
+    const { data, error } = await supabase.functions.invoke('it-reminders', { body: { preview: true } })
+    return scanResult<RemindersPreview>(data, error)
+  },
+  remindersTest: async () => {
+    const { data, error } = await supabase.functions.invoke('it-reminders', { body: { test: true } })
+    return scanResult<{ ok: true; sms: { ok: boolean; error?: string }; email: { ok: boolean; error?: string } }>(data, error)
   },
 
   // Photos: <account>/asset/<asset>/<uuid>.jpg in the private it-inventory bucket.

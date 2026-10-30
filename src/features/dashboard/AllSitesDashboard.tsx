@@ -17,6 +17,7 @@ import { WeatherOutlook } from '@/components/data/WeatherOutlook'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { SitePerformanceByRegion } from '@/features/dashboard/SitePerformanceByRegion'
 import { SitePerformanceSites } from '@/features/dashboard/SitePerformanceSites'
+import { ItDashboardTiles } from '@/features/it/inventory/ItDashboardTiles'
 import { Select } from '@/components/ui/Select'
 
 // Vivid grade color by letter grade.
@@ -199,6 +200,8 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
         ) : (
           <SitePerformanceByRegion locations={locations} />
         ))}
+
+      {!regionName && <ItDashboardTiles locationId={null} />}
 
       {showRegions ? (
         groups.map((g) => (

@@ -6,7 +6,6 @@ import {
   ArchiveRestore,
   ArrowLeft,
   Camera,
-  Check,
   Copy,
   CopyPlus,
   EllipsisVertical,
@@ -35,6 +34,7 @@ import { itInventory, type ItAssetRow, type ItAssignment } from '@/lib/queries/i
 import { AssetForm, type AssetFormMode } from './AssetForm'
 import { CheckInDialog, CheckOutDialog, MoveDialog, StatusDialog } from './ItemActions'
 import { fieldsFor } from './customFields'
+import { Row, Section } from './DetailParts'
 import { ItIcon } from './ItIcon'
 import {
   assignmentBadge,
@@ -46,6 +46,7 @@ import {
   tagUrl,
   warrantyState,
 } from './format'
+import { CoveredBy, HealthSection } from './HealthPanel'
 import { PrintDialog } from './PrintDialog'
 import { ReportProblemDialog } from './ReportProblem'
 import { Timeline } from './Timeline'
@@ -354,10 +355,10 @@ export function AssetDetail({ id }: { id: string }) {
                 </Section>
               )}
 
-              <Section title="Health">
-                <Row label="Right now"><Badge tone={health.tone}>{health.label}</Badge></Row>
-                <Row label="Last seen">{asset.last_seen_at ? format(new Date(asset.last_seen_at), 'MMM d, yyyy h:mm a') : null}</Row>
-              </Section>
+              <HealthSection asset={asset} accountId={profile?.account_id ?? ''} canEdit={canEdit}
+                onChanged={(m) => { setFlash(m); void load() }} />
+
+              <CoveredBy assetId={asset.id} />
 
               <Section title="Purchase and warranty">
                 <Row label="Purchased">{asset.purchase_date ? fmtDay(asset.purchase_date) : null}</Row>
@@ -527,42 +528,6 @@ function MenuItem({ icon: Icon, children, onClick, danger }: { icon: typeof Copy
     <button type="button" onClick={onClick}
       className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-content', danger ? 'text-danger' : 'text-ink')}>
       <Icon className="size-4" /> {children}
-    </button>
-  )
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section>
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">{title}</div>
-      <div className="divide-y divide-border rounded-md border border-border">{children}</div>
-    </section>
-  )
-}
-
-function Row({ label, children, copy, mono }: { label: string; children: ReactNode; copy?: string | null; mono?: boolean }) {
-  const empty = children === null || children === undefined || children === '' || children === false
-  return (
-    <div className="flex items-center gap-3 px-3 py-2.5 text-sm">
-      <div className="w-32 shrink-0 text-ink-muted">{label}</div>
-      <div className={cn('min-w-0 flex-1 break-words', mono && 'font-mono', empty ? 'text-ink-subtle' : 'text-ink')}>{empty ? '–' : children}</div>
-      {copy && <CopyButton value={copy} />}
-    </div>
-  )
-}
-
-function CopyButton({ value }: { value: string }) {
-  const [done, setDone] = useState(false)
-  return (
-    <button type="button" aria-label="Copy" title="Copy"
-      onClick={() => {
-        void navigator.clipboard?.writeText(value).then(() => {
-          setDone(true)
-          setTimeout(() => setDone(false), 1500)
-        })
-      }}
-      className="grid size-8 shrink-0 place-items-center rounded-md text-ink-subtle hover:bg-content hover:text-ink">
-      {done ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
     </button>
   )
 }

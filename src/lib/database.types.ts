@@ -4206,12 +4206,14 @@ export type Database = {
         Row: {
           account_id: string
           category_id: string | null
+          counted_at: string | null
           created_at: string
           created_by: string | null
           deleted_at: string | null
           id: string
           is_sticker_stock: boolean
           location_id: string
+          low_since: string | null
           min_qty: number
           model_number: string | null
           name: string
@@ -4223,12 +4225,14 @@ export type Database = {
         Insert: {
           account_id: string
           category_id?: string | null
+          counted_at?: string | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
           id?: string
           is_sticker_stock?: boolean
           location_id: string
+          low_since?: string | null
           min_qty?: number
           model_number?: string | null
           name: string
@@ -4240,12 +4244,14 @@ export type Database = {
         Update: {
           account_id?: string
           category_id?: string | null
+          counted_at?: string | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
           id?: string
           is_sticker_stock?: boolean
           location_id?: string
+          low_since?: string | null
           min_qty?: number
           model_number?: string | null
           name?: string
@@ -4355,6 +4361,55 @@ export type Database = {
           {
             foreignKeyName: "it_custom_fields_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      it_device_links: {
+        Row: {
+          account_id: string
+          asset_id: string
+          device_info: string | null
+          key_hash: string
+          linked_at: string
+          linked_by: string | null
+        }
+        Insert: {
+          account_id: string
+          asset_id: string
+          device_info?: string | null
+          key_hash: string
+          linked_at?: string
+          linked_by?: string | null
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string
+          device_info?: string | null
+          key_hash?: string
+          linked_at?: string
+          linked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "it_device_links_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_device_links_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: true
+            referencedRelation: "it_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "it_device_links_linked_by_fkey"
+            columns: ["linked_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -5185,6 +5240,7 @@ export type Database = {
           created_by: string | null
           id: string
           label_show_logo: boolean
+          reminders_enabled: boolean
           short_code: string
           site_prefixes: Json
           support_phone: string | null
@@ -5201,6 +5257,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           label_show_logo?: boolean
+          reminders_enabled?: boolean
           short_code: string
           site_prefixes?: Json
           support_phone?: string | null
@@ -5217,6 +5274,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           label_show_logo?: boolean
+          reminders_enabled?: boolean
           short_code?: string
           site_prefixes?: Json
           support_phone?: string | null
@@ -10103,6 +10161,7 @@ export type Database = {
           created_by: string | null
           id: string
           label_show_logo: boolean
+          reminders_enabled: boolean
           short_code: string
           site_prefixes: Json
           support_phone: string | null
@@ -10171,6 +10230,8 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      it_health_sweep: { Args: never; Returns: number }
+      it_heartbeat: { Args: { p_key: string }; Returns: Json }
       it_import_assets: {
         Args: { p_commit: boolean; p_create?: Json; p_rows: Json }
         Returns: Json
@@ -10185,7 +10246,12 @@ export type Database = {
       }
       it_is_admin: { Args: never; Returns: boolean }
       it_is_staff: { Args: never; Returns: boolean }
+      it_link_device: {
+        Args: { p_asset: string; p_device?: string }
+        Returns: string
+      }
       it_log_import: { Args: { p_summary: Json }; Returns: string }
+      it_manual_down: { Args: { p_asset: string }; Returns: boolean }
       it_move: {
         Args: {
           p_area?: string
@@ -10200,6 +10266,22 @@ export type Database = {
         Returns: string
       }
       it_num: { Args: { p: string }; Returns: number }
+      it_overview: {
+        Args: { p_location?: string; p_today?: string }
+        Returns: Json
+      }
+      it_reminder_candidates: {
+        Args: { p_account: string; p_horizon: number; p_today: string }
+        Returns: {
+          due_date: string
+          entity_id: string
+          entity_type: string
+          info: Json
+          kind: string
+          location_id: string
+          site: string
+        }[]
+      }
       it_resolve_tag: {
         Args: { p_short: string; p_tag: string }
         Returns: Json
@@ -10228,6 +10310,7 @@ export type Database = {
         Args: { p_asset_ids: string[]; p_note?: string; p_status_id: string }
         Returns: Json
       }
+      it_unlink_device: { Args: { p_asset: string }; Returns: undefined }
       kiosk_punch: {
         Args: { p_employee_id: string; p_pin: string }
         Returns: string

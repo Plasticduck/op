@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { ArrowLeft, CircleCheck, Download, FileUp, Loader2, Printer, TriangleAlert } from 'lucide-react'
 import { Field } from '@/components/forms/Field'
@@ -38,7 +38,10 @@ export function ImportPage() {
   const { profile } = useAuth()
   const { refs, reload: reloadRefs } = useItRefs()
   const fileInput = useRef<HTMLInputElement>(null)
-  const [entity, setEntity] = useState<ImportEntity>('assets')
+  const [params] = useSearchParams()
+  // ?what=subscriptions (from the Subscriptions screen) starts on that kind.
+  const [entity, setEntity] = useState<ImportEntity>(() =>
+    (['assets', 'models', 'subscriptions'] as const).find((e) => e === params.get('what')) ?? 'assets')
   const [fileName, setFileName] = useState<string | null>(null)
   const [headers, setHeaders] = useState<string[]>([])
   const [data, setData] = useState<string[][]>([])
