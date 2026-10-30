@@ -10120,6 +10120,21 @@ export type Database = {
       }
       it_can_read: { Args: { loc: string }; Returns: boolean }
       it_can_write: { Args: { loc: string }; Returns: boolean }
+      it_check_in: {
+        Args: { p_asset_ids: string[]; p_note?: string; p_status_id?: string }
+        Returns: Json
+      }
+      it_check_out: {
+        Args: {
+          p_asset_ids: string[]
+          p_expected?: string
+          p_note?: string
+          p_signature?: string
+          p_target: string
+          p_type: string
+        }
+        Returns: Json
+      }
       it_find_duplicates: {
         Args: { p_exclude?: string; p_mac: string; p_serial: string }
         Returns: {
@@ -10157,6 +10172,15 @@ export type Database = {
       }
       it_is_admin: { Args: never; Returns: boolean }
       it_is_staff: { Args: never; Returns: boolean }
+      it_move: {
+        Args: {
+          p_area?: string
+          p_asset_ids: string[]
+          p_location: string
+          p_note?: string
+        }
+        Returns: Json
+      }
       it_next_tag: {
         Args: { p_account: string; p_location: string }
         Returns: string
@@ -10172,6 +10196,10 @@ export type Database = {
       it_set_secret: {
         Args: { p_asset: string; p_field: string; p_value: string }
         Returns: undefined
+      }
+      it_set_status: {
+        Args: { p_asset_ids: string[]; p_note?: string; p_status_id: string }
+        Returns: Json
       }
       kiosk_punch: {
         Args: { p_employee_id: string; p_pin: string }

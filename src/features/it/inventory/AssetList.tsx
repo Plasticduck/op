@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Boxes, Loader2, Plus, Printer, ScanLine, Search, Sticker, X } from 'lucide-react'
+import {
+  Boxes,
+  Check as CheckIcon,
+  Loader2,
+  LogIn,
+  LogOut,
+  MapPin,
+  Plus,
+  Printer,
+  RefreshCw,
+  ScanLine,
+  Search,
+  SquareCheck,
+  Sticker,
+  X,
+} from 'lucide-react'
+import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -8,12 +24,15 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { useLocations } from '@/lib/locations'
+import { primeScanSound } from '@/lib/scan/feedback'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItAssetRow } from '@/lib/queries/itInventory'
 import { AssetForm } from './AssetForm'
+import { CheckInDialog, CheckOutDialog, MoveDialog, StatusDialog } from './ItemActions'
 import { ItIcon } from './ItIcon'
 import { PrintDialog } from './PrintDialog'
-import { assignmentBadge, healthBadge, needsSticker, statusTone, warrantyState } from './format'
+import { ScanSheet } from './ScanSheet'
+import { assignmentBadge, friendlyError, healthBadge, needsSticker, statusTone, warrantyState } from './format'
 import { useItRefs, type ItRefs } from './useItRefs'
 
 // The IT Inventory list. Defaults to the site you're working in (the site
@@ -36,6 +55,11 @@ export function AssetList({ onScan }: { onScan: () => void }) {
   const [adding, setAdding] = useState<null | { tag?: string }>(null)
   const [printing, setPrinting] = useState<ItAssetRow[] | null>(null)
   const [flash, setFlash] = useState<string | null>((routerLocation.state as { flash?: string } | null)?.flash ?? null)
+  // Selection for bulk actions: pick rows, or scan stickers to pick them.
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulk, setBulk] = useState<null | 'checkout' | 'checkin' | 'status' | 'move' | 'remove'>(null)
+  const [collecting, setCollecting] = useState(false)
 
   const q = params.get('q') ?? ''
   const site = params.get('site') ?? activeLocation?.id ?? 'all'
@@ -140,6 +164,28 @@ export function AssetList({ onScan }: { onScan: () => void }) {
 
   const clearFilters = () => setParam({ q: '', cat: '', status: '', sticker: '' })
 
+  const selectedRows = useMemo(
+    () => [...rows, ...(archivedRows ?? [])].filter((r) => selected.has(r.id)),
+    [rows, archivedRows, selected],
+  )
+  const sel: Selection = {
+    on: selecting,
+    ids: selected,
+    toggle: (id) => setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    }),
+  }
+  const stopSelecting = () => { setSelecting(false); setSelected(new Set()) }
+  const finishBulk = (message: string) => {
+    setBulk(null)
+    stopSelecting()
+    setFlash(message)
+    void load()
+  }
+
   if (refsError) {
     return (
       <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -198,15 +244,27 @@ export function AssetList({ onScan }: { onScan: () => void }) {
         </Select>
       </div>
 
-      {stickerCount > 0 && (
-        <div className="mt-3">
-          <button type="button" onClick={() => setParam({ sticker: stickerOnly ? '' : '1' })}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition',
-              stickerOnly ? 'border-warn bg-warn-soft text-warn' : 'border-border bg-card text-ink-muted hover:text-ink',
-            )}>
-            <Sticker className="size-4" /> Needs a sticker ({stickerCount})
-          </button>
+      {rows.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {stickerCount > 0 && (
+            <button type="button" onClick={() => setParam({ sticker: stickerOnly ? '' : '1' })}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition',
+                stickerOnly ? 'border-warn bg-warn-soft text-warn' : 'border-border bg-card text-ink-muted hover:text-ink',
+              )}>
+              <Sticker className="size-4" /> Needs a sticker ({stickerCount})
+            </button>
+          )}
+          <span className="flex-1" />
+          {selecting ? (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Set(filtered.map((r) => r.id)))}>Select all {filtered.length}</Button>
+              <Button size="sm" variant="secondary" onClick={() => { primeScanSound(); setCollecting(true) }}><ScanLine className="size-4" /> Scan to select</Button>
+              <Button size="sm" variant="ghost" onClick={stopSelecting}>Cancel</Button>
+            </>
+          ) : (
+            <Button size="sm" variant="secondary" onClick={() => setSelecting(true)}><SquareCheck className="size-4" /> Select</Button>
+          )}
         </div>
       )}
 
@@ -228,11 +286,11 @@ export function AssetList({ onScan }: { onScan: () => void }) {
             action={<Button variant="secondary" onClick={clearFilters}><X className="size-4" /> Clear filters</Button>} />
         ) : (
           <>
-            <AssetCards rows={filtered} refs={refs} siteName={siteName} showSite={site === 'all'} onOpen={open} />
-            <AssetTable rows={filtered} refs={refs} siteName={siteName} onOpen={open} />
+            <AssetCards rows={filtered} refs={refs} siteName={siteName} showSite={site === 'all'} onOpen={open} sel={sel} />
+            <AssetTable rows={filtered} refs={refs} siteName={siteName} onOpen={open} sel={sel} />
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
               <span>{filtered.length} of {inSite.length} {site === 'all' ? 'across all sites' : `at ${siteName.get(site) ?? 'this site'}`}</span>
-              {status !== 'archived' && (
+              {status !== 'archived' && !selecting && (
                 <button type="button" onClick={() => setPrinting(filtered)} className="inline-flex items-center gap-1 font-medium text-accent hover:underline">
                   <Printer className="size-3.5" /> Print stickers for these {filtered.length}
                 </button>
@@ -241,6 +299,61 @@ export function AssetList({ onScan }: { onScan: () => void }) {
           </>
         )}
       </div>
+
+      {selecting && selected.size > 0 && (
+        // Above the phone bottom nav; leaves room for the floating Scan button.
+        <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 mt-3 pr-[4.5rem] lg:bottom-4 lg:pr-0">
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2 shadow-md">
+            <span className="mr-1 text-sm font-medium text-ink">{selected.size} selected</span>
+            <Button size="sm" onClick={() => setBulk('checkout')}><LogOut className="size-4" /> Check out</Button>
+            <Button size="sm" variant="secondary" onClick={() => setBulk('checkin')}><LogIn className="size-4" /> Check in</Button>
+            <Button size="sm" variant="secondary" onClick={() => setBulk('status')}><RefreshCw className="size-4" /> Status</Button>
+            <Button size="sm" variant="secondary" onClick={() => setBulk('move')}><MapPin className="size-4" /> Move</Button>
+            <Button size="sm" variant="secondary" onClick={() => setPrinting(selectedRows)}><Printer className="size-4" /> Print</Button>
+            <Button size="sm" variant="ghost" className="text-danger" onClick={() => setBulk('remove')}><X className="size-4" /> Remove</Button>
+          </div>
+        </div>
+      )}
+
+      {refs && bulk === 'checkout' && (
+        <CheckOutDialog refs={refs} assets={selectedRows} onClose={() => setBulk(null)} onDone={finishBulk} />
+      )}
+      {refs && bulk === 'checkin' && (
+        <CheckInDialog refs={refs} assets={selectedRows} onClose={() => setBulk(null)} onDone={finishBulk} />
+      )}
+      {refs && bulk === 'status' && (
+        <StatusDialog refs={refs} assets={selectedRows} onClose={() => setBulk(null)} onDone={finishBulk} />
+      )}
+      {refs && bulk === 'move' && (
+        <MoveDialog refs={refs} assets={selectedRows} onClose={() => setBulk(null)} onDone={finishBulk} />
+      )}
+      <ConfirmDialog
+        open={bulk === 'remove'}
+        title={`Remove ${selected.size} item${selected.size === 1 ? '' : 's'}?`}
+        description="For things added by mistake or twice. They leave the lists and their tags are never reused; you can restore them from Retired and archived. If they're worn out or gone, change their status to Retired instead."
+        confirmLabel="Remove"
+        destructive
+        onCancel={() => setBulk(null)}
+        onConfirm={() => {
+          void itInventory.archiveMany([...selected]).then(({ data, error: err }) => {
+            if (err) { setBulk(null); setError(friendlyError(err.message)); return }
+            finishBulk(`Removed ${data?.length ?? 0}.`)
+          })
+        }}
+      />
+      {collecting && (
+        <ScanSheet
+          onClose={() => setCollecting(false)}
+          collect={{
+            count: selected.size,
+            onAdd: (assetId) => {
+              if (selected.has(assetId)) return false
+              setSelected((s) => new Set(s).add(assetId))
+              return true
+            },
+          }}
+        />
+      )}
 
       {printing && refs && (
         <PrintDialog refs={refs} assets={printing} onClose={() => setPrinting(null)}
@@ -272,18 +385,31 @@ export function AssetList({ onScan }: { onScan: () => void }) {
   )
 }
 
-type ListProps = { rows: ItAssetRow[]; refs: ItRefs; siteName: Map<string, string>; onOpen: (id: string) => void }
+type Selection = { on: boolean; ids: Set<string>; toggle: (id: string) => void }
+type ListProps = { rows: ItAssetRow[]; refs: ItRefs; siteName: Map<string, string>; onOpen: (id: string) => void; sel: Selection }
+
+function Check({ on }: { on: boolean }) {
+  return (
+    <span className={cn('grid size-5 shrink-0 place-items-center rounded border', on ? 'border-accent bg-accent text-white' : 'border-border-strong bg-card')}>
+      {on && <CheckIcon className="size-3.5" strokeWidth={3} />}
+    </span>
+  )
+}
 
 // Phones: one card per item, the three badges under the name.
-function AssetCards({ rows, refs, siteName, showSite, onOpen }: ListProps & { showSite: boolean }) {
+function AssetCards({ rows, refs, siteName, showSite, onOpen, sel }: ListProps & { showSite: boolean }) {
   return (
     <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card lg:hidden">
       {rows.map((r) => {
         const c = refs.category.get(r.category_id)
         const s = refs.status.get(r.status_label_id)
         const health = healthBadge(r.health_state)
+        const picked = sel.ids.has(r.id)
         return (
-          <button key={r.id} type="button" onClick={() => onOpen(r.id)} className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-content">
+          <button key={r.id} type="button" onClick={() => (sel.on ? sel.toggle(r.id) : onOpen(r.id))}
+            aria-pressed={sel.on ? picked : undefined}
+            className={cn('flex w-full items-start gap-3 px-3 py-3 text-left', picked ? 'bg-accent-soft' : 'hover:bg-content')}>
+            {sel.on && <span className="pt-2.5"><Check on={picked} /></span>}
             <span className="grid size-10 shrink-0 place-items-center rounded-md bg-accent/15 text-accent"><ItIcon name={c?.icon} className="size-5" /></span>
             <span className="min-w-0 flex-1">
               <span className="flex items-baseline gap-2">
@@ -307,12 +433,13 @@ function AssetCards({ rows, refs, siteName, showSite, onOpen }: ListProps & { sh
   )
 }
 
-function AssetTable({ rows, refs, siteName, onOpen }: ListProps) {
+function AssetTable({ rows, refs, siteName, onOpen, sel }: ListProps) {
   return (
     <div className="hidden overflow-x-auto rounded-md border border-border bg-card lg:block">
       <table className="w-full text-sm">
         <thead className="border-b border-border bg-content text-left text-[11px] uppercase tracking-wide text-ink-subtle">
           <tr>
+            {sel.on && <th className="w-10 px-3 py-2" />}
             <th className="px-3 py-2 font-medium">Tag</th>
             <th className="px-3 py-2 font-medium">Item</th>
             <th className="px-3 py-2 font-medium">Site</th>
@@ -331,7 +458,9 @@ function AssetTable({ rows, refs, siteName, onOpen }: ListProps) {
             const w = warrantyState(r.warranty_end_date)
             const health = healthBadge(r.health_state)
             return (
-              <tr key={r.id} onClick={() => onOpen(r.id)} className="cursor-pointer hover:bg-content">
+              <tr key={r.id} onClick={() => (sel.on ? sel.toggle(r.id) : onOpen(r.id))}
+                className={cn('cursor-pointer', sel.ids.has(r.id) ? 'bg-accent-soft' : 'hover:bg-content')}>
+                {sel.on && <td className="px-3 py-2.5"><Check on={sel.ids.has(r.id)} /></td>}
                 <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-ink-muted">
                   <span className="inline-flex items-center gap-1.5">
                     {r.asset_tag}

@@ -70,18 +70,21 @@ Other decisions:
 | A | DESIGN-NOTES.md; migrations 0181-0187 (all Phase 1 tables, RLS, triggers, activity log, bootstrap seed, RPCs); RLS tests; asset list, detail (status / assignment / health badges, Overview + Timeline tabs), Quick Add, full form, clone, add N identical, duplicate warnings | done 2026-10-30. Custom field definitions and fieldset rendering moved to E (settings screen) |
 | B | Tag pool (generate, import), QR + Code128, label PDFs (Avery 5160 / 5163 sheets, 2.25 x 1.25 in roll, Brother 62 mm, outdoor), calibration + live preview, print queue | done 2026-10-30. Stickers screen (print queue with sticker stock, blank tags, printer setup), Print sticker on assets and lists, sticker condition on the asset page; printing counts down Sticker Stock (0188) |
 | C | Scanner component (shared), `/t/:short/:tag` resolver, manual entry, public report-a-problem page into Work Requests, persistent Scan button, iOS camera permission | done 2026-10-30. `components/scan/BarcodeScanner` (torch, autofocus, beep / buzz, continuous mode), module ScanSheet + floating Scan button, Report problem on assets, Work Requests link back to the device; iOS shell needs a new build to pick up the camera permission |
-| D | Check-out / check-in (area, person, parent asset), status changes, retire flow, bulk actions | next |
-| E | Global search (trigram, Cmd-K), filters, column chooser, saved views + defaults, CSV export, CSV import wizard | |
+| D | Check-out / check-in (area, person, parent asset), status changes, retire flow, bulk actions | done 2026-10-30. Check out to a person (site roster, optional signature), area, another device or another site, with due-back date, note, condition photo; check in with the status it came back in; status change with a note; Retire (checks in first, retires the tag) and Move; list selection (tap or scan to select) with bulk Check out / Check in / Status / Move / Print / Remove. "Archive" is now "Remove" (for mistakes), distinct from Retire |
+| E | Global search (trigram, Cmd-K), filters, column chooser, saved views + defaults, CSV export, CSV import wizard | next |
 | F | Subscriptions + consumables screens, nightly reminders (SMS + email digest, dedupe ledger), org + site dashboard tiles, kiosk heartbeat + manual down; open to owners and managers | |
 
 ## Testing
 
-`supabase/tests/it_inventory_rls.sql` (37 checks) impersonates real users of
+`supabase/tests/it_inventory_rls.sql` (46 checks) impersonates real users of
 the demo account and another account inside a rolled-back transaction:
 cross-account and cross-site isolation for owner / manager / employee / anon,
 immutable activity log, tag uniqueness and retirement, serial / MAC dedupe,
-deployable-only check-out, add-N tags, scan resolution, pre-printed tags, and
-print bookkeeping. Run it after any IT Inventory migration; it must end with
+deployable-only check-out, add-N tags, scan resolution, pre-printed tags,
+print bookkeeping and sticker stock, and the bulk operations (a broken item
+fails alone in a batch, no double check-out, areas must be at the item's site,
+check-in status + note, retire checks in and retires the tag, checked-out
+items don't move, crew can't check out). Run it after any IT Inventory migration; it must end with
 ALL PASS and leave no rows behind.
 
 `node scripts/test-label-scans.mjs` lays out every seeded sticker size with the
@@ -119,4 +122,5 @@ truncated (shrunk to fit), QR rows overlap slightly so printers leave no seams.
 | 0187_it_bootstrap | per-account seed (`it_bootstrap()`), tag resolve, duplicate check, tag pool RPCs |
 | 0188_it_sticker_stock_on_print | printing stickers counts down each site's Sticker Stock |
 | 0189_it_problem_reports | `work_requests.it_asset_id`; `problem_reported` activity action |
+| 0190_it_checkout_status | bulk RPCs `it_check_out` / `it_check_in` / `it_set_status` / `it_move` (security invoker, per-item results); notes on log rows via `it.note`; attachment photos on the asset Timeline; check-out areas must be at the item's site |
 | later | reminders cron (F) |

@@ -42,7 +42,15 @@ export type DuplicateHit = {
   can_open: boolean
 }
 
-export type PublicAsset = { tag: string; name: string; category: string | null; site: string | null }
+export type ItAssignment = T['it_assignments']['Row']
+export type BulkItem = { asset_id: string; ok: boolean; error?: string | null }
+
+function bulkResult(r: { data: unknown; error: { message: string } | null }): { items: BulkItem[]; error: string | null } {
+  if (r.error) return { items: [], error: r.error.message }
+  return { items: (r.data as BulkItem[] | null) ?? [], error: null }
+}
+
+export type PublicAsset ={ tag: string; name: string; category: string | null; site: string | null }
 
 // functions.invoke puts non-2xx bodies on error.context (see lib/fnError.ts).
 async function scanResult<R>(data: unknown, error: unknown): Promise<{ data: R | null; message: string | null }> {
@@ -137,6 +145,51 @@ export const itInventory = {
   stickerStock: () => supabase.from('it_consumables').select('*').eq('is_sticker_stock', true).is('deleted_at', null),
   adjustStock: (row: { account_id: string; location_id: string; consumable_id: string; delta: number; reason: 'restock' | 'used' | 'adjustment'; note?: string }) =>
     supabase.from('it_consumable_events').insert(row),
+
+  // ---- Check-out, check-in, status, move (one item or many) ----
+  // Each returns one result per asset; one failing doesn't stop the rest.
+  checkOut: async (assetIds: string[], target: { type: 'site' | 'area' | 'user' | 'asset'; id: string }, opts: { expected?: string | null; note?: string; signaturePath?: string | null } = {}) =>
+    bulkResult(await supabase.rpc('it_check_out', {
+      p_asset_ids: assetIds, p_type: target.type, p_target: target.id,
+      p_expected: opts.expected ?? undefined, p_note: opts.note || undefined, p_signature: opts.signaturePath ?? undefined,
+    })),
+  checkIn: async (assetIds: string[], statusId: string | null, note?: string) =>
+    bulkResult(await supabase.rpc('it_check_in', { p_asset_ids: assetIds, p_status_id: statusId ?? undefined, p_note: note || undefined })),
+  setStatus: async (assetIds: string[], statusId: string, note?: string) =>
+    bulkResult(await supabase.rpc('it_set_status', { p_asset_ids: assetIds, p_status_id: statusId, p_note: note || undefined })),
+  move: async (assetIds: string[], locationId: string, areaId: string | null, note?: string) =>
+    bulkResult(await supabase.rpc('it_move', { p_asset_ids: assetIds, p_location: locationId, p_area: areaId ?? undefined, p_note: note || undefined })),
+  // Devices at a site, for checking something out to another device.
+  assetsAtSite: (locationId: string) =>
+    supabase.from('it_assets').select('id, asset_tag, name, category_id')
+      .eq('location_id', locationId).is('deleted_at', null).order('asset_tag').limit(1000),
+  archiveMany: (ids: string[]) =>
+    supabase.from('it_assets').update({ deleted_at: new Date().toISOString() }).in('id', ids).select('id'),
+  openAssignment: (assetId: string) =>
+    supabase.from('it_assignments').select('*').eq('asset_id', assetId).is('checked_in_at', null).maybeSingle(),
+  // The people at a site, for checking something out to a person.
+  roster: (locationId: string) =>
+    supabase.from('employees').select('id, first_name, last_name, role_title')
+      .eq('location_id', locationId).eq('status', 'active').order('first_name'),
+  uploadSignature: async (accountId: string, assetId: string, blob: Blob) => {
+    const path = `${accountId}/assignment/${assetId}/${crypto.randomUUID()}.png`
+    const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: 'image/png' })
+    return error ? { path: null, error: error.message } : { path, error: null }
+  },
+  // A photo kept on the asset's record (condition at check-out / check-in),
+  // without replacing its main picture. Shows on the Timeline.
+  addPhoto: async (accountId: string, assetId: string, locationId: string, file: File, caption: string) => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const path = `${accountId}/asset/${assetId}/${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || 'image/jpeg' })
+    if (error) return { error: error.message }
+    const { data: me } = await supabase.auth.getUser()
+    const { error: err } = await supabase.from('it_attachments').insert({
+      account_id: accountId, location_id: locationId, entity_type: 'asset', entity_id: assetId,
+      storage_path: path, mime_type: file.type || 'image/jpeg', kind: 'photo', caption, uploaded_by: me.user?.id,
+    })
+    return { error: err?.message ?? null }
+  },
 
   // ---- Sticker scans and problem reports (it-scan-public edge function) ----
   // Public: only the asset's name, category and site come back. Signed-in

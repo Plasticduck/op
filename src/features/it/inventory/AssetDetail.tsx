@@ -7,14 +7,17 @@ import {
   ArrowLeft,
   Camera,
   Check,
-  ChevronDown,
   Copy,
   CopyPlus,
   EllipsisVertical,
   Loader2,
+  LogIn,
+  LogOut,
+  MapPin,
   MessageSquareWarning,
   Pencil,
   Printer,
+  RefreshCw,
   Sticker,
   Trash2,
   X,
@@ -28,8 +31,9 @@ import { currency } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
 import { shrinkPhoto } from '@/lib/shrinkPhoto'
 import { cn } from '@/lib/utils'
-import { itInventory, type ItAssetRow } from '@/lib/queries/itInventory'
+import { itInventory, type ItAssetRow, type ItAssignment } from '@/lib/queries/itInventory'
 import { AssetForm, type AssetFormMode } from './AssetForm'
+import { CheckInDialog, CheckOutDialog, MoveDialog, StatusDialog } from './ItemActions'
 import { ItIcon } from './ItIcon'
 import {
   assignmentBadge,
@@ -72,7 +76,9 @@ export function AssetDetail({ id }: { id: string }) {
   const [loading, setLoading] = useState(true)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [form, setForm] = useState<AssetFormMode | null>(null)
-  const [menu, setMenu] = useState<null | 'more' | 'status'>(null)
+  const [menu, setMenu] = useState<null | 'more'>(null)
+  const [dialog, setDialog] = useState<null | 'checkout' | 'checkin' | 'status' | 'retire' | 'move'>(null)
+  const [out, setOut] = useState<ItAssignment | null>(null)
   const [confirm, setConfirm] = useState<null | 'archive' | 'delete'>(null)
   const [busy, setBusy] = useState(false)
   const [printing, setPrinting] = useState(false)
@@ -96,6 +102,14 @@ export function AssetDetail({ id }: { id: string }) {
     void itInventory.photoUrl(asset.image_path).then((u) => { if (alive) setPhotoUrl(u) })
     return () => { alive = false }
   }, [asset?.image_path])
+
+  // The open check-out, for who has it, since when and when it's due back.
+  useEffect(() => {
+    if (!asset?.assigned_type) { setOut(null); return }
+    let alive = true
+    void itInventory.openAssignment(asset.id).then(({ data }) => { if (alive) setOut(data ?? null) })
+    return () => { alive = false }
+  }, [asset?.id, asset?.assigned_type, asset?.updated_at])
 
   const siteName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations])
 
@@ -196,12 +210,17 @@ export function AssetDetail({ id }: { id: string }) {
               {menu === 'more' && (
                 <div className="absolute right-0 top-full z-20 mt-1 w-52 rounded-md border border-border bg-card py-1 shadow-md">
                   {!archived && (
-                    <MenuItem icon={CopyPlus} onClick={() => { setMenu(null); setForm('clone') }}>Clone</MenuItem>
+                    <>
+                      <MenuItem icon={CopyPlus} onClick={() => { setMenu(null); setForm('clone') }}>Clone</MenuItem>
+                      <MenuItem icon={Camera} onClick={() => { setMenu(null); photoInput.current?.click() }}>Add a photo</MenuItem>
+                      <MenuItem icon={MapPin} onClick={() => { setMenu(null); setDialog('move') }}>Move</MenuItem>
+                      <MenuItem icon={Archive} onClick={() => { setMenu(null); setDialog('retire') }}>Retire</MenuItem>
+                    </>
                   )}
                   {archived ? (
                     <MenuItem icon={ArchiveRestore} onClick={() => { setMenu(null); void run(() => itInventory.restoreAsset(asset.id), 'Restored.') }}>Restore</MenuItem>
                   ) : (
-                    <MenuItem icon={Archive} onClick={() => { setMenu(null); setConfirm('archive') }}>Archive</MenuItem>
+                    <MenuItem icon={X} onClick={() => { setMenu(null); setConfirm('archive') }}>Remove</MenuItem>
                   )}
                   {profile?.role === 'owner' && (
                     <MenuItem icon={Trash2} danger onClick={() => { setMenu(null); setConfirm('delete') }}>Delete for good</MenuItem>
@@ -215,36 +234,20 @@ export function AssetDetail({ id }: { id: string }) {
         {/* Primary actions. Anyone who can see it can report a problem. */}
         {!archived && (
           <div className="flex flex-wrap gap-2 border-b border-border px-3 py-2">
+            {canEdit && (asset.assigned_type ? (
+              <Button size="sm" onClick={() => setDialog('checkin')}><LogIn className="size-3.5" /> Check in</Button>
+            ) : (
+              <Button size="sm" onClick={() => setDialog('checkout')}><LogOut className="size-3.5" /> Check out</Button>
+            ))}
+            {canEdit && (
+              <Button variant="secondary" size="sm" onClick={() => setDialog('status')}><RefreshCw className="size-3.5" /> Change status</Button>
+            )}
+            {canEdit && (
+              <Button variant="secondary" size="sm" onClick={() => setPrinting(true)}><Printer className="size-3.5" /> Print sticker</Button>
+            )}
             <Button variant="secondary" size="sm" onClick={() => setReporting(true)}>
               <MessageSquareWarning className="size-3.5" /> Report problem
             </Button>
-            {canEdit && (<>
-            <div className="relative">
-              <Button variant="secondary" size="sm" disabled={busy} onClick={() => setMenu(menu === 'status' ? null : 'status')}>
-                Change status <ChevronDown className="size-3.5" />
-              </Button>
-              {menu === 'status' && (
-                <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-card py-1 shadow-md">
-                  {refs.statuses.map((s) => (
-                    <button key={s.id} type="button" disabled={s.id === asset.status_label_id}
-                      onClick={() => {
-                        setMenu(null)
-                        void run(() => itInventory.updateAsset(asset.id, { status_label_id: s.id }), `Status is now ${s.name}.`)
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-content disabled:opacity-60">
-                      <Badge tone={statusTone(s)}>{s.name}</Badge>
-                      {s.id === asset.status_label_id && <Check className="ml-auto size-4 text-accent" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => setPrinting(true)}><Printer className="size-3.5" /> Print sticker</Button>
-            <Button variant="secondary" size="sm" onClick={() => setForm('clone')}><CopyPlus className="size-3.5" /> Clone</Button>
-            <Button variant="secondary" size="sm" onClick={() => photoInput.current?.click()} disabled={busy}>
-              <Camera className="size-3.5" /> Photo
-            </Button>
-            </>)}
           </div>
         )}
 
@@ -276,7 +279,24 @@ export function AssetDetail({ id }: { id: string }) {
               <Section title="Where">
                 <Row label="Site">{siteName.get(asset.location_id) ?? 'Archived site'}</Row>
                 <Row label="Area">{asset.area_id ? refs.area.get(asset.area_id)?.name : null}</Row>
-                <Row label="Checked out to">{asset.assigned_label}</Row>
+                <Row label="Checked out to">
+                  {asset.assigned_label && (
+                    <span>
+                      {asset.assigned_label}
+                      {out && (
+                        <span className="block text-xs text-ink-muted">
+                          Since {format(new Date(out.checked_out_at), 'MMM d, yyyy')}
+                          {out.expected_return_at && (
+                            <span className={cn(new Date(out.expected_return_at) < new Date() && 'font-medium text-danger')}>
+                              {' · '}{new Date(out.expected_return_at) < new Date() ? 'Overdue since' : 'Due back'} {format(new Date(out.expected_return_at), 'MMM d')}
+                            </span>
+                          )}
+                          {out.note && <span className="block">"{out.note}"</span>}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </Row>
               </Section>
 
               <Section title="What it is">
@@ -371,6 +391,25 @@ export function AssetDetail({ id }: { id: string }) {
         </div>
       </div>
 
+      {dialog === 'checkout' && (
+        <CheckOutDialog refs={refs} assets={[asset]} onClose={() => setDialog(null)}
+          onChangeStatus={() => setDialog('status')}
+          onDone={(m) => { setDialog(null); setFlash(m); void load() }} />
+      )}
+      {dialog === 'checkin' && (
+        <CheckInDialog refs={refs} assets={[asset]} onClose={() => setDialog(null)}
+          onDone={(m) => { setDialog(null); setFlash(m); void load() }} />
+      )}
+      {(dialog === 'status' || dialog === 'retire') && (
+        <StatusDialog refs={refs} assets={[asset]} onClose={() => setDialog(null)}
+          initialStatusId={dialog === 'retire' ? refs.statuses.find((s) => s.type === 'archived')?.id : undefined}
+          onDone={(m) => { setDialog(null); setFlash(m); void load() }} />
+      )}
+      {dialog === 'move' && (
+        <MoveDialog refs={refs} assets={[asset]} onClose={() => setDialog(null)}
+          onDone={(m) => { setDialog(null); setFlash(m); void load() }} />
+      )}
+
       {reporting && (
         <ReportProblemDialog short={settings.short_code} tag={asset.asset_tag} name={asset.name}
           onClose={() => setReporting(false)}
@@ -406,9 +445,9 @@ export function AssetDetail({ id }: { id: string }) {
 
       <ConfirmDialog
         open={confirm === 'archive'}
-        title={`Archive ${asset.asset_tag} ${asset.name}?`}
-        description="It leaves the lists and its tag is retired for good. You can restore it later from Retired and archived."
-        confirmLabel="Archive"
+        title={`Remove ${asset.asset_tag} ${asset.name}?`}
+        description="For things added by mistake or twice. It leaves the lists and its tag is never reused; you can restore it from Retired and archived. If it's just worn out or gone, use Retire instead."
+        confirmLabel="Remove"
         destructive
         loading={busy}
         onCancel={() => setConfirm(null)}

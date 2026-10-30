@@ -20,8 +20,15 @@ type Outcome =
   | { kind: 'not_ours' }
   | { kind: 'no_access'; tag: string; site: string | null }
   | { kind: 'reported' }
+  | { kind: 'added'; tag: string; already: boolean }
+  | { kind: 'blank'; tag: string }
 
-export function ScanSheet({ onClose }: { onClose: () => void }) {
+// Collect mode: each scanned item is added to a selection (bulk check-out,
+// status, move) instead of opening it. `onAdd` returns false if it was
+// already selected.
+export type ScanCollect = { onAdd: (assetId: string, tag: string) => boolean; count: number }
+
+export function ScanSheet({ onClose, collect }: { onClose: () => void; collect?: ScanCollect }) {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const { activeLocation } = useLocations()
@@ -50,12 +57,17 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
     setBusy(true)
     const res = await itInventory.resolveTag(p.short, p.tag)
     setBusy(false)
+    if (res?.result === 'asset' && collect) {
+      setOutcome({ kind: 'added', tag: res.tag, already: !collect.onAdd(res.asset_id, res.tag) })
+      return
+    }
+    if (res?.result === 'unused' && collect) { setOutcome({ kind: 'blank', tag: res.tag ?? p.tag }); return }
     if (res?.result === 'asset') { onClose(); navigate(`/app/it-inventory/${res.asset_id}`); return }
     if (res?.result === 'unused') { onClose(); navigate(`/app/it-inventory?add=1&tag=${encodeURIComponent(res.tag ?? p.tag)}`); return }
     if (res?.result === 'other_account') setOutcome({ kind: 'other' })
     else if (res?.result === 'no_access') setOutcome({ kind: 'no_access', tag: res.tag, site: res.site })
     else setOutcome({ kind: 'unknown', tag: p.tag })
-  }, [navigate, onClose])
+  }, [navigate, onClose, collect])
 
   const reportUnknown = async (tag: string) => {
     if (!activeLocation || !reportText?.trim()) return
@@ -69,10 +81,14 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-shell" role="dialog" aria-modal="true" aria-label="Scan a sticker">
       <div className="flex items-center justify-between px-3 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] text-ink-invert">
-        <h2 className="text-base font-semibold">Scan a sticker</h2>
-        <button type="button" onClick={onClose} aria-label="Close" className="grid size-10 place-items-center rounded-full hover:bg-shell-elevated">
-          <X className="size-5" />
-        </button>
+        <h2 className="text-base font-semibold">{collect ? 'Scan to select' : 'Scan a sticker'}</h2>
+        {collect ? (
+          <Button size="sm" onClick={onClose}>Done ({collect.count})</Button>
+        ) : (
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-10 place-items-center rounded-full hover:bg-shell-elevated">
+            <X className="size-5" />
+          </button>
+        )}
       </div>
 
       <BarcodeScanner className="min-h-0 flex-1" continuous onDetect={resolve} />
@@ -115,6 +131,15 @@ export function ScanSheet({ onClose }: { onClose: () => void }) {
               <p className="rounded-md bg-content px-3 py-2 text-sm text-ink-muted">
                 That's {outcome.tag}{outcome.site ? ` at ${outcome.site}` : ''}. You don't have access to that site.
               </p>
+            )}
+            {outcome.kind === 'added' && (
+              <p className="flex items-center gap-2 rounded-md bg-ok-soft px-3 py-2 text-sm text-ok">
+                <CircleCheck className="size-4" />
+                {outcome.already ? `${outcome.tag} is already selected.` : `Added ${outcome.tag}. ${collect?.count ?? 0} selected. Scan the next one.`}
+              </p>
+            )}
+            {outcome.kind === 'blank' && (
+              <p className="rounded-md bg-content px-3 py-2 text-sm text-ink-muted">{outcome.tag} is a blank sticker. Add it to the inventory first.</p>
             )}
             {outcome.kind === 'reported' && (
               <p className="flex items-center gap-2 rounded-md bg-ok-soft px-3 py-2 text-sm text-ok"><CircleCheck className="size-4" /> Sent. It's in Work Requests.</p>

@@ -107,17 +107,35 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
   }
 
   // One line of plain English for each entry, plus the field changes for edits.
-  const describe = (r: ItActivity): { summary: string | null; changes: { label: string; from: string; to: string }[] } => {
+  const describe = (r: ItActivity): {
+    summary: string | null
+    changes: { label: string; from: string; to: string }[]
+    label?: string
+    photo?: string
+  } => {
     const after = (r.after ?? {}) as Record<string, unknown>
     const before = (r.before ?? {}) as Record<string, unknown>
+    if (r.entity_type === 'attachment') {
+      return {
+        label: r.action === 'deleted' ? 'Photo removed' : 'Photo added',
+        summary: after.caption ? String(after.caption) : null,
+        changes: [],
+        photo: r.action === 'created' && after.storage_path ? String(after.storage_path) : undefined,
+      }
+    }
     switch (r.action) {
       case 'created':
       case 'imported':
         return { summary: `at ${fmtVal('location_id', after.location_id)}${after.area_id ? `, ${fmtVal('area_id', after.area_id)}` : ''}`, changes: [] }
       case 'checked_out':
-        return { summary: `to ${String(after.assigned_label ?? 'someone')}${after.note ? `: ${String(after.note)}` : ''}`, changes: [] }
+        return {
+          summary: `to ${String(after.assigned_label ?? 'someone')}`
+            + (after.expected_return_at ? `, due back ${format(new Date(String(after.expected_return_at)), 'MMM d')}` : '')
+            + (after.note ? `. "${String(after.note)}"` : ''),
+          changes: [],
+        }
       case 'checked_in':
-        return { summary: after.checkin_note ? String(after.checkin_note) : null, changes: [] }
+        return { summary: after.checkin_note ? `"${String(after.checkin_note)}"` : null, changes: [] }
       case 'label_printed': {
         const copies = Number(after.copies ?? 1)
         return { summary: `${String(after.template ?? 'Sticker')}${copies > 1 ? `, ${copies} copies` : ''}`, changes: [] }
@@ -130,9 +148,11 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
         return { summary: after.description ? `"${String(after.description)}"` : null, changes: [] }
     }
     if (r.entity_type !== 'asset' && r.action !== 'updated') return { summary: null, changes: [] }
-    const keys = Object.keys(after).filter((k) => k !== 'deleted_at' || r.action !== 'deleted')
+    // A note set with the change (status, move, check-in) reads as a quote.
+    const keys = Object.keys(after).filter((k) => k !== 'note' && (k !== 'deleted_at' || r.action !== 'deleted'))
     return {
-      summary: r.action === 'updated' && before.deleted_at && !after.deleted_at ? 'Restored' : null,
+      summary: r.action === 'updated' && before.deleted_at && !after.deleted_at ? 'Restored'
+        : after.note ? `"${String(after.note)}"` : null,
       changes: keys.map((k) => ({ label: FIELD_LABELS[k] ?? k.replace(/_/g, ' '), from: fmtVal(k, before[k]), to: fmtVal(k, after[k]) })),
     }
   }
@@ -169,8 +189,14 @@ export function Timeline({ asset, refs, siteName }: { asset: ItAsset; refs: ItRe
                 </span>
                 <div className="min-w-0 flex-1 text-sm">
                   <div className="text-ink">
-                    <span className="font-medium">{d.summary === 'Restored' ? 'Restored' : meta.label}</span>
+                    <span className="font-medium">{d.summary === 'Restored' ? 'Restored' : d.label ?? meta.label}</span>
                     {d.summary && d.summary !== 'Restored' && <span className="text-ink-muted"> {d.summary}</span>}
+                    {d.photo && (
+                      <button type="button" className="ml-2 text-xs font-medium text-accent hover:underline"
+                        onClick={() => { void itInventory.photoUrl(d.photo!).then((u) => { if (u) window.open(u, '_blank', 'noopener') }) }}>
+                        View
+                      </button>
+                    )}
                   </div>
                   {d.changes.length > 0 && (
                     <ul className="mt-1 space-y-0.5 text-xs">

@@ -336,6 +336,87 @@ begin
 end $$;
 reset role;
 
+-- ---- Account A owner: bulk check-out / check-in, status notes, retire, move --------------------
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  ok_id   uuid;
+  bad_id  uuid;
+  far_area uuid;
+  near_area uuid;
+  res     jsonb;
+  spare   uuid := (select id from public.it_status_labels where account_id = current_setting('t.a')::uuid and name = 'Spare / In Stock');
+  broken  uuid := (select id from public.it_status_labels where account_id = current_setting('t.a')::uuid and name = 'Broken');
+  retired uuid := (select id from public.it_status_labels where account_id = current_setting('t.a')::uuid and name = 'Retired');
+begin
+  insert into public.it_assets (account_id, location_id, name, category_id, asset_tag)
+  select current_setting('t.a')::uuid, current_setting('t.site_in')::uuid, 'Test bulk ok', id, ''
+    from public.it_categories where account_id = current_setting('t.a')::uuid and name = 'Tablet'
+  returning id into ok_id;
+  insert into public.it_assets (account_id, location_id, name, category_id, asset_tag, status_label_id)
+  select current_setting('t.a')::uuid, current_setting('t.site_in')::uuid, 'Test bulk broken', id, '', broken
+    from public.it_categories where account_id = current_setting('t.a')::uuid and name = 'Tablet'
+  returning id into bad_id;
+  select id into near_area from public.it_site_areas where location_id = current_setting('t.site_in')::uuid limit 1;
+  select id into far_area from public.it_site_areas where location_id = current_setting('t.site_out')::uuid limit 1;
+
+  -- One broken item doesn't stop the batch; it fails with the reason.
+  res := public.it_check_out(array[ok_id, bad_id], 'area', near_area, null, 'Morning crew');
+  if (res -> 0 ->> 'ok')::boolean is not true or (res -> 1 ->> 'ok')::boolean is not false
+     or (res -> 1 ->> 'error') not like '%can''t be checked out%' then
+    raise exception 'FAIL 39: bulk check-out should pass the tablet and refuse the broken one: %', res;
+  end if;
+  if (public.it_check_out(array[ok_id], 'area', near_area) -> 0 ->> 'error') not like 'Already checked out%' then
+    raise exception 'FAIL 40: a second check-out was not refused';
+  end if;
+
+  -- An area must be at the item's own site.
+  update public.it_assets set status_label_id = spare where id = bad_id;
+  if (public.it_check_out(array[bad_id], 'area', far_area) -> 0 ->> 'error') not like '%isn''t at this item''s site%' then
+    raise exception 'FAIL 41: checked out to an area at another site';
+  end if;
+
+  -- A checked-out item doesn't move.
+  if (public.it_move(array[ok_id], current_setting('t.site_out')::uuid) -> 0 ->> 'error') not like 'Checked out to%' then
+    raise exception 'FAIL 42: moved an item that is checked out';
+  end if;
+
+  -- Check-in with a new status keeps the note on the status change.
+  res := public.it_check_in(array[ok_id], broken, 'Cracked screen');
+  if (res -> 0 ->> 'ok')::boolean is not true
+     or (select status_label_id from public.it_assets where id = ok_id) <> broken
+     or (select assigned_type from public.it_assets where id = ok_id) is not null then
+    raise exception 'FAIL 43: check-in did not return the item with its new status: %', res;
+  end if;
+  if not exists (select 1 from public.it_activity_log where asset_id = ok_id and action = 'status_changed'
+                 and after ->> 'note' = 'Cracked screen') then
+    raise exception 'FAIL 44: the check-in note was not kept on the status change';
+  end if;
+
+  -- Retiring checks the item in first and retires its tag.
+  perform public.it_check_out(array[bad_id], 'area', near_area);
+  res := public.it_set_status(array[bad_id], retired, 'End of life');
+  if (res -> 0 ->> 'ok')::boolean is not true
+     or exists (select 1 from public.it_assignments where asset_id = bad_id and checked_in_at is null)
+     or (select t.status from public.it_asset_tags t join public.it_assets a on a.asset_tag = t.tag and a.account_id = t.account_id
+          where a.id = bad_id) <> 'retired' then
+    raise exception 'FAIL 45: retiring did not check the item in and retire its tag: %', res;
+  end if;
+  perform set_config('t.bulk_ok', ok_id::text, true);
+end $$;
+reset role;
+
+-- Crew can't check things out.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if coalesce((public.it_check_out(array[current_setting('t.asset_in')::uuid], 'site', current_setting('t.site_in')::uuid) -> 0 ->> 'ok')::boolean, false) then
+    raise exception 'FAIL 46: an employee checked something out';
+  end if;
+end $$;
+reset role;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;
