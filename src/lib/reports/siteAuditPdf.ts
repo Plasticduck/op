@@ -1,5 +1,6 @@
 import { format } from 'date-fns'
-import type { SiteAuditSchema, SiteAuditAnswers } from '@/features/opssuite/siteAuditSchema'
+import type { SiteAuditSchema } from '@/features/opssuite/siteAuditSchema'
+import { reconstructAuditAnswers, type StoredAudit } from '@/features/opssuite/siteAuditColumns'
 import type { SiteReviewSchema } from '@/features/opssuite/siteReviewSchema'
 import type { SiteReviewPdfInput } from './siteReviewPdf'
 import { buildSiteReviewPdf } from './siteReviewPdf'
@@ -8,48 +9,12 @@ import { siteAuditPhotos } from '@/lib/queries/opsSuite'
 
 export { openPdfInNewTab, downloadBlob } from './siteReviewPdf'
 
-// A Site Audit stores its answers across split columns (one per fixed section)
-// plus flattened text for initial_observations / explanation. This rebuilds the
-// single answers-by-item-id object the shared review PDF builder expects.
-type AuditRow = {
-  initial_observations: string | null
-  primary_section: unknown
-  secondary_section: unknown
-  priority_section: unknown
-  final_thoughts: unknown
-  section_comments: unknown
-  explanation: string | null
+type AuditRow = StoredAudit & {
   submitted_by_name: string | null
   created_at: string | null
+  edited_by_name?: string | null
+  edited_at?: string | null
   location?: { name: string } | null
-}
-
-export function reconstructAuditAnswers(schema: SiteAuditSchema, audit: AuditRow): SiteAuditAnswers {
-  const answers: SiteAuditAnswers = {}
-  const merge = (obj: unknown) => {
-    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) answers[k] = v
-    }
-  }
-  merge(audit.primary_section)
-  merge(audit.secondary_section)
-  merge(audit.priority_section)
-  merge(audit.final_thoughts)
-  // section_comments nests any custom sections: { sectionId: { itemId: answer } }.
-  if (audit.section_comments && typeof audit.section_comments === 'object') {
-    for (const v of Object.values(audit.section_comments as Record<string, unknown>)) merge(v)
-  }
-  // initial_observations + explanation are stored as flat text; map each back to
-  // the first comments item of its section so it renders in place.
-  const setFirstComments = (sectionId: string, text: string | null) => {
-    if (!text) return
-    const section = schema.sections.find((s) => s.id === sectionId)
-    const item = section?.items.find((it) => it.type === 'comments')
-    if (item) answers[item.id] = { value: text }
-  }
-  setFirstComments('initial_observations', audit.initial_observations)
-  setFirstComments('explanation', audit.explanation)
-  return answers
 }
 
 export type AuditAttachment = { id: string; label: string | null; file_type: string | null; data_uri: string | null }
@@ -166,6 +131,7 @@ export async function buildAuditPdfInput(
     siteName: audit.location?.name ?? null,
     date: dateStr,
     metaLine: meta,
+    titleNote: audit.edited_at ? 'Edited by ' + (audit.edited_by_name ?? '-') + ' on ' + format(new Date(audit.edited_at), 'MMM d, yyyy') : undefined,
     schema: { ...schema, sections } as unknown as SiteReviewSchema,
     answers,
     submitterName: audit.submitted_by_name,

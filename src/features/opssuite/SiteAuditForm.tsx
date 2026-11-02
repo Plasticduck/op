@@ -35,6 +35,8 @@ export default function SiteAuditForm({
   onAnswersChange,
   submitting,
   savingDraft,
+  submitLabel = 'Submit audit',
+  keepPhotoFiles,
 }: {
   accountId: string
   schema: SiteAuditSchema
@@ -46,6 +48,10 @@ export default function SiteAuditForm({
   onAnswersChange?: (answers: SiteAuditAnswers) => void
   submitting?: boolean
   savingDraft?: boolean
+  submitLabel?: string
+  // Photos on a submitted audit: taking one off an edit can't delete its file yet,
+  // because the audit still shows it until the edit is resubmitted.
+  keepPhotoFiles?: string[]
 }) {
   const [answers, setAnswers] = useState<SiteAuditAnswers>(
     initialAnswers ?? emptyAnswersFor(schema),
@@ -88,6 +94,7 @@ export default function SiteAuditForm({
                   item={item}
                   accountId={accountId}
                   draftId={draftId}
+                  keepPhotoFiles={keepPhotoFiles}
                   value={(answers[item.id] as Record<string, unknown> | undefined) ?? {}}
                   onStatus={(v) => setItem(item.id, { value: v })}
                   onPhotosChange={(next) => setItem(item.id, { photos: next })}
@@ -126,7 +133,7 @@ export default function SiteAuditForm({
           </Button>
         )}
         <Button type="submit" disabled={submitting || savingDraft}>
-          {submitting ? 'Submitting…' : 'Submit audit'}
+          {submitting ? 'Submitting…' : submitLabel}
         </Button>
       </div>
     </form>
@@ -137,6 +144,7 @@ function PassFailRow({
   item,
   accountId,
   draftId,
+  keepPhotoFiles,
   value,
   onStatus,
   onPhotosChange,
@@ -144,6 +152,7 @@ function PassFailRow({
   item: SiteAuditItem
   accountId: string
   draftId: string
+  keepPhotoFiles?: string[]
   value: Record<string, unknown>
   onStatus: (v: string | null) => void
   onPhotosChange: (photos: string[]) => void
@@ -156,7 +165,7 @@ function PassFailRow({
         <p className="font-semibold text-ink">{item.label}</p>
         {item.helpText && <p className="mt-0.5 text-sm text-ink-muted">{item.helpText}</p>}
         <div className="mt-2">
-          <ItemPhotos accountId={accountId} draftId={draftId} itemId={item.id} photos={photos} onChange={onPhotosChange} />
+          <ItemPhotos accountId={accountId} draftId={draftId} itemId={item.id} photos={photos} keepPhotoFiles={keepPhotoFiles} onChange={onPhotosChange} />
         </div>
       </div>
 
@@ -194,12 +203,13 @@ function PassFailRow({
 // site-audit-photos bucket and keeps the storage paths on the answer, so large
 // phone photos never hit the old base64-in-DB size ceiling.
 function ItemPhotos({
-  accountId, draftId, itemId, photos, onChange,
+  accountId, draftId, itemId, photos, keepPhotoFiles, onChange,
 }: {
   accountId: string
   draftId: string
   itemId: string
   photos: string[]
+  keepPhotoFiles?: string[]
   onChange: (photos: string[]) => void
 }) {
   const [urls, setUrls] = useState<Record<string, string>>({})
@@ -231,7 +241,7 @@ function ItemPhotos({
   }
 
   const remove = async (p: string) => {
-    await siteAuditPhotos.remove(p)
+    if (!keepPhotoFiles?.includes(p)) await siteAuditPhotos.remove(p)
     onChange(photos.filter((x) => x !== p))
   }
 

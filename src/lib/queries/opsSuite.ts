@@ -56,6 +56,16 @@ export const siteAudits = {
   emailReport: (auditId: string) =>
     supabase.functions.invoke('email-site-audit', { body: { audit_id: auditId } }),
 
+  // ---- re-open a submitted audit (admins) ----
+  get: (id: string) => supabase.from('site_audits').select(withLoc).eq('id', id).single(),
+  // The work in progress, kept apart from the submitted columns until the resubmit.
+  saveEditDraft: (id: string, draft: T['site_audits']['Update']['edit_draft']) =>
+    supabase.from('site_audits').update({ edit_draft: draft, updated_at: new Date().toISOString() }).eq('id', id).select('id').single(),
+  resubmit: (id: string, patch: T['site_audits']['Update']) => {
+    const now = new Date().toISOString()
+    return supabase.from('site_audits').update({ ...patch, edit_draft: null, edited_at: now, updated_at: now }).eq('id', id).select('id').single()
+  },
+
   // ---- in-progress drafts (resume later) ----
   // A user's own saved drafts, newest first.
   listDrafts: (userId: string) =>

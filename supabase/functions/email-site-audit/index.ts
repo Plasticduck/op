@@ -172,8 +172,10 @@ function renderAudit(doc: Any, input: Any): void {
 
   doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(11, 15, 20)
   doc.text('Site Audit', marginX, topMargin)
+  const titleWidth = doc.getTextWidth('Site Audit')
   doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(110, 116, 124)
   doc.text(input.metaLine ?? '', marginX, topMargin + 7)
+  if (input.titleNote) doc.text(input.titleNote, marginX + titleWidth + 4, topMargin)
 
   if (input.logo?.dataUrl) {
     const logoH = 18
@@ -325,8 +327,9 @@ async function buildPdfBase64(svc: Any, audit: Any, siteName: string): Promise<s
   } catch (_) { /* skip logo */ }
 
   const metaLine = ['Site: ' + (siteName || '-'), 'Date: ' + fmtDate(audit.created_at), 'Auditor: ' + (audit.submitted_by_name ?? '-')].join('  |  ')
+  const titleNote = audit.edited_at ? 'Edited by ' + (audit.edited_by_name ?? '-') + ' on ' + fmtDate(audit.edited_at) : null
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter', compress: true })
-  renderAudit(doc, { metaLine, schema, answers, submitterName: audit.submitted_by_name, photoImages, logo })
+  renderAudit(doc, { metaLine, titleNote, schema, answers, submitterName: audit.submitted_by_name, photoImages, logo })
   return encodeBase64(new Uint8Array(doc.output('arraybuffer')))
 }
 
@@ -367,7 +370,7 @@ Deno.serve(async (req) => {
 
   const { data: audit } = await svc
     .from('site_audits')
-    .select('id, account_id, submitted_by_name, created_at, initial_observations, primary_section, secondary_section, priority_section, final_thoughts, section_comments, explanation, location:location_id(name)')
+    .select('id, account_id, submitted_by_name, created_at, edited_by_name, edited_at, initial_observations, primary_section, secondary_section, priority_section, final_thoughts, section_comments, explanation, location:location_id(name)')
     .eq('id', auditId)
     .maybeSingle()
   const auditRow = audit as Any
@@ -394,18 +397,22 @@ Deno.serve(async (req) => {
 
   const filename = `site-audit-${(site || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`
   const when = (auditRow.created_at ?? '') as string
+  const longDate = (d: string) => new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  // A re-opened audit that was resubmitted goes out again, marked as an update.
+  const isUpdate = !!auditRow.edited_at
   const rows: [string, string][] = [
     ['Site', site || '—'],
     ['Auditor', auditRow.submitted_by_name ?? '—'],
-    ['Date', when ? new Date(when).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'],
+    ['Date', when ? longDate(when) : '—'],
+    ...(isUpdate ? [['Edited by', `${auditRow.edited_by_name ?? '—'} on ${longDate(auditRow.edited_at)}`] as [string, string]] : []),
   ]
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">
-      <h2 style="margin:0 0 16px;font-size:20px;">New Site Audit${site ? ': ' + esc(site) : ''}${body.test ? ' (TEST)' : ''}</h2>
+      <h2 style="margin:0 0 16px;font-size:20px;">${isUpdate ? 'Updated' : 'New'} Site Audit${site ? ': ' + esc(site) : ''}${body.test ? ' (TEST)' : ''}</h2>
       <table style="border-collapse:collapse;width:100%;font-size:14px;">
         ${rows.map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#666;white-space:nowrap;vertical-align:top;">${esc(k)}</td><td style="padding:6px 0;font-weight:600;">${esc(v)}</td></tr>`).join('')}
       </table>
-      <p style="margin:20px 0 0;font-size:14px;">The full audit is attached as a PDF, with any photos shown beneath their line item.</p>
+      <p style="margin:20px 0 0;font-size:14px;">The full audit is attached as a PDF, with any photos shown beneath their line item.${isUpdate ? ' This replaces the earlier report for this audit.' : ''}</p>
       <p style="margin:20px 0 0;color:#888;font-size:12px;">Submitted from WashLyfe Operator.</p>
     </div>`
 
@@ -414,7 +421,7 @@ Deno.serve(async (req) => {
     const { error } = await resend.emails.send({
       from: fromAddr,
       to: recipients,
-      subject: `Site Audit${site ? ': ' + site : ''}${body.test ? ' (TEST)' : ''}`,
+      subject: `${isUpdate ? 'Updated ' : ''}Site Audit${site ? ': ' + site : ''}${body.test ? ' (TEST)' : ''}`,
       html,
       attachments: [{ filename, content: pdfB64 }],
     })

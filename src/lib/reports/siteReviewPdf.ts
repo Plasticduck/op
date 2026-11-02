@@ -10,6 +10,8 @@ export type SiteReviewPdfInput = {
   // Overrides the default "Site | Date | Weather | Time Arrived" meta line (used
   // by reports without weather/arrival, e.g. Site Audits).
   metaLine?: string
+  // Small text beside the title, clear of the logo at the end of the meta line.
+  titleNote?: string
   schema: SiteReviewSchema
   answers: SiteReviewAnswers
   summaryText?: string | null
@@ -72,6 +74,7 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(11, 15, 20)
   doc.text(title, marginX, topMargin)
+  const titleWidth = doc.getTextWidth(title)
 
   doc.setFontSize(10)
   doc.setFont('helvetica', 'normal')
@@ -83,6 +86,7 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
     'Time Arrived: ' + fmt12(input.timeArrived),
   ].join('  |  ')
   doc.text(meta, marginX, topMargin + 7)
+  if (input.titleNote) doc.text(input.titleNote, marginX + titleWidth + 4, topMargin)
 
   if (input.logo?.dataUrl) {
     const logoH = 18

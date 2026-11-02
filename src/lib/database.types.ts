@@ -8376,6 +8376,10 @@ export type Database = {
           account_id: string
           created_at: string
           draft_answers: Json | null
+          edit_draft: Json | null
+          edited_at: string | null
+          edited_by: string | null
+          edited_by_name: string | null
           explanation: string | null
           final_thoughts: Json | null
           id: string
@@ -8395,6 +8399,10 @@ export type Database = {
           account_id: string
           created_at?: string
           draft_answers?: Json | null
+          edit_draft?: Json | null
+          edited_at?: string | null
+          edited_by?: string | null
+          edited_by_name?: string | null
           explanation?: string | null
           final_thoughts?: Json | null
           id?: string
@@ -8414,6 +8422,10 @@ export type Database = {
           account_id?: string
           created_at?: string
           draft_answers?: Json | null
+          edit_draft?: Json | null
+          edited_at?: string | null
+          edited_by?: string | null
+          edited_by_name?: string | null
           explanation?: string | null
           final_thoughts?: Json | null
           id?: string
@@ -8435,6 +8447,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_audits_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {

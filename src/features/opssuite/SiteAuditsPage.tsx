@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ClipboardCheck, FileText, MapPin, Plus, Search } from 'lucide-react'
+import { ClipboardCheck, FileText, MapPin, Plus, RotateCcw, Search } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -15,12 +15,20 @@ import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { siteAudits, siteAuditPhotos, customForms, attachments, type SiteAudit } from '@/lib/queries/opsSuite'
 import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
-import { buildAuditPdfInput, buildSiteAuditPdf, openPdfInNewTab, reconstructAuditAnswers, type AuditAttachment } from '@/lib/reports/siteAuditPdf'
+import { buildAuditPdfInput, buildSiteAuditPdf, openPdfInNewTab, type AuditAttachment } from '@/lib/reports/siteAuditPdf'
 import { loadPdfLogo } from '@/lib/pdfLogo'
 import { OpsToolbar } from './OpsToolbar'
 import { useOpsTable } from './useOpsTable'
 import SiteAuditForm from './SiteAuditForm'
 import { SiteAuditBuilder } from './SiteAuditBuilder'
+import {
+  answerPhotoPaths,
+  auditColumns,
+  auditFitsForm,
+  editedAuditColumns,
+  reconstructAuditAnswers,
+  type AuditEditDraft,
+} from './siteAuditColumns'
 import {
   DEFAULT_SITE_AUDIT_SCHEMA,
   type SiteAuditAnswers,
@@ -46,6 +54,7 @@ export default function SiteAuditsPage() {
   const [adding, setAdding] = useState(false)
   const [drafts, setDrafts] = useState<Row[]>([])
   const [resuming, setResuming] = useState<Row | null>(null)
+  const [editing, setEditing] = useState<Row | null>(null)
   const [schema, setSchema] = useState<SiteAuditSchema>(DEFAULT_SITE_AUDIT_SCHEMA)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [siteFilter, setSiteFilter] = useState('all')
@@ -103,6 +112,35 @@ export default function SiteAuditsPage() {
   const table = useOpsTable(visibleRows, (r) => r.created_at)
 
   const canCustomize = profile?.role === 'owner' || profile?.role === 'manager'
+
+  // Re-opened audits with edits not yet resubmitted, whatever the filters show.
+  const openEdits = useMemo(() => (isAdmin ? rows.filter((r) => r.edit_draft) : []), [isAdmin, rows])
+
+  // Reads the row fresh: this page may have been open a while, and editing a stale
+  // copy would undo another admin's resubmit.
+  const reopen = async (a: Row) => {
+    setOpen(null)
+    const { data, error } = await siteAudits.get(a.id)
+    if (error || !data) {
+      window.alert('Could not re-open this audit: ' + (error?.message ?? 'not found'))
+      return
+    }
+    setEditing(data as unknown as Row)
+  }
+
+  const discardEdit = async (a: Row) => {
+    if (!window.confirm('Discard these edits? The submitted audit stays as it is.')) return
+    const { error } = await siteAudits.saveEditDraft(a.id, null)
+    if (error) {
+      window.alert('Could not discard the edits: ' + error.message)
+      return
+    }
+    // Photos added during the edit aren't on the audit, so nothing uses them now.
+    const stored = new Set(auditPhotoPaths(schema, a))
+    const draft = a.edit_draft as unknown as AuditEditDraft
+    for (const p of answerPhotoPaths(draft.answers)) if (!stored.has(p)) void siteAuditPhotos.remove(p)
+    void load()
+  }
 
   // PDF export per audit: photos are embedded below each line item, with the
   // Mighty Wash logo top-right (their brand, so only on their account).
@@ -171,10 +209,10 @@ export default function SiteAuditsPage() {
         onExportExcel={() => exportExcel('site-audits', EXPORT_COLUMNS, table.rows)}
       />
 
-      {drafts.length > 0 && (
+      {(drafts.length > 0 || openEdits.length > 0) && (
         <div className="rounded-md border border-warn/40 bg-warn-soft/50 p-3">
           <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-warn">
-            <ClipboardCheck className="size-3.5" /> In progress — saved drafts
+            <ClipboardCheck className="size-3.5" /> In progress: saved drafts
           </h3>
           <ul className="flex flex-col gap-2">
             {drafts.map((d) => (
@@ -189,6 +227,21 @@ export default function SiteAuditsPage() {
                 </div>
               </li>
             ))}
+            {openEdits.map((a) => {
+              const edit = a.edit_draft as unknown as AuditEditDraft
+              return (
+                <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink">{a.location?.name ?? 'Unassigned site'}: edits to the {shortDate(a.created_at)} audit</p>
+                    <p className="text-xs text-ink-muted">Not resubmitted yet · {edit.byName ?? 'An admin'} · Saved {shortDate(edit.savedAt)}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button size="sm" onClick={() => void reopen(a)}>Resume</Button>
+                    <Button variant="ghost" size="sm" onClick={() => void discardEdit(a)}>Discard</Button>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}
@@ -214,11 +267,19 @@ export default function SiteAuditsPage() {
                 {table.rows.map((a) => (
                   <tr key={a.id} className="border-t border-border hover:bg-content">
                     <td className="px-3 py-2.5 font-medium text-ink">{a.location?.name ?? '—'}</td>
-                    <td className="px-3 py-2.5 text-ink-muted">{a.submitted_by_name ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-ink-muted">
+                      {a.submitted_by_name ?? '—'}
+                      <EditedNote audit={a} />
+                    </td>
                     <td className="px-3 py-2.5 text-ink-muted">{shortDate(a.created_at)}</td>
                     <td className="px-3 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="sm" onClick={() => setOpen(a)}>View</Button>
+                        {isAdmin && auditFitsForm(schema, a) && (
+                          <Button variant="ghost" size="sm" onClick={() => void reopen(a)}>
+                            <RotateCcw className="size-4" /> Re-open
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" disabled={pdfBusyId === a.id} onClick={() => void openPdf(a)}>
                           <FileText className="size-4" /> {pdfBusyId === a.id ? 'PDF…' : 'PDF'}
                         </Button>
@@ -239,6 +300,7 @@ export default function SiteAuditsPage() {
                   <p className="text-xs text-ink-muted">
                     {a.submitted_by_name ?? '—'} · {shortDate(a.created_at)}
                   </p>
+                  <EditedNote audit={a} />
                 </button>
                 <Button variant="ghost" size="sm" disabled={pdfBusyId === a.id} onClick={() => void openPdf(a)}>
                   <FileText className="size-4" /> {pdfBusyId === a.id ? 'PDF…' : 'PDF'}
@@ -252,6 +314,18 @@ export default function SiteAuditsPage() {
       {open && (
         <Modal open onClose={() => setOpen(null)} title={`Audit · ${open.location?.name ?? 'Site'}`} size="lg">
           <div className="flex flex-col gap-4">
+            {(isAdmin || open.edited_at) && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <EditedNote audit={open} />
+                {isAdmin && (auditFitsForm(schema, open) ? (
+                  <Button variant="secondary" size="sm" className="ml-auto" onClick={() => void reopen(open)}>
+                    <RotateCcw className="size-4" /> Re-open
+                  </Button>
+                ) : (
+                  <p className="text-xs text-ink-muted">This audit is on the older form, so it can't be re-opened.</p>
+                ))}
+              </div>
+            )}
             {open.initial_observations && <Section title="Initial observations"><p className="text-sm text-ink whitespace-pre-wrap">{open.initial_observations}</p></Section>}
             <Section title="Primary"><JsonView value={stripPhotos(open.primary_section)} /></Section>
             <Section title="Secondary"><JsonView value={stripPhotos(open.secondary_section)} /></Section>
@@ -276,6 +350,17 @@ export default function SiteAuditsPage() {
           onSaved={() => { setAdding(false); setResuming(null); void load(); loadDrafts() }}
         />
       )}
+      {editing && (
+        <EditAudit
+          key={editing.id}
+          audit={editing}
+          accountId={profile?.account_id ?? ''}
+          editorId={profile?.id ?? null}
+          editorName={profile?.name ?? null}
+          schema={schema}
+          onClose={() => { setEditing(null); void load() }}
+        />
+      )}
       {builderOpen && (
         <SiteAuditBuilder
           open
@@ -290,6 +375,11 @@ export default function SiteAuditsPage() {
       )}
     </div>
   )
+}
+
+function EditedNote({ audit }: { audit: Row }) {
+  if (!audit.edited_at) return null
+  return <p className="text-xs text-ink-muted">Edited by {audit.edited_by_name ?? 'an admin'} · {shortDate(audit.edited_at)}</p>
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -318,13 +408,7 @@ function stripPhotos(v: unknown): unknown {
 
 // Every storage photo path attached to an audit's items (new storage-based audits).
 function auditPhotoPaths(schema: SiteAuditSchema, audit: Row): string[] {
-  const answers = reconstructAuditAnswers(schema, audit)
-  const paths: string[] = []
-  for (const v of Object.values(answers)) {
-    const ph = (v as { photos?: unknown } | null | undefined)?.photos
-    if (Array.isArray(ph)) for (const p of ph) if (typeof p === 'string') paths.push(p)
-  }
-  return [...new Set(paths)]
+  return answerPhotoPaths(reconstructAuditAnswers(schema, audit))
 }
 
 function AuditPhotoStrip({ paths }: { paths: string[] }) {
@@ -352,39 +436,6 @@ function AuditPhotoStrip({ paths }: { paths: string[] }) {
       </div>
     </Section>
   )
-}
-
-const KNOWN_SECTION_IDS = new Set([
-  'initial_observations',
-  'primary',
-  'secondary',
-  'priority',
-  'final_thoughts',
-  'explanation',
-  'attachments',
-])
-
-function sliceAnswers(schema: SiteAuditSchema, answers: SiteAuditAnswers, sectionId: string): SiteAuditAnswers {
-  const section = schema.sections.find((s) => s.id === sectionId)
-  if (!section) return {}
-  const slice: SiteAuditAnswers = {}
-  for (const item of section.items) {
-    if (item.id in answers) slice[item.id] = answers[item.id]
-  }
-  return slice
-}
-
-function firstCommentsText(schema: SiteAuditSchema, answers: SiteAuditAnswers, sectionId: string): string | null {
-  const section = schema.sections.find((s) => s.id === sectionId)
-  if (!section) return null
-  for (const item of section.items) {
-    if (item.type === 'comments') {
-      const ans = (answers[item.id] ?? {}) as Record<string, unknown>
-      const v = ((ans.value as string | undefined) ?? '').trim()
-      if (v) return v
-    }
-  }
-  return null
 }
 
 function AddAudit({ accountId, submitterId, submitterName, schema, draft, onClose, onSaved }: {
@@ -505,39 +556,11 @@ function AddAudit({ accountId, submitterId, submitterName, schema, draft, onClos
       return
     }
 
-    const initialObservations = firstCommentsText(schema, answers, 'initial_observations')
-    const explanationText = firstCommentsText(schema, answers, 'explanation')
-
-    const extraComments: SiteAuditAnswers = {}
-    for (const section of schema.sections) {
-      if (KNOWN_SECTION_IDS.has(section.id)) continue
-      const slice = sliceAnswers(schema, answers, section.id)
-      if (Object.keys(slice).length > 0) extraComments[section.id] = slice
-    }
-
-    // Initial Observations carries scored items (e.g. Dress Code) alongside its
-    // curb-appeal comments; the comments text goes to its own column, so persist
-    // the scored items in section_comments too so they round-trip into the PDF.
-    const initialObsSection = schema.sections.find((s) => s.id === 'initial_observations')
-    if (initialObsSection) {
-      const scored = sliceAnswers(schema, answers, 'initial_observations')
-      for (const it of initialObsSection.items) if (it.type === 'comments') delete scored[it.id]
-      if (Object.keys(scored).length > 0) extraComments['initial_observations'] = scored
-    }
-
-    // Photos are already uploaded to storage while filling the form; their paths
-    // ride along on each item's answer through sliceAnswers into the columns.
     setBusy(true)
     const { data, error: err } = await siteAudits.create({
       account_id: accountId,
       location_id: locationId,
-      initial_observations: initialObservations,
-      primary_section: sliceAnswers(schema, answers, 'primary') as never,
-      secondary_section: sliceAnswers(schema, answers, 'secondary') as never,
-      priority_section: sliceAnswers(schema, answers, 'priority') as never,
-      final_thoughts: sliceAnswers(schema, answers, 'final_thoughts') as never,
-      section_comments: (Object.keys(extraComments).length > 0 ? extraComments : null) as never,
-      explanation: explanationText,
+      ...auditColumns(schema, answers),
       submitted_by: submitterId,
       submitted_by_name: submitterName,
     })
@@ -596,6 +619,148 @@ function AddAudit({ accountId, submitterId, submitterName, schema, draft, onClos
           onAnswersChange={(a) => { latest.current = a; setTick((t) => t + 1) }}
           submitting={busy}
           savingDraft={savingDraft}
+        />
+
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={() => void requestClose()}>Close</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Re-open a submitted audit. The audit stays as submitted until the resubmit;
+// until then every change autosaves to edit_draft on its row, so a reloaded page
+// (iOS does this after the camera) or a closed form picks up where it left off.
+function EditAudit({ audit, accountId, editorId, editorName, schema, onClose }: {
+  audit: Row
+  accountId: string
+  editorId: string | null
+  editorName: string | null
+  schema: SiteAuditSchema
+  onClose: () => void
+}) {
+  const { locations } = useLocations()
+  const saved = audit.edit_draft as unknown as AuditEditDraft | null
+  const [initialAnswers] = useState(() => saved?.answers ?? reconstructAuditAnswers(schema, audit))
+  const [storedPhotos] = useState(() => auditPhotoPaths(schema, audit))
+  const [locationId, setLocationId] = useState(saved?.locationId ?? audit.location_id ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [autoState, setAutoState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  const latest = useRef(initialAnswers)
+  const chain = useRef<Promise<unknown>>(Promise.resolve())
+  // Set while resubmitting, so a late autosave can't put the draft back after it.
+  const submitted = useRef(false)
+  const [tick, setTick] = useState(0)
+
+  const persist = useCallback((): Promise<boolean> => {
+    const run = async () => {
+      if (submitted.current) return true
+      setAutoState('saving')
+      const draft: AuditEditDraft = { locationId, answers: latest.current, byName: editorName, savedAt: new Date().toISOString() }
+      const { error: err } = await siteAudits.saveEditDraft(audit.id, draft as never)
+      setAutoState(err ? 'error' : 'saved')
+      return !err
+    }
+    // One save at a time, so an older save can't land after a newer one.
+    const p = chain.current.then(run, run)
+    chain.current = p
+    return p
+  }, [audit.id, editorName, locationId])
+
+  useEffect(() => {
+    if (!tick) return
+    const t = setTimeout(() => { void persist() }, 1200)
+    return () => clearTimeout(t)
+  }, [tick, persist])
+
+  const saveProgress = async (answers: SiteAuditAnswers) => {
+    setError(null)
+    setSavingDraft(true)
+    latest.current = answers
+    const ok = await persist()
+    setSavingDraft(false)
+    if (!ok) { setError('Could not save your edits. Check your connection and try again.'); return }
+    onClose()
+  }
+
+  const requestClose = async () => {
+    if (tick && !(await persist()) && !window.confirm('Your latest edits could not be saved. Close anyway and lose them?')) return
+    onClose()
+  }
+
+  const resubmit = async (answers: SiteAuditAnswers) => {
+    setError(null)
+    if (!locationId) {
+      setError('Pick a site')
+      return
+    }
+    setBusy(true)
+    submitted.current = true
+    await chain.current.catch(() => undefined)
+    const { error: err } = await siteAudits.resubmit(audit.id, {
+      location_id: locationId,
+      ...editedAuditColumns(schema, audit, answers),
+      edited_by: editorId,
+      edited_by_name: editorName,
+    })
+    if (err) {
+      submitted.current = false
+      setBusy(false)
+      setError(err.message)
+      return
+    }
+
+    // Photos taken off the audit can go now that the new version is saved.
+    const kept = new Set(answerPhotoPaths(answers))
+    for (const p of storedPhotos) if (!kept.has(p)) void siteAuditPhotos.remove(p)
+
+    // Email the updated PDF to the same people (best-effort, as on first submit).
+    void siteAudits.emailReport(audit.id)
+
+    setBusy(false)
+    onClose()
+  }
+
+  return (
+    <Modal open onClose={() => void requestClose()} title="Re-open site audit" size="lg">
+      <div className="flex flex-col gap-4">
+        <p className="rounded-md bg-accent-soft px-3 py-2 text-sm text-accent">
+          Submitted {shortDate(audit.created_at)} by {audit.submitted_by_name ?? 'unknown'}. The audit stays as it is until you resubmit, then the updated PDF is emailed to the same people.
+        </p>
+
+        <Field label="Site" required>
+          {(id) => (
+            <Select id={id} value={locationId} onChange={(e) => { setLocationId(e.target.value); setTick((t) => t + 1) }}>
+              <option value="">Select…</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+          )}
+        </Field>
+
+        <p className={cn('-mt-2 text-xs', autoState === 'error' ? 'text-danger' : 'text-ink-muted')}>
+          {autoState === 'saving' ? 'Saving…'
+            : autoState === 'saved' ? 'Edits saved. If you leave, finish them from In progress.'
+            : autoState === 'error' ? 'Couldn’t save your edits. Check your connection.'
+            : 'Your edits save automatically, photos included.'}
+        </p>
+
+        {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+
+        <SiteAuditForm
+          accountId={accountId}
+          schema={schema}
+          initialAnswers={initialAnswers}
+          onSubmit={resubmit}
+          onSaveDraft={saveProgress}
+          onAnswersChange={(a) => { latest.current = a; setTick((t) => t + 1) }}
+          submitting={busy}
+          savingDraft={savingDraft}
+          submitLabel="Resubmit audit"
+          keepPhotoFiles={storedPhotos}
         />
 
         <div className="flex justify-end">
