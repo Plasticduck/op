@@ -2,7 +2,8 @@
 // Every morning at 6:00 AM Central, emails an "unusual clock-ins" report: people
 // still clocked in on an OPEN iSolved punch that has run longer than a normal
 // shift (the same "check punch" flag the On the Clock view shows), grouped by
-// site. These are almost always missed clock-outs from the day before.
+// site. These are almost always missed clock-outs from the day before. It also
+// lists yesterday's double clock-ins (findDoubleClockIns below), by email and text.
 //
 // Runs in two phases, each scheduled twice by pg_cron so one lands on the right
 // Central time year-round (the hour guard lets only the 6 AM Central call through):
@@ -18,8 +19,10 @@
 // opted in to texts with a phone on file.
 //
 // Body: { force?: boolean, to?: string, dryRun?: boolean, thresholdHours?: number,
-//         rmPreview?: boolean }  rmPreview returns each RM's text without sending
-//         anything (no email, no texts).
+//         rmPreview?: boolean, doublesDate?: 'YYYY-MM-DD' }  rmPreview returns each
+//         RM's text without sending anything (no email, no texts). dryRun returns
+//         the flags, the email and the text, sending nothing. doublesDate looks at
+//         that day's double clock-ins instead of yesterday's (for checking).
 // Auth: service role (cron) or an owner of the Mighty Wash account (manual test).
 // Secrets: RESEND_API_KEY (required), RESEND_FROM (optional), ISOLVED_* .
 
@@ -81,6 +84,71 @@ const fmtElapsed = (h: number): string => {
 }
 function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+// --- Double clock-ins ------------------------------------------------------
+// Clock-in punches in a row with no clock-out between. iSolved only counts hours
+// from the last clock-in to the clock-out and leaves the earlier in-punch with no
+// hours (out time == in time, no outPunchId), so the time before the last clock-in
+// goes missing until someone corrects it. Seen: in 11:58 AM, in 3:26 PM, in 3:54 PM,
+// out 7:02 PM counted 3.1 hours.
+//
+// timecardData pairs punches into entries, so this rebuilds the person's punches in
+// order: an inPunchId is a clock-in, an outPunchId a clock-out, and a block with no
+// punch ids (manual or scheduled) counts as a clock-out at its end time, like the
+// "genuine clock-out" rule the open-punch check uses. Punch ids break ties, so an
+// in and an out in the same minute (a lone out-punch entry) stay in order and don't
+// read as a double. Midnight in-times are day splits, not punches. A chain is
+// reported on the day its repeat clock-in happened.
+type DoubleChain = { ins: string[]; outAt: string | null; loc: string; gapHours: number }
+function findDoubleClockIns(entries: Any[], date: string, nowIso: string): DoubleChain[] {
+  type Ev = { at: string; kind: 'in' | 'out'; id: number; punch: boolean; loc: string }
+  const evs: Ev[] = []
+  const seen = new Set<string>()
+  const once = (key: string) => { if (seen.has(key)) return false; seen.add(key); return true }
+  for (const t of entries) {
+    const i = String(t.inPunchDateTimeEffective ?? '')
+    const o = String(t.outPunchDateTimeEffective ?? '')
+    const loc = String((t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? '')
+    if (t.inPunchId != null && i && !isMidnight(i) && once(`i${t.inPunchId}`)) {
+      evs.push({ at: i, kind: 'in', id: Number(t.inPunchId), punch: true, loc })
+    }
+    if (t.outPunchId != null && o) {
+      if (once(`o${t.outPunchId}`)) evs.push({ at: o, kind: 'out', id: Number(t.outPunchId), punch: true, loc })
+    } else if (o && o > i) {
+      evs.push({ at: o, kind: 'out', id: 0, punch: false, loc })
+    }
+  }
+  const ordered = evs.filter((e) => e.at <= nowIso)
+    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id - b.id))
+  const out: DoubleChain[] = []
+  let chain: Ev[] = []
+  const close = (closer: Ev | null) => {
+    if (chain.length > 1 && chain.slice(1).some((e) => e.at.slice(0, 10) === date)) {
+      const ins = chain.map((e) => e.at)
+      out.push({
+        ins,
+        outAt: closer?.punch ? closer.at : null,
+        loc: chain[chain.length - 1].loc,
+        gapHours: Math.round(diffHours(ins[0], ins[ins.length - 1]) * 100) / 100,
+      })
+    }
+    chain = []
+  }
+  for (const e of ordered) {
+    if (e.kind === 'in') chain.push(e)
+    else close(e)
+  }
+  close(null)
+  return out
+}
+// "1:17 PM, 2:05 PM, out 2:28 PM": the day is dropped when every punch shares one.
+function doubleTimes(d: DoubleChain, labels = false): string {
+  const all = d.outAt ? [...d.ins, d.outAt] : d.ins
+  const oneDay = all.every((a) => a.slice(0, 10) === all[0].slice(0, 10))
+  const when = (a: string, n: number) => (oneDay && n > 0 ? clockMoment(a).replace(/^\w+ /, '') : clockMoment(a))
+  const ins = d.ins.map((a, n) => (labels ? (n ? 'in again ' : 'in ') : '') + when(a, n)).join(', ')
+  return ins + (d.outAt ? `, out ${when(d.outAt, d.ins.length)}` : labels ? ', no clock-out yet' : '')
 }
 
 // --- Regional manager targeting ------------------------------------------
@@ -164,7 +232,7 @@ Deno.serve(async (req) => {
     if (!p || p.role !== 'owner' || p.account_id !== MW_ACCOUNT) return json({ error: 'forbidden' }, 403)
   }
 
-  let body: { force?: boolean; to?: string; dryRun?: boolean; thresholdHours?: number; smsTo?: string | string[]; smsOnly?: boolean; rmPreview?: boolean; phase?: string } = {}
+  let body: { force?: boolean; to?: string; dryRun?: boolean; thresholdHours?: number; smsTo?: string | string[]; smsOnly?: boolean; rmPreview?: boolean; phase?: string; doublesDate?: string } = {}
   try { body = await req.json() } catch { /* empty */ }
   const doEmail = body.phase !== 'sms' && !body.smsOnly
   const doSms = body.phase !== 'email'
@@ -214,12 +282,18 @@ Deno.serve(async (req) => {
   const now = new Date()
   const cNow = centralParts(now)
   const today = cNow.date
-  const start = addDays(today, -LOOKBACK_DAYS)
+  // Double clock-ins are reported the morning after, once the whole day is in, so
+  // each shows up once (a time-of-day cutoff would trip over Mountain-time sites).
+  const doublesDate = /^\d{4}-\d{2}-\d{2}$/.test(body.doublesDate ?? '') ? body.doublesDate! : addDays(today, -1)
+  const start = [addDays(today, -LOOKBACK_DAYS), addDays(doublesDate, -LOOKBACK_DAYS)].sort()[0]
 
   // Pull punches and find OPEN ones (clocked in, no out) running past the shift
-  // threshold. The iSolved API is 0-indexed; page from 0 until an empty page.
+  // threshold, and double clock-ins. The iSolved API is 0-indexed; page from 0
+  // until an empty page.
   type Flag = { name: string; site: string; clockInAt: string; elapsedHours: number }
+  type DoubleFlag = DoubleChain & { name: string; site: string }
   const flags: Flag[] = []
+  const doubles: DoubleFlag[] = []
   try {
     let token = await getToken(base, cid, secret)
     const getJson = async (pageUrl: string): Promise<Any> => {
@@ -233,7 +307,7 @@ Deno.serve(async (req) => {
       const results = d.results ?? []
       if (results.length === 0) break
       for (const r of results) {
-        const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').trim() || String(r.employeeNumber ?? '')
+        const name = [r.employeeFirstName, r.employeeLastName].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() || String(r.employeeNumber ?? '')
         // Latest genuine clock-OUT (out TIME after the in) for this person. iSolved
         // stores completed blocks with null punch IDs but real times, and leaves
         // stale in-punches whose out == in; key off the out time, not the punch id.
@@ -243,6 +317,9 @@ Deno.serve(async (req) => {
           const o = String(t.outPunchDateTimeEffective ?? '')
           if (o && (t.outPunchId != null || o > i) && o > latestOut) latestOut = o
         }
+        // A double clock-in leaves two open in-punches: one line per person, the
+        // longest (the double itself is listed below).
+        let longest: Flag | null = null
         for (const t of r.timecardData ?? []) {
           const inEff = String(t.inPunchDateTimeEffective ?? '')
           const outEff = String(t.outPunchDateTimeEffective ?? '')
@@ -253,7 +330,12 @@ Deno.serve(async (req) => {
           const elapsed = Math.max(0, diffHours(inEff, cNow.iso))
           if (elapsed < threshold) continue
           const loc = (t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? ''
-          flags.push({ name, site: siteLabel(String(loc)), clockInAt: inEff, elapsedHours: Math.round(elapsed * 100) / 100 })
+          const flag: Flag = { name, site: siteLabel(String(loc)), clockInAt: inEff, elapsedHours: Math.round(elapsed * 100) / 100 }
+          if (!longest || flag.elapsedHours > longest.elapsedHours) longest = flag
+        }
+        if (longest) flags.push(longest)
+        for (const d of findDoubleClockIns(r.timecardData ?? [], doublesDate, cNow.iso)) {
+          doubles.push({ ...d, name, site: siteLabel(d.loc) })
         }
       }
     }
@@ -267,14 +349,35 @@ Deno.serve(async (req) => {
   const sites = [...bySite.entries()]
     .map(([site, list]) => ({ site, list: list.sort((a, b) => b.elapsedHours - a.elapsedHours) }))
     .sort((a, b) => siteNumOf(a.site) - siteNumOf(b.site))
+  // Doubles by site, biggest gap first.
+  const byDoubleSite = new Map<string, DoubleFlag[]>()
+  for (const d of doubles) { const a = byDoubleSite.get(d.site) ?? []; a.push(d); byDoubleSite.set(d.site, a) }
+  const doubleSites = [...byDoubleSite.entries()]
+    .map(([site, list]) => ({ site, list: list.sort((a, b) => b.gapHours - a.gapHours) }))
+    .sort((a, b) => siteNumOf(a.site) - siteNumOf(b.site))
+  const total = flags.length + doubles.length
 
   const dateLabel = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' })
+  const doubleDay = new Date(doublesDate + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })
 
-  const headline = flags.length === 0
-    ? `<p style="margin:0 0 8px;font-size:15px;color:#047857;font-weight:600;">✓ No unusual clock-ins this morning.</p>
-       <p style="margin:0;color:#555;font-size:14px;">Everyone is clocked out or within a normal shift (open punches under ${threshold}h).</p>`
-    : `<p style="margin:0 0 4px;font-size:16px;color:#b91c1c;font-weight:700;">${flags.length} unusual clock-in${flags.length === 1 ? '' : 's'} across ${sites.length} site${sites.length === 1 ? '' : 's'}.</p>
-       <p style="margin:0 0 16px;color:#555;font-size:13px;">Open punches running longer than ${threshold}h — likely missed clock-outs. Review and correct in iSolved.</p>`
+  const allClear = `<p style="margin:0 0 8px;font-size:15px;color:#047857;font-weight:600;">✓ No unusual clock-ins this morning.</p>
+       <p style="margin:0;color:#555;font-size:14px;">Everyone is clocked out or within a normal shift (open punches under ${threshold}h), and no one double clocked in on ${esc(doubleDay)}.</p>`
+  const openHead = `<p style="margin:0 0 4px;font-size:16px;color:#b91c1c;font-weight:700;">${flags.length} unusual clock-in${flags.length === 1 ? '' : 's'} across ${sites.length} site${sites.length === 1 ? '' : 's'}.</p>
+       <p style="margin:0 0 16px;color:#555;font-size:13px;">Open punches running longer than ${threshold}h: likely missed clock-outs. Review and correct in iSolved.</p>`
+  const doubleHead = `<p style="margin:0 0 4px;font-size:16px;color:#b45309;font-weight:700;">${doubles.length} double clock-in${doubles.length === 1 ? '' : 's'} on ${esc(doubleDay)}, across ${doubleSites.length} site${doubleSites.length === 1 ? '' : 's'}.</p>
+       <p style="margin:0 0 16px;color:#555;font-size:13px;">Clocked in again without clocking out first. iSolved only counts hours from the last clock-in, so the gap is missing until it's corrected in iSolved.</p>`
+
+  const doubleBlocks = doubleSites.map((s) => `
+    <div style="margin:0 0 14px;">
+      <div style="font-weight:700;color:#111;font-size:14px;border-bottom:1px solid #e4e7eb;padding-bottom:4px;margin-bottom:6px;">${esc(s.site)} <span style="color:#888;font-weight:600;">· ${s.list.length}</span></div>
+      <table style="border-collapse:collapse;width:100%;font-size:13px;">
+        ${s.list.map((d) => `<tr>
+          <td style="padding:4px 10px 4px 0;color:#111;font-weight:600;">${esc(d.name)}</td>
+          <td style="padding:4px 10px;color:#666;">${esc(doubleTimes(d, true))}</td>
+          <td style="padding:4px 0;color:#b45309;font-weight:700;text-align:right;white-space:nowrap;">${esc(fmtElapsed(d.gapHours))} gap</td>
+        </tr>`).join('')}
+      </table>
+    </div>`).join('')
 
   const siteBlocks = sites.map((s) => `
     <div style="margin:0 0 14px;">
@@ -292,34 +395,49 @@ Deno.serve(async (req) => {
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;max-width:600px;margin:0 auto;padding:24px;">
       <h2 style="margin:0 0 2px;font-size:20px;">Unusual Clock-Ins</h2>
       <p style="margin:0 0 16px;color:#888;font-size:13px;">${esc(dateLabel)} · 6:00 AM report</p>
-      ${headline}
-      ${flags.length ? `<div style="margin-top:18px;">${siteBlocks}</div>` : ''}
-      <p style="margin:22px 0 0;color:#888;font-size:12px;">An "unusual clock-in" is an open iSolved punch still running after ${threshold}+ hours. Sent from WashLyfe Operator.</p>
+      ${total === 0 ? allClear : ''}
+      ${flags.length ? `${openHead}<div style="margin-top:18px;">${siteBlocks}</div>` : ''}
+      ${doubles.length ? `<div style="margin-top:${flags.length ? '26px' : '0'};">${doubleHead}<div style="margin-top:18px;">${doubleBlocks}</div></div>` : ''}
+      <p style="margin:22px 0 0;color:#888;font-size:12px;">An "unusual clock-in" is an open iSolved punch still running after ${threshold}+ hours. A double clock-in is two or more clock-ins in a row with no clock-out between. Sent from WashLyfe Operator.</p>
     </div>`
-
-  if (body.dryRun) return json({ ok: true, dryRun: true, count: flags.length, sites: sites.map((s) => ({ site: s.site, n: s.list.length })) }, 200)
 
   // Compact SMS version of the report, for all sites or one RM's subset.
   const shortDate = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' })
-  const buildSms = (subset: typeof sites, scope?: string): string => {
-    const n = subset.reduce((a, s) => a + s.list.length, 0)
+  const buildSms = (open: typeof sites, dbl: typeof doubleSites, scope?: string): string => {
+    const nOpen = open.reduce((a, s) => a + s.list.length, 0)
+    const nDouble = dbl.reduce((a, s) => a + s.list.length, 0)
     const head = `Unusual Clock-Ins ${shortDate}${scope ? ` (${scope})` : ''}`
-    if (n === 0) return `${head}: all clear, no open punches over ${threshold}h.`
+    if (nOpen + nDouble === 0) return `${head}: all clear, no open punches over ${threshold}h or double clock-ins.`
+    const counts: string[] = []
+    if (nOpen) counts.push(`${nOpen} open punch${nOpen === 1 ? '' : 'es'} over ${threshold}h`)
+    if (nDouble) counts.push(`${nDouble} double clock-in${nDouble === 1 ? '' : 's'} yesterday`)
     const items: string[] = []
-    for (const s of subset) for (const f of s.list) items.push(`${s.site} ${f.name} ${fmtElapsed(f.elapsedHours)}`)
+    for (const s of open) for (const f of s.list) items.push(`${s.site} ${f.name} ${fmtElapsed(f.elapsedHours)}`)
+    for (const s of dbl) for (const d of s.list) items.push(`${s.site} ${d.name} double: ${doubleTimes(d)}`)
     const shown = items.slice(0, 12)
     const extra = items.length - shown.length
-    return `${head}: ${n} open punch${n === 1 ? '' : 'es'} over ${threshold}h at ${subset.length} site${subset.length === 1 ? '' : 's'}.\n`
+    return `${head}: ${counts.join(', ')}.\n`
       + shown.join('\n') + (extra > 0 ? `\n+${extra} more` : '') + '\nReview in iSolved.'
   }
-  const smsText = buildSms(sites)
+  const smsText = buildSms(sites, doubleSites)
+
+  if (body.dryRun) {
+    return json({
+      ok: true, dryRun: true, count: flags.length, sites: sites.map((s) => ({ site: s.site, n: s.list.length })),
+      doublesDate, doubleCount: doubles.length,
+      doubles: doubles.map((d) => ({ name: d.name, site: d.site, ins: d.ins, outAt: d.outAt, gapHours: d.gapHours })),
+      html, sms: smsText,
+    }, 200)
+  }
 
   // Each RM's slice of the report: only the flagged sites in their region(s).
   const rm = await regionalTargets(svc, today)
   const rmPlans = rm.targets.map((t) => {
-    const subset = sites.filter((s) => t.sites.has(s.site.toUpperCase()))
-    const count = subset.reduce((a, s) => a + s.list.length, 0)
-    return { target: t, count, text: buildSms(subset, t.regions.join(' + ')) }
+    const inRegion = (s: { site: string }) => t.sites.has(s.site.toUpperCase())
+    const open = sites.filter(inRegion)
+    const dbl = doubleSites.filter(inRegion)
+    const count = [...open, ...dbl].reduce((a, s) => a + s.list.length, 0)
+    return { target: t, count, text: buildSms(open, dbl, t.regions.join(' + ')) }
   })
   if (body.rmPreview) {
     const covered = new Set(rm.targets.flatMap((t) => [...t.sites]))
@@ -327,6 +445,7 @@ Deno.serve(async (req) => {
       ok: true,
       preview: true,
       count: flags.length,
+      doubleCount: doubles.length,
       regional: rmPlans.map((p) => ({
         name: p.target.name,
         phone: '•••' + p.target.phone.slice(-4),
@@ -338,7 +457,7 @@ Deno.serve(async (req) => {
       })),
       unmatched: rm.unmatched,
       notOptedIn: rm.notOptedIn,
-      flaggedSitesWithNoRm: sites.filter((s) => !covered.has(s.site.toUpperCase())).map((s) => s.site),
+      flaggedSitesWithNoRm: [...new Set([...sites, ...doubleSites].map((s) => s.site))].filter((site) => !covered.has(site.toUpperCase())),
     }, 200)
   }
 
@@ -351,7 +470,7 @@ Deno.serve(async (req) => {
     try {
       const { error: sendErr } = await resend.emails.send({
         from, to,
-        subject: `Unusual Clock-Ins — ${dateLabel}${flags.length ? ` (${flags.length})` : ' (all clear)'}`,
+        subject: `Unusual Clock-Ins: ${dateLabel}${total ? ` (${total})` : ' (all clear)'}`,
         html,
       })
       email = sendErr ? { ok: false, error: (sendErr as { message?: string }).message ?? 'send_failed' } : { ok: true, to }
@@ -364,7 +483,7 @@ Deno.serve(async (req) => {
   // unless this is a test (smsTo override), which always sends so it can be seen.
   const isTest = !!body.smsTo
   const sms: Any[] = []
-  if (doSms && (isTest || flags.length > 0)) {
+  if (doSms && (isTest || total > 0)) {
     let recipients: string[]
     if (body.smsTo) {
       recipients = (Array.isArray(body.smsTo) ? body.smsTo : [body.smsTo]).map((s) => String(s).trim()).filter(Boolean)
@@ -385,5 +504,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ ok: true, count: flags.length, email, sms, regional, unmatched: rm.unmatched }, 200)
+  return json({ ok: true, count: flags.length, doubleCount: doubles.length, email, sms, regional, unmatched: rm.unmatched }, 200)
 })
