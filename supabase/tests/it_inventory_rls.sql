@@ -1363,6 +1363,103 @@ do $$ begin
 end $$;
 reset role;
 
+-- ---- "Other" becomes what was typed -------------------------------------------------------------
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  a      uuid := current_setting('t.a')::uuid;
+  other  public.it_categories%rowtype;
+  cat    uuid;
+  row    public.it_categories%rowtype;
+  item   uuid;
+  tag    text;
+begin
+  select * into other from public.it_categories where account_id = a and kind = 'asset' and name = 'Other';
+  cat := public.it_category_from_other('  test   laptop ');
+  select * into row from public.it_categories where id = cat;
+  if row.name <> 'Test laptop' or row.kind <> 'asset' or row.account_id <> a then
+    raise exception 'FAIL 214: the typed name was not saved as an equipment category: %', row;
+  end if;
+  if row.sort_order >= other.sort_order or row.sort_order <= (select max(sort_order) from public.it_categories where account_id = a and kind = 'asset' and id not in (other.id, cat)) then
+    raise exception 'FAIL 215: it should sit just above Other, got %', row.sort_order;
+  end if;
+  if row.label_template_id is distinct from other.label_template_id or row.icon <> other.icon then
+    raise exception 'FAIL 216: it should print like Other';
+  end if;
+  if public.it_category_from_other('TEST LAPTOP') <> cat then
+    raise exception 'FAIL 217: the same name in other capitals made a second category';
+  end if;
+  if public.it_category_from_other('tablet') <> (select id from public.it_categories where account_id = a and name = 'Tablet') then
+    raise exception 'FAIL 218: typing an existing category did not find it';
+  end if;
+  if (select name from public.it_categories where id = public.it_category_from_other('iPad test')) <> 'iPad test' then
+    raise exception 'FAIL 219: a name with its own capitals was changed';
+  end if;
+  begin perform public.it_category_from_other('   '); raise exception 'FAIL 220: a blank name was accepted';
+  exception when others then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.it_category_from_other('other'); raise exception 'FAIL 221: "other" was accepted as what it is';
+  exception when others then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.it_category_from_other(repeat('x', 61)); raise exception 'FAIL 222: an over-long name was accepted';
+  exception when others then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin
+    perform public.it_category_from_other('charger or cable');
+    raise exception 'FAIL 223: an accessory category was reused for equipment';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+    if sqlerrm not like '%already a category for accessories%' then raise exception 'FAIL 224: unclear message: %', sqlerrm; end if;
+  end;
+
+  -- The whole point: a corporate laptop, assigned to someone, found by its sticker.
+  insert into public.it_assets (account_id, location_id, name, category_id)
+  values (a, current_setting('t.corp')::uuid, 'Test exec laptop', cat) returning id, asset_tag into item, tag;
+  if not coalesce((public.it_check_out(array[item], 'user', gen_random_uuid(), p_assigned_label => 'Jamie Rivera') -> 0 ->> 'ok')::boolean, false) then
+    raise exception 'FAIL 225: could not assign it';
+  end if;
+  if public.it_resolve_tag(current_setting('t.a_short'), tag) ->> 'asset_id' is distinct from item::text
+     or (select category_id from public.it_assets where id = item) <> cat
+     or (select assigned_label from public.it_assets where id = item) <> 'Jamie Rivera' then
+    raise exception 'FAIL 226: scanning it did not show its category and person';
+  end if;
+  perform set_config('t.other_cat', cat::text, true);
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if public.it_category_from_other('Test manager type') is null then
+    raise exception 'FAIL 227: a manager cannot use Other';
+  end if;
+  -- ...but categories themselves stay admin-only.
+  begin
+    insert into public.it_categories (account_id, name, kind) values (current_setting('t.a')::uuid, 'Test direct', 'asset');
+    raise exception 'FAIL 228: a manager can write categories directly';
+  exception when others then if sqlerrm like 'FAIL%' then raise; end if; end;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  perform public.it_category_from_other('Test crew type');
+  raise exception 'FAIL 229: crew can add a category';
+exception when others then if sqlerrm like 'FAIL%' then raise; end if;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.b_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare mine uuid;
+begin
+  mine := public.it_category_from_other('Test laptop');
+  if mine = current_setting('t.other_cat')::uuid or (select account_id from public.it_categories where id = mine) <> current_setting('t.b')::uuid then
+    raise exception 'FAIL 230: another company got this company''s category';
+  end if;
+end $$;
+reset role;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;
@@ -1389,6 +1486,11 @@ do $$ begin
     raise exception 'FAIL 213: anon can see Corporate and All Sites';
   end if;
 exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  perform public.it_category_from_other('Test anon type');
+  raise exception 'FAIL 231: anon can add a category';
+exception when others then if sqlerrm like 'FAIL%' then raise; end if;
 end $$;
 reset role;
 

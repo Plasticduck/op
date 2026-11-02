@@ -166,7 +166,9 @@ export const itInventory = {
   // Sets the account up on first use and fills in new sites. Idempotent.
   bootstrap: () => supabase.rpc('it_bootstrap'),
   settings: () => supabase.from('it_settings').select('*').maybeSingle(),
-  categories: () => supabase.from('it_categories').select('*').is('deleted_at', null).order('sort_order'),
+  categories: () => supabase.from('it_categories').select('*').is('deleted_at', null).order('sort_order').order('name'),
+  // What someone typed for Other: the category by that name, added if it's new.
+  categoryFromOther: (name: string) => supabase.rpc('it_category_from_other', { p_name: name }),
   statusLabels: () => supabase.from('it_status_labels').select('*').is('deleted_at', null).order('sort_order'),
   // Corporate, then All Sites (see useItSites).
   sharedSites: () => supabase.from('locations').select('id, name, it_scope').not('it_scope', 'is', null).order('it_scope', { ascending: false }),

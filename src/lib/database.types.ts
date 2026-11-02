@@ -10888,6 +10888,7 @@ export type Database = {
       it_can_read: { Args: { loc: string }; Returns: boolean }
       it_can_write: { Args: { loc: string }; Returns: boolean }
       it_cancel_audit: { Args: { p_run: string }; Returns: undefined }
+      it_category_from_other: { Args: { p_name: string }; Returns: string }
       it_check_in: {
         Args: { p_asset_ids: string[]; p_note?: string; p_status_id?: string }
         Returns: Json

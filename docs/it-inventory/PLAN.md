@@ -304,6 +304,7 @@ sheet with the fit check, default, remove, phone, desktop and dark).
 | 0193_it_reminders_cron | `it-reminders` at 8 AM Central |
 | 0195_it_audits | `it_audit_runs` / `it_audit_items` with RLS and a guard trigger; `it_start_audit`, `it_audit_scan`, `it_complete_audit`, `it_cancel_audit`; audit photo uploads for anyone in the account |
 | 0196_it_repairs | `it_maintenances.prior_status_id` / `out_of_service_at`; `it_log_repair`, `it_finish_repair` |
+| 0205_it_category_from_other | `it_category_from_other`: what's typed for Other on the equipment form becomes a category, or finds the one by that name. Any staff can use it; categories otherwise stay admin-only |
 | 0204_it_corporate_all_sites | `locations.it_scope`: a hidden, always-archived Corporate and All Sites per account (no Messages channel, not billed); `it_can_read` / `it_can_write` let any staff work with them; `it_find_site` finds them for imports |
 | 0203_it_manual_assignments | `it_check_out` takes `p_assigned_label`, for a typed name; `it_assignments_before` keeps it (roster names still win); `it_log` keeps the name on check-out rows, so the Timeline says who |
 | 0198_it_sticker_logo_sizes | `it_settings.label_logo_path`; five more sizes for existing accounts, Avery 8160 / 8163 names; `it_bootstrap` seeds all ten |

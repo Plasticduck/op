@@ -26,6 +26,8 @@ export type AssetFormMode = 'add' | 'edit' | 'clone'
 type Form = {
   location_id: string
   category_id: string
+  // What it is, when the category is Other.
+  other_category: string
   model: string
   // Saved with a new model only.
   model_number: string
@@ -78,7 +80,7 @@ function initialForm(mode: AssetFormMode, refs: ItRefs, siteId: string, asset?: 
   const defaultStatus = refs.statuses.find((s) => s.is_default)?.id ?? refs.statuses[0]?.id ?? ''
   if (!asset) {
     return {
-      location_id: siteId, category_id: '', model: '', model_number: '', manufacturer: '', name: '', assigned_to: '', asset_tag: tag ?? '', quantity: '1',
+      location_id: siteId, category_id: '', other_category: '', model: '', model_number: '', manufacturer: '', name: '', assigned_to: '', asset_tag: tag ?? '', quantity: '1',
       status_label_id: defaultStatus, area_id: '', serial: '', mac: '', ip: '', hostname: '', purchase_date: '',
       purchase_cost: '', supplier: '', order_number: '', warranty_end_date: '', notes: '',
     }
@@ -88,6 +90,7 @@ function initialForm(mode: AssetFormMode, refs: ItRefs, siteId: string, asset?: 
   return {
     location_id: asset.location_id,
     category_id: asset.category_id,
+    other_category: '',
     model: model?.name ?? '',
     model_number: '',
     manufacturer: (model?.manufacturer_id && refs.manufacturer.get(model.manufacturer_id)?.name) || '',
@@ -163,20 +166,30 @@ export function AssetForm({
   const assetCategories = refs.categories.filter((c) => c.kind === 'asset')
   const units = Math.max(1, Math.min(MAX_UNITS, Number(form.quantity) || 1))
 
+  // Other has to say what it is. What's typed becomes a category of its own (or
+  // finds the one by that name), so the item lists, filters and prints under it
+  // and it's in this dropdown next time.
+  const pickedOther = refs.category.get(form.category_id)?.name.trim().toLowerCase() === 'other'
+  const typedCategory = pickedOther
+    ? assetCategories.find((c) => c.id !== form.category_id && c.name.toLowerCase() === form.other_category.trim().toLowerCase())
+    : undefined
+  const modelCategory = typedCategory?.id ?? form.category_id
+
   // The model the typed text points at, if it already exists.
   const matchedModel = useMemo(() => {
     const t = form.model.trim().toLowerCase()
     if (!t) return null
-    const hits = refs.models.filter((m) => m.name.toLowerCase() === t && (!form.category_id || m.category_id === form.category_id))
+    const hits = refs.models.filter((m) => m.name.toLowerCase() === t && (!modelCategory || m.category_id === modelCategory))
     if (hits.length <= 1) return hits[0] ?? null
     const mf = form.manufacturer.trim().toLowerCase()
     return hits.find((m) => refs.manufacturer.get(m.manufacturer_id ?? '')?.name.toLowerCase() === mf) ?? hits[0]
-  }, [form.model, form.category_id, form.manufacturer, refs])
+  }, [form.model, modelCategory, form.manufacturer, refs])
   const newModel = !!form.model.trim() && !matchedModel
-  const modelOptions = refs.models.filter((m) => !form.category_id || m.category_id === form.category_id)
+  const needsOther = pickedOther && !matchedModel
+  const modelOptions = refs.models.filter((m) => !modelCategory || m.category_id === modelCategory)
   const modelWarrantyMonths = matchedModel?.default_warranty_months ?? null
   const areas = refs.areas.filter((a) => a.location_id === form.location_id)
-  const cfs = fieldsFor(refs, matchedModel?.category_id ?? form.category_id, matchedModel?.id ?? (newModel ? null : asset?.model_id))
+  const cfs = fieldsFor(refs, matchedModel?.category_id ?? modelCategory, matchedModel?.id ?? (newModel ? null : asset?.model_id))
 
   const checkDuplicates = async (serialText = form.serial, macText = form.mac) => {
     const mac = macText.trim() ? normalizeMac(macText) : null
@@ -250,6 +263,11 @@ export function AssetForm({
     const e: Partial<Record<keyof Form, string>> = {}
     if (!form.location_id) e.location_id = 'Pick the site.'
     if (!form.category_id && !matchedModel) e.category_id = 'Pick a category or a model.'
+    if (needsOther) {
+      const what = form.other_category.trim().toLowerCase()
+      if (!what) e.other_category = 'Type what it is.'
+      else if (what === 'other') e.other_category = 'Type what it actually is, like Laptop.'
+    }
     if (!form.name.trim() && !form.model.trim()) e.name = 'Give it a name or a model.'
     if (newModel && !form.category_id) e.model = 'New model: pick its category first.'
     if (form.mac.trim() && !normalizeMac(form.mac)) e.mac = "That doesn't look like a MAC address."
@@ -303,6 +321,13 @@ export function AssetForm({
     let refsChanged = false
     let saved: { id: string; asset_tag: string }[] | null = null
     try {
+      let categoryId = matchedModel?.category_id ?? form.category_id
+      if (needsOther) {
+        const { data, error: err } = await itInventory.categoryFromOther(form.other_category.trim())
+        if (err || !data) throw new Error(err?.message ?? 'Could not save.')
+        categoryId = data
+        refsChanged = true
+      }
       // Model (and its manufacturer) typed in for the first time.
       let modelId = matchedModel?.id ?? null
       if (newModel) {
@@ -319,7 +344,7 @@ export function AssetForm({
         }
         const { data, error: err } = await itInventory.addModel({
           account_id: profile.account_id,
-          category_id: form.category_id,
+          category_id: categoryId,
           manufacturer_id: manufacturerId,
           name: form.model.trim(),
           model_number: form.model_number.trim() || null,
@@ -343,7 +368,7 @@ export function AssetForm({
 
       const fields = {
         location_id: form.location_id,
-        category_id: matchedModel?.category_id ?? form.category_id,
+        category_id: categoryId,
         model_id: modelId,
         name: form.name.trim(),
         status_label_id: form.status_label_id,
@@ -397,12 +422,9 @@ export function AssetForm({
     } catch (e) {
       const message = friendlyError(e instanceof Error ? e.message : String(e))
       // Already saved: with the form still open, Add would save it a second time.
-      if (saved) {
-        if (refsChanged) onRefsChanged()
-        onSaved(saved, message)
-      } else {
-        setError(message)
-      }
+      if (refsChanged) onRefsChanged()
+      if (saved) onSaved(saved, message)
+      else setError(message)
     } finally {
       setSaving(false)
     }
@@ -461,15 +483,26 @@ export function AssetForm({
               </Select>
             )}
           </Field>
-          <Field label="Category" required={!matchedModel} error={errors.category_id}>
-            {(id) => (
-              <Select id={id} value={matchedModel?.category_id ?? form.category_id} onChange={set('category_id')}
-                disabled={!!matchedModel} invalid={!!errors.category_id}>
-                <option value="">Pick a category</option>
-                {assetCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
+          <div className="space-y-3">
+            <Field label="Category" required={!matchedModel} error={errors.category_id}>
+              {(id) => (
+                <Select id={id} value={matchedModel?.category_id ?? form.category_id} onChange={set('category_id')}
+                  disabled={!!matchedModel} invalid={!!errors.category_id}>
+                  <option value="">Pick a category</option>
+                  {assetCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              )}
+            </Field>
+            {needsOther && (
+              <Field label="What is it?" required error={errors.other_category}
+                hint={typedCategory ? `Already a category. This goes under ${typedCategory.name}.` : 'It becomes a category you can pick next time.'}>
+                {(id) => (
+                  <Input id={id} value={form.other_category} onChange={set('other_category')} placeholder="e.g. Laptop"
+                    maxLength={60} autoFocus autoComplete="off" invalid={!!errors.other_category} />
+                )}
+              </Field>
             )}
-          </Field>
+          </div>
           <Field label="Model" error={errors.model}
             hint={labelHint('model') ?? (newModel ? 'New model. It will be saved for next time.' : matchedModel ? 'Category comes from the model.' : 'Start typing to pick one you have used before.')}>
             {(id) => (
