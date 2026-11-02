@@ -25,8 +25,8 @@ const TIERS: Array<{ key: TierKey; label: string; accent: string; sub: string; o
   { key: 'wonder', label: 'Wonder', accent: 'text-accent', sub: 'washes · excludes MW19 and HQ' },
   { key: 'superShine', label: 'Super Shine', accent: 'text-warn', sub: 'washes · excludes MW19 and HQ' },
   { key: 'mighty', label: 'Mighty Protector', accent: 'text-danger', sub: 'washes · excludes MW19 and HQ' },
-  { key: 'testCar', label: 'Test Car', accent: 'text-ink-muted', sub: 'DRB test washes', optional: true },
-  { key: 'other', label: 'Other', accent: 'text-ink-muted', sub: 'Grand Opening washes', optional: true },
+  { key: 'testCar', label: 'Test Car', accent: 'text-ink-muted', sub: 'DRB + FlexWash test washes', optional: true },
+  { key: 'other', label: 'Other', accent: 'text-ink-muted', sub: 'Grand Opening + Fleet Issue washes', optional: true },
 ]
 
 export default function ChemicalsPage() {
@@ -260,10 +260,10 @@ export default function ChemicalsPage() {
             Counts every time each package was used — retail washes plus member redemptions. DRB sites come from the POS
             wash ledger (the same source as the dashboards); FlexWash sites come from the FlexWash API’s paid package
             lines, from the day each site switched over (“- Issue”, fleet and promotional washes count under their
-            package, Grand Opening washes under Other); the few washes still rung up in DRB after a switch count too.
-            Refunded DRB washes net to zero, as in DRB’s car count. Wex/Voyager fleet plan lines and interior-only
-            services aren’t counted. Flash is only sold at some sites, and Test Car is DRB’s test washes (left out of
-            Site Performance); a dash means none that month. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
+            package, Grand Opening and Fleet Issue washes under Other); the few washes still rung up in DRB after a switch count too.
+            Refunded DRB washes net to zero, as in DRB’s car count. Wex/Voyager and Spirit Dodge Yearly fleet plan lines and interior-only
+            services aren’t counted. Flash is only sold at some sites. Test Car is DRB’s Test Car washes (left out of
+            Site Performance) plus FlexWash’s Test Wash package and any wash rung up with its Test Discount; a dash means none that month. † MW33 isn’t on DRB or FlexWash, so its washes are the month’s total from the car count
             sheet, with no package split: they’re in the grand total of washes but not in the package totals.
           </p>
         </div>

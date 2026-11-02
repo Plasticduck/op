@@ -18,9 +18,11 @@ import { fetchMonthlyCars } from '@/lib/queries/sitePerformance'
 //  - FlexWash sites: counted from FlexWash line items like the FlexWash Sales
 //    report does (flexwashSales.lineItemBreakdown -> carsByPackage: one paid
 //    "Package" line per wash, member redemptions included), plus promotional
-//    washes. "- Issue" washes count under the package their name carries and
-//    Grand Opening Wash under Other. The Wex/Voyager fleet plan lines stay out,
-//    as do interior-only and add-on "packages" (Express Interior, Wheel and Tire).
+//    washes. "- Issue" washes count under the package their name carries, Grand
+//    Opening Wash and Fleet Issue under Other, and test washes (the Test Wash
+//    package, or any wash rung up free with the Test Discount) under Test Car. The
+//    Wex/Voyager and Spirit Dodge Yearly fleet plan lines stay out, as do
+//    interior-only and add-on "packages" (Express Interior, Wheel and Tire).
 //  Each FlexWash site adds FlexWash from its cutover date (flexwash_sites.start_date)
 //  on, while SiteWatch counts every day: before the cutover that's the whole site,
 //  on the cutover day the half before the switch, and after it a few stray washes
@@ -82,8 +84,12 @@ const EXCLUDED_SITES = new Set(['MightyWash 019', 'Mighty Wash Headquarters'])
 const SKIP_FLEX_PACKAGE = (name: string) => /wex|voyager/i.test(name)
 
 // FlexWash wash packages that aren't one of the named packages but are real
-// washes (requested 2026-10-23): counted under Other. Interiors stay out.
-const OTHER_FLEX_WASH = (name: string) => /grand opening wash/i.test(name)
+// washes: counted under Other (Grand Opening requested 2026-10-23, Fleet Issue
+// 2026-11-02). Interiors and Spirit Dodge Yearly stay out.
+const OTHER_FLEX_WASH = (name: string) => /grand opening wash|fleet issue/i.test(name)
+
+// FlexWash's test washes (requested 2026-11-02): counted under Test Car with DRB's.
+const TEST_FLEX_WASH = (name: string) => /test wash/i.test(name)
 
 // Sort key: the trailing site number ("MightyWash 001" -> 1); names without a
 // number (e.g. Headquarters) sort last.
@@ -143,13 +149,13 @@ async function fetchFlexPerSite(start: string, end: string, flex: FlexSite[]): P
   return Promise.all(
     active.map(async (st) => {
       const from = st.start_date! > start ? st.start_date! : start
-      const bd = await flexwashSales.lineItemBreakdown([st.car_wash_id], from, end, { includePromotional: true })
+      const bd = await flexwashSales.lineItemBreakdown([st.car_wash_id], from, end, { includePromotional: true, testDiscountIsTestWash: true })
       const row = emptyRow(swName(st.site_number))
       for (const p of bd.carsByPackage) {
         if (SKIP_FLEX_PACKAGE(p.name)) continue
-        // FlexWash's own tiers don't include Flash or Grand Opening (they land in
-        // its "Other"), so match those by name.
-        const tier: TierKey | undefined = FLEX_TIER[p.tier]
+        // FlexWash's own tiers don't include Flash, tests, Grand Opening or Fleet
+        // Issue (they land in its "Other"), so match those by name.
+        const tier: TierKey | undefined = TEST_FLEX_WASH(p.name) ? 'testCar' : FLEX_TIER[p.tier]
           ?? (/flash/i.test(p.name) ? 'flash' : OTHER_FLEX_WASH(p.name) ? 'other' : undefined)
         if (!tier) continue // interiors, add-ons and the like aren't washes
         row[tier] += p.count

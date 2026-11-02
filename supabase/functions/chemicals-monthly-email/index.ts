@@ -8,19 +8,23 @@
 // this together.
 //
 // Auth: the cron's service-role JWT, or an owner/manager (manual run). The
-// caller's token is passed on to site-performance (DRB) and flexwash, which
-// accept a service_role JWT or an owner/manager. (This function's own
-// SUPABASE_SERVICE_ROLE_KEY is an sb_secret key, which those reject.)
+// caller's token is passed on to site-performance (DRB) and this function's own
+// per-site calls, which accept a service_role JWT or an owner/manager. (This
+// function's own SUPABASE_SERVICE_ROLE_KEY is an sb_secret key, which those reject.)
 // Body: { force? (skip the 1st-at-8 guard), month? 'YYYY-MM', to? string[]
 // (send only to these), dryRun? (build it, send nothing, return the totals) }
 //
 // Edge functions get about 2 s of CPU a call, and a month of FlexWash line items
 // is a lot of JSON, so each FlexWash site is counted by a call to this function
 // ({ part: 'flex', carWashId, from, end } -> [{ name, tier, count }]) and only
-// the small counts come back. The PDF logo is a small JPEG copy
+// the small counts come back. Every function call in a run shares one Supabase
+// budget ("Rate limit exceeded for trace", which at 21 sites left FlexWash out when
+// each site also went through the flexwash proxy), so these calls reach FlexWash
+// directly, start a moment apart and wait out a rate limit. The PDF logo is a small JPEG copy
 // (<logo>-pdf.jpg in public/), which jsPDF embeds as is; decoding the full-size
 // PNG would use up the CPU too.
-// Secrets: RESEND_API_KEY, optional RESEND_FROM, APP_URL.
+// Secrets: RESEND_API_KEY, optional RESEND_FROM, APP_URL, FLEXWASH_CLIENT_ID,
+// FLEXWASH_CLIENT_SECRET.
 // Schedule: pg_cron at 13:00 and 14:00 UTC on the 1st; only the run that lands
 // at 8 AM Central sends (DST-safe).
 
@@ -33,6 +37,7 @@ const RECIPIENTS = ['kjowers@mighty-wash.com', 'justin.gamboa@mighty-wash.com', 
 const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 const TZ = 'America/Chicago'
 const APP_URL = Deno.env.get('APP_URL') ?? 'https://operator.washlyfe.com'
+const FLEX_BASE = 'https://api.flexwash.com'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
@@ -76,7 +81,8 @@ const emptyRow = (site: string): SiteRow =>
 const tierSum = (r: PackageTotals) => r.flash + r.wonder + r.superShine + r.mighty + r.testCar + r.other
 const EXCLUDED_SITES = new Set(['MightyWash 019', 'Mighty Wash Headquarters'])
 const SKIP_FLEX_PACKAGE = (name: string) => /wex|voyager/i.test(name)
-const OTHER_FLEX_WASH = (name: string) => /grand opening wash/i.test(name)
+const OTHER_FLEX_WASH = (name: string) => /grand opening wash|fleet issue/i.test(name)
+const TEST_FLEX_WASH = (name: string) => /test wash/i.test(name)
 const FLEX_TIER: Record<string, TierKey> = { Wonder: 'wonder', 'Super Shine': 'superShine', Mighty: 'mighty' }
 const siteNum = (name: string) => { const m = name.match(/(\d+)\s*$/); return m ? Number(m[1]) : Number.POSITIVE_INFINITY }
 
@@ -125,22 +131,50 @@ async function siteWatchPerSite(auth: string, start: string, end: string): Promi
   return [...bySite.values()]
 }
 
-// Cars by package at FlexWash car washes (flexwashSales.lineItemBreakdown's
-// carsByPackage with promotional washes): one paid Package line per wash.
-async function flexCarsByPackage(auth: string, carWashId: string, start: string, end: string) {
-  const resp = await callFn(auth, 'flexwash', {
-    path: '/external/accounting/get-line-items-detail', body: { carWashIds: [carWashId], dateRange: { start, end } },
+// The FlexWash token cached in service_tokens (see the flexwash function), minted if
+// it has run out.
+async function flexToken(svc: Any): Promise<string> {
+  const { data: cached } = await svc.from('service_tokens').select('token, expires_at').eq('provider', 'flexwash').maybeSingle()
+  if (cached && new Date(cached.expires_at).getTime() > Date.now() + 60_000) return cached.token as string
+  const res = await fetch(`${FLEX_BASE}/external/access-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId: Deno.env.get('FLEXWASH_CLIENT_ID'), clientSecret: Deno.env.get('FLEXWASH_CLIENT_SECRET') }),
   })
-  const items = (resp?.data?.lineItemsDetail ?? []) as Any[]
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok || !j.accessToken) throw new Error(`FlexWash token request failed (${res.status})`)
+  await svc.from('service_tokens').upsert(
+    { provider: 'flexwash', token: j.accessToken, expires_at: new Date(Date.now() + 23 * 3600_000).toISOString(), updated_at: new Date().toISOString() },
+    { onConflict: 'provider' },
+  )
+  return j.accessToken as string
+}
+
+// Cars by package at FlexWash car washes (flexwashSales.lineItemBreakdown's
+// carsByPackage with promotional washes): one paid Package line per wash. A wash
+// rung up free with the Test Discount counts as a Test Wash, not under its package.
+async function flexCarsByPackage(svc: Any, carWashId: string, start: string, end: string) {
+  const res = await fetch(`${FLEX_BASE}/external/accounting/get-line-items-detail`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await flexToken(svc)}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ carWashIds: [carWashId], dateRange: { start, end } }),
+  })
+  const data = await res.json().catch(() => null)
+  if (!res.ok || !Array.isArray(data?.lineItemsDetail)) throw new Error(`FlexWash answered ${res.status}: ${JSON.stringify(data)?.slice(0, 200)}`)
+  const items = data.lineItemsDetail as Any[]
   const WASH = new Set(['memberWashes', 'singleWashes', 'otherWashes', 'fleetWashes', 'promotionalWashes'])
   const tierOf = (name: string) => {
     const n = name.toLowerCase()
     return n.includes('mighty') ? 'Mighty' : n.includes('super') ? 'Super Shine' : n.includes('wonder') ? 'Wonder' : 'Other'
   }
+  const testOrders = new Set<string>()
+  for (const it of items) {
+    if (String(it.type) === 'Discount' && /test discount/i.test(String(it.name ?? ''))) testOrders.add(String((it.order ?? {}).id))
+  }
   const count = new Map<string, number>()
   for (const it of items) {
     if (String(it.type) !== 'Package' || !WASH.has(String(it.orderClassification)) || String((it.order ?? {}).status) !== 'paid') continue
-    const name = String(it.name ?? '')
+    const name = testOrders.has(String((it.order ?? {}).id)) ? 'Test Wash' : String(it.name ?? '')
     count.set(name, (count.get(name) ?? 0) + 1)
   }
   return [...count.entries()].map(([name, n]) => ({ name, tier: tierOf(name), count: n }))
@@ -155,23 +189,29 @@ async function buildReport(auth: string, svc: Any, ym: string) {
   let flex: SiteRow[] = []
   let flexIncluded = false
   let flexError: string | null = null
-  // A few sites at a time, each tried twice: FlexWash slows down under a burst.
+  // A few sites at a time, each tried up to 4 times: FlexWash slows down under a
+  // burst, and a Supabase rate limit names how long to wait ("Retry after 25114ms").
   const countSite = async (carWashId: string, from: string) => {
     for (let attempt = 1; ; attempt++) {
       try {
         return await callFn(auth, 'chemicals-monthly-email', { part: 'flex', carWashId, from, end }) as
           { name: string; tier: string; count: number }[]
       } catch (e) {
-        if (attempt >= 2) throw e
-        await new Promise((r) => setTimeout(r, 2000))
+        if (attempt >= 4) throw e
+        const wait = String((e as Error)?.message ?? e).match(/retry after (\d+)\s*ms/i)
+        await new Promise((r) => setTimeout(r, wait ? Math.min(Number(wait[1]) + 500, 60_000) : 2000))
       }
     }
   }
   try {
+    await flexToken(svc) // Mint here if needed, not once per site below.
     const active = ((flexSites ?? []) as Any[]).filter((s) => s.car_wash_id && s.start_date && s.start_date <= end)
     const queue = [...active]
     const worker = async () => {
-      for (let st = queue.shift(); st; st = queue.shift()) flex.push(await siteRow(st))
+      for (let st = queue.shift(); st; st = queue.shift()) {
+        flex.push(await siteRow(st))
+        await new Promise((r) => setTimeout(r, 300))
+      }
     }
     const siteRow = async (st: Any): Promise<SiteRow> => {
       const from = st.start_date > start ? st.start_date : start
@@ -184,7 +224,7 @@ async function buildReport(auth: string, svc: Any, ym: string) {
       }
       for (const p of counts) {
         if (SKIP_FLEX_PACKAGE(p.name)) continue
-        const tier: TierKey | undefined = FLEX_TIER[p.tier]
+        const tier: TierKey | undefined = TEST_FLEX_WASH(p.name) ? 'testCar' : FLEX_TIER[p.tier]
           ?? (/flash/i.test(p.name) ? 'flash' : OTHER_FLEX_WASH(p.name) ? 'other' : undefined)
         if (!tier) continue
         row[tier] += p.count
@@ -353,7 +393,7 @@ Deno.serve(async (req) => {
   if (body.part === 'flex') {
     if (!body.carWashId || !body.from || !body.end) return json({ error: 'bad_request' }, 400)
     try {
-      return json(await flexCarsByPackage(auth, body.carWashId, body.from, body.end))
+      return json(await flexCarsByPackage(svc, body.carWashId, body.from, body.end))
     } catch (e) {
       return json({ error: 'flex_failed', message: String((e as Error)?.message ?? e).slice(0, 300) }, 502)
     }
@@ -381,7 +421,7 @@ Deno.serve(async (req) => {
 
   if (body.dryRun) {
     return json({
-      month: ym, to, filename, pdf_bytes: pdf.length, sites: report.sites.length, grand: report.grand,
+      month: ym, to, filename, pdf_bytes: pdf.length, sites: report.sites.length, rows: report.sites, grand: report.grand,
       flexIncluded: report.flexIncluded, flexError: report.flexError, pdf_base64: toBase64(pdf),
     })
   }

@@ -409,13 +409,15 @@ export const flexwashSales = {
   // product line(s) so the price shown is net (like DRB adjusting a wash's value).
   // Tax lines are excluded (they're in the accounting totals). Product names have
   // their per-member code prefix stripped so like items collapse to one line.
-  // opts.includePromotional adds promotional washes to the car counts (the
-  // Chemicals report uses it; the Sales report leaves them out).
+  // opts.includePromotional adds promotional washes to the car counts, and
+  // opts.testDiscountIsTestWash counts a wash rung up free with the "Test Discount"
+  // as a "Test Wash" instead of under its package (the Chemicals report uses both;
+  // the Sales report does neither).
   lineItemBreakdown: async (
     carWashIds: string[],
     start: string,
     end: string,
-    opts: { includePromotional?: boolean } = {},
+    opts: { includePromotional?: boolean; testDiscountIsTestWash?: boolean } = {},
   ): Promise<FlexBreakdown> => {
     const data = await flexApi('/external/accounting/get-line-items-detail', {
       carWashIds,
@@ -456,13 +458,19 @@ export const flexwashSales = {
       if (n.includes('wonder')) return 'Wonder'
       return 'Other'
     }
+    const testOrders = new Set<string>()
+    if (opts.testDiscountIsTestWash) {
+      for (const it of items) {
+        if (String(it.type) === 'Discount' && /test discount/i.test(String(it.name ?? ''))) testOrders.add(String((it.order ?? {}).id))
+      }
+    }
     const tierCount = new Map<string, number>()
     const packageCount = new Map<string, number>()
     for (const it of items) {
       if (String(it.type) !== 'Package') continue
       if (!WASH_CLASSES.has(String(it.orderClassification))) continue
       if (String((it.order ?? {}).status) !== 'paid') continue
-      const name = String(it.name ?? '')
+      const name = testOrders.has(String((it.order ?? {}).id)) ? 'Test Wash' : String(it.name ?? '')
       const t = tierOf(name)
       tierCount.set(t, (tierCount.get(t) ?? 0) + 1)
       packageCount.set(name, (packageCount.get(name) ?? 0) + 1)
