@@ -649,6 +649,8 @@ function EditAudit({ audit, accountId, editorId, editorName, schema, onClose }: 
   const [busy, setBusy] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
   const [autoState, setAutoState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  // Set while the "Resend this audit?" question is up.
+  const [pendingAnswers, setPendingAnswers] = useState<SiteAuditAnswers | null>(null)
 
   const latest = useRef(initialAnswers)
   const chain = useRef<Promise<unknown>>(Promise.resolve())
@@ -692,12 +694,17 @@ function EditAudit({ audit, accountId, editorId, editorName, schema, onClose }: 
     onClose()
   }
 
-  const resubmit = async (answers: SiteAuditAnswers) => {
+  // Nothing is saved until they've answered whether to resend the audit.
+  const askResend = (answers: SiteAuditAnswers) => {
     setError(null)
     if (!locationId) {
       setError('Pick a site')
       return
     }
+    setPendingAnswers(answers)
+  }
+
+  const resubmit = async (answers: SiteAuditAnswers, resend: boolean) => {
     setBusy(true)
     submitted.current = true
     await chain.current.catch(() => undefined)
@@ -710,6 +717,7 @@ function EditAudit({ audit, accountId, editorId, editorName, schema, onClose }: 
     if (err) {
       submitted.current = false
       setBusy(false)
+      setPendingAnswers(null)
       setError(err.message)
       return
     }
@@ -718,18 +726,25 @@ function EditAudit({ audit, accountId, editorId, editorName, schema, onClose }: 
     const kept = new Set(answerPhotoPaths(answers))
     for (const p of storedPhotos) if (!kept.has(p)) void siteAuditPhotos.remove(p)
 
-    // Email the updated PDF to the same people (best-effort, as on first submit).
-    void siteAudits.emailReport(audit.id)
+    // A delivery failure never undoes the save, but they asked for this email, so
+    // tell them if it didn't go out.
+    if (resend) {
+      void siteAudits.emailReport(audit.id).then(({ error: mailErr }) => {
+        if (mailErr) window.alert('The audit was saved, but the email did not go out. Re-open it and resubmit to try again.')
+      })
+    }
 
     setBusy(false)
     onClose()
   }
 
   return (
-    <Modal open onClose={() => void requestClose()} title="Re-open site audit" size="lg">
+    <>
+    {/* Escape reaches every open modal, so the form ignores it while the question is up. */}
+    <Modal open onClose={() => { if (!pendingAnswers) void requestClose() }} title="Re-open site audit" size="lg">
       <div className="flex flex-col gap-4">
         <p className="rounded-md bg-accent-soft px-3 py-2 text-sm text-accent">
-          Submitted {shortDate(audit.created_at)} by {audit.submitted_by_name ?? 'unknown'}. The audit stays as it is until you resubmit, then the updated PDF is emailed to the same people.
+          Submitted {shortDate(audit.created_at)} by {audit.submitted_by_name ?? 'unknown'}. The audit stays as it is until you resubmit.
         </p>
 
         <Field label="Site" required>
@@ -754,7 +769,7 @@ function EditAudit({ audit, accountId, editorId, editorName, schema, onClose }: 
           accountId={accountId}
           schema={schema}
           initialAnswers={initialAnswers}
-          onSubmit={resubmit}
+          onSubmit={askResend}
           onSaveDraft={saveProgress}
           onAnswersChange={(a) => { latest.current = a; setTick((t) => t + 1) }}
           submitting={busy}
@@ -768,6 +783,21 @@ function EditAudit({ audit, accountId, editorId, editorName, schema, onClose }: 
         </div>
       </div>
     </Modal>
+    {pendingAnswers && (
+      <Modal
+        open
+        onClose={() => { if (!busy) setPendingAnswers(null) }}
+        title="Resend this audit?"
+        description="Your edits are saved either way. Resending emails the updated PDF to the same people who got the original."
+        size="sm"
+      >
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="secondary" disabled={busy} onClick={() => void resubmit(pendingAnswers, false)}>No, just save</Button>
+          <Button disabled={busy} onClick={() => void resubmit(pendingAnswers, true)}>Yes, resend</Button>
+        </div>
+      </Modal>
+    )}
+    </>
   )
 }
 
