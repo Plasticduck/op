@@ -168,6 +168,8 @@ export const itInventory = {
   settings: () => supabase.from('it_settings').select('*').maybeSingle(),
   categories: () => supabase.from('it_categories').select('*').is('deleted_at', null).order('sort_order'),
   statusLabels: () => supabase.from('it_status_labels').select('*').is('deleted_at', null).order('sort_order'),
+  // Corporate, then All Sites (see useItSites).
+  sharedSites: () => supabase.from('locations').select('id, name, it_scope').not('it_scope', 'is', null).order('it_scope', { ascending: false }),
   areas: () =>
     fetchAll<ItArea>((f, t) =>
       supabase.from('it_site_areas').select('*').is('deleted_at', null).order('sort_order').range(f, t)),

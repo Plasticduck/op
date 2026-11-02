@@ -10,7 +10,6 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/lib/auth'
 import { currency } from '@/lib/format'
-import { useLocations } from '@/lib/locations'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItAssetRow, type ItOverview } from '@/lib/queries/itInventory'
 import { friendlyError, notWorking, statusTone, WARRANTY_WINDOW_DAYS } from './format'
@@ -18,6 +17,7 @@ import { ItIcon } from './ItIcon'
 import { SectionNav } from './SectionNav'
 import { RENEWAL_WINDOW_DAYS } from './subscriptions'
 import { useItRefs, type ItRefs } from './useItRefs'
+import { useItSites } from './useItSites'
 
 // The IT Inventory overview (spec I). All sites: what needs attention, counts
 // by site and category, monthly subscription spend and recent repair spend.
@@ -27,7 +27,7 @@ import { useItRefs, type ItRefs } from './useItRefs'
 export function OverviewPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { locations, activeLocation } = useLocations()
+  const { locations, activeLocation } = useItSites()
   const { refs, error: refsError } = useItRefs()
   const [params, setParams] = useSearchParams()
   const site = params.get('site') ?? (locations.length > 1 ? 'all' : activeLocation?.id ?? 'all')
@@ -61,7 +61,7 @@ export function OverviewPage() {
         {locations.length > 1 && (
           <Select value={site} onChange={(e) => setParams({ site: e.target.value }, { replace: true })} aria-label="Site" className="sm:w-60">
             <option value="all">All sites</option>
-            {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            {locations.map((l) => <option key={l.id} value={l.id}>{l.filterName ?? l.name}</option>)}
           </Select>
         )}
       </div>

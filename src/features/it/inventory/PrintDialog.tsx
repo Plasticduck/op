@@ -11,10 +11,10 @@ import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/lib/auth'
 import { buildLabelsPdf } from '@/lib/labels/labelPdf'
 import { labelsPerPage } from '@/lib/labels/layout'
-import { useLocations } from '@/lib/locations'
 import { itInventory, type ItAssetRow, type ItTag } from '@/lib/queries/itInventory'
 import { assetLabel, blankLabel, defaultTemplateFor, accountDefaultTemplate, toPrintTemplate, useStickerLogo, walkOrder } from './stickers'
 import type { ItRefs } from './useItRefs'
+import { useItSites } from './useItSites'
 
 // Print stickers for some assets, or blank tags from the pool. The preview is
 // the real PDF's first page. The PDF downloads; printing it at 100% is what
@@ -37,7 +37,7 @@ export function PrintDialog({
   onPrinted: (message: string) => void
 }) {
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const siteName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations])
   const ordered = useMemo(() => (assets ? walkOrder(assets, refs, siteName) : []), [assets, refs, siteName])
   const items = useMemo(

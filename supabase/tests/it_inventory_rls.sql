@@ -1193,6 +1193,176 @@ do $$ begin
 end $$;
 reset role;
 
+-- ---- Corporate and All Sites -------------------------------------------------------------------
+select set_config('t.corp', (select id::text from public.locations where account_id = current_setting('t.a')::uuid and it_scope = 'corporate'), true);
+select set_config('t.shared', (select id::text from public.locations where account_id = current_setting('t.a')::uuid and it_scope = 'all_sites'), true);
+do $$ begin
+  if (select count(*) from public.locations where account_id = current_setting('t.a')::uuid and it_scope is not null
+       and archived and name in ('Corporate', 'All Sites')) <> 2 then
+    raise exception 'FAIL 184: the account does not have hidden Corporate and All Sites rows';
+  end if;
+  if (select count(*) from public.locations where account_id = current_setting('t.b')::uuid and it_scope is not null) <> 2 then
+    raise exception 'FAIL 185: setting up IT Inventory did not add them';
+  end if;
+  if exists (select 1 from public.conversations where location_id in (current_setting('t.corp')::uuid, current_setting('t.shared')::uuid)) then
+    raise exception 'FAIL 186: they got a Messages channel';
+  end if;
+  -- A real new site still gets its channel.
+  declare
+    fresh uuid;
+  begin
+    insert into public.locations (account_id, name) values (current_setting('t.a')::uuid, 'Test new site') returning id into fresh;
+    if not exists (select 1 from public.conversations where location_id = fresh and kind = 'site') then
+      raise exception 'FAIL 187: a real site lost its Messages channel';
+    end if;
+    delete from public.locations where id = fresh;
+  end;
+  begin
+    update public.locations set archived = false where id = current_setting('t.corp')::uuid;
+    raise exception 'FAIL 188: Corporate could be un-archived into every site list';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.locations (account_id, name, archived, it_scope) values (current_setting('t.a')::uuid, 'Second', true, 'corporate');
+    raise exception 'FAIL 189: an account got a second Corporate';
+  exception when unique_violation then null;
+  end;
+end $$;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+select public.it_bootstrap();
+do $$
+declare
+  laptop uuid;
+  tag    text;
+  res    jsonb;
+begin
+  if exists (select 1 from public.it_site_areas where location_id = current_setting('t.corp')::uuid) then
+    raise exception 'FAIL 190: Corporate got the car wash areas';
+  end if;
+  insert into public.it_assets (account_id, location_id, name, category_id)
+  select current_setting('t.a')::uuid, current_setting('t.corp')::uuid, 'Test corporate laptop', id
+    from public.it_categories where account_id = current_setting('t.a')::uuid and name = 'Tablet'
+  returning id, asset_tag into laptop, tag;
+  perform set_config('t.corp_laptop', laptop::text, true);
+  perform set_config('t.corp_tag', tag, true);
+  if public.it_resolve_tag(current_setting('t.a_short'), tag) ->> 'asset_id' is distinct from laptop::text then
+    raise exception 'FAIL 191: scanning a Corporate item did not find it';
+  end if;
+  res := public.it_check_out(array[laptop], 'user', gen_random_uuid(), p_assigned_label => 'Jamie Rivera');
+  if not coalesce((res -> 0 ->> 'ok')::boolean, false) then
+    raise exception 'FAIL 192: could not assign a Corporate item: %', res;
+  end if;
+  perform public.it_check_in(array[laptop]);
+  res := public.it_move(array[laptop], current_setting('t.shared')::uuid);
+  if not coalesce((res -> 0 ->> 'ok')::boolean, false) or (select location_id from public.it_assets where id = laptop) <> current_setting('t.shared')::uuid then
+    raise exception 'FAIL 193: could not move Corporate to All Sites: %', res;
+  end if;
+  res := public.it_move(array[laptop], current_setting('t.corp')::uuid);
+  if public.it_find_site('corporate') is distinct from current_setting('t.corp')::uuid
+     or public.it_find_site('All Sites') is distinct from current_setting('t.shared')::uuid then
+    raise exception 'FAIL 194: a spreadsheet import cannot find them';
+  end if;
+  if (select count(*) from public.locations where it_scope is null and not archived and name in ('Corporate', 'All Sites')) > 0 then
+    raise exception 'FAIL 195: they show up as ordinary sites';
+  end if;
+end $$;
+reset role;
+
+insert into public.work_requests (account_id, location_id, title, priority, it_asset_id)
+select current_setting('t.a')::uuid, current_setting('t.corp')::uuid, 'Test corporate report', 'none', current_setting('t.corp_laptop')::uuid;
+
+-- A one-site manager: these two yes, another site still no.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  n   integer;
+  res jsonb;
+  mine uuid;
+begin
+  if (select count(*) from public.locations where it_scope is not null) <> 2 then
+    raise exception 'FAIL 196: a manager cannot see Corporate and All Sites';
+  end if;
+  if exists (select 1 from public.locations where id = current_setting('t.site_out')::uuid) then
+    raise exception 'FAIL 197: a manager can now see a site they are not on';
+  end if;
+  if not exists (select 1 from public.it_assets where id = current_setting('t.corp_laptop')::uuid) then
+    raise exception 'FAIL 198: a manager cannot see a Corporate item';
+  end if;
+  if public.it_resolve_tag(current_setting('t.a_short'), current_setting('t.corp_tag')) ->> 'result' <> 'asset' then
+    raise exception 'FAIL 199: a manager scanning a Corporate item is turned away';
+  end if;
+  insert into public.it_assets (account_id, location_id, name, category_id)
+  select current_setting('t.a')::uuid, current_setting('t.shared')::uuid, 'Test manager adds', id
+    from public.it_categories where account_id = current_setting('t.a')::uuid and name = 'Tablet'
+  returning id into mine;
+  res := public.it_move(array[mine], current_setting('t.corp')::uuid);
+  if not coalesce((res -> 0 ->> 'ok')::boolean, false) then
+    raise exception 'FAIL 200: a manager cannot move an item to Corporate: %', res;
+  end if;
+  res := public.it_move(array[mine], current_setting('t.site_out')::uuid);
+  if coalesce((res -> 0 ->> 'ok')::boolean, false) then
+    raise exception 'FAIL 201: a manager moved an item to a site they are not on';
+  end if;
+  begin
+    insert into public.it_assets (account_id, location_id, name, category_id)
+    select current_setting('t.a')::uuid, current_setting('t.site_out')::uuid, 'Test manager other site', id
+      from public.it_categories where account_id = current_setting('t.a')::uuid and name = 'Tablet';
+    raise exception 'FAIL 202: a manager added an item at a site they are not on';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  if public.it_find_site('Corporate') is null then
+    raise exception 'FAIL 203: a manager importing cannot find Corporate';
+  end if;
+  if not exists (select 1 from public.work_requests where title = 'Test corporate report') then
+    raise exception 'FAIL 204: a manager cannot see a report on a Corporate item';
+  end if;
+end $$;
+reset role;
+
+-- Crew: neither the sites nor the equipment.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if exists (select 1 from public.locations where it_scope is not null) then
+    raise exception 'FAIL 206: crew can see Corporate and All Sites';
+  end if;
+  if exists (select 1 from public.it_assets where id = current_setting('t.corp_laptop')::uuid) then
+    raise exception 'FAIL 207: crew can see a Corporate item';
+  end if;
+  if public.it_resolve_tag(current_setting('t.a_short'), current_setting('t.corp_tag')) ->> 'result' <> 'no_access' then
+    raise exception 'FAIL 208: crew scanning a Corporate item got into it';
+  end if;
+end $$;
+reset role;
+
+-- Another company: not theirs to see or use.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.b_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if exists (select 1 from public.locations where id = current_setting('t.corp')::uuid) then
+    raise exception 'FAIL 209: another company can see this Corporate';
+  end if;
+  if exists (select 1 from public.it_assets where id = current_setting('t.corp_laptop')::uuid) then
+    raise exception 'FAIL 210: another company can see a Corporate item';
+  end if;
+  begin
+    insert into public.it_assets (account_id, location_id, name, category_id)
+    select current_setting('t.b')::uuid, current_setting('t.corp')::uuid, 'Test B in A corporate', id
+      from public.it_categories where account_id = current_setting('t.b')::uuid and name = 'Security Camera';
+    raise exception 'FAIL 211: another company added to this Corporate';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+  end;
+  if public.it_can_write(current_setting('t.corp')::uuid) then
+    raise exception 'FAIL 212: another company can write to this Corporate';
+  end if;
+end $$;
+reset role;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;
@@ -1211,6 +1381,12 @@ end $$;
 do $$ begin
   if coalesce((public.it_overview() ->> 'total')::int, 0) > 0 then
     raise exception 'FAIL 97: anon can count equipment';
+  end if;
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  if exists (select 1 from public.locations where it_scope is not null) then
+    raise exception 'FAIL 213: anon can see Corporate and All Sites';
   end if;
 exception when insufficient_privilege then null;
 end $$;

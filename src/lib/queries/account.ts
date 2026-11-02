@@ -122,6 +122,7 @@ export async function listAllLocations() {
   return supabase
     .from('locations')
     .select('*')
+    .is('it_scope', null) // Corporate and All Sites belong to IT Inventory
     .order('archived')
     .order('name')
 }

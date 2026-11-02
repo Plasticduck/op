@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       const { data } = await svc.from('locations').select('id, name').eq('id', portal.location_id)
       locations = (data as Array<{ id: string; name: string }> | null) ?? []
     } else {
-      const { data } = await svc.from('locations').select('id, name').eq('account_id', portal.account_id).order('name')
+      const { data } = await svc.from('locations').select('id, name').eq('account_id', portal.account_id).eq('archived', false).order('name')
       locations = (data as Array<{ id: string; name: string }> | null) ?? []
     }
     return json({ ok: true, name: portal.name, fixedLocation: !!portal.location_id, locations }, 200, origin)

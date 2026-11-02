@@ -7,13 +7,13 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Field } from '@/components/forms/Field'
 import { useAuth } from '@/lib/auth'
-import { useLocations } from '@/lib/locations'
 import { shrinkPhoto } from '@/lib/shrinkPhoto'
 import type { Json } from '@/lib/database.types'
 import { itInventory, type DuplicateHit, type ItAssetInsert, type ItAssetRow, type ItCustomField, type LabelReading } from '@/lib/queries/itInventory'
 import type { ItRefs } from './useItRefs'
 import { fieldOptions, fieldsFor } from './customFields'
 import { friendlyError, isIp, normalizeMac } from './format'
+import { useItSites } from './useItSites'
 
 // Add, edit or clone an asset. Quick by default: site, category (or model) and
 // a name are all it takes; everything else is under "More details". Add N
@@ -135,7 +135,7 @@ export function AssetForm({
   onRefsChanged: () => void
 }) {
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const [form, setForm] = useState<Form>(() =>
     initialForm(mode, refs, defaultSiteId ?? locations[0]?.id ?? '', asset, initialTag))
   const [more, setMore] = useState(mode !== 'add')

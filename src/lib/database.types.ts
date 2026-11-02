@@ -6141,6 +6141,7 @@ export type Database = {
           google_rating_count: number | null
           google_rating_synced_at: string | null
           id: string
+          it_scope: string | null
           latitude: number | null
           longitude: number | null
           maintainx_id: number | null
@@ -6167,6 +6168,7 @@ export type Database = {
           google_rating_count?: number | null
           google_rating_synced_at?: string | null
           id?: string
+          it_scope?: string | null
           latitude?: number | null
           longitude?: number | null
           maintainx_id?: number | null
@@ -6193,6 +6195,7 @@ export type Database = {
           google_rating_count?: number | null
           google_rating_synced_at?: string | null
           id?: string
+          it_scope?: string | null
           latitude?: number | null
           longitude?: number | null
           maintainx_id?: number | null
@@ -10963,6 +10966,7 @@ export type Database = {
         Returns: Json
       }
       it_is_admin: { Args: never; Returns: boolean }
+      it_is_shared_site: { Args: { loc: string }; Returns: boolean }
       it_is_staff: { Args: never; Returns: boolean }
       it_log_import: { Args: { p_summary: Json }; Returns: string }
       it_log_repair: {

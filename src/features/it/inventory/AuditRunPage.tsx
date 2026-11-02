@@ -25,7 +25,6 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/lib/auth'
-import { useLocations } from '@/lib/locations'
 import { primeScanSound } from '@/lib/scan/feedback'
 import { shrinkPhoto } from '@/lib/shrinkPhoto'
 import { cn } from '@/lib/utils'
@@ -44,6 +43,7 @@ import { Footer, NoteField, StatusDialog } from './ItemActions'
 import { PrintDialog } from './PrintDialog'
 import { parseScan } from './scan'
 import { useItRefs, type ItRefs } from './useItRefs'
+import { useItSites } from './useItSites'
 
 // One site audit. While it's open: walk the site in area order with the
 // camera scanning continuously; each sticker marks its item found. Tap an
@@ -100,7 +100,7 @@ export function AuditRunPage({ runId }: { runId: string }) {
 function Walk({ run, items, refs, reload }: { run: ItAuditRun; items: ItAuditItem[]; refs: ItRefs; reload: () => Promise<void> }) {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const site = locations.find((l) => l.id === run.location_id)?.name ?? 'this site'
   const areas = useMemo(() => refs.areas.filter((a) => a.location_id === run.location_id), [refs, run.location_id])
   const [area, setArea] = useState('')
@@ -573,7 +573,7 @@ function FinishDialog({ left, busy, error, onClose, onFinish }: {
 function Report({ run, items, refs }: { run: ItAuditRun; items: ItAuditItem[]; refs: ItRefs }) {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const siteName = (id: string | null) => (id ? locations.find((l) => l.id === id)?.name ?? 'another site' : '')
   const staff = profile?.role === 'owner' || profile?.role === 'manager' || profile?.role === 'technician'
   const sum = run.summary as Partial<AuditSummary>

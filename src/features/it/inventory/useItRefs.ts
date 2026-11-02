@@ -28,6 +28,8 @@ export type ItRefs = {
   manufacturers: ItManufacturer[]
   suppliers: ItSupplier[]
   templates: ItLabelTemplate[]
+  // Corporate and All Sites. Most screens want useItSites instead.
+  sharedSites: { id: string; name: string; it_scope: string | null }[]
   fields: ItCustomField[]
   repairTypes: ItMaintenanceType[]
   // fieldset id -> custom field ids (categories and models point at fieldsets)
@@ -51,7 +53,7 @@ async function fetchRefs(staff: boolean): Promise<ItRefs> {
     const { error } = await itInventory.bootstrap()
     if (error) throw new Error(error.message)
   }
-  const [settings, categories, statuses, areas, models, manufacturers, suppliers, templates, fields, links, repairTypes] = await Promise.all([
+  const [settings, categories, statuses, areas, models, manufacturers, suppliers, templates, fields, links, repairTypes, sharedSites] = await Promise.all([
     itInventory.settings(),
     itInventory.categories(),
     itInventory.statusLabels(),
@@ -63,8 +65,9 @@ async function fetchRefs(staff: boolean): Promise<ItRefs> {
     itInventory.customFields(),
     itInventory.fieldsetLinks(),
     itInventory.maintenanceTypes(),
+    itInventory.sharedSites(),
   ])
-  const firstError = [settings, categories, statuses, areas, models, manufacturers, suppliers, templates, fields, links, repairTypes].find((r) => r.error)
+  const firstError = [settings, categories, statuses, areas, models, manufacturers, suppliers, templates, fields, links, repairTypes, sharedSites].find((r) => r.error)
   if (firstError?.error) throw new Error(firstError.error.message)
   if (!settings.data) throw new Error("IT Inventory isn't set up for your company yet. Ask an admin to open it once.")
   const c = categories.data ?? []
@@ -83,6 +86,7 @@ async function fetchRefs(staff: boolean): Promise<ItRefs> {
     manufacturers: mf,
     suppliers: sp,
     templates: templates.data ?? [],
+    sharedSites: sharedSites.data ?? [],
     fields: fields.data ?? [],
     repairTypes: repairTypes.data ?? [],
     fieldsetFields,

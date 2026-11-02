@@ -39,7 +39,6 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/lib/auth'
 import { downloadCsv } from '@/lib/csv'
-import { useLocations } from '@/lib/locations'
 import { primeScanSound } from '@/lib/scan/feedback'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItAssetRow, type ItSavedView } from '@/lib/queries/itInventory'
@@ -53,6 +52,7 @@ import { ScanSheet } from './ScanSheet'
 import { SectionNav } from './SectionNav'
 import { assignmentBadge, friendlyError, healthBadge, needsSticker, notWorking, statusTone, WARRANTY_WINDOW_DAYS } from './format'
 import { useItRefs, type ItRefs } from './useItRefs'
+import { useItSites } from './useItSites'
 
 // From the overview's "Not working" counts and the like.
 const STATUS_TYPE_LABEL: Record<string, string> = {
@@ -73,7 +73,7 @@ export function AssetList({ onScan }: { onScan: () => void }) {
   const navigate = useNavigate()
   const routerLocation = useLocation()
   const { profile } = useAuth()
-  const { locations, activeLocation } = useLocations()
+  const { locations, activeLocation } = useItSites()
   const { refs, error: refsError, reload: reloadRefs } = useItRefs()
   const [params, setParams] = useSearchParams()
   const [rows, setRows] = useState<ItAssetRow[]>([])
@@ -319,7 +319,7 @@ export function AssetList({ onScan }: { onScan: () => void }) {
         </div>
         <Select value={f.site} onChange={(e) => setParam({ site: e.target.value, area: '' })} aria-label="Site">
           <option value="all">All sites</option>
-          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          {locations.map((l) => <option key={l.id} value={l.id}>{l.filterName ?? l.name}</option>)}
         </Select>
         <Select value={f.cat} onChange={(e) => setParam({ cat: e.target.value, model: '' })} aria-label="Category">
           <option value="">All categories</option>

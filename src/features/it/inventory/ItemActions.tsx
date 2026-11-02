@@ -9,12 +9,12 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/lib/auth'
-import { useLocations } from '@/lib/locations'
 import { shrinkPhoto } from '@/lib/shrinkPhoto'
 import { cn } from '@/lib/utils'
 import { itInventory, type BulkItem, type ItAssetRow } from '@/lib/queries/itInventory'
 import type { ItRefs } from './useItRefs'
 import { friendlyError, statusTone } from './format'
+import { useItSites } from './useItSites'
 
 // Check out, check in, change status and move: for one item or a selection.
 // The database decides what's allowed (deployable-only check-out, one
@@ -106,7 +106,7 @@ export function CheckOutDialog({
   onChangeStatus?: () => void
 }) {
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const ready = assets.filter((a) => refs.status.get(a.status_label_id)?.type === 'deployable' && !a.assigned_type)
   const blocked = assets.filter((a) => !ready.includes(a))
   const sites = [...new Set(ready.map((a) => a.location_id))]
@@ -459,7 +459,7 @@ const STATUS_HELP: Record<string, string> = {
 // ---- Move --------------------------------------------------------------------------------------
 
 export function MoveDialog({ refs, assets, onClose, onDone }: { refs: ItRefs; assets: ItAssetRow[]; onClose: () => void; onDone: Done }) {
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const sites = [...new Set(assets.map((a) => a.location_id))]
   const [site, setSite] = useState(sites.length === 1 ? sites[0] : '')
   const [area, setArea] = useState(assets.length === 1 ? assets[0].area_id ?? '' : '')

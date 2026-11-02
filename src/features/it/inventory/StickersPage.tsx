@@ -24,6 +24,7 @@ import { PrintDialog } from './PrintDialog'
 import { needsSticker, tagUrl } from './format'
 import { accountDefaultTemplate, isOutdoorAsset, toPrintTemplate, useStickerLogo, walkOrder } from './stickers'
 import { useItRefs, type ItRefs } from './useItRefs'
+import { useItSites } from './useItSites'
 
 // Stickers: the site print queue (everything without a good sticker), the
 // blank tag pool for pre-printed sticker orders, and printer setup (sticker
@@ -88,7 +89,7 @@ export function StickersPage() {
 
 function PrintQueue({ refs, onFlash }: { refs: ItRefs; onFlash: (m: string) => void }) {
   const { profile } = useAuth()
-  const { locations, activeLocation } = useLocations()
+  const { locations, activeLocation } = useItSites()
   const [site, setSite] = useState(activeLocation?.id ?? 'all')
   const [rows, setRows] = useState<ItAssetRow[] | null>(null)
   const [stock, setStock] = useState<ItConsumable[]>([])
@@ -123,7 +124,7 @@ function PrintQueue({ refs, onFlash }: { refs: ItRefs; onFlash: (m: string) => v
           {(id) => (
             <Select id={id} value={site} onChange={(e) => { setSite(e.target.value); setSkip(new Set()) }}>
               <option value="all">All sites</option>
-              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.filterName ?? l.name}</option>)}
             </Select>
           )}
         </Field>
@@ -234,7 +235,7 @@ type Batch = { id: string; tags: ItTag[]; source: string; created: string; print
 
 function BlankTags({ refs, onFlash }: { refs: ItRefs; onFlash: (m: string) => void }) {
   const { profile } = useAuth()
-  const { locations, activeLocation } = useLocations()
+  const { locations, activeLocation } = useItSites()
   const [tags, setTags] = useState<ItTag[] | null>(null)
   const [count, setCount] = useState('50')
   const [site, setSite] = useState(activeLocation?.id ?? '')

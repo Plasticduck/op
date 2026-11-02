@@ -28,7 +28,6 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/auth'
 import { currency } from '@/lib/format'
-import { useLocations } from '@/lib/locations'
 import { shrinkPhoto } from '@/lib/shrinkPhoto'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItAssetRow, type ItAssignment } from '@/lib/queries/itInventory'
@@ -55,6 +54,7 @@ import { AssetRepairs, RepairDialog } from './Repairs'
 import { ReportProblemDialog } from './ReportProblem'
 import { Timeline } from './Timeline'
 import { useItRefs } from './useItRefs'
+import { useItSites } from './useItSites'
 
 // Checking the sticker on the device. Faded or missing puts it in the print queue.
 const STICKER_STATES = [
@@ -74,7 +74,7 @@ export function AssetDetail({ id }: { id: string }) {
   const routerLocation = useLocation()
   const [params, setParams] = useSearchParams()
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const { refs, reload: reloadRefs } = useItRefs()
   const routeState = routerLocation.state as { back?: string; flash?: string } | null
   const backTo = '/app/it-inventory' + (routeState?.back ?? '')

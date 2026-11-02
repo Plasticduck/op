@@ -11,11 +11,11 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { downloadCsv } from '@/lib/csv'
 import { currency } from '@/lib/format'
-import { useLocations } from '@/lib/locations'
 import { cn } from '@/lib/utils'
 import { itInventory, type ItRepairRow } from '@/lib/queries/itInventory'
 import { fmtDay, fmtDowntime, friendlyError, type Tone } from './format'
 import { useItRefs } from './useItRefs'
+import { useItSites } from './useItSites'
 
 // Every repair and service job across the sites you can see: what's open now,
 // what it's cost (last 90 days, this year, by site and by kind of gear over
@@ -26,7 +26,7 @@ type Show = 'open' | 'done' | 'all'
 
 export function RepairsPage() {
   const navigate = useNavigate()
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const { refs } = useItRefs()
   const [params, setParams] = useSearchParams()
   const site = params.get('site') ?? 'all'
@@ -142,7 +142,7 @@ export function RepairsPage() {
             </div>
             <Select value={site} onChange={(e) => setParam({ site: e.target.value })} aria-label="Site">
               <option value="all">All sites</option>
-              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.filterName ?? l.name}</option>)}
             </Select>
             <Select value={type} onChange={(e) => setParam({ type: e.target.value })} aria-label="Kind">
               <option value="">Every kind</option>

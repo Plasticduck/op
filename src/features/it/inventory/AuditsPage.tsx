@@ -7,11 +7,11 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useAuth } from '@/lib/auth'
-import { useLocations } from '@/lib/locations'
 import { itInventory, type AuditSummary, type ItAuditRun, type ItOverview, type ItPerson } from '@/lib/queries/itInventory'
 import { daysUntil, fmtDay, friendlyError } from './format'
 import { SectionNav } from './SectionNav'
 import { useItRefs } from './useItRefs'
+import { useItSites } from './useItSites'
 
 // Audits (spec E): walk a site with a phone and scan every sticker. This
 // screen lists each site with when its equipment is due, any audit in
@@ -20,7 +20,7 @@ import { useItRefs } from './useItRefs'
 export function AuditsPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const { locations } = useLocations()
+  const { locations } = useItSites()
   const { refs } = useItRefs()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [overview, setOverview] = useState<ItOverview | null>(null)
