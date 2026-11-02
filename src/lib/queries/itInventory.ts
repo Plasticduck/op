@@ -272,9 +272,9 @@ export const itInventory = {
 
   // ---- Check-out, check-in, status, move (one item or many) ----
   // Each returns one result per asset; one failing doesn't stop the rest.
-  checkOut: async (assetIds: string[], target: { type: 'site' | 'area' | 'user' | 'asset'; id: string }, opts: { expected?: string | null; note?: string; signaturePath?: string | null } = {}) =>
+  checkOut: async (assetIds: string[], target: { type: 'site' | 'area' | 'user' | 'asset'; id: string; label?: string }, opts: { expected?: string | null; note?: string; signaturePath?: string | null } = {}) =>
     bulkResult(await supabase.rpc('it_check_out', {
-      p_asset_ids: assetIds, p_type: target.type, p_target: target.id,
+      p_asset_ids: assetIds, p_type: target.type, p_target: target.id, p_assigned_label: target.label ?? undefined,
       p_expected: opts.expected ?? undefined, p_note: opts.note || undefined, p_signature: opts.signaturePath ?? undefined,
     })),
   checkIn: async (assetIds: string[], statusId: string | null, note?: string) =>

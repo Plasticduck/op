@@ -10892,6 +10892,7 @@ export type Database = {
       it_check_out: {
         Args: {
           p_asset_ids: string[]
+          p_assigned_label?: string
           p_expected?: string
           p_note?: string
           p_signature?: string

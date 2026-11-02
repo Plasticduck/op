@@ -114,6 +114,7 @@ export function CheckOutDialog({
   const [type, setType] = useState<TargetType>(site ? 'user' : 'site')
   const [target, setTarget] = useState('')
   const [search, setSearch] = useState('')
+  const [personName, setPersonName] = useState('')
   const [people, setPeople] = useState<Person[] | null>(null)
   const [devices, setDevices] = useState<{ id: string; asset_tag: string; name: string }[] | null>(null)
   const [due, setDue] = useState('')
@@ -130,7 +131,7 @@ export function CheckOutDialog({
     if (type === 'asset' && devices === null) void itInventory.assetsAtSite(site).then(({ data }) => setDevices(data ?? []))
   }, [type, site, people, devices])
 
-  const pick = (t: TargetType) => { setType(t); setTarget(''); setSearch('') }
+  const pick = (t: TargetType) => { setType(t); setTarget(''); setSearch(''); setPersonName('') }
   const q = search.trim().toLowerCase()
   const peopleShown = (people ?? []).filter((p) => !q || `${p.first_name} ${p.last_name ?? ''} ${p.role_title ?? ''}`.toLowerCase().includes(q))
   const readyIds = new Set(ready.map((a) => a.id))
@@ -138,7 +139,9 @@ export function CheckOutDialog({
   const areas = refs.areas.filter((a) => a.location_id === site)
 
   const submit = async () => {
-    if (!profile || !target) { setError('Pick who or where it goes to.'); return }
+    const manualPerson = type === 'user' ? personName.trim() : ''
+    const targetId = manualPerson ? crypto.randomUUID() : target
+    if (!profile || !targetId) { setError(type === 'user' ? 'Pick a person or enter their name.' : 'Pick who or where it goes to.'); return }
     setBusy(true)
     setError(null)
     let signaturePath: string | null = null
@@ -150,7 +153,7 @@ export function CheckOutDialog({
         signaturePath = up.path
       }
     }
-    const { items, error: err } = await itInventory.checkOut(ready.map((a) => a.id), { type, id: target }, {
+    const { items, error: err } = await itInventory.checkOut(ready.map((a) => a.id), { type, id: targetId, label: manualPerson || undefined }, {
       expected: due ? endOfDay(parseISO(due)).toISOString() : null, note, signaturePath,
     })
     if (err) { setBusy(false); setError(friendlyError(err)); return }
@@ -207,6 +210,13 @@ export function CheckOutDialog({
           <div>
             <Input value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder={type === 'user' ? 'Search the crew at this site' : 'Search by tag or name'} aria-label="Search" />
+            {type === 'user' && (
+              <div className="mt-2">
+                <p className="mb-1 text-xs font-medium text-ink-muted">Or enter a person not in the roster</p>
+                <Input value={personName} onChange={(e) => { setPersonName(e.target.value); if (e.target.value) setTarget('') }}
+                  placeholder="Assigned to person's name" aria-label="Assigned to person's name" />
+              </div>
+            )}
             <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-border">
               {(type === 'user' ? people : devices) === null ? (
                 <div className="grid place-items-center py-6 text-ink-muted"><Loader2 className="size-4 animate-spin" /></div>
@@ -214,7 +224,7 @@ export function CheckOutDialog({
                 <p className="px-3 py-4 text-center text-sm text-ink-muted">{type === 'user' ? 'Nobody matches at this site.' : 'No matching devices at this site.'}</p>
               ) : type === 'user' ? (
                 peopleShown.map((p) => (
-                  <Choice key={p.id} on={target === p.id} onClick={() => setTarget(p.id)}
+                  <Choice key={p.id} on={target === p.id} onClick={() => { setTarget(p.id); setPersonName('') }}
                     title={`${p.first_name} ${p.last_name ?? ''}`.trim()} sub={p.role_title} />
                 ))
               ) : (
@@ -266,7 +276,7 @@ export function CheckOutDialog({
         {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
       </div>
       <Footer busy={busy} onClose={onClose}>
-        <Button onClick={() => void submit()} disabled={busy || !target}>
+        <Button onClick={() => void submit()} disabled={busy || (type === 'user' ? !target && !personName.trim() : !target)}>
           {busy && <Loader2 className="size-4 animate-spin" />} Check out{ready.length > 1 ? ` ${ready.length}` : ''}
         </Button>
       </Footer>

@@ -31,6 +31,7 @@ type Form = {
   model_number: string
   manufacturer: string
   name: string
+  assigned_to: string
   asset_tag: string
   quantity: string
   status_label_id: string
@@ -77,7 +78,7 @@ function initialForm(mode: AssetFormMode, refs: ItRefs, siteId: string, asset?: 
   const defaultStatus = refs.statuses.find((s) => s.is_default)?.id ?? refs.statuses[0]?.id ?? ''
   if (!asset) {
     return {
-      location_id: siteId, category_id: '', model: '', model_number: '', manufacturer: '', name: '', asset_tag: tag ?? '', quantity: '1',
+      location_id: siteId, category_id: '', model: '', model_number: '', manufacturer: '', name: '', assigned_to: '', asset_tag: tag ?? '', quantity: '1',
       status_label_id: defaultStatus, area_id: '', serial: '', mac: '', ip: '', hostname: '', purchase_date: '',
       purchase_cost: '', supplier: '', order_number: '', warranty_end_date: '', notes: '',
     }
@@ -91,6 +92,7 @@ function initialForm(mode: AssetFormMode, refs: ItRefs, siteId: string, asset?: 
     model_number: '',
     manufacturer: (model?.manufacturer_id && refs.manufacturer.get(model.manufacturer_id)?.name) || '',
     name: asset.name,
+    assigned_to: clone ? '' : asset.assigned_label ?? '',
     asset_tag: clone ? '' : asset.asset_tag,
     quantity: '1',
     status_label_id: clone ? defaultStatus : asset.status_label_id,
@@ -254,6 +256,9 @@ export function AssetForm({
     if (units > 1 && (form.serial.trim() || form.mac.trim() || form.asset_tag.trim())) {
       e.quantity = 'Leave tag, serial and MAC empty when adding several at once. Each one gets its own tag.'
     }
+    if (form.assigned_to.trim() && refs.status.get(form.status_label_id)?.type !== 'deployable') {
+      e.assigned_to = 'Change the status to a deployable status before assigning this equipment.'
+    }
     setErrors(e)
     const ce: Record<string, string> = {}
     for (const f of cfs) {
@@ -369,6 +374,16 @@ export function AssetForm({
       const { data, error: err } = await itInventory.createAssets(rows)
       if (err || !data) throw new Error(err?.message ?? 'Could not save.')
       await saveSecrets(data.map((d) => d.id))
+      const assignedName = form.assigned_to.trim()
+      if (assignedName && mode !== 'edit') {
+        const assignment = await itInventory.checkOut(data.map((d) => d.id), {
+          type: 'user', id: crypto.randomUUID(), label: assignedName,
+        })
+        const failed = assignment.items.filter((item) => !item.ok)
+        if (assignment.error || failed.length) {
+          throw new Error([assignment.error, ...failed.map((item) => item.error)].filter(Boolean).join(' ') || 'The equipment was saved, but could not be assigned.')
+        }
+      }
       if (photo && data.length === 1) {
         const up = await itInventory.uploadAssetPhoto(profile.account_id, data[0].id, form.location_id, await shrinkPhoto(photo))
         if (up.error) setError(`Saved, but the photo didn't upload: ${up.error}`)
@@ -472,12 +487,17 @@ export function AssetForm({
             <div className="hidden sm:block" />
           )}
           <Field label="Name" required={!form.model.trim()} error={errors.name}
-            hint={!form.name.trim() && form.model.trim() ? `Will be "${form.model.trim()}"` : undefined} className="sm:col-span-2">
+            hint={!form.name.trim() && form.model.trim() ? `Will be "${form.model.trim()}"` : undefined}>
             {(id) => (
               <Input id={id} value={form.name} onChange={set('name')} invalid={!!errors.name}
                 placeholder="e.g. Pay Lane 1 pay station" />
             )}
           </Field>
+          {mode !== 'edit' && (
+            <Field label="Assigned to" error={errors.assigned_to} hint="Optional. The employee or person receiving this equipment.">
+              {(id) => <Input id={id} value={form.assigned_to} onChange={set('assigned_to')} placeholder="e.g. John Smith" invalid={!!errors.assigned_to} />}
+            </Field>
+          )}
           {mode !== 'edit' && (
             <Field label="Sticker tag" hint={form.asset_tag ? 'From the sticker you scanned.' : 'Leave blank and we make the next one.'}>
               {(id) => (
