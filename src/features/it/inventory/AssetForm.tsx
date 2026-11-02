@@ -92,7 +92,8 @@ function initialForm(mode: AssetFormMode, refs: ItRefs, siteId: string, asset?: 
     model_number: '',
     manufacturer: (model?.manufacturer_id && refs.manufacturer.get(model.manufacturer_id)?.name) || '',
     name: asset.name,
-    assigned_to: clone ? '' : asset.assigned_label ?? '',
+    // Only for new equipment. After that it's Check out and Check in on the item.
+    assigned_to: '',
     asset_tag: clone ? '' : asset.asset_tag,
     quantity: '1',
     status_label_id: clone ? defaultStatus : asset.status_label_id,
@@ -128,7 +129,8 @@ export function AssetForm({
   initialTag?: string
   defaultSiteId?: string
   onClose: () => void
-  onSaved: (created: { id: string; asset_tag: string }[]) => void
+  // `problem`: it saved, but something after that (the assignment, a photo) didn't.
+  onSaved: (created: { id: string; asset_tag: string }[], problem?: string) => void
   // A new model, manufacturer or supplier was added along the way.
   onRefsChanged: () => void
 }) {
@@ -256,8 +258,10 @@ export function AssetForm({
     if (units > 1 && (form.serial.trim() || form.mac.trim() || form.asset_tag.trim())) {
       e.quantity = 'Leave tag, serial and MAC empty when adding several at once. Each one gets its own tag.'
     }
-    if (form.assigned_to.trim() && refs.status.get(form.status_label_id)?.type !== 'deployable') {
-      e.assigned_to = 'Change the status to a deployable status before assigning this equipment.'
+    const status = refs.status.get(form.status_label_id)
+    if (form.assigned_to.trim() && status?.type !== 'deployable') {
+      e.assigned_to = `It's marked ${status?.name ?? 'not ready'}, so it can't be assigned yet. Change its status under More details, or leave this blank.`
+      setMore(true)
     }
     setErrors(e)
     const ce: Record<string, string> = {}
@@ -286,7 +290,7 @@ export function AssetForm({
       if (f.field_type !== 'secret' || !v) continue
       for (const id of ids) {
         const { error: err } = await itInventory.setSecret(id, f.id, v)
-        if (err) throw new Error(`Saved, but ${f.name} wasn't: ${err.message}`)
+        if (err) throw new Error(`${f.name} wasn't saved: ${err.message}`)
       }
     }
   }
@@ -296,8 +300,9 @@ export function AssetForm({
     if (dups.length) { setError('Fix the duplicate first, or open the existing item instead.'); return }
     setSaving(true)
     setError(null)
+    let refsChanged = false
+    let saved: { id: string; asset_tag: string }[] | null = null
     try {
-      let refsChanged = false
       // Model (and its manufacturer) typed in for the first time.
       let modelId = matchedModel?.id ?? null
       if (newModel) {
@@ -373,25 +378,31 @@ export function AssetForm({
       }))
       const { data, error: err } = await itInventory.createAssets(rows)
       if (err || !data) throw new Error(err?.message ?? 'Could not save.')
-      await saveSecrets(data.map((d) => d.id))
+      saved = data
       const assignedName = form.assigned_to.trim()
-      if (assignedName && mode !== 'edit') {
-        const assignment = await itInventory.checkOut(data.map((d) => d.id), {
+      if (assignedName) {
+        const { items, error: assignErr } = await itInventory.checkOut(data.map((d) => d.id), {
           type: 'user', id: crypto.randomUUID(), label: assignedName,
         })
-        const failed = assignment.items.filter((item) => !item.ok)
-        if (assignment.error || failed.length) {
-          throw new Error([assignment.error, ...failed.map((item) => item.error)].filter(Boolean).join(' ') || 'The equipment was saved, but could not be assigned.')
-        }
+        const reason = assignErr ?? items.find((item) => !item.ok)?.error
+        if (reason) throw new Error(`Use Check out to assign it to ${assignedName}. It didn't go through: ${friendlyError(reason)}`)
       }
+      await saveSecrets(data.map((d) => d.id))
       if (photo && data.length === 1) {
         const up = await itInventory.uploadAssetPhoto(profile.account_id, data[0].id, form.location_id, await shrinkPhoto(photo))
-        if (up.error) setError(`Saved, but the photo didn't upload: ${up.error}`)
+        if (up.error) throw new Error(`The photo didn't upload: ${up.error}`)
       }
       if (refsChanged) onRefsChanged()
       onSaved(data)
     } catch (e) {
-      setError(friendlyError(e instanceof Error ? e.message : String(e)))
+      const message = friendlyError(e instanceof Error ? e.message : String(e))
+      // Already saved: with the form still open, Add would save it a second time.
+      if (saved) {
+        if (refsChanged) onRefsChanged()
+        onSaved(saved, message)
+      } else {
+        setError(message)
+      }
     } finally {
       setSaving(false)
     }
@@ -494,8 +505,9 @@ export function AssetForm({
             )}
           </Field>
           {mode !== 'edit' && (
-            <Field label="Assigned to" error={errors.assigned_to} hint="Optional. The employee or person receiving this equipment.">
-              {(id) => <Input id={id} value={form.assigned_to} onChange={set('assigned_to')} placeholder="e.g. John Smith" invalid={!!errors.assigned_to} />}
+            <Field label="Assigned to" error={errors.assigned_to}
+              hint={units > 1 ? `Optional. All ${units} go to this person.` : 'Optional. The person receiving this equipment.'}>
+              {(id) => <Input id={id} value={form.assigned_to} onChange={set('assigned_to')} placeholder="e.g. John Smith" autoComplete="off" invalid={!!errors.assigned_to} />}
             </Field>
           )}
           {mode !== 'edit' && (

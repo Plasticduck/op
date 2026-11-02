@@ -521,16 +521,16 @@ export function AssetList({ onScan }: { onScan: () => void }) {
           defaultSiteId={f.site !== 'all' ? f.site : activeLocation?.id}
           onClose={() => setAdding(null)}
           onRefsChanged={() => void reloadRefs()}
-          onSaved={(created) => {
+          onSaved={(created, problem) => {
             setAdding(null)
             if (created.length === 1) {
               navigate(`/app/it-inventory/${created[0].id}`, {
-                state: { back: routerLocation.search, flash: `Added ${created[0].asset_tag}. Print its sticker now, or later from the print queue.` },
+                state: { back: routerLocation.search, flash: `Added ${created[0].asset_tag}. ${problem ?? 'Print its sticker now, or later from the print queue.'}` },
               })
               return
             }
             void load()
-            setFlash(`Added ${created.length}: ${created.map((c) => c.asset_tag).join(', ')}. Their stickers are waiting in the print queue.`)
+            setFlash(`Added ${created.length}: ${created.map((c) => c.asset_tag).join(', ')}. ${problem ?? 'Their stickers are waiting in the print queue.'}`)
           }}
         />
       )}

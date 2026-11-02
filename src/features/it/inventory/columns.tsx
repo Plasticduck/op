@@ -74,7 +74,7 @@ export function allColumns(refs: ItRefs): Col[] {
       key: 'status', label: 'Status', get: (r, c) => c.refs.status.get(r.status_label_id)?.name ?? null,
       cell: (r, c) => { const s = c.refs.status.get(r.status_label_id); return <Badge tone={statusTone(s)}>{s?.name ?? '–'}</Badge> },
     },
-    { key: 'out', label: 'Checked out to', get: (r) => r.assigned_label, cell: (r) => <span className="text-ink-muted">{muted(r.assigned_label)}</span> },
+    { key: 'out', label: 'Assigned to', get: (r) => r.assigned_label, cell: (r) => <span className="text-ink-muted">{muted(r.assigned_label)}</span> },
     {
       key: 'health', label: 'Working order', get: (r) => (notWorking(r.health_state) ? healthBadge(r.health_state).label : null),
       cell: (r) => { if (!notWorking(r.health_state)) return muted(null); const h = healthBadge(r.health_state); return <Badge tone={h.tone}>{h.label}</Badge> },

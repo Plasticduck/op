@@ -1108,6 +1108,91 @@ do $$ begin
   end if;
 end $$;
 
+-- ---- Assigned to a typed name ------------------------------------------------------------------
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  laptop uuid;
+  tag    text;
+  person uuid := (select e.id from public.employees e where e.location_id = current_setting('t.site_in')::uuid limit 1);
+  roster text := (select btrim(e.first_name || ' ' || coalesce(e.last_name, '')) from public.employees e where e.id = person);
+  res    jsonb;
+begin
+  insert into public.it_assets (account_id, location_id, name, category_id)
+  select current_setting('t.a')::uuid, current_setting('t.site_in')::uuid, 'Test laptop', id
+    from public.it_categories where account_id = current_setting('t.a')::uuid and name = 'Tablet'
+  returning id, asset_tag into laptop, tag;
+  perform set_config('t.laptop', laptop::text, true);
+
+  -- Not on the roster and no name to show.
+  if (public.it_check_out(array[laptop], 'user', gen_random_uuid()) -> 0 ->> 'error') is distinct from 'Unknown check-out target' then
+    raise exception 'FAIL 169: a check-out to nobody was accepted';
+  end if;
+  if (public.it_check_out(array[laptop], 'user', gen_random_uuid(), p_assigned_label => '   ') -> 0 ->> 'error') is distinct from 'Unknown check-out target' then
+    raise exception 'FAIL 170: a blank name was accepted';
+  end if;
+
+  res := public.it_check_out(array[laptop], 'user', gen_random_uuid(), p_assigned_label => '  Jamie Rivera ');
+  if not coalesce((res -> 0 ->> 'ok')::boolean, false) then
+    raise exception 'FAIL 171: could not assign to a typed name: %', res;
+  end if;
+
+  -- What a sticker scan opens: the tag finds the item, the item names the person.
+  if public.it_resolve_tag(current_setting('t.a_short'), tag) ->> 'asset_id' is distinct from laptop::text then
+    raise exception 'FAIL 172: the sticker did not find the assigned item';
+  end if;
+  if (select assigned_type = 'user' and assigned_label = 'Jamie Rivera' from public.it_assets where id = laptop) is not true then
+    raise exception 'FAIL 173: the item does not show the typed name';
+  end if;
+  if not exists (select 1 from public.it_activity_log where asset_id = laptop and action = 'checked_out' and after ->> 'assigned_label' = 'Jamie Rivera') then
+    raise exception 'FAIL 174: the typed name is not on the Timeline';
+  end if;
+  if (public.it_check_out(array[laptop], 'user', gen_random_uuid(), p_assigned_label => 'Someone Else') -> 0 ->> 'error') not like 'Already checked out%' then
+    raise exception 'FAIL 175: assigned a second person without checking in';
+  end if;
+
+  perform public.it_check_in(array[laptop]);
+  if (select assigned_type is not null or assigned_label is not null from public.it_assets where id = laptop) then
+    raise exception 'FAIL 176: checking in did not clear the name';
+  end if;
+
+  -- A typed name can't relabel someone on the roster, a site or an area.
+  if person is null then
+    raise exception 'FAIL 177: fixtures missing (need someone on the site roster)';
+  end if;
+  perform public.it_check_out(array[laptop], 'user', person, p_assigned_label => 'Not Their Name');
+  if (select assigned_label from public.it_assets where id = laptop) is distinct from roster then
+    raise exception 'FAIL 178: a typed name replaced a roster name';
+  end if;
+  perform public.it_check_in(array[laptop]);
+  perform public.it_check_out(array[laptop], 'site', current_setting('t.site_out')::uuid, p_assigned_label => 'Not This Site');
+  if (select assigned_label from public.it_assets where id = laptop) = 'Not This Site' then
+    raise exception 'FAIL 179: a typed name replaced a site name';
+  end if;
+  perform public.it_check_in(array[laptop]);
+
+  if has_function_privilege('anon', 'public.it_check_out(uuid[], text, uuid, timestamptz, text, text, text)', 'execute') then
+    raise exception 'FAIL 180: anon can check equipment out';
+  end if;
+  if not has_function_privilege('authenticated', 'public.it_check_out(uuid[], text, uuid, timestamptz, text, text, text)', 'execute') then
+    raise exception 'FAIL 181: signed-in users cannot check equipment out';
+  end if;
+  if to_regprocedure('public.it_check_out(uuid[], text, uuid, timestamptz, text, text)') is not null then
+    raise exception 'FAIL 182: the old it_check_out is still there, so calls are ambiguous';
+  end if;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.b_owner'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if coalesce((public.it_check_out(array[current_setting('t.laptop')::uuid], 'user', gen_random_uuid(), p_assigned_label => 'Jamie Rivera') -> 0 ->> 'ok')::boolean, false) then
+    raise exception 'FAIL 183: another company assigned this item';
+  end if;
+end $$;
+reset role;
+
 -- ---- Signed out -----------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true);
 set local role anon;

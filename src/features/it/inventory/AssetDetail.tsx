@@ -294,7 +294,7 @@ export function AssetDetail({ id }: { id: string }) {
               <Section title="Where">
                 <Row label="Site">{siteName.get(asset.location_id) ?? 'Archived site'}</Row>
                 <Row label="Area">{asset.area_id ? refs.area.get(asset.area_id)?.name : null}</Row>
-                <Row label="Checked out to">
+                <Row label="Assigned to">
                   {asset.assigned_label && (
                     <span>
                       {asset.assigned_label}
@@ -490,11 +490,11 @@ export function AssetDetail({ id }: { id: string }) {
           asset={asset}
           onClose={() => setForm(null)}
           onRefsChanged={() => void reloadRefs()}
-          onSaved={(created) => {
+          onSaved={(created, problem) => {
             setForm(null)
             if (form === 'clone') {
               navigate(`/app/it-inventory/${created[0].id}`, {
-                state: { back: routeState?.back, flash: `Cloned as ${created.map((c) => c.asset_tag).join(', ')}. Stickers are waiting in the print queue.` },
+                state: { back: routeState?.back, flash: `Cloned as ${created.map((c) => c.asset_tag).join(', ')}. ${problem ?? 'Stickers are waiting in the print queue.'}` },
                 replace: false,
               })
               return

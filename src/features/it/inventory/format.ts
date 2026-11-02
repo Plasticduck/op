@@ -18,8 +18,8 @@ export function statusTone(s: Pick<ItStatusLabel, 'color'> | null | undefined): 
 
 // Status, assignment and health are separate questions and get separate badges.
 export function assignmentBadge(a: Pick<ItAsset, 'assigned_type' | 'assigned_label'>): { label: string; tone: Tone } {
-  if (!a.assigned_type) return { label: 'Not checked out', tone: 'neutral' }
-  return { label: `Checked out to ${a.assigned_label ?? 'someone'}`, tone: 'accent' }
+  if (!a.assigned_type) return { label: 'Not assigned', tone: 'neutral' }
+  return { label: `Assigned to ${a.assigned_label ?? 'someone'}`, tone: 'accent' }
 }
 
 // Working order is what people report: "not working" until someone marks it

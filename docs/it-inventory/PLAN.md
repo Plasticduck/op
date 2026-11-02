@@ -30,7 +30,10 @@ Other decisions:
 - Category `icon` stores a key from a curated lucide map in the module, so only
   the icons we use are bundled.
 - `assigned_type = 'user'` points at `employees.id` (the site roster), since
-  most crew have no login. `assigned_label` is denormalized for lists.
+  most crew have no login, or is a random key for a name typed in by hand (Add
+  equipment's "Assigned to", or Check out's "a person not in the roster").
+  `assigned_label` is denormalized for lists; someone on the roster always shows
+  their roster name. The public sticker page never shows it.
 - Tags are identity: set at creation (generated, pre-printed pool, or typed),
   never changed, never reused. Retiring or deleting an asset retires its tag.
 - Serial and MAC are unique per account among live assets (DB enforced), and the
@@ -295,6 +298,7 @@ sheet with the fit check, default, remove, phone, desktop and dark).
 | 0193_it_reminders_cron | `it-reminders` at 8 AM Central |
 | 0195_it_audits | `it_audit_runs` / `it_audit_items` with RLS and a guard trigger; `it_start_audit`, `it_audit_scan`, `it_complete_audit`, `it_cancel_audit`; audit photo uploads for anyone in the account |
 | 0196_it_repairs | `it_maintenances.prior_status_id` / `out_of_service_at`; `it_log_repair`, `it_finish_repair` |
+| 0203_it_manual_assignments | `it_check_out` takes `p_assigned_label`, for a typed name; `it_assignments_before` keeps it (roster names still win); `it_log` keeps the name on check-out rows, so the Timeline says who |
 | 0198_it_sticker_logo_sizes | `it_settings.label_logo_path`; five more sizes for existing accounts, Avery 8160 / 8163 names; `it_bootstrap` seeds all ten |
 | 0197_it_accessories | `it_accessories`, `it_accessory_assignments`, `it_accessory_stock` view, guard triggers; accessory categories (existing accounts here, new ones via `it_bootstrap`) |
 | 0194_it_tracker_not_monitor | removes the device heartbeats (functions, table, sweep cron); `it_overview` counts "not working" reports and each site's overdue audits |

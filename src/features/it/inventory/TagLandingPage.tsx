@@ -14,7 +14,9 @@ import { TAG_RE } from './scan'
 // /t/<account>/<tag>: where a sticker's QR goes when scanned with any phone
 // camera. Someone signed in who can use IT Inventory lands on the asset (or on
 // Add, for a blank sticker). Everyone else gets a small Report a problem page
-// that shows only the device's name, category and site.
+// that shows only the device's name, category and site, never who it's assigned
+// to. Signed out, it links to sign-in and comes back here, so IT staff can get
+// to the item from a phone camera.
 
 // Same gate as the IT Inventory nav item (roles + pre-launch email list).
 function canOpenInventory(p: Profile): boolean {
@@ -124,6 +126,13 @@ function PublicReport({ short, tag, signedIn }: { short: string; tag: string; si
         <div className="mt-0.5 font-mono text-xs text-ink-subtle">{info.asset.tag}</div>
       </div>
       <ProblemForm short={short} tag={tag} signedIn={signedIn} onDone={() => setDone(true)} />
+      {!signedIn && (
+        <p className="mt-4 border-t border-border pt-4 text-center text-sm text-ink-muted">
+          On the IT team?{' '}
+          <Link to="/login" state={{ from: `/t/${short}/${tag}` }} className="font-medium text-accent hover:underline">Sign in</Link>
+          {' '}to see this item.
+        </p>
+      )}
     </div>
   )
 }

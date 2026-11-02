@@ -441,7 +441,7 @@ function ItemRow({ item, refs, areas, open, onToggle, patch, accountId, runId, o
           <span className="block truncate text-ink">{a?.name ?? item.tag}</span>
           <span className="block truncate text-xs text-ink-muted">
             <span className="font-mono">{item.tag}</span>
-            {a?.assigned_label && ` · checked out to ${a.assigned_label}`}
+            {a?.assigned_label && ` · assigned to ${a.assigned_label}`}
             {item.found_area_id && ` · moving to ${refs.area.get(item.found_area_id)?.name ?? 'another area'}`}
             {!item.expected && ' · not on the list'}
           </span>
