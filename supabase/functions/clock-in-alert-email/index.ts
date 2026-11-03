@@ -3,7 +3,8 @@
 // still clocked in on an OPEN iSolved punch that has run longer than a normal
 // shift (the same "check punch" flag the On the Clock view shows), grouped by
 // site. These are almost always missed clock-outs from the day before. It also
-// lists yesterday's double clock-ins (findDoubleClockIns below), by email and text.
+// lists yesterday's double clock-ins not yet corrected (findDoubleClockIns below),
+// by email and text.
 //
 // Runs in two phases, each scheduled twice by pg_cron so one lands on the right
 // Central time year-round (the hour guard lets only the 6 AM Central call through):
@@ -93,6 +94,11 @@ function esc(s: unknown): string {
 // goes missing until someone corrects it. Seen: in 11:58 AM, in 3:26 PM, in 3:54 PM,
 // out 7:02 PM counted 3.1 hours.
 //
+// Only an in-punch still unmatched on the timecard can start a double: one iSolved
+// paired with a clock-out has its hours, and a manager's fix (a clock-out added, or
+// the stray in removed) leaves no unmatched in, so it drops off. Seen: in 7:24 AM,
+// in 10:59 AM, out 10:59 AM paired 7:24 to 10:59, with nothing missing.
+//
 // timecardData pairs punches into entries, so this rebuilds the person's punches in
 // order: an inPunchId is a clock-in, an outPunchId a clock-out, and a block with no
 // punch ids (manual or scheduled) counts as a clock-out at its end time, like the
@@ -102,7 +108,7 @@ function esc(s: unknown): string {
 // reported on the day its repeat clock-in happened.
 type DoubleChain = { ins: string[]; outAt: string | null; loc: string; gapHours: number }
 function findDoubleClockIns(entries: Any[], date: string, nowIso: string): DoubleChain[] {
-  type Ev = { at: string; kind: 'in' | 'out'; id: number; punch: boolean; loc: string }
+  type Ev = { at: string; kind: 'in' | 'out'; id: number; punch: boolean; loc: string; unmatched?: boolean }
   const evs: Ev[] = []
   const seen = new Set<string>()
   const once = (key: string) => { if (seen.has(key)) return false; seen.add(key); return true }
@@ -111,7 +117,7 @@ function findDoubleClockIns(entries: Any[], date: string, nowIso: string): Doubl
     const o = String(t.outPunchDateTimeEffective ?? '')
     const loc = String((t.labors ?? []).find((l: Any) => l.laborTitle === 'Location')?.laborValue ?? '')
     if (t.inPunchId != null && i && !isMidnight(i) && once(`i${t.inPunchId}`)) {
-      evs.push({ at: i, kind: 'in', id: Number(t.inPunchId), punch: true, loc })
+      evs.push({ at: i, kind: 'in', id: Number(t.inPunchId), punch: true, loc, unmatched: t.outPunchId == null && !(o > i) })
     }
     if (t.outPunchId != null && o) {
       if (once(`o${t.outPunchId}`)) evs.push({ at: o, kind: 'out', id: Number(t.outPunchId), punch: true, loc })
@@ -136,8 +142,8 @@ function findDoubleClockIns(entries: Any[], date: string, nowIso: string): Doubl
     chain = []
   }
   for (const e of ordered) {
-    if (e.kind === 'in') chain.push(e)
-    else close(e)
+    if (e.kind === 'out') close(e)
+    else if (e.unmatched || chain.length) chain.push(e)
   }
   close(null)
   return out
@@ -361,7 +367,7 @@ Deno.serve(async (req) => {
   const doubleDay = new Date(doublesDate + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })
 
   const allClear = `<p style="margin:0 0 8px;font-size:15px;color:#047857;font-weight:600;">✓ No unusual clock-ins this morning.</p>
-       <p style="margin:0;color:#555;font-size:14px;">Everyone is clocked out or within a normal shift (open punches under ${threshold}h), and no one double clocked in on ${esc(doubleDay)}.</p>`
+       <p style="margin:0;color:#555;font-size:14px;">Everyone is clocked out or within a normal shift (open punches under ${threshold}h), and no double clock-ins from ${esc(doubleDay)} are waiting to be corrected.</p>`
   const openHead = `<p style="margin:0 0 4px;font-size:16px;color:#b91c1c;font-weight:700;">${flags.length} unusual clock-in${flags.length === 1 ? '' : 's'} across ${sites.length} site${sites.length === 1 ? '' : 's'}.</p>
        <p style="margin:0 0 16px;color:#555;font-size:13px;">Open punches running longer than ${threshold}h: likely missed clock-outs. Review and correct in iSolved.</p>`
   const doubleHead = `<p style="margin:0 0 4px;font-size:16px;color:#b45309;font-weight:700;">${doubles.length} double clock-in${doubles.length === 1 ? '' : 's'} on ${esc(doubleDay)}, across ${doubleSites.length} site${doubleSites.length === 1 ? '' : 's'}.</p>
@@ -398,7 +404,7 @@ Deno.serve(async (req) => {
       ${total === 0 ? allClear : ''}
       ${flags.length ? `${openHead}<div style="margin-top:18px;">${siteBlocks}</div>` : ''}
       ${doubles.length ? `<div style="margin-top:${flags.length ? '26px' : '0'};">${doubleHead}<div style="margin-top:18px;">${doubleBlocks}</div></div>` : ''}
-      <p style="margin:22px 0 0;color:#888;font-size:12px;">An "unusual clock-in" is an open iSolved punch still running after ${threshold}+ hours. A double clock-in is two or more clock-ins in a row with no clock-out between. Sent from WashLyfe Operator.</p>
+      <p style="margin:22px 0 0;color:#888;font-size:12px;">An "unusual clock-in" is an open iSolved punch still running after ${threshold}+ hours. A double clock-in is two or more clock-ins in a row with no clock-out between that hasn't been corrected in iSolved yet. Sent from WashLyfe Operator.</p>
     </div>`
 
   // Compact SMS version of the report, for all sites or one RM's subset.
