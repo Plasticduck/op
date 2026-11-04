@@ -37,6 +37,12 @@ export function displayRole(role: Role, category?: RoleCategory | null): string 
   return category ? CATEGORY_LABEL[category] : ROLE_LABEL[role]
 }
 
+// What to call a user in a greeting or sentence: their first name, except on a
+// shared login, whose name isn't a person's ("Mighty Wash HQ", not "Mighty").
+export function shortName(name: string, category?: RoleCategory | null): string {
+  return category === 'corporate_display' ? name : name.split(' ')[0]
+}
+
 export function isRole(value: unknown): value is Role {
   return (
     value === 'owner' ||

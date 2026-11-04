@@ -15,7 +15,7 @@ import { useCompany } from '@/lib/company'
 import { updateCompany } from '@/lib/queries/companySettings'
 import { NAV_GROUPS, navFlagOn } from '@/components/layout/Sidebar'
 import { SECTION_CATALOG, defaultAllowed, permRoleInList } from '@/lib/permissions'
-import { CATEGORY_LABEL, ROLE_LABEL, displayRole, permRole, type PermRole, type Role, type RoleCategory } from '@/lib/rbac'
+import { CATEGORY_LABEL, ROLE_LABEL, displayRole, permRole, shortName, type PermRole, type Role, type RoleCategory } from '@/lib/rbac'
 import {
   createInvitation,
   listAllLocations,
@@ -652,7 +652,7 @@ function UserPermissionsModal({ user, onClose, onSaved }: {
     <Modal open onClose={onClose} title={`Permissions · ${user.name}`} size="lg">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-ink-muted">
-          {displayRole(user.role, user.role_category)}. Choose which pages {user.name.split(' ')[0]} can use. This applies to this person only and
+          {displayRole(user.role, user.role_category)}. Choose which pages {shortName(user.name, user.role_category)} can use. This applies to this person only and
           overrides the role default.
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

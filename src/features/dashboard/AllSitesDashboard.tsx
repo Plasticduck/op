@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { useAuth } from '@/lib/auth'
+import { shortName } from '@/lib/rbac'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
 import { Wos } from '@/components/ui/Wos'
@@ -173,7 +174,7 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
-          {greeting()}, {profile?.name.split(' ')[0]}
+          {greeting()}, {profile && shortName(profile.name, profile.role_category)}
         </h1>
         <p className="mt-1 text-sm text-ink-muted sm:text-base">
           {regionName ? `${shortRegionLabel(regionName)} overview` : 'All sites overview'} · {format(new Date(), 'EEEE, MMMM d, yyyy')}
