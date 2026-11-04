@@ -7,12 +7,14 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
+import { useSectionAllowed } from '@/lib/usePermissions'
 import { insights, type Insight } from '@/lib/queries/insights'
 
 const SEVERITY_TONE = { info: 'accent', warning: 'warn', critical: 'danger' } as const
 
 export default function InsightsPage() {
   const { profile } = useAuth()
+  const showPeople = useSectionAllowed('/app/insights#people')
   const [tab, setTab] = useState<'active' | 'history'>('active')
   const [items, setItems] = useState<Insight[]>([])
   const [loading, setLoading] = useState(true)
@@ -22,9 +24,9 @@ export default function InsightsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const { data } = tab === 'active' ? await insights.active() : await insights.history()
-    setItems((data as Insight[] | null) ?? [])
+    setItems(((data as Insight[] | null) ?? []).filter((i) => showPeople || i.category !== 'people'))
     setLoading(false)
-  }, [tab])
+  }, [tab, showPeople])
 
   useEffect(() => { void load() }, [load])
 

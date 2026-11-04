@@ -97,6 +97,8 @@ export const SECTION_CATALOG: SectionDef[] = [
   { key: '/app/bonuses#regional', page: '/app/bonuses', label: 'Regional Manager Quarterly Bonuses', roles: ['owner'] },
   // Everything sensitive on an employee's profile, plus adding and editing people.
   { key: '/app/employees#hr', page: '/app/employees', label: 'Pay, reviews, counseling, PIN and edits', roles: ['owner', 'manager'] },
+  // People insights are written from pay, review and counseling records.
+  { key: '/app/insights#people', page: '/app/insights', label: 'People insights', roles: ['owner', 'manager', 'technician'] },
 ]
 
 export function sectionsForPage(page: string): SectionDef[] {

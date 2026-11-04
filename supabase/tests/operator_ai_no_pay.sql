@@ -1,6 +1,7 @@
--- Operator AI's SQL tool can't read pay on a Corporate Display login, and is unchanged
--- for everyone else. Creates throwaway logins and rolls everything back: the final
--- exception carries the results, so no outcome of this test is ever committed.
+-- Operator AI's SQL tool can't read pay, injury reports, counseling records or
+-- performance reviews on a Corporate Display login, and is unchanged for everyone else.
+-- Creates throwaway logins and rolls everything back: the final exception carries the
+-- results, so no outcome of this test is ever committed.
 do $$
 declare
   acct uuid := '54f3e299-1f61-4ed2-9921-3d02160b72e6';
@@ -57,13 +58,40 @@ begin
     $q$select query_to_xml('select 1', true, true, '')$q$,
     $q$select set_config('search_path', 'public', true)$q$,
     $q$select * from ts_stat('select to_tsvector(first_name) from employees')$q$,
-    'select U&"hourly\005frate" from employees'
+    'select U&"hourly\005frate" from employees',
+    'select * from injury_reports',
+    'select severity, count(*) as n from injury_reports group by severity',
+    'select * from counseling_records',
+    'select * from reviews',
+    'select rating from reviews',
+    'select e.first_name from employees e, reviews r',
+    'select e.first_name from employees e join injury_reports i on i.employee_id = e.id',
+    'with c as (select * from counseling_records) select * from c',
+    'select * from public.injury_reports',
+    'select * from public.counseling_records',
+    'select * from "public"."reviews"'
   ] loop
     begin
       r := public.operator_ask_sql(q);
       fails := fails || ('NOT REFUSED: ' || q);
     exception when others then
       passed := passed + 1;
+    end;
+  end loop;
+
+  -- Refused because of the block itself, not because of some other error. These are
+  -- tested by count: counseling and reviews can be empty, which must not read as a pass.
+  foreach q in array array[
+    'select count(*) as n from injury_reports',
+    'select count(*) as n from counseling_records',
+    'select count(*) as n from reviews'
+  ] loop
+    begin
+      r := public.operator_ask_sql(q);
+      fails := fails || ('NOT REFUSED: ' || q);
+    exception when others then
+      if sqlerrm ~ 'cannot read' then passed := passed + 1;
+      else fails := fails || ('WRONG ERROR: ' || q || ' -> ' || sqlerrm); end if;
     end;
   end loop;
 
@@ -96,7 +124,10 @@ begin
     'select count(*) as n from site_violations',
     'select site, sum(cars) as cars, sum(labor_cost) as labor from site_performance_days group by site limit 5',
     'select name from locations limit 5',
-    'select tips_enabled from locations limit 1'
+    'select tips_enabled from locations limit 1',
+    'select count(*) as reviews from gatherup_reviews',
+    'select l.name as site, count(*) as reviews from locations l group by l.name limit 1',
+    'select name, google_rating, google_rating_count as reviews from locations limit 1'
   ] loop
     begin
       r := public.operator_ask_sql(q);
@@ -105,6 +136,14 @@ begin
       fails := fails || ('BROKE: ' || q || ' -> ' || sqlerrm);
     end;
   end loop;
+
+  -- People insights are gone for this login; the operations ones remain.
+  if (public.operator_ask_sql($q$select count(*) as n from ai_insights where category = 'people'$q$) -> 0 ->> 'n')::int <> 0
+    then fails := fails || 'display saw people insights'::text; else passed := passed + 1; end if;
+  if (public.operator_ask_sql($q$select count(*) as n from ai_insights$q$) -> 0 ->> 'n')::int = 0
+    then fails := fails || 'display lost ops insights'::text; else passed := passed + 1; end if;
+  if (public.operator_ask_sql($q$select jsonb_agg(i.insight_text) as insight_texts from ai_insights i$q$))::text ~* 'null hourly_rate'
+    then fails := fails || 'display insight mentions pay'::text; else passed := passed + 1; end if;
 
   -- Row-level security still applies through the views.
   n_all := (public.operator_ask_sql('select count(*) as n from employees') -> 0 ->> 'n')::int;
@@ -121,7 +160,10 @@ begin
     'select hourly_rate from employees limit 1',
     'select * from public.employees limit 1',
     'select count(*) as n from tips',
-    'select count(*) as n from gm_bonus_months'
+    'select count(*) as n from gm_bonus_months',
+    'select count(*) as n from injury_reports',
+    'select count(*) as n from counseling_records',
+    'select count(*) as n from reviews'
   ] loop
     begin
       r := public.operator_ask_sql(q);
@@ -132,6 +174,8 @@ begin
   end loop;
   r := public.operator_ask_sql('select * from employees limit 5');
   if r::text !~ 'hourly_rate' then fails := fails || 'manager lost hourly_rate'::text; else passed := passed + 1; end if;
+  if (public.operator_ask_sql($q$select count(*) as n from ai_insights where category = 'people'$q$) -> 0 ->> 'n')::int = 0
+    then fails := fails || 'manager lost people insights'::text; else passed := passed + 1; end if;
 
   execute 'reset role';
   raise exception 'RESULT passed=% employees_all=% employees_one_site=% FAILS=%', passed, n_all, n_one, fails;
