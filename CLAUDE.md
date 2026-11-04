@@ -113,7 +113,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0209.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0210.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
@@ -165,7 +165,9 @@ Three layers, from coarse to authoritative:
    route gate. Resolution is per-user, then per-role, then default; it can only
    restrict within a role's pages. Items with `optIn` are hidden unless enabled.
    `corporate_display` (a shared office login) defaults to the short list in
-   `CORPORATE_DISPLAY_PAGES`, so a new page stays off it until enabled. Overrides live in `company_settings.pagePermissions` / `userPermissions` and
+   `CORPORATE_DISPLAY_PAGES`, so a new page stays off it until enabled. Operator AI
+   can't read pay on that login (`operator_ask_sql` + the `ai_no_pay` schema; a new
+   table or column holding pay must be added there). Overrides live in `company_settings.pagePermissions` / `userPermissions` and
    are edited on the Team settings page. Section-level gating uses
    `SECTION_CATALOG` + `useSectionAllowed`.
 3. **Postgres RLS** is the real floor. It only knows the base `Role`, never

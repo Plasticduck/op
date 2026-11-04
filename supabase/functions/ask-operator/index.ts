@@ -419,7 +419,7 @@ Deno.serve(async (req) => {
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
   const { data: profile } = await svc
     .from('users')
-    .select('account_id, role, location_ids')
+    .select('account_id, role, role_category, location_ids')
     .eq('id', uid)
     .single()
   if (!profile) return json({ error: 'no_profile' }, 400, origin)
@@ -483,6 +483,12 @@ Deno.serve(async (req) => {
     ? 'The get_site_performance and query_dashboard tools ARE available for this user.'
     : 'The get_site_performance tool is NOT available (site performance is not enabled for this account, or the user is not a manager). If asked about car counts, recharge, conversion, or churn, tell them live site-performance data is not enabled for their account.'
 
+  // The shared office login can't read pay: operator_ask_sql enforces it, and this
+  // gives a straight answer instead of the model working around the refusals.
+  const noPayNote = profile.role_category === 'corporate_display'
+    ? ' This is a shared office login, which cannot see pay: hourly rates, wages, salaries, tips, bonuses, commissions, event pay, per diem, or mileage. If asked what anyone is paid, or anything that would reveal it, say in one sentence that pay is not available on this login. Do not look it up or estimate it from other data. Site-level labor % and labor cost are fine to report.'
+    : ''
+
   // The tool-use loop, instrumented so a streaming caller can narrate each
   // phase and receive the answer token by token as it is written.
   async function run(emit: Emit): Promise<{ answer: string; steps: Step[] }> {
@@ -500,7 +506,7 @@ Deno.serve(async (req) => {
           {
             type: 'text',
             text:
-              `Today is ${today}. Answer for this user's data only. ${perfNote}` +
+              `Today is ${today}. Answer for this user's data only. ${perfNote}${noPayNote}` +
               (finalRound
                 ? ' You have gathered enough. Give your best final answer now using the data already returned; do not ask for more.'
                 : ''),

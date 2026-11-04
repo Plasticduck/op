@@ -13,11 +13,12 @@ export type UserPermissions = Record<string, Record<string, boolean>>
 
 // What the shared office login (Corporate Display) opens by default. It starts from
 // this list instead of a manager's full set, so a page added later stays off that
-// screen until an admin turns it on from the Team page. Operator AI is left off
-// because it answers from data on pages this login can't open.
+// screen until an admin turns it on from the Team page. Operator AI is on, but
+// operator_ask_sql won't read pay for this login.
 const CORPORATE_DISPLAY_PAGES = new Set([
   '/app/dashboard',
   '/app/messages',
+  '/app/ask',
   '/app/insights',
   '/app/market-explorer',
   '/app/site-performance',
