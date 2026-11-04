@@ -175,13 +175,6 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner', 'manager'],
       },
       {
-        to: '/app/fleet-map',
-        label: 'Fleet Map',
-        icon: Truck,
-        roles: ['owner'],
-        emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
-      },
-      {
         to: '/app/site-visits',
         label: 'Site Visits',
         icon: MapPinCheck,
@@ -566,6 +559,19 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Maintenance Categories',
         icon: TagsIcon,
         roles: ['owner', 'manager', 'technician'],
+      },
+    ],
+  },
+  {
+    label: 'Fleet',
+    roles: ['owner', 'manager', 'employee', 'technician'],
+    items: [
+      {
+        to: '/app/fleet-map',
+        label: 'Fleet Map',
+        icon: Truck,
+        roles: ['owner'],
+        emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
       },
     ],
   },
