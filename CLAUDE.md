@@ -18,8 +18,8 @@ fleet) are built on Mighty Wash's own systems.
 
 Four base roles: `owner` (labeled "Admin" in the UI), `manager`, `employee`,
 `technician`. A manager can also carry a `role_category` (`regional_manager`,
-`executive`, `finance`) that changes what they see in the app but not what RLS
-allows. See **Access control** below.
+`executive`, `finance`, `corporate_display`) that changes what they see in the app
+but not what RLS allows. See **Access control** below.
 
 ## Stack
 
@@ -113,7 +113,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0206.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0209.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
@@ -164,7 +164,8 @@ Three layers, from coarse to authoritative:
    sees. It is enforced in Sidebar, CommandPalette, BottomNav, and the AppShell
    route gate. Resolution is per-user, then per-role, then default; it can only
    restrict within a role's pages. Items with `optIn` are hidden unless enabled.
-   Overrides live in `company_settings.pagePermissions` / `userPermissions` and
+   `corporate_display` (a shared office login) defaults to the short list in
+   `CORPORATE_DISPLAY_PAGES`, so a new page stays off it until enabled. Overrides live in `company_settings.pagePermissions` / `userPermissions` and
    are edited on the Team settings page. Section-level gating uses
    `SECTION_CATALOG` + `useSectionAllowed`.
 3. **Postgres RLS** is the real floor. It only knows the base `Role`, never

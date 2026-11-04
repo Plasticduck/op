@@ -14,7 +14,7 @@ import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { updateCompany } from '@/lib/queries/companySettings'
 import { NAV_GROUPS, navFlagOn } from '@/components/layout/Sidebar'
-import { SECTION_CATALOG, permRoleInList } from '@/lib/permissions'
+import { SECTION_CATALOG, defaultAllowed, permRoleInList } from '@/lib/permissions'
 import { CATEGORY_LABEL, ROLE_LABEL, displayRole, permRole, type PermRole, type Role, type RoleCategory } from '@/lib/rbac'
 import {
   createInvitation,
@@ -48,7 +48,7 @@ function optInForKey(key: string): PermRole[] | undefined {
   return SECTION_CATALOG.find((s) => s.key === key)?.optIn
 }
 function pureDefault(role: PermRole, key: string): boolean {
-  return !(optInForKey(key)?.includes(role))
+  return defaultAllowed(role, key, optInForKey(key))
 }
 function sectionsForRole(to: string, role: PermRole) {
   return SECTION_CATALOG.filter((s) => s.page === to && permRoleInList(role, s.roles))
@@ -502,6 +502,7 @@ function PermissionsEditor() {
             <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
             <option value="executive">{CATEGORY_LABEL.executive}</option>
             <option value="finance">{CATEGORY_LABEL.finance}</option>
+            <option value="corporate_display">{CATEGORY_LABEL.corporate_display}</option>
             <option value="employee">{ROLE_LABEL.employee}</option>
             <option value="technician">{ROLE_LABEL.technician}</option>
           </Select>
@@ -727,7 +728,7 @@ function EditUserModal({
   // Categories (Regional Manager / Executive) are the manager role + a category.
   const choice: PermRole = category ?? role
   const setChoice = (v: PermRole) => {
-    if (v === 'regional_manager' || v === 'executive' || v === 'finance') { setRole('manager'); setCategory(v) }
+    if (v === 'regional_manager' || v === 'executive' || v === 'finance' || v === 'corporate_display') { setRole('manager'); setCategory(v) }
     else { setRole(v as Role); setCategory(null) }
   }
 
@@ -760,6 +761,7 @@ function EditUserModal({
               <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
               <option value="executive">{CATEGORY_LABEL.executive}</option>
               <option value="finance">{CATEGORY_LABEL.finance}</option>
+              <option value="corporate_display">{CATEGORY_LABEL.corporate_display}</option>
               <option value="owner">Admin</option>
             </Select>
           )}

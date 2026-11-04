@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { shortDate } from '@/lib/format'
 import { useLocations } from '@/lib/locations'
+import { useSectionAllowed } from '@/lib/usePermissions'
 import { employees, type Employee } from '@/lib/queries/people'
 import { listAllLocations, type LocationFull } from '@/lib/queries/account'
 import { BadgeChips } from '@/components/ui/BadgeChips'
@@ -20,6 +21,7 @@ import { EmployeeModal } from './EmployeeModal'
 
 function Inner({ locationId }: { locationId: string }) {
   const { activeLocation } = useLocations()
+  const canEdit = useSectionAllowed('/app/employees#hr')
   const [rows, setRows] = useState<Employee[]>([])
   const [locations, setLocations] = useState<LocationFull[]>([])
   const [loading, setLoading] = useState(true)
@@ -64,11 +66,11 @@ function Inner({ locationId }: { locationId: string }) {
       <PageHeader
         title="Employees"
         subtitle="Your staff roster for schedules, time tracking, and HR."
-        actions={
+        actions={canEdit ? (
           <Button onClick={() => setInviteOpen(true)}>
             Add team member
           </Button>
-        }
+        ) : undefined}
       />
 
       <WeatherOutlook
@@ -92,7 +94,7 @@ function Inner({ locationId }: { locationId: string }) {
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : visible.length === 0 ? (
-        <EmptyState icon={Users} title="No employees yet" description="Add a team member to start building your roster. You can add them as an app user or as roster-only staff." action={<Button onClick={() => setInviteOpen(true)}>Add team member</Button>} />
+        <EmptyState icon={Users} title="No employees yet" description="Add a team member to start building your roster. You can add them as an app user or as roster-only staff." action={canEdit ? <Button onClick={() => setInviteOpen(true)}>Add team member</Button> : undefined} />
       ) : (
         <div className="overflow-x-auto rounded-md border border-border bg-card">
           <table className="w-full min-w-[720px] text-sm">
@@ -129,7 +131,7 @@ function Inner({ locationId }: { locationId: string }) {
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>Edit</Button>
+                    {canEdit && <Button variant="ghost" size="sm" onClick={() => setEditing(e)}>Edit</Button>}
                   </td>
                 </tr>
               ))}

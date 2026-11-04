@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/Select'
 import { currency, shortDate } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
+import { useSectionAllowed } from '@/lib/usePermissions'
 import {
   employees,
   reviews as reviewsQ,
@@ -28,6 +29,7 @@ import { EmployeeModal } from './EmployeeModal'
 export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { profile } = useAuth()
+  const showHr = useSectionAllowed('/app/employees#hr')
   const [emp, setEmp] = useState<Employee | null>(null)
   const [reviews, setReviews] = useState<Review[]>([])
   const [counseling, setCounseling] = useState<CounselingRecord[]>([])
@@ -42,6 +44,10 @@ export default function EmployeeDetailPage() {
     setLoading(true)
     const e = await employees.get(id)
     setEmp((e.data as Employee | null) ?? null)
+    if (!showHr) {
+      setLoading(false)
+      return
+    }
     const [r, c, u] = await Promise.all([
       reviewsQ.forEmployee(id),
       counselingQ.forEmployee(id),
@@ -64,7 +70,7 @@ export default function EmployeeDetailPage() {
     }, 0)
     setHours(total)
     setLoading(false)
-  }, [id])
+  }, [id, showHr])
 
   useEffect(() => { void load() }, [load])
 
@@ -82,12 +88,12 @@ export default function EmployeeDetailPage() {
       <PageHeader
         title={`${emp.first_name} ${emp.last_name}`}
         subtitle={emp.role_title ?? undefined}
-        actions={
+        actions={showHr ? (
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setModal('pin')}><KeyRound className="size-4" /> Set PIN</Button>
             <Button variant="secondary" onClick={() => setEditing(true)}><Pencil className="size-4" /> Edit</Button>
           </div>
-        }
+        ) : undefined}
       />
 
       <div className="flex flex-wrap items-center gap-2 text-sm text-ink-muted">
@@ -97,34 +103,38 @@ export default function EmployeeDetailPage() {
         {emp.start_date && <span>· started {shortDate(emp.start_date)}</span>}
       </div>
 
-      <StatCardRow
-        items={[
-          { label: 'Hours (14d)', value: hours.toFixed(1) },
-          { label: 'Hourly rate', value: emp.hourly_rate ? currency(emp.hourly_rate) : '—' },
-          { label: 'Last review', value: lastReview ? shortDate(lastReview.review_date) : 'None' },
-          { label: 'Counseling records', value: counseling.length },
-        ]}
-      />
+      {showHr && (
+        <>
+          <StatCardRow
+            items={[
+              { label: 'Hours (14d)', value: hours.toFixed(1) },
+              { label: 'Hourly rate', value: emp.hourly_rate ? currency(emp.hourly_rate) : '—' },
+              { label: 'Last review', value: lastReview ? shortDate(lastReview.review_date) : 'None' },
+              { label: 'Counseling records', value: counseling.length },
+            ]}
+          />
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Section title="Reviews" onAdd={() => setModal('review')}>
-          {reviews.length === 0 ? <Empty text="No reviews yet." /> : reviews.map((r) => (
-            <Row key={r.id} left={`${r.status === 'completed' ? 'Completed' : 'Scheduled'}${r.rating ? ` · ${r.rating}/5` : ''}`} right={shortDate(r.review_date ?? r.due_date)} note={r.notes} />
-          ))}
-        </Section>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <Section title="Reviews" onAdd={() => setModal('review')}>
+              {reviews.length === 0 ? <Empty text="No reviews yet." /> : reviews.map((r) => (
+                <Row key={r.id} left={`${r.status === 'completed' ? 'Completed' : 'Scheduled'}${r.rating ? ` · ${r.rating}/5` : ''}`} right={shortDate(r.review_date ?? r.due_date)} note={r.notes} />
+              ))}
+            </Section>
 
-        <Section title="Counseling" onAdd={() => setModal('counsel')}>
-          {counseling.length === 0 ? <Empty text="No records." /> : counseling.map((c) => (
-            <Row key={c.id} left={<Badge tone={c.type === 'pip' || c.type === 'final' ? 'danger' : 'warn'}>{c.type}</Badge>} right={shortDate(c.date)} note={c.description} />
-          ))}
-        </Section>
+            <Section title="Counseling" onAdd={() => setModal('counsel')}>
+              {counseling.length === 0 ? <Empty text="No records." /> : counseling.map((c) => (
+                <Row key={c.id} left={<Badge tone={c.type === 'pip' || c.type === 'final' ? 'danger' : 'warn'}>{c.type}</Badge>} right={shortDate(c.date)} note={c.description} />
+              ))}
+            </Section>
 
-        <Section title="Uniform requests" onAdd={() => setModal('uniform')}>
-          {uniforms.length === 0 ? <Empty text="No requests." /> : uniforms.map((u) => (
-            <Row key={u.id} left={`${u.item}${u.size ? ` (${u.size})` : ''} ×${u.quantity}`} right={<Badge tone={u.status === 'fulfilled' ? 'ok' : 'warn'}>{u.status}</Badge>} />
-          ))}
-        </Section>
-      </div>
+            <Section title="Uniform requests" onAdd={() => setModal('uniform')}>
+              {uniforms.length === 0 ? <Empty text="No requests." /> : uniforms.map((u) => (
+                <Row key={u.id} left={`${u.item}${u.size ? ` (${u.size})` : ''} ×${u.quantity}`} right={<Badge tone={u.status === 'fulfilled' ? 'ok' : 'warn'}>{u.status}</Badge>} />
+              ))}
+            </Section>
+          </div>
+        </>
+      )}
 
       {editing && <EmployeeModal locationId={emp.location_id} existing={emp} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); void load() }} />}
       {modal === 'pin' && <PinModal employeeId={emp.id} onClose={() => setModal(null)} />}

@@ -11,6 +11,48 @@ import type { PermRole } from '@/lib/rbac'
 export type PagePermissions = Record<string, Record<string, boolean>>
 export type UserPermissions = Record<string, Record<string, boolean>>
 
+// What the shared office login (Corporate Display) opens by default. It starts from
+// this list instead of a manager's full set, so a page added later stays off that
+// screen until an admin turns it on from the Team page. Operator AI is left off
+// because it answers from data on pages this login can't open.
+const CORPORATE_DISPLAY_PAGES = new Set([
+  '/app/dashboard',
+  '/app/messages',
+  '/app/insights',
+  '/app/market-explorer',
+  '/app/site-performance',
+  '/app/details',
+  '/app/msa-performance',
+  '/app/flexwash-sales',
+  '/app/cameras',
+  '/app/labor',
+  '/app/checklists',
+  '/app/inventory',
+  '/app/inventory#catalog',
+  '/app/inventory#counts',
+  '/app/inventory#sessions',
+  '/app/documents',
+  '/app/lube-shop',
+  '/app/lube-leaderboard',
+  '/app/lube-member-lookup',
+  '/app/lube-house-accounts',
+  '/app/chemicals',
+  '/app/downtime',
+  '/app/assets',
+  '/app/parts',
+  '/app/vendors',
+  '/app/employees',
+  '/app/contacts',
+  '/app/schedule',
+  '/app/training',
+])
+
+// A page's or section's state when no role or per-person override is set.
+export function defaultAllowed(role: PermRole, key: string, optInRoles?: PermRole[]): boolean {
+  if (role === 'corporate_display') return CORPORATE_DISPLAY_PAGES.has(key)
+  return !optInRoles?.includes(role)
+}
+
 export function pageAllowed(
   role: PermRole,
   to: string,
@@ -24,12 +66,12 @@ export function pageAllowed(
     optInRoles?: PermRole[]
   },
 ): boolean {
-  // Regional Manager / Executive / Finance mirror a manager: any page available to
-  // managers is available to them too (then narrowed per account by rolePerms).
-  // Pages that list the categories explicitly (and drop 'manager') are how Bonuses
-  // / Invoice Approval include specific categories but not plain managers.
+  // Regional Manager / Executive / Finance / Corporate Display mirror a manager: any
+  // page available to managers is available to them too (then narrowed per account
+  // by rolePerms). Pages that list the categories explicitly (and drop 'manager') are
+  // how Bonuses / Invoice Approval include specific categories but not plain managers.
   const builtins = builtinRoles.includes('manager')
-    ? [...builtinRoles, 'regional_manager' as const, 'executive' as const, 'finance' as const]
+    ? [...builtinRoles, 'regional_manager' as const, 'executive' as const, 'finance' as const, 'corporate_display' as const]
     : builtinRoles
   if (!builtins.includes(role)) return false
   if (role === 'owner') return true
@@ -37,7 +79,7 @@ export function pageAllowed(
   if (typeof u === 'boolean') return u
   const r = opts?.rolePerms?.[role]?.[to]
   if (typeof r === 'boolean') return r
-  return !opts?.optInRoles?.includes(role)
+  return defaultAllowed(role, to, opts?.optInRoles)
 }
 
 // Toggleable sections within a page. `key` is stored in the same permission maps
@@ -52,6 +94,8 @@ export const SECTION_CATALOG: SectionDef[] = [
   { key: '/app/inventory#sessions', page: '/app/inventory', label: 'Saved Counts tab', roles: ['owner', 'manager', 'technician'] },
   // Regional quarterly bonuses stay owner-only (managers get GM/AGM only).
   { key: '/app/bonuses#regional', page: '/app/bonuses', label: 'Regional Manager Quarterly Bonuses', roles: ['owner'] },
+  // Everything sensitive on an employee's profile, plus adding and editing people.
+  { key: '/app/employees#hr', page: '/app/employees', label: 'Pay, reviews, counseling, PIN and edits', roles: ['owner', 'manager'] },
 ]
 
 export function sectionsForPage(page: string): SectionDef[] {
@@ -63,5 +107,5 @@ export function sectionsForPage(page: string): SectionDef[] {
 export function permRoleInList(role: PermRole, list?: PermRole[] | null): boolean {
   if (!list) return true
   if (list.includes(role)) return true
-  return (role === 'regional_manager' || role === 'executive' || role === 'finance') && list.includes('manager')
+  return (role === 'regional_manager' || role === 'executive' || role === 'finance' || role === 'corporate_display') && list.includes('manager')
 }

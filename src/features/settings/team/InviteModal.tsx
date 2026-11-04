@@ -38,8 +38,10 @@ export function InviteModal({
   const [category, setCategory] = useState<RoleCategory | null>(null)
   const choice: PermRole = category ?? role
   const setChoice = (v: PermRole) => {
-    if (v === 'regional_manager' || v === 'executive' || v === 'finance') { setRole('manager'); setCategory(v) }
+    if (v === 'regional_manager' || v === 'executive' || v === 'finance' || v === 'corporate_display') { setRole('manager'); setCategory(v) }
     else { setRole(v as InvitableRole); setCategory(null) }
+    // An office screen normally shows every site; it can still be narrowed below.
+    if (v === 'corporate_display') setLocIds(locations.filter((l) => !l.archived).map((l) => l.id))
   }
   const [locIds, setLocIds] = useState<string[]>([])
   // HR fields for the roster record.
@@ -216,7 +218,7 @@ export function InviteModal({
                 />
               )}
             </Field>
-            <Field label="Role" required>
+            <Field label="Role" required hint={category === 'corporate_display' ? 'Shared office screen. Opens only the pages checked for Corporate Display under Edit user permissions.' : undefined}>
               {(id) => (
                 <Select
                   id={id}
@@ -229,6 +231,7 @@ export function InviteModal({
                   <option value="regional_manager">{CATEGORY_LABEL.regional_manager}</option>
                   <option value="executive">{CATEGORY_LABEL.executive}</option>
                   <option value="finance">{CATEGORY_LABEL.finance}</option>
+                  <option value="corporate_display">{CATEGORY_LABEL.corporate_display}</option>
                   {/* Only an admin (owner) can invite another admin. */}
                   {profile?.role === 'owner' && <option value="owner">Admin</option>}
                 </Select>
