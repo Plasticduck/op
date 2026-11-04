@@ -2571,6 +2571,45 @@ export type Database = {
           },
         ]
       }
+      fleet_driver_links: {
+        Row: {
+          account_id: string
+          created_at: string
+          driver_number: string
+          source: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          driver_number: string
+          source: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          driver_number?: string
+          source?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_driver_links_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_driver_links_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_people: {
         Row: {
           account_id: string
@@ -2615,6 +2654,35 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_vehicle_codes: {
+        Row: {
+          account_id: string
+          code: string
+          created_at: string
+          vehicle_number: string
+        }
+        Insert: {
+          account_id: string
+          code: string
+          created_at?: string
+          vehicle_number: string
+        }
+        Update: {
+          account_id?: string
+          code?: string
+          created_at?: string
+          vehicle_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_vehicle_codes_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]

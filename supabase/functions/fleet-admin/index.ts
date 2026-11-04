@@ -12,6 +12,8 @@
 //   unassign       { vehicle }
 //   vehicle_update { vehicle, fields: { name, plate, vin, year, make, model, fuel_type, size } }
 //   odometer       { vehicle, miles }
+//   stickers       { vehicles }                sticker codes for QR self-assign (0208), made on first print
+//   unlink         { number }                  undo a driver's link to an Operator login
 //
 // Reveal behavior this relies on (tested 2026-11-04):
 //   - POST /da/v1/driverassignments moves people: assigning a driver ends their
@@ -214,9 +216,17 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Match drivers to Operator logins by email, as the visit sync does.
-      const { data: users } = await svc.from('users').select('id, name, email').eq('account_id', MW_ACCOUNT_ID)
+      // A driver's Operator login: a fleet_driver_links row (from a sticker scan),
+      // else the login with the driver's email, as the visit sync matches.
+      const [{ data: users }, { data: links }, { data: codes }] = await Promise.all([
+        svc.from('users').select('id, name, email').eq('account_id', MW_ACCOUNT_ID),
+        svc.from('fleet_driver_links').select('user_id, driver_number, source').eq('account_id', MW_ACCOUNT_ID),
+        svc.from('fleet_vehicle_codes').select('code, vehicle_number').eq('account_id', MW_ACCOUNT_ID),
+      ])
       const userByEmail = new Map((users ?? []).map((x: Any) => [String(x.email ?? '').toLowerCase(), x]))
+      const userById = new Map((users ?? []).map((x: Any) => [x.id, x]))
+      const linkByDriver = new Map((links ?? []).map((l: Any) => [l.driver_number, l]))
+      const codeByVehicle = new Map((codes ?? []).map((c: Any) => [c.vehicle_number, c.code]))
       const driverByNum = new Map(rawDrivers.map((d) => [String(d.DriverNumber ?? '').trim(), d]))
       const vehicleOfDriver = new Map([...assignments.values()].map((a) => [String(a.DriverNumber).trim(), String(a.VehicleNumber).trim()]))
 
@@ -238,6 +248,7 @@ Deno.serve(async (req) => {
           driver: a ? { number: String(a.DriverNumber), name: d ? driverName(d) : String(a.DriverNumber), since: utcIso(a.StartDateUTC) } : null,
           gps_at: utcIso(p?.UpdateUTC),
           status: p?.DisplayState ?? null,
+          sticker_code: codeByVehicle.get(num) ?? null,
         }
       }).sort((a, b) => a.name.localeCompare(b.name))
 
@@ -246,7 +257,8 @@ Deno.serve(async (req) => {
         .map((d) => {
           const num = String(d.DriverNumber).trim()
           const email = realEmail(d.EmailAddress)
-          const op: Any = email ? userByEmail.get(email.toLowerCase()) : null
+          const link: Any = linkByDriver.get(num)
+          const op: Any = (link ? userById.get(link.user_id) : null) ?? (email ? userByEmail.get(email.toLowerCase()) : null)
           return {
             number: num,
             first: String(d.FirstName ?? '').trim(),
@@ -255,7 +267,7 @@ Deno.serve(async (req) => {
             phone: d.PhoneNumber ? String(d.PhoneNumber) : null,
             created_at: utcIso(d.CreatedDateUTC),
             vehicle: vehicleOfDriver.get(num) ?? null,
-            operator_user: op ? { id: op.id, name: op.name } : null,
+            operator_user: op ? { id: op.id, name: op.name, linked: link ? link.source : 'email' } : null,
           }
         })
         .sort((a, b) => `${a.first} ${a.last}`.localeCompare(`${b.first} ${b.last}`))
@@ -304,6 +316,7 @@ Deno.serve(async (req) => {
       if (a) await endAssignment(a)
       const r = await reveal('DELETE', `/cmd/v1/drivers/${enc(num)}`)
       if (r.status >= 300) throw new UserError(`Verizon didn't remove the driver: ${revealMessage(r) || r.status}`)
+      await svc.from('fleet_driver_links').delete().eq('account_id', MW_ACCOUNT_ID).eq('driver_number', num)
       await log({ action: 'driver_removed', driver_number: num, driver_name: driverName(existing), vehicle_number: a?.VehicleNumber ?? null, details: { email: realEmail(existing.EmailAddress) } })
       return json({ ok: true }, 200, origin)
     }
@@ -395,6 +408,36 @@ Deno.serve(async (req) => {
       const r = await reveal('PUT', `/cmd/v1/vehicles/${enc(vNum)}/odometer`, { Odometer: Math.round(miles * KM_PER_MILE), AsOf: revealNow() })
       if (r.status >= 300) throw new UserError(`Verizon didn't set the odometer: ${revealMessage(r) || r.status}`)
       await log({ action: 'odometer_set', vehicle_number: vNum, vehicle_name: cleanName(v.Name), details: { miles: Math.round(miles) } })
+      return json({ ok: true }, 200, origin)
+    }
+
+    if (action === 'stickers') {
+      const wanted = [...new Set(((body.vehicles ?? []) as unknown[]).map((x) => String(x ?? '').trim()).filter(Boolean))]
+      if (!wanted.length || wanted.length > 200) throw new UserError('Pick the vehicles to print stickers for.')
+      const { data: existing } = await svc.from('fleet_vehicle_codes').select('code, vehicle_number').eq('account_id', MW_ACCOUNT_ID)
+      const codes = new Map((existing ?? []).map((c: Any) => [c.vehicle_number, c.code]))
+      // No 0/O, 1/I/L: the code is also printed for anyone typing it in.
+      const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+      const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => ALPHABET[b % ALPHABET.length]).join('')
+      for (const vNum of wanted.filter((v) => !codes.has(v))) {
+        if (!(await getVehicle(vNum))) throw new UserError(`Vehicle ${vNum} isn't in Verizon.`)
+        for (let attempt = 0; attempt < 5 && !codes.has(vNum); attempt++) {
+          const code = newCode()
+          const { error } = await svc.from('fleet_vehicle_codes').insert({ code, account_id: MW_ACCOUNT_ID, vehicle_number: vNum })
+          if (!error) codes.set(vNum, code)
+        }
+        if (!codes.has(vNum)) throw new UserError('Could not make a sticker code. Try again.')
+      }
+      await log({ action: 'stickers_printed', details: { vehicles: wanted.length } })
+      return json({ codes: Object.fromEntries(wanted.map((v) => [v, codes.get(v)])) }, 200, origin)
+    }
+
+    if (action === 'unlink') {
+      const num = String(body.number ?? '').trim()
+      const { data: gone } = await svc.from('fleet_driver_links').delete().eq('account_id', MW_ACCOUNT_ID).eq('driver_number', num).select('user_id')
+      if (!gone?.length) throw new UserError('That driver isn\'t linked by a scan, so there\'s nothing to undo. Their email is what links them.')
+      const d = await getDriver(num)
+      await log({ action: 'unlinked', driver_number: num, driver_name: d ? driverName(d) : null, details: { user_id: gone[0].user_id } })
       return json({ ok: true }, 200, origin)
     }
 

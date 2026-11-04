@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { format, formatDistanceToNowStrict } from 'date-fns'
-import { Pencil, RefreshCw, Trash2, Truck, UserMinus, UserPlus, UsersRound } from 'lucide-react'
+import { Loader2, Pencil, Printer, QrCode, RefreshCw, Trash2, Truck, Unlink, UserMinus, UserPlus, UsersRound } from 'lucide-react'
+import { PdfPagePreview } from '@/components/data/PdfPagePreview'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -20,12 +21,14 @@ import {
   type FleetOverview,
   type VehicleInput,
 } from '@/lib/queries/fleet'
+import { buildVehicleStickersPdf, STICKER_STOCKS, vehicleSticker } from './fleetStickers'
 
 // Fleet Management: Admins add, edit and remove drivers, edit vehicles, and put
 // drivers on (or take them off) vehicles, all in Verizon Connect Reveal through
 // the fleet-admin edge function. Reveal is the source of truth, so the page reloads
 // from it after every change. Vehicles come from tracker installs and can't be
-// added or removed here. Changes made here are listed on the Changes tab.
+// added or removed here. Changes made here, and drivers putting themselves on a
+// vehicle by scanning its dash sticker (/v/<code>), are listed on the Changes tab.
 
 type Tab = 'vehicles' | 'drivers' | 'changes'
 const DAY_MS = 86400_000
@@ -127,10 +130,19 @@ function VehiclesTab({ vehicles, drivers, unnumbered, onDone }: {
   const [assigning, setAssigning] = useState<FleetAdminVehicle | null>(null)
   const [unassigning, setUnassigning] = useState<FleetAdminVehicle | null>(null)
   const [editing, setEditing] = useState<FleetAdminVehicle | null>(null)
+  const [printing, setPrinting] = useState(false)
 
   if (vehicles.length === 0) return <EmptyState icon={Truck} title="No vehicles" description="Verizon Connect has no vehicles with a vehicle number." />
+  const unprinted = vehicles.filter((v) => !v.sticker_code).length
   return (
     <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-ink-muted">
+          Drivers put themselves on a vehicle by scanning the QR sticker on its dash.
+          {unprinted > 0 && ` ${unprinted} vehicle${unprinted === 1 ? ' has' : 's have'} no sticker yet.`}
+        </p>
+        <Button variant="secondary" onClick={() => setPrinting(true)}><QrCode className="size-4" /> Print QR stickers</Button>
+      </div>
       <div className="overflow-x-auto rounded-md border border-border bg-card">
         <table className="w-full min-w-[880px] text-sm">
           <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
@@ -212,7 +224,110 @@ function VehiclesTab({ vehicles, drivers, unnumbered, onDone }: {
         </ConfirmModal>
       )}
       {editing && <VehicleModal vehicle={editing} onClose={() => setEditing(null)} onDone={onDone} />}
+      {printing && <StickersModal vehicles={vehicles} onClose={() => setPrinting(false)} onDone={onDone} />}
     </div>
+  )
+}
+
+// Pick vehicles, preview the first page, download the PDF. A vehicle's code is
+// made the first time its sticker prints and kept after, so reprints match.
+function StickersModal({ vehicles, onClose, onDone }: {
+  vehicles: FleetAdminVehicle[]
+  onClose: () => void
+  onDone: (message: string) => void
+}) {
+  // Default to the vehicles that don't have a sticker yet (all of them, the first time).
+  const [picked, setPicked] = useState<Set<string>>(() => {
+    const fresh = vehicles.filter((v) => !v.sticker_code)
+    return new Set((fresh.length ? fresh : vehicles).map((v) => v.number))
+  })
+  const [stockId, setStockId] = useState(STICKER_STOCKS[0].id)
+  const [preview, setPreview] = useState<ArrayBuffer | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const stock = STICKER_STOCKS.find((s) => s.id === stockId) ?? STICKER_STOCKS[0]
+  const chosen = vehicles.filter((v) => picked.has(v.number))
+
+  // The preview uses a placeholder code where a vehicle has none yet.
+  useEffect(() => {
+    if (!chosen.length) { setPreview(null); return }
+    let alive = true
+    const items = chosen.slice(0, 10).map((v) => vehicleSticker(v.sticker_code ?? 'NEW000', v.name))
+    const id = window.setTimeout(() => {
+      void buildVehicleStickersPdf(stock, stock.template.page_spec.page ? items : items.slice(0, 1)).then(({ doc }) => {
+        if (alive) setPreview(doc.output('arraybuffer'))
+      })
+    }, 120)
+    return () => { alive = false; window.clearTimeout(id) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockId, picked])
+
+  const toggle = (num: string) => setPicked((s) => {
+    const next = new Set(s)
+    if (next.has(num)) next.delete(num)
+    else next.add(num)
+    return next
+  })
+
+  const print = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const { codes } = await fleetAdminApi.stickerCodes(chosen.map((v) => v.number))
+      const { doc, labels } = await buildVehicleStickersPdf(stock, chosen.map((v) => vehicleSticker(codes[v.number], v.name)))
+      doc.save(`vehicle-stickers-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`)
+      onClose()
+      onDone(`Your ${labels} vehicle sticker${labels === 1 ? '' : 's'} downloaded as a PDF. Print at 100% (Actual size) and put each on its vehicle's dash.`)
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} size="lg" title="Print QR stickers" description="One per vehicle. Drivers scan it with their phone camera.">
+      <div className="grid gap-5 sm:grid-cols-[1fr_240px]">
+        <div className="order-2 flex flex-col gap-3 sm:order-1">
+          <Field label="Sticker stock">
+            <Select value={stockId} onChange={(e) => setStockId(e.target.value)}>
+              {STICKER_STOCKS.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </Field>
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs font-medium text-ink-muted">Vehicles ({chosen.length})</span>
+              <span className="flex gap-3 text-xs">
+                <button type="button" className="text-accent hover:underline" onClick={() => setPicked(new Set(vehicles.map((v) => v.number)))}>All</button>
+                <button type="button" className="text-accent hover:underline" onClick={() => setPicked(new Set())}>None</button>
+              </span>
+            </div>
+            <div className="max-h-64 overflow-y-auto rounded-md border border-border">
+              {vehicles.map((v) => (
+                <label key={v.number} className="flex cursor-pointer items-center gap-2 border-b border-border px-3 py-2 text-sm last:border-b-0 hover:bg-content">
+                  <input type="checkbox" checked={picked.has(v.number)} onChange={() => toggle(v.number)} />
+                  <span className="min-w-0 flex-1 truncate text-ink">{v.name}</span>
+                  {v.sticker_code ? <span className="font-mono text-xs text-ink-subtle">{v.sticker_code}</span> : <Badge tone="warn">New</Badge>}
+                </label>
+              ))}
+            </div>
+          </div>
+          <p className="rounded-md bg-content px-3 py-2 text-sm text-ink-muted">
+            Print at 100% (Actual size) and turn off "Fit to page". A reprint keeps the vehicle's code, so an old sticker still works.
+          </p>
+          {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        </div>
+        <div className="order-1 sm:order-2">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">Preview</div>
+          <PdfPagePreview data={preview} maxWidth={240} />
+        </div>
+      </div>
+      <div className="mt-5 flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+        <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button onClick={() => void print()} disabled={busy || !chosen.length}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />} Print {chosen.length} sticker{chosen.length === 1 ? '' : 's'}
+        </Button>
+      </div>
+    </Modal>
   )
 }
 
@@ -350,6 +465,7 @@ function DriversTab({ vehicles, drivers, onDone }: {
 }) {
   const [editing, setEditing] = useState<FleetAdminDriver | 'new' | null>(null)
   const [removing, setRemoving] = useState<FleetAdminDriver | null>(null)
+  const [unlinking, setUnlinking] = useState<FleetAdminDriver | null>(null)
   const [q, setQ] = useState('')
   const vehicleName = useMemo(() => new Map(vehicles.map((v) => [v.number, v.name])), [vehicles])
   const rows = useMemo(() => {
@@ -391,7 +507,19 @@ function DriversTab({ vehicles, drivers, onDone }: {
                     {d.vehicle ? vehicleName.get(d.vehicle) ?? d.vehicle : <span className="text-ink-subtle">None</span>}
                   </td>
                   <td className="px-3 py-2.5">
-                    {d.operator_user ? <Badge tone="ok">{d.operator_user.name}</Badge> : <Badge tone="neutral" title="No Operator login uses this email">Not linked</Badge>}
+                    {d.operator_user ? (
+                      <div className="flex items-center gap-1.5">
+                        <Badge tone="ok">{d.operator_user.name}</Badge>
+                        {d.operator_user.linked !== 'email' && (
+                          <button type="button" onClick={() => setUnlinking(d)} title="Linked when they scanned a sticker. Undo the link."
+                            className="inline-flex items-center gap-1 text-xs text-ink-muted hover:text-danger">
+                            <Unlink className="size-3.5" /> by scan
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <Badge tone="neutral" title="No Operator login uses this email, and no one has linked it by scanning">Not linked</Badge>
+                    )}
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex justify-end gap-1.5">
@@ -406,7 +534,8 @@ function DriversTab({ vehicles, drivers, onDone }: {
         </div>
       )}
       <p className="text-xs text-ink-subtle">
-        A driver is linked to an Operator login when their email here matches the login's email. Linked drivers' trips and site visits show under their name.
+        A driver is linked to an Operator login when their email here matches the login's email, or when someone picks this driver as
+        themselves the first time they scan a vehicle sticker ("by scan"). If someone picked the wrong driver, undo the link and they'll be asked again.
       </p>
 
       {editing && (
@@ -431,6 +560,20 @@ function DriversTab({ vehicles, drivers, onDone }: {
           This deletes <strong>{fullName(removing)}</strong> (#{removing.number}) from Verizon Connect.
           {removing.vehicle && <> They'll be taken off {vehicleName.get(removing.vehicle) ?? removing.vehicle} first.</>}{' '}
           Their past trips and site visits stay. To bring them back, add them again.
+        </ConfirmModal>
+      )}
+      {unlinking?.operator_user && (
+        <ConfirmModal
+          title="Undo this link?"
+          confirmLabel="Undo link"
+          onClose={() => setUnlinking(null)}
+          onConfirm={async () => {
+            await fleetAdminApi.unlink(unlinking.number)
+            onDone(`${unlinking.operator_user!.name} is no longer linked to driver ${fullName(unlinking)}.`)
+          }}
+        >
+          <strong>{unlinking.operator_user.name}</strong> picked driver {fullName(unlinking)} (#{unlinking.number}) as themselves when they
+          scanned a vehicle sticker. Undoing it doesn't change any assignment; next time they scan, they'll be asked who they are again.
         </ConfirmModal>
       )}
     </div>
@@ -515,15 +658,19 @@ function DriverModal({ driver, taken, onClose, onDone }: {
 function describe(c: FleetChange): string {
   const d = c.driver_name ?? (c.driver_number ? `driver #${c.driver_number}` : 'a driver')
   const v = c.vehicle_name ?? (c.vehicle_number ? `vehicle #${c.vehicle_number}` : 'a vehicle')
-  const details = (c.details ?? {}) as { miles?: number; not_saved?: string[] }
+  const details = (c.details ?? {}) as { miles?: number; not_saved?: string[]; self?: boolean; source?: string; vehicles?: number }
+  const scanned = details.self || details.source === 'self'
   switch (c.action) {
-    case 'driver_added': return `Added driver ${d}`
+    case 'driver_added': return scanned ? `Added themselves as driver ${d} (scanned a sticker)` : `Added driver ${d}`
     case 'driver_edited': return `Edited driver ${d}`
     case 'driver_removed': return `Removed driver ${d}`
     case 'vehicle_edited': return `Edited ${v}${details.not_saved?.length ? ` (Verizon didn't keep the ${details.not_saved.join(', ')})` : ''}`
     case 'odometer_set': return `Set ${v}'s odometer to ${details.miles?.toLocaleString() ?? '?'} miles`
-    case 'assigned': return `Assigned ${d} to ${v}`
-    case 'unassigned': return `Took ${d} off ${v}`
+    case 'assigned': return scanned ? `Scanned in to drive ${v}` : `Assigned ${d} to ${v}`
+    case 'unassigned': return scanned ? `Scanned out of ${v}` : `Took ${d} off ${v}`
+    case 'linked': return `Said they're driver ${d} (scanned a sticker)`
+    case 'unlinked': return `Undid the link to driver ${d}`
+    case 'stickers_printed': return `Printed QR stickers for ${details.vehicles ?? '?'} vehicle${details.vehicles === 1 ? '' : 's'}`
     default: return c.action
   }
 }

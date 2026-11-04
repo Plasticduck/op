@@ -140,6 +140,7 @@ const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
 const ItFieldChecklistPage = lz(() => import('@/features/it/ItFieldChecklistPage'))
 const ItInventoryPage = lz(() => import('@/features/it/inventory/ItInventoryPage'))
 const TagLandingPage = lz(() => import('@/features/it/inventory/TagLandingPage'))
+const VehicleScanPage = lz(() => import('@/features/opssuite/VehicleScanPage'))
 const LaborDashboardPage = lz(() => import('@/features/ops/labor/LaborDashboardPage'))
 const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
 const SchedulePortalPage = lz(() => import('@/features/people/schedule/SchedulePortalPage'))
@@ -199,6 +200,7 @@ export const router = createBrowserRouter([
   { path: '/schedule/:token', element: s(<SchedulePortalPage />) },
   // IT Inventory sticker QR codes (public: signed-out scans can report a problem).
   { path: '/t/:short/:tag', element: s(<TagLandingPage />) },
+  { path: '/v/:code', element: s(<VehicleScanPage />) },
   { path: '/tip/:locationId', element: s(<TipPage />) },
   { path: '/tip/:locationId/thanks', element: s(<TipThanksPage />) },
 

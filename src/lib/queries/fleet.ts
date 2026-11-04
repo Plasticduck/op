@@ -73,6 +73,7 @@ export type FleetAdminVehicle = {
   driver: { number: string; name: string; since: string | null } | null
   gps_at: string | null // latest GPS plot, ISO UTC
   status: string | null
+  sticker_code: string | null // QR self-assign code, once stickers are printed
 }
 export type FleetAdminDriver = {
   number: string
@@ -82,7 +83,8 @@ export type FleetAdminDriver = {
   phone: string | null
   created_at: string | null
   vehicle: string | null // vehicle number they're assigned to
-  operator_user: { id: string; name: string } | null // matched by email
+  // The Operator login this driver is: by a sticker-scan link, else by email.
+  operator_user: { id: string; name: string; linked: 'email' | 'self' | 'created' | 'admin' } | null
 }
 export type FleetOverview = { fetched_at: string; vehicles: FleetAdminVehicle[]; drivers: FleetAdminDriver[]; unnumbered: string[] }
 export type DriverInput = { number: string; first: string; last: string; email: string; phone: string }
@@ -106,11 +108,39 @@ export const fleetAdminApi = {
   updateVehicle: (vehicle: string, fields: VehicleInput) =>
     fleetAdmin<{ ok: true; not_saved: string[] }>({ action: 'vehicle_update', vehicle, fields }, 'Could not save the vehicle.'),
   setOdometer: (vehicle: string, miles: number) => fleetAdmin({ action: 'odometer', vehicle, miles }, 'Could not set the odometer.'),
+  // Sticker codes for these vehicles (made the first time), keyed by vehicle number.
+  stickerCodes: (vehicles: string[]) =>
+    fleetAdmin<{ codes: Record<string, string> }>({ action: 'stickers', vehicles }, 'Could not get sticker codes.'),
+  unlink: (number: string) => fleetAdmin({ action: 'unlink', number }, 'Could not undo the link.'),
   changes: async (limit = 200): Promise<FleetChange[]> => {
     const { data, error } = await supabase.from('fleet_changes').select('*').order('created_at', { ascending: false }).limit(limit)
     if (error) throw error
     return data ?? []
   },
+}
+
+// QR self-assign: the sticker on a vehicle's dash opens /v/<code>, where any
+// signed-in staff member puts themselves on that vehicle (fleet-self-assign).
+export const VEHICLE_STICKER_BASE = 'https://operator.washlyfe.com/v/'
+export type VehicleScan = {
+  vehicle: { name: string; description: string | null; plate: string | null }
+  current: { name: string; since: string | null; is_me: boolean } | null
+  me: { name: string; driver: { number: string; name: string } | null }
+  candidates: { number: string; name: string }[] // who they might be, when no driver is theirs yet
+}
+
+async function selfAssign<R>(body: Record<string, unknown>, fallback: string): Promise<R> {
+  const { data, error } = await supabase.functions.invoke('fleet-self-assign', { body })
+  if (error) throw new Error(await fnErrorMessage(error, data, fallback))
+  return data as R
+}
+
+export const vehicleScan = {
+  lookup: (code: string) => selfAssign<VehicleScan>({ action: 'lookup', code }, 'Could not look up this vehicle.'),
+  // `driver`: the unlinked driver they say they are; `create`: add them as a new driver.
+  claim: (code: string, who: { driver?: string; create?: boolean } = {}) =>
+    selfAssign<{ ok: true; vehicle: string; already?: boolean; replaced?: string | null }>({ action: 'claim', code, ...who }, 'Could not assign you to this vehicle.'),
+  release: (code: string) => selfAssign<{ ok: true; vehicle: string }>({ action: 'release', code }, 'Could not take you off this vehicle.'),
 }
 
 export const siteVisits = {
