@@ -147,6 +147,7 @@ const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
 const MarketExplorerPage = lz(() => import('@/features/opssuite/MarketExplorerPage'))
 const FleetMapPage = lz(() => import('@/features/opssuite/FleetMapPage'))
+const FleetManagementPage = lz(() => import('@/features/opssuite/FleetManagementPage'))
 const SiteVisitsPage = lz(() => import('@/features/opssuite/SiteVisitsPage'))
 const LaborDataPage = lz(() => import('@/features/hr/LaborDataPage'))
 const OnTheClockPage = lz(() => import('@/features/hr/OnTheClockPage'))
@@ -283,6 +284,7 @@ export const router = createBrowserRouter([
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
           { path: 'fleet-map', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<FleetMapPage />)}</RequireEmails> },
+          { path: 'fleet-management', element: <RequireRole allow={['owner']}><RequireSitePerformance>{s(<FleetManagementPage />)}</RequireSitePerformance></RequireRole> },
           { path: 'site-visits', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<SiteVisitsPage />)}</RequireEmails> },
           { path: 'hr/payroll-labor', element: <RequireEmailsOrRoles allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com']} roles={['regional_manager']}>{s(<LaborDataPage />)}</RequireEmailsOrRoles> },
           { path: 'hr/on-the-clock', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com', 'kellyspiller@mighty-wash.com', 'kspiller@mighty-wash.com', 'zachary@mighty-wash.com', 'mcanales@mighty-wash.com', 'isabel@mighty-wash.com', 'rbreed@mighty-wash.com', 'lester@mighty-wash.com', 'djones@mighty-wash.com']}>{s(<OnTheClockPage />)}</RequireEmails> },

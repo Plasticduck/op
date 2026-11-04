@@ -4,6 +4,7 @@
 // reveal-visits-sync (0178). Pre-launch: kevan@washlyfe.com only (enforced in
 // the functions and by RLS).
 import { supabase } from '@/lib/supabase'
+import { fnErrorMessage } from '@/lib/fnError'
 import type { Database } from '@/lib/database.types'
 
 type T = Database['public']['Tables']
@@ -53,6 +54,62 @@ export const fleet = {
     const { data, error } = await supabase.functions.invoke('reveal-fleet', { body: { action: 'live' } })
     if (error) throw error
     return data as FleetLive
+  },
+}
+
+// Fleet Management (Admins): drivers, vehicles and assignments in Reveal, through
+// the fleet-admin edge function. Every change is logged in fleet_changes (0207).
+export type FleetChange = T['fleet_changes']['Row']
+export type FleetAdminVehicle = {
+  number: string
+  name: string
+  plate: string | null
+  vin: string | null
+  year: number | null
+  make: string | null
+  model: string | null
+  fuel_type: number // 0 unleaded, 1 diesel, 2 electric
+  size: number // 0 light, 1 medium, 2 heavy duty
+  driver: { number: string; name: string; since: string | null } | null
+  gps_at: string | null // latest GPS plot, ISO UTC
+  status: string | null
+}
+export type FleetAdminDriver = {
+  number: string
+  first: string
+  last: string
+  email: string | null
+  phone: string | null
+  created_at: string | null
+  vehicle: string | null // vehicle number they're assigned to
+  operator_user: { id: string; name: string } | null // matched by email
+}
+export type FleetOverview = { fetched_at: string; vehicles: FleetAdminVehicle[]; drivers: FleetAdminDriver[]; unnumbered: string[] }
+export type DriverInput = { number: string; first: string; last: string; email: string; phone: string }
+export type VehicleInput = { name: string; plate: string; vin: string; year: string; make: string; model: string; fuel_type: number; size: number }
+export const FUEL_TYPES = ['Unleaded', 'Diesel', 'Electric']
+export const VEHICLE_SIZES = ['Light duty', 'Medium duty', 'Heavy duty']
+
+async function fleetAdmin<R = { ok: true }>(body: Record<string, unknown>, fallback: string): Promise<R> {
+  const { data, error } = await supabase.functions.invoke('fleet-admin', { body })
+  if (error) throw new Error(await fnErrorMessage(error, data, fallback))
+  return data as R
+}
+
+export const fleetAdminApi = {
+  overview: () => fleetAdmin<FleetOverview>({ action: 'overview' }, 'Could not load the fleet from Verizon.'),
+  createDriver: (d: DriverInput) => fleetAdmin({ action: 'driver_create', ...d }, 'Could not add the driver.'),
+  updateDriver: (d: DriverInput) => fleetAdmin({ action: 'driver_update', ...d }, 'Could not save the driver.'),
+  deleteDriver: (number: string) => fleetAdmin({ action: 'driver_delete', number }, 'Could not remove the driver.'),
+  assign: (driver: string, vehicle: string) => fleetAdmin({ action: 'assign', driver, vehicle }, 'Could not assign the driver.'),
+  unassign: (vehicle: string) => fleetAdmin({ action: 'unassign', vehicle }, 'Could not take the driver off.'),
+  updateVehicle: (vehicle: string, fields: VehicleInput) =>
+    fleetAdmin<{ ok: true; not_saved: string[] }>({ action: 'vehicle_update', vehicle, fields }, 'Could not save the vehicle.'),
+  setOdometer: (vehicle: string, miles: number) => fleetAdmin({ action: 'odometer', vehicle, miles }, 'Could not set the odometer.'),
+  changes: async (limit = 200): Promise<FleetChange[]> => {
+    const { data, error } = await supabase.from('fleet_changes').select('*').order('created_at', { ascending: false }).limit(limit)
+    if (error) throw error
+    return data ?? []
   },
 }
 

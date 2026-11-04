@@ -573,6 +573,13 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ['owner'],
         emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
       },
+      {
+        to: '/app/fleet-management',
+        label: 'Fleet Management',
+        icon: Car,
+        roles: ['owner'],
+        flag: 'site_performance', // Verizon Connect is wired up for Mighty Wash only
+      },
     ],
   },
   {

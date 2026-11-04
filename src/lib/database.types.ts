@@ -2514,6 +2514,63 @@ export type Database = {
           },
         ]
       }
+      fleet_changes: {
+        Row: {
+          account_id: string
+          action: string
+          created_at: string
+          details: Json
+          driver_name: string | null
+          driver_number: string | null
+          id: string
+          user_id: string | null
+          user_name: string | null
+          vehicle_name: string | null
+          vehicle_number: string | null
+        }
+        Insert: {
+          account_id: string
+          action: string
+          created_at?: string
+          details?: Json
+          driver_name?: string | null
+          driver_number?: string | null
+          id?: string
+          user_id?: string | null
+          user_name?: string | null
+          vehicle_name?: string | null
+          vehicle_number?: string | null
+        }
+        Update: {
+          account_id?: string
+          action?: string
+          created_at?: string
+          details?: Json
+          driver_name?: string | null
+          driver_number?: string | null
+          id?: string
+          user_id?: string | null
+          user_name?: string | null
+          vehicle_name?: string | null
+          vehicle_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_changes_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_changes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_people: {
         Row: {
           account_id: string
