@@ -878,6 +878,7 @@ export type Database = {
       }
       checklist_items: {
         Row: {
+          asset_id: string | null
           checklist_id: string
           id: string
           label: string
@@ -885,6 +886,7 @@ export type Database = {
           requires_photo: boolean
         }
         Insert: {
+          asset_id?: string | null
           checklist_id: string
           id?: string
           label: string
@@ -892,6 +894,7 @@ export type Database = {
           requires_photo?: boolean
         }
         Update: {
+          asset_id?: string | null
           checklist_id?: string
           id?: string
           label?: string
@@ -899,6 +902,13 @@ export type Database = {
           requires_photo?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "checklist_items_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "checklist_items_checklist_id_fkey"
             columns: ["checklist_id"]
@@ -2029,11 +2039,14 @@ export type Database = {
       equipment: {
         Row: {
           account_id: string
+          area_id: string | null
           asset_number: number
           created_at: string
+          crit_class: string | null
           criticality: string
           description: string | null
           id: string
+          install_date: string | null
           last_serviced_at: string | null
           location_id: string
           maintainx_id: number | null
@@ -2048,15 +2061,19 @@ export type Database = {
           status: string
           type: string | null
           updated_at: string
+          vendor_id: string | null
           warranty_expiry: string | null
         }
         Insert: {
           account_id: string
+          area_id?: string | null
           asset_number: number
           created_at?: string
+          crit_class?: string | null
           criticality?: string
           description?: string | null
           id?: string
+          install_date?: string | null
           last_serviced_at?: string | null
           location_id: string
           maintainx_id?: number | null
@@ -2071,15 +2088,19 @@ export type Database = {
           status?: string
           type?: string | null
           updated_at?: string
+          vendor_id?: string | null
           warranty_expiry?: string | null
         }
         Update: {
           account_id?: string
+          area_id?: string | null
           asset_number?: number
           created_at?: string
+          crit_class?: string | null
           criticality?: string
           description?: string | null
           id?: string
+          install_date?: string | null
           last_serviced_at?: string | null
           location_id?: string
           maintainx_id?: number | null
@@ -2094,6 +2115,7 @@ export type Database = {
           status?: string
           type?: string | null
           updated_at?: string
+          vendor_id?: string | null
           warranty_expiry?: string | null
         }
         Relationships: [
@@ -2102,6 +2124,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_area_fk"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "mi_areas"
             referencedColumns: ["id"]
           },
           {
@@ -2116,6 +2145,13 @@ export type Database = {
             columns: ["parent_asset_id"]
             isOneToOne: false
             referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -6832,6 +6868,1779 @@ export type Database = {
           },
         ]
       }
+      mi_alerts: {
+        Row: {
+          account_id: string
+          bypass_quiet: boolean
+          count_id: string | null
+          created_at: string
+          dedupe_key: string
+          detail: Json | null
+          id: string
+          kind: string
+          location_id: string | null
+          message: string
+          part_id: string | null
+          sent_at: string | null
+          status: string
+          target_user_id: string | null
+          tool_id: string | null
+        }
+        Insert: {
+          account_id: string
+          bypass_quiet?: boolean
+          count_id?: string | null
+          created_at?: string
+          dedupe_key: string
+          detail?: Json | null
+          id?: string
+          kind: string
+          location_id?: string | null
+          message: string
+          part_id?: string | null
+          sent_at?: string | null
+          status?: string
+          target_user_id?: string | null
+          tool_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          bypass_quiet?: boolean
+          count_id?: string | null
+          created_at?: string
+          dedupe_key?: string
+          detail?: Json | null
+          id?: string
+          kind?: string
+          location_id?: string | null
+          message?: string
+          part_id?: string | null
+          sent_at?: string | null
+          status?: string
+          target_user_id?: string | null
+          tool_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_alerts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_alerts_count_id_fkey"
+            columns: ["count_id"]
+            isOneToOne: false
+            referencedRelation: "mi_cycle_counts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_alerts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_alerts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_alerts_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "mi_tools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_areas: {
+        Row: {
+          account_id: string
+          id: string
+          name: string
+          site_id: string
+          sort_order: number
+        }
+        Insert: {
+          account_id: string
+          id?: string
+          name: string
+          site_id: string
+          sort_order?: number
+        }
+        Update: {
+          account_id?: string
+          id?: string
+          name?: string
+          site_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_areas_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_areas_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_attachments: {
+        Row: {
+          account_id: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          file_name: string | null
+          id: string
+          kind: string
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          file_name?: string | null
+          id?: string
+          kind?: string
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          file_name?: string | null
+          id?: string
+          kind?: string
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_attachments_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_bins: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          location_id: string
+          name: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          location_id: string
+          name: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          location_id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_bins_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_bins_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_cycle_count_lines: {
+        Row: {
+          approved_by: string | null
+          bin_id: string | null
+          count_id: string
+          counted_at: string | null
+          counted_by: string | null
+          counted_qty: number | null
+          expected_qty: number
+          id: string
+          part_id: string
+          posted: boolean
+          reason_code: string | null
+          unit_cost: number
+          variance_qty: number | null
+        }
+        Insert: {
+          approved_by?: string | null
+          bin_id?: string | null
+          count_id: string
+          counted_at?: string | null
+          counted_by?: string | null
+          counted_qty?: number | null
+          expected_qty: number
+          id?: string
+          part_id: string
+          posted?: boolean
+          reason_code?: string | null
+          unit_cost?: number
+          variance_qty?: number | null
+        }
+        Update: {
+          approved_by?: string | null
+          bin_id?: string | null
+          count_id?: string
+          counted_at?: string | null
+          counted_by?: string | null
+          counted_qty?: number | null
+          expected_qty?: number
+          id?: string
+          part_id?: string
+          posted?: boolean
+          reason_code?: string | null
+          unit_cost?: number
+          variance_qty?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_cycle_count_lines_bin_id_fkey"
+            columns: ["bin_id"]
+            isOneToOne: false
+            referencedRelation: "mi_bins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_cycle_count_lines_count_id_fkey"
+            columns: ["count_id"]
+            isOneToOne: false
+            referencedRelation: "mi_cycle_counts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_cycle_count_lines_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_cycle_counts: {
+        Row: {
+          account_id: string
+          blind: boolean
+          created_at: string
+          created_by: string | null
+          due_date: string | null
+          forced: boolean
+          id: string
+          is_sample: boolean
+          location_id: string
+          notes: string | null
+          number: number
+          posted_at: string | null
+          posted_by: string | null
+          scheduled: boolean
+          scope_type: string
+          scope_value: string | null
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+        }
+        Insert: {
+          account_id: string
+          blind?: boolean
+          created_at?: string
+          created_by?: string | null
+          due_date?: string | null
+          forced?: boolean
+          id?: string
+          is_sample?: boolean
+          location_id: string
+          notes?: string | null
+          number: number
+          posted_at?: string | null
+          posted_by?: string | null
+          scheduled?: boolean
+          scope_type?: string
+          scope_value?: string | null
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+        }
+        Update: {
+          account_id?: string
+          blind?: boolean
+          created_at?: string
+          created_by?: string | null
+          due_date?: string | null
+          forced?: boolean
+          id?: string
+          is_sample?: boolean
+          location_id?: string
+          notes?: string | null
+          number?: number
+          posted_at?: string | null
+          posted_by?: string | null
+          scheduled?: boolean
+          scope_type?: string
+          scope_value?: string | null
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_cycle_counts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_cycle_counts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_idempotency: {
+        Row: {
+          account_id: string
+          client_txn_id: string
+          created_at: string
+          created_by: string | null
+          result: Json | null
+        }
+        Insert: {
+          account_id: string
+          client_txn_id: string
+          created_at?: string
+          created_by?: string | null
+          result?: Json | null
+        }
+        Update: {
+          account_id?: string
+          client_txn_id?: string
+          created_at?: string
+          created_by?: string | null
+          result?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_idempotency_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_inventory_transactions: {
+        Row: {
+          account_id: string
+          asset_id: string | null
+          client_txn_id: string | null
+          count_id: string | null
+          created_at: string
+          id: string
+          is_sample: boolean
+          location_id: string
+          notes: string | null
+          part_id: string
+          performed_by: string | null
+          po_line_id: string | null
+          qty: number
+          qty_after: number
+          qty_before: number
+          reason_code: string | null
+          source: string
+          transfer_id: string | null
+          type: string
+          unit_cost: number
+          work_order_id: string | null
+        }
+        Insert: {
+          account_id: string
+          asset_id?: string | null
+          client_txn_id?: string | null
+          count_id?: string | null
+          created_at?: string
+          id?: string
+          is_sample?: boolean
+          location_id: string
+          notes?: string | null
+          part_id: string
+          performed_by?: string | null
+          po_line_id?: string | null
+          qty: number
+          qty_after: number
+          qty_before: number
+          reason_code?: string | null
+          source?: string
+          transfer_id?: string | null
+          type: string
+          unit_cost?: number
+          work_order_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string | null
+          client_txn_id?: string | null
+          count_id?: string | null
+          created_at?: string
+          id?: string
+          is_sample?: boolean
+          location_id?: string
+          notes?: string | null
+          part_id?: string
+          performed_by?: string | null
+          po_line_id?: string | null
+          qty?: number
+          qty_after?: number
+          qty_before?: number
+          reason_code?: string | null
+          source?: string
+          transfer_id?: string | null
+          type?: string
+          unit_cost?: number
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_inventory_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_inventory_transactions_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_inventory_transactions_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_inventory_transactions_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_inventory_transactions_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_ledger_count"
+            columns: ["count_id"]
+            isOneToOne: false
+            referencedRelation: "mi_cycle_counts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_ledger_po_line"
+            columns: ["po_line_id"]
+            isOneToOne: false
+            referencedRelation: "mi_po_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_ledger_transfer"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "mi_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_kit_items: {
+        Row: {
+          kit_id: string
+          part_id: string
+          qty: number
+        }
+        Insert: {
+          kit_id: string
+          part_id: string
+          qty?: number
+        }
+        Update: {
+          kit_id?: string
+          part_id?: string
+          qty?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_kit_items_kit_id_fkey"
+            columns: ["kit_id"]
+            isOneToOne: false
+            referencedRelation: "mi_kits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_kit_items_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_kits: {
+        Row: {
+          account_id: string
+          description: string | null
+          id: string
+          is_sample: boolean
+          kind: string
+          name: string
+        }
+        Insert: {
+          account_id: string
+          description?: string | null
+          id?: string
+          is_sample?: boolean
+          kind?: string
+          name: string
+        }
+        Update: {
+          account_id?: string
+          description?: string | null
+          id?: string
+          is_sample?: boolean
+          kind?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_kits_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_members: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          region_names: string[]
+          role: string
+          site_ids: string[]
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          region_names?: string[]
+          role: string
+          site_ids?: string[]
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          region_names?: string[]
+          role?: string
+          site_ids?: string[]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_members_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_part_categories: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_part_categories_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_part_requests: {
+        Row: {
+          account_id: string
+          barcode: string | null
+          created_part_id: string | null
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          manufacturer: string | null
+          mfr_part_number: string | null
+          name: string
+          notes: string | null
+          requested_at: string
+          requested_by: string | null
+          status: string
+        }
+        Insert: {
+          account_id: string
+          barcode?: string | null
+          created_part_id?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          manufacturer?: string | null
+          mfr_part_number?: string | null
+          name: string
+          notes?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          status?: string
+        }
+        Update: {
+          account_id?: string
+          barcode?: string | null
+          created_part_id?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          manufacturer?: string | null
+          mfr_part_number?: string | null
+          name?: string
+          notes?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_part_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_part_requests_created_part_id_fkey"
+            columns: ["created_part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_part_vendors: {
+        Row: {
+          account_id: string
+          id: string
+          lead_time_days: number | null
+          pack_qty: number
+          part_id: string
+          preferred: boolean
+          price: number | null
+          vendor_id: string
+          vendor_part_number: string | null
+        }
+        Insert: {
+          account_id: string
+          id?: string
+          lead_time_days?: number | null
+          pack_qty?: number
+          part_id: string
+          preferred?: boolean
+          price?: number | null
+          vendor_id: string
+          vendor_part_number?: string | null
+        }
+        Update: {
+          account_id?: string
+          id?: string
+          lead_time_days?: number | null
+          pack_qty?: number
+          part_id?: string
+          preferred?: boolean
+          price?: number | null
+          vendor_id?: string
+          vendor_part_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_part_vendors_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_part_vendors_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_part_vendors_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_po_lines: {
+        Row: {
+          id: string
+          normal_unit_cost: number | null
+          notes: string | null
+          part_id: string
+          po_id: string
+          qty_ordered: number
+          qty_received: number
+          unit_cost: number
+          vendor_part_number: string | null
+        }
+        Insert: {
+          id?: string
+          normal_unit_cost?: number | null
+          notes?: string | null
+          part_id: string
+          po_id: string
+          qty_ordered: number
+          qty_received?: number
+          unit_cost?: number
+          vendor_part_number?: string | null
+        }
+        Update: {
+          id?: string
+          normal_unit_cost?: number | null
+          notes?: string | null
+          part_id?: string
+          po_id?: string
+          qty_ordered?: number
+          qty_received?: number
+          unit_cost?: number
+          vendor_part_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_po_lines_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_po_lines_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "mi_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_purchase_orders: {
+        Row: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_to: string | null
+          ship_to_location_id: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          urgent: boolean
+          vendor_id: string
+        }
+        Insert: {
+          account_id: string
+          approved_at?: string | null
+          approved_by?: string | null
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_sample?: boolean
+          notes?: string | null
+          number: number
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_to?: string | null
+          ship_to_location_id: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          urgent?: boolean
+          vendor_id: string
+        }
+        Update: {
+          account_id?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_sample?: boolean
+          notes?: string | null
+          number?: number
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_to?: string | null
+          ship_to_location_id?: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          urgent?: boolean
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_purchase_orders_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_purchase_orders_ship_to_location_id_fkey"
+            columns: ["ship_to_location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_purchase_orders_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_receipt_lines: {
+        Row: {
+          bin_id: string | null
+          id: string
+          part_id: string
+          po_line_id: string | null
+          qty: number
+          receipt_id: string
+          unit_cost: number
+        }
+        Insert: {
+          bin_id?: string | null
+          id?: string
+          part_id: string
+          po_line_id?: string | null
+          qty: number
+          receipt_id: string
+          unit_cost?: number
+        }
+        Update: {
+          bin_id?: string | null
+          id?: string
+          part_id?: string
+          po_line_id?: string | null
+          qty?: number
+          receipt_id?: string
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_receipt_lines_bin_id_fkey"
+            columns: ["bin_id"]
+            isOneToOne: false
+            referencedRelation: "mi_bins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_receipt_lines_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_receipt_lines_po_line_id_fkey"
+            columns: ["po_line_id"]
+            isOneToOne: false
+            referencedRelation: "mi_po_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_receipt_lines_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "mi_receipts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_receipts: {
+        Row: {
+          account_id: string
+          id: string
+          location_id: string
+          notes: string | null
+          packing_slip_path: string | null
+          po_id: string | null
+          received_at: string
+          received_by: string | null
+        }
+        Insert: {
+          account_id: string
+          id?: string
+          location_id: string
+          notes?: string | null
+          packing_slip_path?: string | null
+          po_id?: string | null
+          received_at?: string
+          received_by?: string | null
+        }
+        Update: {
+          account_id?: string
+          id?: string
+          location_id?: string
+          notes?: string | null
+          packing_slip_path?: string | null
+          po_id?: string | null
+          received_at?: string
+          received_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_receipts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_receipts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_receipts_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "mi_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_settings: {
+        Row: {
+          account_id: string
+          auto_counts_enabled: boolean
+          carrying_rate: number
+          count_schedule: Json
+          count_tolerance_pct: number
+          count_variance_threshold: number
+          high_value_photo_cost: number | null
+          po_limits: Json
+          quiet_end_hour: number
+          quiet_start_hour: number
+          sms_enabled: boolean
+          stale_days: number
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          auto_counts_enabled?: boolean
+          carrying_rate?: number
+          count_schedule?: Json
+          count_tolerance_pct?: number
+          count_variance_threshold?: number
+          high_value_photo_cost?: number | null
+          po_limits?: Json
+          quiet_end_hour?: number
+          quiet_start_hour?: number
+          sms_enabled?: boolean
+          stale_days?: number
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          auto_counts_enabled?: boolean
+          carrying_rate?: number
+          count_schedule?: Json
+          count_tolerance_pct?: number
+          count_variance_threshold?: number
+          high_value_photo_cost?: number | null
+          po_limits?: Json
+          quiet_end_hour?: number
+          quiet_start_hour?: number
+          sms_enabled?: boolean
+          stale_days?: number
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_settings_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_site_kits: {
+        Row: {
+          account_id: string
+          kit_id: string
+          site_id: string
+          tunnels: number
+        }
+        Insert: {
+          account_id: string
+          kit_id: string
+          site_id: string
+          tunnels?: number
+        }
+        Update: {
+          account_id?: string
+          kit_id?: string
+          site_id?: string
+          tunnels?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_site_kits_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_site_kits_kit_id_fkey"
+            columns: ["kit_id"]
+            isOneToOne: false
+            referencedRelation: "mi_kits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_site_kits_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_site_settings: {
+        Row: {
+          account_id: string
+          allow_negative: boolean
+          site_id: string
+        }
+        Insert: {
+          account_id: string
+          allow_negative?: boolean
+          site_id: string
+        }
+        Update: {
+          account_id?: string
+          allow_negative?: boolean
+          site_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_site_settings_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_site_settings_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: true
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_stock_levels: {
+        Row: {
+          account_id: string
+          available: number | null
+          avg_cost: number
+          bin_id: string | null
+          id: string
+          is_sample: boolean
+          last_counted_at: string | null
+          last_moved_at: string | null
+          location_id: string
+          max_qty: number | null
+          min_qty: number | null
+          on_hand: number
+          part_id: string
+          reorder_point: number | null
+          reserved: number
+        }
+        Insert: {
+          account_id: string
+          available?: number | null
+          avg_cost?: number
+          bin_id?: string | null
+          id?: string
+          is_sample?: boolean
+          last_counted_at?: string | null
+          last_moved_at?: string | null
+          location_id: string
+          max_qty?: number | null
+          min_qty?: number | null
+          on_hand?: number
+          part_id: string
+          reorder_point?: number | null
+          reserved?: number
+        }
+        Update: {
+          account_id?: string
+          available?: number | null
+          avg_cost?: number
+          bin_id?: string | null
+          id?: string
+          is_sample?: boolean
+          last_counted_at?: string | null
+          last_moved_at?: string | null
+          location_id?: string
+          max_qty?: number | null
+          min_qty?: number | null
+          on_hand?: number
+          part_id?: string
+          reorder_point?: number | null
+          reserved?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_stock_levels_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_stock_levels_bin_id_fkey"
+            columns: ["bin_id"]
+            isOneToOne: false
+            referencedRelation: "mi_bins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_stock_levels_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_stock_levels_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_stock_locations: {
+        Row: {
+          account_id: string
+          active: boolean
+          assigned_user_id: string | null
+          created_at: string
+          id: string
+          is_sample: boolean
+          name: string
+          region_name: string | null
+          site_id: string | null
+          type: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          assigned_user_id?: string | null
+          created_at?: string
+          id?: string
+          is_sample?: boolean
+          name: string
+          region_name?: string | null
+          site_id?: string | null
+          type: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          assigned_user_id?: string | null
+          created_at?: string
+          id?: string
+          is_sample?: boolean
+          name?: string
+          region_name?: string | null
+          site_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_stock_locations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_stock_locations_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_stock_locations_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_tags: {
+        Row: {
+          account_id: string
+          code: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          last_printed_at: string | null
+          printed_count: number
+        }
+        Insert: {
+          account_id: string
+          code: string
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          last_printed_at?: string | null
+          printed_count?: number
+        }
+        Update: {
+          account_id?: string
+          code?: string
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          last_printed_at?: string | null
+          printed_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_tags_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_tool_audit_lines: {
+        Row: {
+          audit_id: string
+          condition: string | null
+          found: boolean | null
+          scanned_at: string | null
+          tool_id: string
+        }
+        Insert: {
+          audit_id: string
+          condition?: string | null
+          found?: boolean | null
+          scanned_at?: string | null
+          tool_id: string
+        }
+        Update: {
+          audit_id?: string
+          condition?: string | null
+          found?: boolean | null
+          scanned_at?: string | null
+          tool_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_tool_audit_lines_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "mi_tool_audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tool_audit_lines_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "mi_tools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_tool_audits: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          finished_at: string | null
+          id: string
+          location_id: string
+          status: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by?: string | null
+          finished_at?: string | null
+          id?: string
+          location_id: string
+          status?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by?: string | null
+          finished_at?: string | null
+          id?: string
+          location_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_tool_audits_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tool_audits_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_tool_checkouts: {
+        Row: {
+          account_id: string
+          action: string
+          client_txn_id: string | null
+          condition: string | null
+          created_at: string
+          due_at: string | null
+          from_location_id: string | null
+          from_user_id: string | null
+          id: string
+          notes: string | null
+          performed_by: string | null
+          source: string
+          status: string | null
+          to_location_id: string | null
+          to_user_id: string | null
+          tool_id: string
+        }
+        Insert: {
+          account_id: string
+          action: string
+          client_txn_id?: string | null
+          condition?: string | null
+          created_at?: string
+          due_at?: string | null
+          from_location_id?: string | null
+          from_user_id?: string | null
+          id?: string
+          notes?: string | null
+          performed_by?: string | null
+          source?: string
+          status?: string | null
+          to_location_id?: string | null
+          to_user_id?: string | null
+          tool_id: string
+        }
+        Update: {
+          account_id?: string
+          action?: string
+          client_txn_id?: string | null
+          condition?: string | null
+          created_at?: string
+          due_at?: string | null
+          from_location_id?: string | null
+          from_user_id?: string | null
+          id?: string
+          notes?: string | null
+          performed_by?: string | null
+          source?: string
+          status?: string | null
+          to_location_id?: string | null
+          to_user_id?: string | null
+          tool_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_tool_checkouts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tool_checkouts_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "mi_tools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_tools: {
+        Row: {
+          account_id: string
+          category: string | null
+          checked_out_at: string | null
+          condition: string
+          cost: number | null
+          created_at: string
+          created_by: string | null
+          custodian_location_id: string | null
+          custodian_user_id: string | null
+          due_at: string | null
+          home_location_id: string
+          id: string
+          is_sample: boolean
+          make: string | null
+          model: string | null
+          name: string
+          notes: string | null
+          pending_at: string | null
+          pending_from_user_id: string | null
+          pending_to_location_id: string | null
+          pending_to_user_id: string | null
+          photo_path: string | null
+          serial_number: string | null
+          status: string
+        }
+        Insert: {
+          account_id: string
+          category?: string | null
+          checked_out_at?: string | null
+          condition?: string
+          cost?: number | null
+          created_at?: string
+          created_by?: string | null
+          custodian_location_id?: string | null
+          custodian_user_id?: string | null
+          due_at?: string | null
+          home_location_id: string
+          id?: string
+          is_sample?: boolean
+          make?: string | null
+          model?: string | null
+          name: string
+          notes?: string | null
+          pending_at?: string | null
+          pending_from_user_id?: string | null
+          pending_to_location_id?: string | null
+          pending_to_user_id?: string | null
+          photo_path?: string | null
+          serial_number?: string | null
+          status?: string
+        }
+        Update: {
+          account_id?: string
+          category?: string | null
+          checked_out_at?: string | null
+          condition?: string
+          cost?: number | null
+          created_at?: string
+          created_by?: string | null
+          custodian_location_id?: string | null
+          custodian_user_id?: string | null
+          due_at?: string | null
+          home_location_id?: string
+          id?: string
+          is_sample?: boolean
+          make?: string | null
+          model?: string | null
+          name?: string
+          notes?: string | null
+          pending_at?: string | null
+          pending_from_user_id?: string | null
+          pending_to_location_id?: string | null
+          pending_to_user_id?: string | null
+          photo_path?: string | null
+          serial_number?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_tools_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tools_custodian_location_id_fkey"
+            columns: ["custodian_location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tools_custodian_user_id_fkey"
+            columns: ["custodian_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tools_home_location_id_fkey"
+            columns: ["home_location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tools_pending_to_location_id_fkey"
+            columns: ["pending_to_location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tools_pending_to_user_id_fkey"
+            columns: ["pending_to_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_transfer_lines: {
+        Row: {
+          id: string
+          part_id: string
+          qty_received: number
+          qty_requested: number
+          qty_shipped: number
+          transfer_id: string
+          unit_cost: number
+          variance_notes: string | null
+          variance_qty: number | null
+        }
+        Insert: {
+          id?: string
+          part_id: string
+          qty_received?: number
+          qty_requested: number
+          qty_shipped?: number
+          transfer_id: string
+          unit_cost?: number
+          variance_notes?: string | null
+          variance_qty?: number | null
+        }
+        Update: {
+          id?: string
+          part_id?: string
+          qty_received?: number
+          qty_requested?: number
+          qty_shipped?: number
+          transfer_id?: string
+          unit_cost?: number
+          variance_notes?: string | null
+          variance_qty?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_transfer_lines_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_transfer_lines_transfer_id_fkey"
+            columns: ["transfer_id"]
+            isOneToOne: false
+            referencedRelation: "mi_transfers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_transfers: {
+        Row: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          from_location_id: string
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          received_at: string | null
+          received_by: string | null
+          requested_at: string
+          requested_by: string | null
+          shipped_at: string | null
+          shipped_by: string | null
+          status: string
+          to_location_id: string
+        }
+        Insert: {
+          account_id: string
+          approved_at?: string | null
+          approved_by?: string | null
+          from_location_id: string
+          id?: string
+          is_sample?: boolean
+          notes?: string | null
+          number: number
+          received_at?: string | null
+          received_by?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          shipped_at?: string | null
+          shipped_by?: string | null
+          status?: string
+          to_location_id: string
+        }
+        Update: {
+          account_id?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          from_location_id?: string
+          id?: string
+          is_sample?: boolean
+          notes?: string | null
+          number?: number
+          received_at?: string | null
+          received_by?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          shipped_at?: string | null
+          shipped_by?: string | null
+          status?: string
+          to_location_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_transfers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_transfers_from_location_id_fkey"
+            columns: ["from_location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_transfers_to_location_id_fkey"
+            columns: ["to_location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mileage_requests: {
         Row: {
           account_id: string
@@ -7345,15 +9154,21 @@ export type Database = {
       part_assets: {
         Row: {
           asset_id: string
+          notes: string | null
           part_id: string
+          qty_per: number
         }
         Insert: {
           asset_id: string
+          notes?: string | null
           part_id: string
+          qty_per?: number
         }
         Update: {
           asset_id?: string
+          notes?: string | null
           part_id?: string
+          qty_per?: number
         }
         Relationships: [
           {
@@ -7432,54 +9247,87 @@ export type Database = {
       }
       parts: {
         Row: {
+          abc_class: string | null
           account_id: string
+          barcode: string | null
+          category_id: string | null
           created_at: string
           description: string | null
           id: string
+          is_critical: boolean
+          is_sample: boolean
           lead_time_days: number | null
           link_url: string | null
           manufacturer: string | null
+          mfr_part_number: string | null
           name: string
           ordering_part_number: string | null
+          pack_qty: number
           part_number: number
+          photo_path: string | null
           qr_code: string
           sku: string | null
+          sku_legacy_dup: boolean
+          spec: Json
+          stale_days: number | null
           unit_cost: number | null
           uom: string
           updated_at: string
           vendor_id: string | null
         }
         Insert: {
+          abc_class?: string | null
           account_id: string
+          barcode?: string | null
+          category_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
+          is_critical?: boolean
+          is_sample?: boolean
           lead_time_days?: number | null
           link_url?: string | null
           manufacturer?: string | null
+          mfr_part_number?: string | null
           name: string
           ordering_part_number?: string | null
+          pack_qty?: number
           part_number: number
+          photo_path?: string | null
           qr_code: string
           sku?: string | null
+          sku_legacy_dup?: boolean
+          spec?: Json
+          stale_days?: number | null
           unit_cost?: number | null
           uom?: string
           updated_at?: string
           vendor_id?: string | null
         }
         Update: {
+          abc_class?: string | null
           account_id?: string
+          barcode?: string | null
+          category_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
+          is_critical?: boolean
+          is_sample?: boolean
           lead_time_days?: number | null
           link_url?: string | null
           manufacturer?: string | null
+          mfr_part_number?: string | null
           name?: string
           ordering_part_number?: string | null
+          pack_qty?: number
           part_number?: number
+          photo_path?: string | null
           qr_code?: string
           sku?: string | null
+          sku_legacy_dup?: boolean
+          spec?: Json
+          stale_days?: number | null
           unit_cost?: number | null
           uom?: string
           updated_at?: string
@@ -7491,6 +9339,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "mi_part_categories"
             referencedColumns: ["id"]
           },
           {
@@ -10098,33 +11953,55 @@ export type Database = {
       }
       work_order_parts: {
         Row: {
+          catalog_part_id: string | null
           created_at: string
           id: string
+          mi_location_id: string | null
           part_id: string | null
           part_name: string
+          qty_issued: number
+          qty_planned: number
+          qty_returned: number
           quantity: number
           unit_cost: number | null
           work_order_id: string
         }
         Insert: {
+          catalog_part_id?: string | null
           created_at?: string
           id?: string
+          mi_location_id?: string | null
           part_id?: string | null
           part_name: string
+          qty_issued?: number
+          qty_planned?: number
+          qty_returned?: number
           quantity?: number
           unit_cost?: number | null
           work_order_id: string
         }
         Update: {
+          catalog_part_id?: string | null
           created_at?: string
           id?: string
+          mi_location_id?: string | null
           part_id?: string | null
           part_name?: string
+          qty_issued?: number
+          qty_planned?: number
+          qty_returned?: number
           quantity?: number
           unit_cost?: number | null
           work_order_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "work_order_parts_catalog_part_id_fkey"
+            columns: ["catalog_part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_order_parts_part_id_fkey"
             columns: ["part_id"]
@@ -10822,6 +12699,7 @@ export type Database = {
       auth_location_ids: { Args: never; Returns: string[] }
       auth_role: { Args: never; Returns: string }
       auth_role_category: { Args: never; Returns: string }
+      auth_site_ids: { Args: never; Returns: string[] }
       biometric_consent_status: {
         Args: { p_location_id: string }
         Returns: {
@@ -11195,6 +13073,1155 @@ export type Database = {
           p_policy_version: string
           p_user_agent?: string
         }
+        Returns: Json
+      }
+      mi__account: { Args: never; Returns: string }
+      mi__alert_recipients: {
+        Args: { p_alert: string }
+        Returns: {
+          name: string
+          phone: string
+          sms_ok: boolean
+          user_id: string
+        }[]
+      }
+      mi__can_approve_transfer: {
+        Args: { p_from: string; p_to: string }
+        Returns: boolean
+      }
+      mi__eval_stock: {
+        Args: { p_location: string; p_part: string }
+        Returns: undefined
+      }
+      mi__force_count: {
+        Args: { p_account: string; p_location: string; p_part: string }
+        Returns: undefined
+      }
+      mi__idem_finish: {
+        Args: { p_account: string; p_result: Json; p_txn: string }
+        Returns: Json
+      }
+      mi__idem_start: {
+        Args: { p_account: string; p_txn: string }
+        Returns: Json
+      }
+      mi__make_count: {
+        Args: {
+          acct: string
+          p_blind: boolean
+          p_due: string
+          p_location: string
+          p_notes: string
+          p_scheduled: boolean
+          p_scope_type: string
+          p_scope_value: string
+        }
+        Returns: Json
+      }
+      mi__next_number: {
+        Args: { p_account: string; p_kind: string }
+        Returns: number
+      }
+      mi__nightly: { Args: { p_account: string }; Returns: Json }
+      mi__on_order: {
+        Args: { p_location: string; p_part: string }
+        Returns: number
+      }
+      mi__po_for_update: {
+        Args: { p_po: string }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_to: string | null
+          ship_to_location_id: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          urgent: boolean
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi__post: {
+        Args: {
+          p_account: string
+          p_allow_negative?: boolean
+          p_asset?: string
+          p_blend_cost?: boolean
+          p_count?: string
+          p_location: string
+          p_notes?: string
+          p_part: string
+          p_po_line?: string
+          p_qty: number
+          p_reason?: string
+          p_sample?: boolean
+          p_source?: string
+          p_transfer?: string
+          p_txn?: string
+          p_type: string
+          p_unit_cost?: number
+          p_wo?: string
+        }
+        Returns: {
+          account_id: string
+          asset_id: string | null
+          client_txn_id: string | null
+          count_id: string | null
+          created_at: string
+          id: string
+          is_sample: boolean
+          location_id: string
+          notes: string | null
+          part_id: string
+          performed_by: string | null
+          po_line_id: string | null
+          qty: number
+          qty_after: number
+          qty_before: number
+          reason_code: string | null
+          source: string
+          transfer_id: string | null
+          type: string
+          unit_cost: number
+          work_order_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_inventory_transactions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi__raise_alert: {
+        Args: {
+          p_account: string
+          p_bypass?: boolean
+          p_count?: string
+          p_detail?: Json
+          p_key: string
+          p_kind: string
+          p_location?: string
+          p_message: string
+          p_part?: string
+          p_target?: string
+          p_tool?: string
+        }
+        Returns: undefined
+      }
+      mi__region_sites: {
+        Args: { p_account: string; p_regions: string[] }
+        Returns: string[]
+      }
+      mi__require_act: { Args: { p_location: string }; Returns: undefined }
+      mi__require_manage: {
+        Args: { p_location: string; p_what?: string }
+        Returns: undefined
+      }
+      mi__require_rank: {
+        Args: { p_rank: number; p_what?: string }
+        Returns: undefined
+      }
+      mi__reserve: {
+        Args: {
+          p_account: string
+          p_delta: number
+          p_location: string
+          p_part: string
+          p_source: string
+          p_txn?: string
+          p_wo: string
+        }
+        Returns: undefined
+      }
+      mi__scan_bin: { Args: { p_bin: string; p_code: string }; Returns: Json }
+      mi__scan_part: { Args: { p_code: string; p_part: string }; Returns: Json }
+      mi__stock_row: {
+        Args: { s: Database["public"]["Tables"]["mi_stock_levels"]["Row"] }
+        Returns: Json
+      }
+      mi__tool_event: {
+        Args: {
+          p_action: string
+          p_condition?: string
+          p_due?: string
+          p_from_loc: string
+          p_from_user: string
+          p_notes?: string
+          p_source?: string
+          p_to_loc: string
+          p_to_user: string
+          p_txn?: string
+          t: Database["public"]["Tables"]["mi_tools"]["Row"]
+        }
+        Returns: undefined
+      }
+      mi__tool_for_update: {
+        Args: { p_tool: string }
+        Returns: {
+          account_id: string
+          category: string | null
+          checked_out_at: string | null
+          condition: string
+          cost: number | null
+          created_at: string
+          created_by: string | null
+          custodian_location_id: string | null
+          custodian_user_id: string | null
+          due_at: string | null
+          home_location_id: string
+          id: string
+          is_sample: boolean
+          make: string | null
+          model: string | null
+          name: string
+          notes: string | null
+          pending_at: string | null
+          pending_from_user_id: string | null
+          pending_to_location_id: string | null
+          pending_to_user_id: string | null
+          photo_path: string | null
+          serial_number: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_tools"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi__wo_part: {
+        Args: { p_location: string; p_part: string; p_wo: string }
+        Returns: {
+          catalog_part_id: string | null
+          created_at: string
+          id: string
+          mi_location_id: string | null
+          part_id: string | null
+          part_name: string
+          qty_issued: number
+          qty_planned: number
+          qty_returned: number
+          quantity: number
+          unit_cost: number | null
+          work_order_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "work_order_parts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_accept_tool_transfer: {
+        Args: { p_client_txn_id?: string; p_source?: string; p_tool: string }
+        Returns: Json
+      }
+      mi_account_users: {
+        Args: never
+        Returns: {
+          email: string
+          id: string
+          name: string
+        }[]
+      }
+      mi_adjust_stock: {
+        Args: {
+          p_client_txn_id?: string
+          p_delta: number
+          p_location: string
+          p_notes?: string
+          p_part: string
+          p_reason: string
+          p_source?: string
+          p_unit_cost?: number
+        }
+        Returns: Json
+      }
+      mi_alerts_list: { Args: { p_limit?: number }; Returns: Json }
+      mi_approve_po: {
+        Args: { p_approve?: boolean; p_po: string }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_to: string | null
+          ship_to_location_id: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          urgent: boolean
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_asset_detail: { Args: { p_asset: string }; Returns: Json }
+      mi_assets_list: { Args: { p_q?: string; p_site: string }; Returns: Json }
+      mi_can_act_at: { Args: { p_location: string }; Returns: boolean }
+      mi_can_manage_at: { Args: { p_location: string }; Returns: boolean }
+      mi_cancel_count: { Args: { p_count: string }; Returns: undefined }
+      mi_cancel_po: {
+        Args: { p_po: string }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_to: string | null
+          ship_to_location_id: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          urgent: boolean
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_cancel_tool_transfer: { Args: { p_tool: string }; Returns: undefined }
+      mi_cancel_transfer: {
+        Args: { p_transfer: string }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          from_location_id: string
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          received_at: string | null
+          received_by: string | null
+          requested_at: string
+          requested_by: string | null
+          shipped_at: string | null
+          shipped_by: string | null
+          status: string
+          to_location_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_transfers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_check_part_duplicates: {
+        Args: {
+          p_barcode?: string
+          p_exclude?: string
+          p_manufacturer?: string
+          p_mpn?: string
+          p_name: string
+        }
+        Returns: Json
+      }
+      mi_checkout_tool: {
+        Args: {
+          p_client_txn_id?: string
+          p_due?: string
+          p_source?: string
+          p_to_location?: string
+          p_to_user?: string
+          p_tool: string
+        }
+        Returns: Json
+      }
+      mi_close_po: {
+        Args: { p_po: string }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_to: string | null
+          ship_to_location_id: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          urgent: boolean
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_consume_context: {
+        Args: { p_asset?: string; p_location: string; p_part: string }
+        Returns: Json
+      }
+      mi_count_detail: { Args: { p_count: string }; Returns: Json }
+      mi_counts_list: { Args: { p_status?: string }; Returns: Json }
+      mi_create_count: {
+        Args: {
+          p_blind?: boolean
+          p_due?: string
+          p_location: string
+          p_notes?: string
+          p_scope_type?: string
+          p_scope_value?: string
+        }
+        Returns: Json
+      }
+      mi_create_draft_pos: {
+        Args: { p_client_txn_id?: string; p_lines: Json; p_urgent?: boolean }
+        Returns: Json
+      }
+      mi_create_po: {
+        Args: {
+          p_location: string
+          p_notes?: string
+          p_urgent?: boolean
+          p_vendor: string
+        }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_to: string | null
+          ship_to_location_id: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          urgent: boolean
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_create_work_order: {
+        Args: {
+          p_asset?: string
+          p_description?: string
+          p_parts?: Json
+          p_priority?: string
+          p_site: string
+          p_title: string
+        }
+        Returns: {
+          account_id: string
+          completed_at: string | null
+          completed_by: string | null
+          completed_by_name: string | null
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          department: string | null
+          description: string | null
+          due_at: string | null
+          equipment_id: string | null
+          estimated_minutes: number | null
+          id: string
+          location_id: string
+          maintainx_id: number | null
+          maintainx_updated_at: string | null
+          number: number
+          parent_work_order_id: string | null
+          pm_plan_id: string | null
+          priority: string
+          recurrence: string
+          recurrence_interval: number | null
+          recurrence_unit: string | null
+          requested_by: string | null
+          requested_by_name: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewed_by_name: string | null
+          start_at: string | null
+          status: string
+          title: string
+          updated_at: string
+          work_type: string
+          work_type_source: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "work_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_dashboard: {
+        Args: { p_from?: string; p_site?: string; p_to?: string }
+        Returns: Json
+      }
+      mi_decide_part_request: {
+        Args: { p_approve: boolean; p_part?: Json; p_request: string }
+        Returns: {
+          account_id: string
+          barcode: string | null
+          created_part_id: string | null
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          manufacturer: string | null
+          mfr_part_number: string | null
+          name: string
+          notes: string | null
+          requested_at: string
+          requested_by: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_part_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_decide_transfer: {
+        Args: { p_approve: boolean; p_transfer: string }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          from_location_id: string
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          received_at: string | null
+          received_by: string | null
+          requested_at: string
+          requested_by: string | null
+          shipped_at: string | null
+          shipped_by: string | null
+          status: string
+          to_location_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_transfers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_ensure_tag: { Args: { p_id: string; p_type: string }; Returns: string }
+      mi_enter_count: {
+        Args: {
+          p_client_txn_id?: string
+          p_line: string
+          p_qty: number
+          p_source?: string
+        }
+        Returns: Json
+      }
+      mi_export_stock: { Args: never; Returns: Json }
+      mi_finish_tool_audit: { Args: { p_audit: string }; Returns: Json }
+      mi_home: { Args: never; Returns: Json }
+      mi_import_parts: {
+        Args: { p_commit?: boolean; p_rows: Json }
+        Returns: Json
+      }
+      mi_issue_part: {
+        Args: {
+          p_asset?: string
+          p_client_txn_id?: string
+          p_location: string
+          p_notes?: string
+          p_part: string
+          p_qty: number
+          p_source?: string
+          p_work_order?: string
+        }
+        Returns: Json
+      }
+      mi_label_setup: { Args: never; Returns: Json }
+      mi_location_stock: {
+        Args: { p_location: string; p_q?: string }
+        Returns: Json
+      }
+      mi_mark_po_sent: {
+        Args: { p_po: string; p_sent_to?: string }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_to: string | null
+          ship_to_location_id: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          urgent: boolean
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_mark_printed: { Args: { p_codes: string[] }; Returns: undefined }
+      mi_me: { Args: never; Returns: Json }
+      mi_my_regions: { Args: never; Returns: string[] }
+      mi_note_part_needed: {
+        Args: { p_part: string; p_qty: number; p_work_order: string }
+        Returns: undefined
+      }
+      mi_offline_snapshot: { Args: never; Returns: Json }
+      mi_open_count_line: {
+        Args: { p_location: string; p_part: string }
+        Returns: Json
+      }
+      mi_open_po_lines: {
+        Args: { p_location: string; p_part: string }
+        Returns: Json
+      }
+      mi_part_detail: { Args: { p_part: string }; Returns: Json }
+      mi_part_stock_for_site: {
+        Args: { p_part: string; p_site: string }
+        Returns: Json
+      }
+      mi_parts_list: {
+        Args: {
+          p_category?: string
+          p_filter?: string
+          p_limit?: number
+          p_offset?: number
+          p_q?: string
+        }
+        Returns: Json
+      }
+      mi_people: {
+        Args: never
+        Returns: {
+          email: string
+          has_phone: boolean
+          id: string
+          name: string
+          region_names: string[]
+          role: string
+          site_ids: string[]
+        }[]
+      }
+      mi_po_detail: { Args: { p_po: string }; Returns: Json }
+      mi_po_total: { Args: { p_po: string }; Returns: number }
+      mi_pos_list: { Args: { p_status?: string }; Returns: Json }
+      mi_post_count: {
+        Args: { p_client_txn_id?: string; p_count: string; p_decisions?: Json }
+        Returns: Json
+      }
+      mi_rank: { Args: never; Returns: number }
+      mi_receive_po_line: {
+        Args: {
+          p_bin?: string
+          p_client_txn_id?: string
+          p_line: string
+          p_packing_slip?: string
+          p_qty?: number
+          p_source?: string
+          p_unit_cost?: number
+        }
+        Returns: Json
+      }
+      mi_receive_stock: {
+        Args: {
+          p_bin?: string
+          p_client_txn_id?: string
+          p_location: string
+          p_notes?: string
+          p_part: string
+          p_qty: number
+          p_source?: string
+          p_unit_cost: number
+        }
+        Returns: Json
+      }
+      mi_receive_transfer: {
+        Args: {
+          p_client_txn_id?: string
+          p_lines?: Json
+          p_notes?: string
+          p_source?: string
+          p_transfer: string
+        }
+        Returns: Json
+      }
+      mi_remove_member: { Args: { p_user: string }; Returns: undefined }
+      mi_remove_sample_data: { Args: never; Returns: Json }
+      mi_reorder_suggestions: { Args: { p_location?: string }; Returns: Json }
+      mi_report_tool_issue: {
+        Args: {
+          p_condition: string
+          p_notes?: string
+          p_source?: string
+          p_tool: string
+        }
+        Returns: {
+          account_id: string
+          category: string | null
+          checked_out_at: string | null
+          condition: string
+          cost: number | null
+          created_at: string
+          created_by: string | null
+          custodian_location_id: string | null
+          custodian_user_id: string | null
+          due_at: string | null
+          home_location_id: string
+          id: string
+          is_sample: boolean
+          make: string | null
+          model: string | null
+          name: string
+          notes: string | null
+          pending_at: string | null
+          pending_from_user_id: string | null
+          pending_to_location_id: string | null
+          pending_to_user_id: string | null
+          photo_path: string | null
+          serial_number: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_tools"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_request_part: {
+        Args: {
+          p_barcode?: string
+          p_manufacturer?: string
+          p_mpn?: string
+          p_name: string
+          p_notes?: string
+        }
+        Returns: {
+          account_id: string
+          barcode: string | null
+          created_part_id: string | null
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          manufacturer: string | null
+          mfr_part_number: string | null
+          name: string
+          notes: string | null
+          requested_at: string
+          requested_by: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_part_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_reserve_parts: {
+        Args: {
+          p_client_txn_id?: string
+          p_location: string
+          p_part: string
+          p_qty: number
+          p_work_order: string
+        }
+        Returns: Json
+      }
+      mi_resolve_scan: { Args: { p_raw: string }; Returns: Json }
+      mi_return_part: {
+        Args: {
+          p_asset?: string
+          p_client_txn_id?: string
+          p_location: string
+          p_notes?: string
+          p_part: string
+          p_qty: number
+          p_source?: string
+          p_work_order?: string
+        }
+        Returns: Json
+      }
+      mi_return_tool: {
+        Args: {
+          p_client_txn_id?: string
+          p_condition?: string
+          p_location?: string
+          p_notes?: string
+          p_source?: string
+          p_tool: string
+        }
+        Returns: Json
+      }
+      mi_role: { Args: never; Returns: string }
+      mi_save_part: {
+        Args: { p: Json }
+        Returns: {
+          abc_class: string | null
+          account_id: string
+          barcode: string | null
+          category_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_critical: boolean
+          is_sample: boolean
+          lead_time_days: number | null
+          link_url: string | null
+          manufacturer: string | null
+          mfr_part_number: string | null
+          name: string
+          ordering_part_number: string | null
+          pack_qty: number
+          part_number: number
+          photo_path: string | null
+          qr_code: string
+          sku: string | null
+          sku_legacy_dup: boolean
+          spec: Json
+          stale_days: number | null
+          unit_cost: number | null
+          uom: string
+          updated_at: string
+          vendor_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "parts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_save_po_line: {
+        Args: {
+          p_part: string
+          p_po: string
+          p_qty: number
+          p_unit_cost?: number
+        }
+        Returns: undefined
+      }
+      mi_save_tool: {
+        Args: { p: Json }
+        Returns: {
+          account_id: string
+          category: string | null
+          checked_out_at: string | null
+          condition: string
+          cost: number | null
+          created_at: string
+          created_by: string | null
+          custodian_location_id: string | null
+          custodian_user_id: string | null
+          due_at: string | null
+          home_location_id: string
+          id: string
+          is_sample: boolean
+          make: string | null
+          model: string | null
+          name: string
+          notes: string | null
+          pending_at: string | null
+          pending_from_user_id: string | null
+          pending_to_location_id: string | null
+          pending_to_user_id: string | null
+          photo_path: string | null
+          serial_number: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_tools"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_set_bom_line: {
+        Args: {
+          p_asset: string
+          p_notes?: string
+          p_part: string
+          p_qty: number
+        }
+        Returns: undefined
+      }
+      mi_set_member: {
+        Args: {
+          p_region_names?: string[]
+          p_role: string
+          p_site_ids?: string[]
+          p_user: string
+        }
+        Returns: {
+          account_id: string
+          created_at: string
+          created_by: string | null
+          region_names: string[]
+          role: string
+          site_ids: string[]
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_set_site_setting: {
+        Args: { p_allow_negative: boolean; p_site: string }
+        Returns: undefined
+      }
+      mi_set_stock_params: {
+        Args: {
+          p_bin?: string
+          p_location: string
+          p_max?: number
+          p_min?: number
+          p_part: string
+          p_reorder?: number
+        }
+        Returns: {
+          account_id: string
+          available: number | null
+          avg_cost: number
+          bin_id: string | null
+          id: string
+          is_sample: boolean
+          last_counted_at: string | null
+          last_moved_at: string | null
+          location_id: string
+          max_qty: number | null
+          min_qty: number | null
+          on_hand: number
+          part_id: string
+          reorder_point: number | null
+          reserved: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_stock_levels"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_set_tool_status: {
+        Args: { p_notes?: string; p_status: string; p_tool: string }
+        Returns: {
+          account_id: string
+          category: string | null
+          checked_out_at: string | null
+          condition: string
+          cost: number | null
+          created_at: string
+          created_by: string | null
+          custodian_location_id: string | null
+          custodian_user_id: string | null
+          due_at: string | null
+          home_location_id: string
+          id: string
+          is_sample: boolean
+          make: string | null
+          model: string | null
+          name: string
+          notes: string | null
+          pending_at: string | null
+          pending_from_user_id: string | null
+          pending_to_location_id: string | null
+          pending_to_user_id: string | null
+          photo_path: string | null
+          serial_number: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_tools"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_ship_transfer: {
+        Args: {
+          p_client_txn_id?: string
+          p_lines?: Json
+          p_source?: string
+          p_transfer: string
+        }
+        Returns: Json
+      }
+      mi_site_signals: { Args: { p_site?: string }; Returns: Json }
+      mi_start_tool_audit: { Args: { p_location: string }; Returns: string }
+      mi_start_tool_transfer: {
+        Args: {
+          p_client_txn_id?: string
+          p_notes?: string
+          p_source?: string
+          p_to_location?: string
+          p_to_user?: string
+          p_tool: string
+        }
+        Returns: Json
+      }
+      mi_start_transfer: {
+        Args: {
+          p_client_txn_id?: string
+          p_from: string
+          p_lines: Json
+          p_notes?: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      mi_stock_elsewhere: {
+        Args: { p_exclude?: string; p_part: string }
+        Returns: Json
+      }
+      mi_submit_count: { Args: { p_count: string }; Returns: Json }
+      mi_submit_po: {
+        Args: { p_po: string }
+        Returns: {
+          account_id: string
+          approved_at: string | null
+          approved_by: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_sample: boolean
+          notes: string | null
+          number: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_to: string | null
+          ship_to_location_id: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          urgent: boolean
+          vendor_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_purchase_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_tool_audit_scan: {
+        Args: { p_audit: string; p_condition?: string; p_tool: string }
+        Returns: undefined
+      }
+      mi_tool_detail: { Args: { p_tool: string }; Returns: Json }
+      mi_tools_list: {
+        Args: { p_mine?: boolean; p_q?: string; p_status?: string }
+        Returns: Json
+      }
+      mi_transfers_list: { Args: { p_status?: string }; Returns: Json }
+      mi_update_asset: {
+        Args: { p: Json; p_asset: string }
+        Returns: undefined
+      }
+      mi_update_settings: {
+        Args: { p: Json }
+        Returns: {
+          account_id: string
+          auto_counts_enabled: boolean
+          carrying_rate: number
+          count_schedule: Json
+          count_tolerance_pct: number
+          count_variance_threshold: number
+          high_value_photo_cost: number | null
+          po_limits: Json
+          quiet_end_hour: number
+          quiet_start_hour: number
+          sms_enabled: boolean
+          stale_days: number
+          timezone: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi_visible_location_ids: { Args: never; Returns: string[] }
+      mi_work_order_detail: { Args: { p_wo: string }; Returns: Json }
+      mi_work_order_from_checklist: {
+        Args: { p_instance: string; p_item: string; p_note?: string }
+        Returns: Json
+      }
+      mi_work_orders_list: {
+        Args: { p_q?: string; p_site?: string; p_status?: string }
         Returns: Json
       }
       mw_daily_summary:
