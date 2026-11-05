@@ -25,6 +25,7 @@ export const parts = {
         vendor:vendors(id, name),
         stock:parts_inventory(location_id, quantity_on_hand, minimum_in_stock, location:locations(id, name))
       `)
+      .eq('is_sample', false) // Maintenance Inventory's demo parts stay out of the shared catalog
       .order('part_number'),
 
   byId: (id: string) =>

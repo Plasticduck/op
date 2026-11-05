@@ -52,6 +52,10 @@ type Detail = {
   created_at: string
   updated_at: string
   maintainx_id: number | null
+  area_id: string | null
+  vendor_id: string | null
+  install_date: string | null
+  crit_class: string | null
   location: { id: string; name: string } | null
   parent: { id: string; name: string; asset_number: number } | null
   sub_assets: Array<{ id: string; name: string; asset_number: number; status: AssetStatus; criticality: AssetCriticality }>
