@@ -13813,6 +13813,7 @@ export type Database = {
         }
         Returns: Json
       }
+      mi_refs: { Args: never; Returns: Json }
       mi_remove_member: { Args: { p_user: string }; Returns: undefined }
       mi_remove_sample_data: { Args: never; Returns: Json }
       mi_reorder_suggestions: { Args: { p_location?: string }; Returns: Json }

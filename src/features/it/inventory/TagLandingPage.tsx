@@ -34,6 +34,8 @@ export default function TagLandingPage() {
 
   useEffect(() => {
     if (loading) return
+    // Maintenance Inventory's stickers share this link. Its page handles who can use them.
+    if (/^MF-/i.test(tag)) { navigate(`/app/maintenance-inventory?tag=${encodeURIComponent(tag)}`, { replace: true }); return }
     if (!profile || !canOpenInventory(profile)) { setMode('report'); return }
     let alive = true
     void itInventory.resolveTag(short, tag).then((res) => {

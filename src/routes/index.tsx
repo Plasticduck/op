@@ -7,6 +7,7 @@ import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSiteP
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
+import { MI_EMAILS } from '@/features/maintenance/inventory/access'
 
 // Lazily load a route chunk, but if the fetch fails because the chunk no longer
 // exists at that URL (a new deploy rotated the hashed filenames, or the dev
@@ -85,6 +86,7 @@ const PartsPage = lz(() => import('@/features/ops/parts/PartsPage'))
 const WorkOrdersPage = lz(() => import('@/features/ops/work-orders/WorkOrdersPage'))
 const WorkOrdersNewPage = lz(() => import('@/features/ops/work-orders/WorkOrdersNewPage'))
 const MaintenanceOrdersPage = lz(() => import('@/features/maintenance/MaintenanceOrdersPage'))
+const MaintenanceInventoryPage = lz(() => import('@/features/maintenance/inventory/MaintenanceInventoryPage'))
 const ChemicalsPage = lz(() => import('@/features/maintenance/ChemicalsPage'))
 const CategoriesPage = lz(() => import('@/features/ops/categories/CategoriesPage'))
 const VendorsPage = lz(() => import('@/features/ops/vendors/VendorsPage'))
@@ -257,6 +259,7 @@ export const router = createBrowserRouter([
           { path: 'work-orders-new', element: s(<WorkOrdersNewPage />) },
           { path: 'work-orders-new/:id', element: s(<WorkOrdersNewPage />) },
           { path: 'maintenance-orders', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<MaintenanceOrdersPage />)}</RequireEmails> },
+          { path: 'maintenance-inventory/*', element: <RequireEmails allow={MI_EMAILS}>{s(<MaintenanceInventoryPage />)}</RequireEmails> },
           { path: 'chemicals', element: mgr(<ChemicalsPage />) },
           { path: 'categories', element: tech(<CategoriesPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },

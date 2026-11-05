@@ -201,6 +201,7 @@ async function fetchDataset(ds: Dataset, opts: ExportOpts): Promise<{ headers: s
     const { data } = await supabase
       .from('parts')
       .select('part_number, name, sku, uom, unit_cost, lead_time_days, ordering_part_number, qr_code, vendor:vendors(name), stock:parts_inventory(quantity_on_hand, minimum_in_stock)')
+      .eq('is_sample', false)
       .order('part_number')
     const rows = (data ?? []).map((p) => {
       const x = p as Record<string, unknown>

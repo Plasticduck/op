@@ -9,31 +9,34 @@ export type DetectedCode = { rawValue: string; format: string }
 export type Detector = { detect(source: HTMLVideoElement): Promise<DetectedCode[]> }
 
 const NATIVE_FORMATS = ['qr_code', 'code_128']
+// Retail barcodes printed on parts (Maintenance Inventory). Off by default: IT stickers
+// never use them, and looking for fewer formats reads faster.
+const NATIVE_RETAIL = ['ean_13', 'ean_8', 'upc_a', 'upc_e']
 // Frames are scaled to this width before decoding: plenty for a sticker
 // filling the viewfinder, and keeps each read fast on older phones.
 const MAX_WIDTH = 960
 
-let detector: Promise<Detector> | null = null
+const detectors = new Map<boolean, Promise<Detector>>()
 
 type NativeCtor = {
   new (opts: { formats: string[] }): { detect(source: CanvasImageSource): Promise<DetectedCode[]> }
   getSupportedFormats?: () => Promise<string[]>
 }
 
-async function nativeDetector(): Promise<Detector | null> {
+async function nativeDetector(retail: boolean): Promise<Detector | null> {
   const Native = (globalThis as { BarcodeDetector?: NativeCtor }).BarcodeDetector
   if (!Native?.getSupportedFormats) return null
   try {
     const supported = await Native.getSupportedFormats()
     if (!NATIVE_FORMATS.every((f) => supported.includes(f))) return null
-    const d = new Native({ formats: NATIVE_FORMATS })
+    const d = new Native({ formats: retail ? [...NATIVE_FORMATS, ...NATIVE_RETAIL.filter((f) => supported.includes(f))] : NATIVE_FORMATS })
     return { detect: (v) => d.detect(v) }
   } catch {
     return null
   }
 }
 
-async function zxingDetector(): Promise<Detector> {
+async function zxingDetector(retail: boolean): Promise<Detector> {
   const [{ readBarcodes, prepareZXingModule }, { default: wasmUrl }] = await Promise.all([
     import('zxing-wasm/reader'),
     import('zxing-wasm/reader/zxing_reader.wasm?url'),
@@ -51,7 +54,7 @@ async function zxingDetector(): Promise<Detector> {
       canvas.height = Math.round(v.videoHeight * scale)
       ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
       const found = await readBarcodes(ctx.getImageData(0, 0, canvas.width, canvas.height), {
-        formats: ['QRCode', 'Code128'],
+        formats: retail ? ['QRCode', 'Code128', 'EAN-13', 'EAN-8', 'UPC-A', 'UPC-E'] : ['QRCode', 'Code128'],
         tryHarder: true,
         maxNumberOfSymbols: 1,
       })
@@ -60,12 +63,14 @@ async function zxingDetector(): Promise<Detector> {
   }
 }
 
-export function getDetector(): Promise<Detector> {
+export function getDetector(retail = false): Promise<Detector> {
+  let detector = detectors.get(retail)
   if (!detector) {
-    detector = (async () => (await nativeDetector()) ?? (await zxingDetector()))().catch((e) => {
-      detector = null // let the next scanner try again
+    detector = (async () => (await nativeDetector(retail)) ?? (await zxingDetector(retail)))().catch((e) => {
+      detectors.delete(retail) // let the next scanner try again
       throw e
     })
+    detectors.set(retail, detector)
   }
   return detector
 }

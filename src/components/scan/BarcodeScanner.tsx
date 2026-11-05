@@ -21,11 +21,14 @@ const SEEN_GAP_MS = 1500
 export function BarcodeScanner({
   onDetect,
   continuous = false,
+  retail = false,
   className,
 }: {
   onDetect: (text: string) => void | Promise<void>
   // Keep scanning after a read (audits, bulk). Otherwise stop after the first.
   continuous?: boolean
+  // Also read UPC / EAN barcodes printed on products.
+  retail?: boolean
   className?: string
 }) {
   const video = useRef<HTMLVideoElement>(null)
@@ -62,7 +65,7 @@ export function BarcodeScanner({
         if (!v) return
         v.srcObject = stream
         await v.play()
-        const detector = await getDetector()
+        const detector = await getDetector(retail)
         if (!alive) return
         setState('scanning')
 
@@ -106,7 +109,7 @@ export function BarcodeScanner({
       stream?.getTracks().forEach((t) => t.stop())
       track.current = null
     }
-  }, [continuous])
+  }, [continuous, retail])
 
   const toggleTorch = () => {
     const t = track.current

@@ -6,6 +6,7 @@ import {
   Activity,
   Armchair,
   BookOpenCheck,
+  Boxes,
   Cctv,
   ReceiptText,
   AlarmClockOff,
@@ -79,6 +80,7 @@ import { pageAllowed, permRoleInList } from '@/lib/permissions'
 import type { PermRole } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
+import { MI_EMAILS } from '@/features/maintenance/inventory/access'
 
 type NavItem = {
   to: string
@@ -517,6 +519,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ShoppingCart,
         roles: ['owner', 'manager', 'employee', 'technician'],
         emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
+      },
+      {
+        to: '/app/maintenance-inventory',
+        label: 'Maintenance Inventory',
+        icon: Boxes,
+        roles: ['owner', 'manager', 'employee', 'technician'],
+        emails: MI_EMAILS, // rollout list in features/maintenance/inventory/access.ts
       },
       {
         to: '/app/chemicals',
