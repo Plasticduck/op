@@ -60,6 +60,17 @@ Mighty Wash already had this data, imported from MaintainX, so the module extend
 - **Ledger events:** the prompt's `inventory_events` stream is `mi_alerts` plus the ledgers themselves. No ERP outbox was built.
 - **PM:** existing `pm_plans` covers schedules. Meter-based PM is Phase 2 in the prompt and was not built.
 
+## Maintenance Log (added later)
+
+See [MAINTENANCE_LOG.md](MAINTENANCE_LOG.md). What it reuses and where it departs:
+
+- **Work orders:** finished ones show in the log as they are, and a schedule's work orders are ordinary `work_orders` rows with `mi_schedule_id` set, so every work order screen can open and close them.
+- **Parts used:** go through `mi_issue_part`, so the stock ledger stays the one record of what left the shelf. `mi_log_entry_parts` only points at those ledger rows.
+- **Car counts:** come from `site_daily_metrics`, the same source and site-number match as the inventory reports.
+- **`equipment.last_serviced_at`:** set when work is logged on a machine.
+- **Not `pm_plans`:** the existing Preventive Maintenance table has no car-count trigger and no parts. Its nightly job opens a work order for every plan, and it's visible to every technician while this module is limited to two people. It has no rows on Mighty Wash, and it's left as it was.
+- **Not `downtime_events`:** downtime minutes stay on the log entry. The Downtime page isn't fed.
+
 ## Not built
 
 - Gamification points

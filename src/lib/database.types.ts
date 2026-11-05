@@ -7460,6 +7460,230 @@ export type Database = {
           },
         ]
       }
+      mi_log_entries: {
+        Row: {
+          account_id: string
+          asset_id: string | null
+          cars_since_last: number | null
+          client_txn_id: string | null
+          created_at: string
+          created_by: string | null
+          downtime_minutes: number | null
+          due_date: string | null
+          entry_type: string
+          follow_up_work_order_id: string | null
+          id: string
+          is_sample: boolean
+          labor_minutes: number | null
+          notes: string | null
+          on_time: boolean | null
+          outside_cost: number | null
+          performed_at: string
+          performed_by: string | null
+          performed_by_name: string | null
+          prev_last_done_at: string | null
+          prev_next_due_date: string | null
+          result: string
+          schedule_id: string | null
+          site_id: string
+          source: string
+          title: string
+          updated_at: string
+          vendor_id: string | null
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          account_id: string
+          asset_id?: string | null
+          cars_since_last?: number | null
+          client_txn_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          downtime_minutes?: number | null
+          due_date?: string | null
+          entry_type: string
+          follow_up_work_order_id?: string | null
+          id?: string
+          is_sample?: boolean
+          labor_minutes?: number | null
+          notes?: string | null
+          on_time?: boolean | null
+          outside_cost?: number | null
+          performed_at?: string
+          performed_by?: string | null
+          performed_by_name?: string | null
+          prev_last_done_at?: string | null
+          prev_next_due_date?: string | null
+          result?: string
+          schedule_id?: string | null
+          site_id: string
+          source?: string
+          title: string
+          updated_at?: string
+          vendor_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string | null
+          cars_since_last?: number | null
+          client_txn_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          downtime_minutes?: number | null
+          due_date?: string | null
+          entry_type?: string
+          follow_up_work_order_id?: string | null
+          id?: string
+          is_sample?: boolean
+          labor_minutes?: number | null
+          notes?: string | null
+          on_time?: boolean | null
+          outside_cost?: number | null
+          performed_at?: string
+          performed_by?: string | null
+          performed_by_name?: string | null
+          prev_last_done_at?: string | null
+          prev_next_due_date?: string | null
+          result?: string
+          schedule_id?: string | null
+          site_id?: string
+          source?: string
+          title?: string
+          updated_at?: string
+          vendor_id?: string | null
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_log_entries_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entries_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entries_follow_up_work_order_id_fkey"
+            columns: ["follow_up_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entries_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entries_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "mi_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entries_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entries_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entries_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_log_entry_parts: {
+        Row: {
+          created_at: string
+          entry_id: string
+          id: string
+          ledger_id: string | null
+          location_id: string | null
+          part_id: string
+          qty: number
+          unit_cost: number
+        }
+        Insert: {
+          created_at?: string
+          entry_id: string
+          id?: string
+          ledger_id?: string | null
+          location_id?: string | null
+          part_id: string
+          qty: number
+          unit_cost?: number
+        }
+        Update: {
+          created_at?: string
+          entry_id?: string
+          id?: string
+          ledger_id?: string | null
+          location_id?: string | null
+          part_id?: string
+          qty?: number
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_log_entry_parts_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "mi_log_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entry_parts_ledger_id_fkey"
+            columns: ["ledger_id"]
+            isOneToOne: false
+            referencedRelation: "mi_inventory_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entry_parts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_log_entry_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mi_members: {
         Row: {
           account_id: string
@@ -7907,6 +8131,146 @@ export type Database = {
             columns: ["po_id"]
             isOneToOne: false
             referencedRelation: "mi_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_schedule_parts: {
+        Row: {
+          part_id: string
+          qty: number
+          schedule_id: string
+        }
+        Insert: {
+          part_id: string
+          qty: number
+          schedule_id: string
+        }
+        Update: {
+          part_id?: string
+          qty?: number
+          schedule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_schedule_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_schedule_parts_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "mi_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_schedules: {
+        Row: {
+          account_id: string
+          active: boolean
+          archived_at: string | null
+          asset_id: string | null
+          assigned_user_id: string | null
+          auto_work_order: boolean
+          created_at: string
+          created_by: string | null
+          every_cars: number | null
+          every_n: number | null
+          every_unit: string | null
+          id: string
+          instructions: string | null
+          is_sample: boolean
+          last_done_at: string | null
+          next_due_date: string | null
+          priority: string
+          site_id: string
+          soon_days: number
+          start_date: string
+          task_type: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          archived_at?: string | null
+          asset_id?: string | null
+          assigned_user_id?: string | null
+          auto_work_order?: boolean
+          created_at?: string
+          created_by?: string | null
+          every_cars?: number | null
+          every_n?: number | null
+          every_unit?: string | null
+          id?: string
+          instructions?: string | null
+          is_sample?: boolean
+          last_done_at?: string | null
+          next_due_date?: string | null
+          priority?: string
+          site_id: string
+          soon_days?: number
+          start_date?: string
+          task_type?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          archived_at?: string | null
+          asset_id?: string | null
+          assigned_user_id?: string | null
+          auto_work_order?: boolean
+          created_at?: string
+          created_by?: string | null
+          every_cars?: number | null
+          every_n?: number | null
+          every_unit?: string | null
+          id?: string
+          instructions?: string | null
+          is_sample?: boolean
+          last_done_at?: string | null
+          next_due_date?: string | null
+          priority?: string
+          site_id?: string
+          soon_days?: number
+          start_date?: string
+          task_type?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_schedules_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_schedules_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_schedules_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_schedules_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]
@@ -12243,6 +12607,7 @@ export type Database = {
           location_id: string
           maintainx_id: number | null
           maintainx_updated_at: string | null
+          mi_schedule_id: string | null
           number: number
           parent_work_order_id: string | null
           pm_plan_id: string | null
@@ -12279,6 +12644,7 @@ export type Database = {
           location_id: string
           maintainx_id?: number | null
           maintainx_updated_at?: string | null
+          mi_schedule_id?: string | null
           number?: number
           parent_work_order_id?: string | null
           pm_plan_id?: string | null
@@ -12315,6 +12681,7 @@ export type Database = {
           location_id?: string
           maintainx_id?: number | null
           maintainx_updated_at?: string | null
+          mi_schedule_id?: string | null
           number?: number
           parent_work_order_id?: string | null
           pm_plan_id?: string | null
@@ -12368,6 +12735,13 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_mi_schedule_id_fkey"
+            columns: ["mi_schedule_id"]
+            isOneToOne: false
+            referencedRelation: "mi_schedules"
             referencedColumns: ["id"]
           },
           {
@@ -13076,6 +13450,10 @@ export type Database = {
         Returns: Json
       }
       mi__account: { Args: never; Returns: string }
+      mi__add_interval: {
+        Args: { p_date: string; p_n: number; p_unit: string }
+        Returns: string
+      }
       mi__alert_recipients: {
         Args: { p_alert: string }
         Returns: {
@@ -13093,6 +13471,13 @@ export type Database = {
         Args: { p_linked: string; p_site: string }
         Returns: string
       }
+      mi__entry_parts_cost: {
+        Args: { p_entry: string; p_wo: string }
+        Returns: {
+          cost: number
+          n: number
+        }[]
+      }
       mi__eval_stock: {
         Args: { p_location: string; p_part: string }
         Returns: undefined
@@ -13108,6 +13493,14 @@ export type Database = {
       mi__idem_start: {
         Args: { p_account: string; p_txn: string }
         Returns: Json
+      }
+      mi__interval_days: {
+        Args: { p_n: number; p_unit: string }
+        Returns: number
+      }
+      mi__local_date: {
+        Args: { p_account: string; p_at: string }
+        Returns: string
       }
       mi__make_count: {
         Args: {
@@ -13228,6 +13621,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      mi__recompute_schedule: {
+        Args: { p_schedule: string }
+        Returns: undefined
+      }
       mi__region_sites: {
         Args: { p_account: string; p_regions: string[] }
         Returns: string[]
@@ -13255,10 +13652,91 @@ export type Database = {
       }
       mi__scan_bin: { Args: { p_bin: string; p_code: string }; Returns: Json }
       mi__scan_part: { Args: { p_code: string; p_part: string }; Returns: Json }
+      mi__schedule_json: {
+        Args: { p_attention?: boolean; p_ids: string[] }
+        Returns: Json
+      }
+      mi__schedule_state: {
+        Args: { p_ids: string[] }
+        Returns: {
+          anchor: string
+          cars_due_on: string
+          cars_pct: number
+          cars_since: number
+          daily_cars: number
+          days_left: number
+          due_on: string
+          schedule_id: string
+          status: string
+          today: string
+        }[]
+      }
+      mi__schedule_work_order: {
+        Args: { p_by: string; p_by_name: string; p_schedule: string }
+        Returns: {
+          account_id: string
+          completed_at: string | null
+          completed_by: string | null
+          completed_by_name: string | null
+          created_at: string
+          created_by: string | null
+          created_by_name: string | null
+          department: string | null
+          description: string | null
+          due_at: string | null
+          equipment_id: string | null
+          estimated_minutes: number | null
+          id: string
+          location_id: string
+          maintainx_id: number | null
+          maintainx_updated_at: string | null
+          mi_schedule_id: string | null
+          number: number
+          parent_work_order_id: string | null
+          pm_plan_id: string | null
+          priority: string
+          recurrence: string
+          recurrence_interval: number | null
+          recurrence_unit: string | null
+          requested_by: string | null
+          requested_by_name: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewed_by_name: string | null
+          start_at: string | null
+          status: string
+          title: string
+          updated_at: string
+          work_type: string
+          work_type_source: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "work_orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mi__schedules_nightly: { Args: { p_account: string }; Returns: Json }
+      mi__site_cars: {
+        Args: {
+          p_account: string
+          p_after: string
+          p_site: string
+          p_through: string
+        }
+        Returns: number
+      }
+      mi__site_daily_cars: {
+        Args: { p_account: string; p_site: string }
+        Returns: number
+      }
+      mi__site_number: { Args: { p_site: string }; Returns: number }
       mi__stock_row: {
         Args: { s: Database["public"]["Tables"]["mi_stock_levels"]["Row"] }
         Returns: Json
       }
+      mi__today: { Args: { p_account: string }; Returns: string }
       mi__tool_event: {
         Args: {
           p_action: string
@@ -13389,6 +13867,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      mi_archive_schedule: { Args: { p_id: string }; Returns: undefined }
       mi_asset_detail: { Args: { p_asset: string }; Returns: Json }
       mi_assets_list: { Args: { p_q?: string; p_site: string }; Returns: Json }
       mi_can_act_at: { Args: { p_location: string }; Returns: boolean }
@@ -13589,6 +14068,7 @@ export type Database = {
           location_id: string
           maintainx_id: number | null
           maintainx_updated_at: string | null
+          mi_schedule_id: string | null
           number: number
           parent_work_order_id: string | null
           pm_plan_id: string | null
@@ -13705,6 +14185,22 @@ export type Database = {
         Args: { p_location: string; p_q?: string }
         Returns: Json
       }
+      mi_log_add: {
+        Args: { p: Json; p_client_txn_id?: string; p_source?: string }
+        Returns: Json
+      }
+      mi_log_counts: { Args: never; Returns: Json }
+      mi_log_entry: { Args: { p_id: string }; Returns: Json }
+      mi_log_feed: { Args: { p?: Json }; Returns: Json }
+      mi_log_report: {
+        Args: { p_from?: string; p_site?: string; p_to?: string }
+        Returns: Json
+      }
+      mi_log_update: { Args: { p: Json; p_id: string }; Returns: undefined }
+      mi_log_void: {
+        Args: { p_id: string; p_reason: string }
+        Returns: undefined
+      }
       mi_mark_po_sent: {
         Args: { p_po: string; p_sent_to?: string }
         Returns: {
@@ -13754,6 +14250,10 @@ export type Database = {
       mi_part_detail: { Args: { p_part: string }; Returns: Json }
       mi_part_stock_for_site: {
         Args: { p_part: string; p_site: string }
+        Returns: Json
+      }
+      mi_parts_forecast: {
+        Args: { p_days?: number; p_site?: string }
         Returns: Json
       }
       mi_parts_list: {
@@ -13948,6 +14448,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      mi_save_schedule: { Args: { p: Json }; Returns: Json }
       mi_save_tool: {
         Args: { p: Json }
         Returns: {
@@ -13982,6 +14483,18 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      mi_schedule_detail: { Args: { p_id: string }; Returns: Json }
+      mi_schedule_work_order: { Args: { p_id: string }; Returns: Json }
+      mi_schedules_list: {
+        Args: {
+          p_asset?: string
+          p_part?: string
+          p_q?: string
+          p_site?: string
+          p_status?: string
+        }
+        Returns: Json
       }
       mi_search_assets: { Args: { p_q: string }; Returns: Json }
       mi_set_bom_line: {

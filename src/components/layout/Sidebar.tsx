@@ -47,6 +47,7 @@ import {
   MessageCircle,
   MessageSquareWarning,
   MonitorSmartphone,
+  NotebookPen,
   Droplets,
   PackageOpen,
   ShoppingCart,
@@ -526,6 +527,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Boxes,
         roles: ['owner', 'manager', 'employee', 'technician'],
         emails: MI_EMAILS, // rollout list in features/maintenance/inventory/access.ts
+      },
+      {
+        to: '/app/maintenance-log',
+        label: 'Maintenance Log',
+        icon: NotebookPen,
+        roles: ['owner', 'manager', 'employee', 'technician'],
+        emails: MI_EMAILS, // same rollout list and roles as Maintenance Inventory
       },
       {
         to: '/app/chemicals',

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Paperclip, Pencil, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, Paperclip, Pencil, Plus, Printer, Trash2 } from 'lucide-react'
 import { Field } from '@/components/forms/Field'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -8,12 +8,16 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { mi, type PartDetail, type StockRow } from '@/lib/queries/maintenanceInventory'
+import { ml, type ScheduleRow } from '@/lib/queries/maintenanceLog'
 import { useMi } from './context'
 import { dayTime, errText, LEDGER_TYPE, money, qty } from './format'
 import { LabelsDialog, type LabelItem } from './LabelsDialog'
 import { PartForm } from './PartForm'
 import { ConsumePanel, CountPanel, ReceivePanel, TransferRequestPanel } from './StockActions'
 import { Card, ErrorNote, Loading, Muted, Thumb } from './ui'
+import { dueText, everyText, STATUS } from '../log/labels'
+
+const ScheduleForm = lazy(() => import('../log/ScheduleForm'))
 
 const BASE = '/app/maintenance-inventory'
 type Dialog =
@@ -26,6 +30,11 @@ export default function PartDetailPage() {
   const [d, setD] = useState<PartDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
+  const [schedules, setSchedules] = useState<ScheduleRow[] | null>(null)
+  const [scheduling, setScheduling] = useState(false)
+
+  const loadSchedules = useCallback(() => { void ml.schedules({ part: id }).then(setSchedules).catch(() => setSchedules([])) }, [id])
+  useEffect(() => { loadSchedules() }, [loadSchedules])
 
   const load = useCallback(async () => {
     try {
@@ -143,6 +152,21 @@ export default function PartDetailPage() {
           ))}
         </Card>
 
+        <Card title="Maintenance schedules" className="lg:col-span-2" actions={me.rank >= 2 ? <Button size="sm" variant="secondary" onClick={() => setScheduling(true)}><CalendarPlus className="size-4" /> Add a schedule</Button> : undefined}>
+          {!schedules ? <Loading /> : schedules.length === 0 ? (
+            <Muted>Nothing scheduled uses this part. A schedule says how often it gets replaced or serviced, by date or by cars washed, and keeps the forecast honest.</Muted>
+          ) : schedules.map((s) => (
+            <Link key={s.id} to={`/app/maintenance-log/schedules/${s.id}`} className="flex items-start justify-between gap-2 border-t border-border py-2 text-sm first:border-t-0 hover:bg-content">
+              <span className="min-w-0">
+                <span className="block truncate text-accent">{s.title}</span>
+                <span className="block text-xs text-ink-muted">{[s.site_name, s.asset_name, everyText(s), `x${qty(s.parts.find((x) => x.part_id === p.id)?.qty ?? 0)} each time`].filter(Boolean).join(' · ')}</span>
+                <span className="block text-xs text-ink">{dueText(s)}</span>
+              </span>
+              <Badge tone={STATUS[s.status].tone} className="shrink-0">{STATUS[s.status].label}</Badge>
+            </Link>
+          ))}
+        </Card>
+
         <Card title="Used on">
           {d.assets.length === 0 ? <Muted>No assets list this part yet. Add it from an asset's parts list.</Muted> : d.assets.map((a) => (
             <Link key={a.id} to={`${BASE}/assets/${a.id}`} className="flex justify-between gap-2 border-t border-border py-2 text-sm first:border-t-0">
@@ -181,6 +205,11 @@ export default function PartDetailPage() {
         )}
       </Card>
 
+      {scheduling && (
+        <Suspense fallback={null}>
+          <ScheduleForm init={{ part: { id: p.id, name: p.name } }} onClose={() => setScheduling(false)} onSaved={() => { setScheduling(false); loadSchedules() }} />
+        </Suspense>
+      )}
       {dialog?.kind === 'edit' && (
         <Modal open onClose={close} title="Edit part" size="lg"><PartForm existing={p} onCancel={close} onSaved={() => { close(); void load() }} /></Modal>
       )}

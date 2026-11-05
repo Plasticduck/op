@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, PackageMinus, Plus, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, History, NotebookPen, PackageMinus, Plus, Printer, Trash2 } from 'lucide-react'
 import { Field } from '@/components/forms/Field'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -8,11 +8,16 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { mi, type AssetDetail, type AssetRow, type PartListRow } from '@/lib/queries/maintenanceInventory'
+import { ml, type ScheduleRow } from '@/lib/queries/maintenanceLog'
 import { primeScanSound } from '@/lib/scan/feedback'
 import { useMi } from './context'
 import { day, errText, money, qty } from './format'
 import { LabelsDialog, type LabelItem } from './LabelsDialog'
 import { Card, ErrorNote, Loading, Muted, SearchBox, useDebounced } from './ui'
+import { dueText, STATUS } from '../log/labels'
+
+const ScheduleForm = lazy(() => import('../log/ScheduleForm'))
+const LOG = '/app/maintenance-log'
 
 const BASE = '/app/maintenance-inventory'
 const STORE_KEY = 'mi.assets.site'
@@ -103,6 +108,11 @@ function AssetPage({ id }: { id: string }) {
   const [editing, setEditing] = useState(false)
   const [addingPart, setAddingPart] = useState(false)
   const [labels, setLabels] = useState<LabelItem[] | null>(null)
+  const [schedules, setSchedules] = useState<ScheduleRow[] | null>(null)
+  const [scheduling, setScheduling] = useState(false)
+
+  const loadSchedules = useCallback(() => { void ml.schedules({ asset: id }).then(setSchedules).catch(() => setSchedules([])) }, [id])
+  useEffect(() => { loadSchedules() }, [loadSchedules])
 
   const load = useCallback(async () => {
     try {
@@ -148,6 +158,24 @@ function AssetPage({ id }: { id: string }) {
         <Button variant="secondary" size="lg" onClick={() => void openWo()}>Open a work order</Button>
         <Button variant="secondary" size="lg" onClick={() => setLabels([{ type: 'asset', id: a.id, name: a.name, site: a.site_name }])}><Printer className="size-4" /> Label</Button>
       </div>
+
+      <Card title="Maintenance" actions={
+        <div className="flex flex-wrap gap-1.5">
+          <Link to={`${LOG}?new=1&asset=${a.id}`} className="inline-flex h-8 items-center gap-1 rounded-md bg-accent px-3 text-sm font-medium text-white hover:bg-accent-hover"><NotebookPen className="size-4" /> Log work</Link>
+          <Link to={`${LOG}?asset=${a.id}`} className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-3 text-sm text-ink hover:bg-content"><History className="size-4" /> History</Link>
+          {me.rank >= 2 && <Button size="sm" variant="secondary" onClick={() => setScheduling(true)}><CalendarPlus className="size-4" /> Schedule</Button>}
+        </div>
+      }>
+        {!schedules ? <Loading /> : schedules.length === 0 ? <Muted>No maintenance scheduled on this machine yet.</Muted> : schedules.map((s) => (
+          <Link key={s.id} to={`${LOG}/schedules/${s.id}`} className="flex items-start justify-between gap-2 border-t border-border py-2 text-sm first:border-t-0 hover:bg-content">
+            <span className="min-w-0">
+              <span className="block truncate text-accent">{s.title}</span>
+              <span className="block text-xs text-ink-muted">{dueText(s)}</span>
+            </span>
+            <Badge tone={STATUS[s.status].tone} className="shrink-0">{STATUS[s.status].label}</Badge>
+          </Link>
+        ))}
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Details" actions={a.can_manage ? <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>Edit</Button> : undefined}>
@@ -211,6 +239,11 @@ function AssetPage({ id }: { id: string }) {
       {editing && <AssetForm d={d} accountId={accountId} vendors={refs.vendors} canAddArea={me.rank >= 2} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); void load() }} />}
       {addingPart && <AddBomLine assetId={a.id} onClose={() => setAddingPart(false)} onSaved={() => { setAddingPart(false); void load() }} />}
       {labels && <LabelsDialog items={labels} onClose={() => setLabels(null)} />}
+      {scheduling && (
+        <Suspense fallback={null}>
+          <ScheduleForm init={{ asset: { id: a.id, name: a.name, site_id: a.location_id } }} onClose={() => setScheduling(false)} onSaved={() => { setScheduling(false); loadSchedules() }} />
+        </Suspense>
+      )}
     </div>
   )
 }
@@ -304,7 +337,7 @@ function AddBomLine({ assetId, onClose, onSaved }: { assetId: string; onClose: (
       <div className="flex flex-col gap-3">
         <div className="flex gap-2">
           <SearchBox value={q} onChange={setQ} placeholder="Find a part" className="flex-1" />
-          <Input aria-label="How many" inputMode="decimal" value={count} onChange={(e) => setCount(e.target.value)} className="w-20 text-center" />
+          <div className="w-20 shrink-0"><Input aria-label="How many" inputMode="decimal" value={count} onChange={(e) => setCount(e.target.value)} className="text-center" /></div>
         </div>
         {error && <ErrorNote>{error}</ErrorNote>}
         {dq.trim() && rows.map((r) => (

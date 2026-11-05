@@ -4,6 +4,7 @@ Parts, tools, stock counts, transfers, purchase orders and reorder suggestions a
 
 - [SPEC.md](SPEC.md): the original prompt
 - [INTEGRATION_NOTES.md](INTEGRATION_NOTES.md): what it reuses in Operator, and where it departs from the prompt
+- [MAINTENANCE_LOG.md](MAINTENANCE_LOG.md): the Maintenance Log page, schedules and parts forecast built on this data
 
 ## Giving someone access
 
@@ -36,7 +37,7 @@ Sticker sizes, the logo and printer calibration are shared with IT Inventory, an
 
 ## Before going live
 
-1. **Remove the sample data:** Settings > Sample data. It deletes only rows flagged as sample. The real parts stay.
+1. **Remove the sample data:** Settings > Sample data. It deletes only rows flagged as sample, including the Maintenance Log's demo schedules and entries. The real parts stay.
 2. **Load real stock:** Settings > Import. The CSV preview writes nothing, and one bad row stops the whole file.
 3. **Turn on texts:** Settings > Text alerts > Turn on. It's off until then. Use "Who would get what" first to see the list.
 4. **Add people** (see above).
@@ -52,7 +53,7 @@ PO emails go out through `mi-po-send` only when someone taps Send to vendor.
 
 ## For developers
 
-- **Database:** migrations `0212` to `0220`. Tables are prefixed `mi_`. `mi__` functions are internal and can't be called by signed-in users.
+- **Database:** migrations `0212` to `0221` (`0221` is the Maintenance Log). Tables are prefixed `mi_`. `mi__` functions are internal and can't be called by signed-in users.
 - **Stock changes** go through one function, `mi__post`. The ledgers are append-only, enforced by a trigger.
 - **Frontend:** `src/features/maintenance/inventory/`. Queries are in `src/lib/queries/maintenanceInventory.ts`.
 - **Offline:** `offline.ts` queues actions in IndexedDB with a client id, so a replay can't post twice.

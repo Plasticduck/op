@@ -87,6 +87,7 @@ const WorkOrdersPage = lz(() => import('@/features/ops/work-orders/WorkOrdersPag
 const WorkOrdersNewPage = lz(() => import('@/features/ops/work-orders/WorkOrdersNewPage'))
 const MaintenanceOrdersPage = lz(() => import('@/features/maintenance/MaintenanceOrdersPage'))
 const MaintenanceInventoryPage = lz(() => import('@/features/maintenance/inventory/MaintenanceInventoryPage'))
+const MaintenanceLogPage = lz(() => import('@/features/maintenance/log/MaintenanceLogPage'))
 const ChemicalsPage = lz(() => import('@/features/maintenance/ChemicalsPage'))
 const CategoriesPage = lz(() => import('@/features/ops/categories/CategoriesPage'))
 const VendorsPage = lz(() => import('@/features/ops/vendors/VendorsPage'))
@@ -260,6 +261,7 @@ export const router = createBrowserRouter([
           { path: 'work-orders-new/:id', element: s(<WorkOrdersNewPage />) },
           { path: 'maintenance-orders', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<MaintenanceOrdersPage />)}</RequireEmails> },
           { path: 'maintenance-inventory/*', element: <RequireEmails allow={MI_EMAILS}>{s(<MaintenanceInventoryPage />)}</RequireEmails> },
+          { path: 'maintenance-log/*', element: <RequireEmails allow={MI_EMAILS}>{s(<MaintenanceLogPage />)}</RequireEmails> },
           { path: 'chemicals', element: mgr(<ChemicalsPage />) },
           { path: 'categories', element: tech(<CategoriesPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },

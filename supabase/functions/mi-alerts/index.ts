@@ -9,8 +9,9 @@
 //             right away. With texts switched off for the account (the default),
 //             pending alerts are just marked off, so turning them on later doesn't
 //             send a backlog.
-//   nightly   evaluates every reorder point, overdue tools and scheduled counts
-//             (mi__nightly), then rolls non-critical low stock into one text per person.
+//   nightly   evaluates every reorder point, overdue tools, scheduled counts and
+//             maintenance schedules (mi__nightly), then rolls non-critical low stock
+//             and maintenance that's due into one text per person.
 //   preview   what's waiting and who would get it, sending nothing. Any admin.
 //
 // Body: { action: 'dispatch' | 'nightly' | 'preview' }
@@ -143,13 +144,15 @@ Deno.serve(async (req) => {
     for (const [account, s] of settings) {
       const { data: run, error } = await svc.rpc('mi__nightly', { p_account: account })
       if (error) { out.push({ account, error: error.message }); continue }
-      // Low stock goes out as one text per person, not one per part.
-      const { data: lows } = await svc.from('mi_alerts').select('id').eq('account_id', account).eq('status', 'digest').limit(500)
-      const byPerson = new Map<string, { phone: string; name: string; count: number; sms_ok: boolean }>()
+      // Low stock and maintenance that's due go out as one text per person, not one per
+      // part or task.
+      const { data: lows } = await svc.from('mi_alerts').select('id, kind').eq('account_id', account).eq('status', 'digest').limit(500)
+      const byPerson = new Map<string, { phone: string; name: string; parts: number; tasks: number; sms_ok: boolean }>()
       for (const a of (lows ?? []) as Any[]) {
         for (const r of await recipients(a.id)) {
-          const cur = byPerson.get(r.user_id) ?? { phone: r.phone, name: r.name, count: 0, sms_ok: r.sms_ok }
-          cur.count++
+          const cur = byPerson.get(r.user_id) ?? { phone: r.phone, name: r.name, parts: 0, tasks: 0, sms_ok: r.sms_ok }
+          if (a.kind === 'maintenance_due') cur.tasks++
+          else cur.parts++
           byPerson.set(r.user_id, cur)
         }
       }
@@ -157,14 +160,17 @@ Deno.serve(async (req) => {
       if (s.sms_enabled) {
         for (const p of byPerson.values()) {
           if (!p.sms_ok) continue
-          const res = await sendSms(p.phone, `Maintenance Inventory: ${p.count} part${p.count === 1 ? '' : 's'} at your locations ${p.count === 1 ? 'is' : 'are'} at the reorder point. Check the Reorder screen.`)
+          const bits: string[] = []
+          if (p.parts) bits.push(`${p.parts} part${p.parts === 1 ? '' : 's'} at your locations ${p.parts === 1 ? 'is' : 'are'} at the reorder point. Check the Reorder screen.`)
+          if (p.tasks) bits.push(`${p.tasks} maintenance task${p.tasks === 1 ? ' is' : 's are'} due or overdue. Check the Maintenance Log.`)
+          const res = await sendSms(p.phone, `Maintenance Inventory: ${bits.join(' ')}`)
           if (res.ok) texts++
         }
       }
       if ((lows ?? []).length) {
         await svc.from('mi_alerts').update({ status: s.sms_enabled ? 'sent' : 'off', sent_at: new Date().toISOString() }).in('id', ((lows ?? []) as Any[]).map((a) => a.id))
       }
-      out.push({ account, run, low_stock_rows: (lows ?? []).length, digest_texts: texts })
+      out.push({ account, run, digest_rows: (lows ?? []).length, digest_texts: texts })
     }
     return json({ ok: true, accounts: out }, 200, origin)
   }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ClipboardList, Hash, Loader2, PackageMinus, PackagePlus, Repeat, ScanLine, TriangleAlert, Wrench, X } from 'lucide-react'
+import { ArrowLeft, ClipboardList, Hash, Loader2, NotebookPen, PackageMinus, PackagePlus, Repeat, ScanLine, TriangleAlert, Wrench, X } from 'lucide-react'
 import { BarcodeScanner } from '@/components/scan/BarcodeScanner'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -282,6 +282,10 @@ function AssetMenu({ id, onConsume, onClose }: { id: string; onConsume: (a: { id
       <Button size="lg" className="h-14 text-lg" onClick={() => onConsume({ id: a.id, name: a.name, site_id: a.location_id })}>
         <PackageMinus className="size-5" /> Consume a part on this
       </Button>
+      <Link to={`/app/maintenance-log?new=1&asset=${a.id}`} onClick={onClose}
+        className="flex h-12 items-center justify-center gap-2 rounded-md border border-border bg-card text-base font-medium text-ink hover:bg-content">
+        <NotebookPen className="size-5" /> Log maintenance on this
+      </Link>
       <div>
         <h3 className="mb-1 text-sm font-semibold text-ink">Open work orders</h3>
         {d.open_work_orders.length === 0 ? <Muted>None.</Muted> : d.open_work_orders.map((w) => (
