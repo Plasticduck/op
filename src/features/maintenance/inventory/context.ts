@@ -7,6 +7,8 @@ export type ScanContext = {
   workOrder?: { id: string; number: number; title: string; site_id?: string | null } | null
   // Set when the scan should open straight on a tag, like a sticker's QR code.
   code?: string | null
+  // Where this came from, for the ledger: a checklist's "Parts used" link.
+  source?: 'checklist'
 }
 
 export type MiCtx = {

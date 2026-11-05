@@ -13089,6 +13089,10 @@ export type Database = {
         Args: { p_from: string; p_to: string }
         Returns: boolean
       }
+      mi__checklist_asset: {
+        Args: { p_linked: string; p_site: string }
+        Returns: string
+      }
       mi__eval_stock: {
         Args: { p_location: string; p_part: string }
         Returns: undefined
@@ -13458,6 +13462,10 @@ export type Database = {
         }
         Returns: Json
       }
+      mi_checklist_asset: {
+        Args: { p_instance: string; p_item: string }
+        Returns: string
+      }
       mi_checkout_tool: {
         Args: {
           p_client_txn_id?: string
@@ -13819,43 +13827,13 @@ export type Database = {
       mi_reorder_suggestions: { Args: { p_location?: string }; Returns: Json }
       mi_report_tool_issue: {
         Args: {
+          p_client_txn_id?: string
           p_condition: string
           p_notes?: string
           p_source?: string
           p_tool: string
         }
-        Returns: {
-          account_id: string
-          category: string | null
-          checked_out_at: string | null
-          condition: string
-          cost: number | null
-          created_at: string
-          created_by: string | null
-          custodian_location_id: string | null
-          custodian_user_id: string | null
-          due_at: string | null
-          home_location_id: string
-          id: string
-          is_sample: boolean
-          make: string | null
-          model: string | null
-          name: string
-          notes: string | null
-          pending_at: string | null
-          pending_from_user_id: string | null
-          pending_to_location_id: string | null
-          pending_to_user_id: string | null
-          photo_path: string | null
-          serial_number: string | null
-          status: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "mi_tools"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: Json
       }
       mi_request_part: {
         Args: {
@@ -14005,6 +13983,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      mi_search_assets: { Args: { p_q: string }; Returns: Json }
       mi_set_bom_line: {
         Args: {
           p_asset: string
@@ -14012,6 +13991,10 @@ export type Database = {
           p_part: string
           p_qty: number
         }
+        Returns: undefined
+      }
+      mi_set_checklist_item_asset: {
+        Args: { p_asset: string; p_item: string }
         Returns: undefined
       }
       mi_set_member: {

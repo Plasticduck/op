@@ -15,6 +15,7 @@ import { dateTime, timeOfDay } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { ROLE_LABEL, type Role } from '@/lib/rbac'
 import { checklists, type ChecklistItemEvent } from '@/lib/queries/ops'
+import { ChecklistItemAsset } from '@/features/maintenance/inventory/ChecklistHooks'
 
 const ROLE_OPTIONS: Role[] = ['owner', 'manager', 'employee', 'technician']
 const ALL_ROLES: string[] = [...ROLE_OPTIONS]
@@ -33,7 +34,7 @@ type TemplateRow = {
   locations: { location_id: string }[]
 }
 
-type ItemRow = { id: string; label: string; order_index: number; requires_photo: boolean }
+type ItemRow = { id: string; label: string; order_index: number; requires_photo: boolean; asset_id: string | null }
 
 type ResetPolicy = 'daily' | 'weekly' | 'manual'
 
@@ -397,6 +398,11 @@ export default function ChecklistDetailPage() {
                   <li key={it.id} className="flex items-center justify-between gap-3 py-2">
                     <span className="text-sm text-ink">{it.label}</span>
                     <div className="flex items-center gap-1">
+                      <ChecklistItemAsset
+                        itemId={it.id}
+                        assetId={it.asset_id}
+                        onChanged={() => void checklists.items(id as string).then(({ data }) => setItems((data as ItemRow[] | null) ?? []))}
+                      />
                       <button
                         type="button"
                         onClick={() => void togglePhoto(it.id, !it.requires_photo)}

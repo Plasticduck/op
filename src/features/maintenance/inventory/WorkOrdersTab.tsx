@@ -181,11 +181,13 @@ function WoPage({ id }: { id: string }) {
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium text-ink">{p.part_name}</div>
                     <p className="text-xs text-ink-muted">
-                      {Number(p.qty_planned) > 0 ? `Planned ${qty(p.qty_planned)}. ` : ''}Used {qty(p.quantity)}{Number(p.qty_returned) > 0 ? ` (${qty(p.qty_returned)} returned)` : ''}{p.location_name ? `, ${p.location_name}` : ''}
+                      {Number(p.qty_planned) === 0 && Number(p.qty_issued) === 0
+                        ? 'Suggested'
+                        : `${Number(p.qty_planned) > 0 ? `Planned ${qty(p.qty_planned)}. ` : ''}Used ${qty(p.quantity)}${Number(p.qty_returned) > 0 ? ` (${qty(p.qty_returned)} returned)` : ''}${p.location_name ? `, ${p.location_name}` : ''}`}
                     </p>
                   </div>
                   <span className="tabular-nums text-ink">{money(p.cost)}</span>
-                  {open && p.part_id && <Button size="sm" variant="secondary" onClick={() => setPicking({ partId: p.part_id as string, partName: p.part_name })}>Use more</Button>}
+                  {open && p.part_id && <Button size="sm" variant="secondary" onClick={() => setPicking({ partId: p.part_id as string, partName: p.part_name })}>{Number(p.qty_issued) > 0 ? 'Use more' : 'Add'}</Button>}
                   {open && p.part_id && p.location_id && reserved > 0 && <Button size="sm" variant="ghost" onClick={() => void unreserve(p.part_id as string, p.location_id as string, reserved)}>Release {qty(reserved)}</Button>}
                 </li>
               )

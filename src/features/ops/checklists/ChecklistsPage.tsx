@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
+import { ChecklistItemActions } from '@/features/maintenance/inventory/ChecklistHooks'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { supabase } from '@/lib/supabase'
@@ -51,7 +52,7 @@ type InstanceWithTemplate = ChecklistInstance & {
   }
 }
 
-type ItemRow = { id: string; label: string; order_index: number; requires_photo: boolean }
+type ItemRow = { id: string; label: string; order_index: number; requires_photo: boolean; asset_id?: string | null }
 
 type StateEntry = {
   checked: boolean
@@ -428,6 +429,7 @@ function Inner({ locationId }: { locationId: string }) {
                               </button>
                             )}
                           </div>
+                          <ChecklistItemActions instanceId={inst.id} itemId={item.id} hasAsset={!!item.asset_id} failed={sub?.ai_status === 'discrepancy'} />
 
                           {item.requires_photo && (
                             <div className="ml-2 flex flex-col gap-2 rounded-md border border-border bg-content px-3 py-2 sm:ml-7">

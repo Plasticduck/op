@@ -371,6 +371,9 @@ export const mi = {
   workOrderDetail: (id: string) => miRpc<WoDetail>('mi_work_order_detail', { p_wo: id }),
   createWorkOrder: (o: { site: string; title: string; asset?: string | null; priority?: string; description?: string; parts?: Array<{ part_id: string; qty: number }> }) =>
     miRpc<{ id: string; number: number }>('mi_create_work_order', { p_site: o.site, p_title: o.title, p_asset: o.asset ?? null, p_priority: o.priority ?? 'medium', p_description: o.description ?? null, p_parts: o.parts ?? null }),
+  searchAssets: (q: string) => miRpc<Array<{ id: string; name: string; type: string | null; site_name: string }>>('mi_search_assets', { p_q: q }),
+  setChecklistItemAsset: (item: string, asset: string | null) => miRpc<void>('mi_set_checklist_item_asset', { p_item: item, p_asset: asset }),
+  checklistAsset: (instance: string, item: string) => miRpc<string | null>('mi_checklist_asset', { p_instance: instance, p_item: item }),
   workOrderFromChecklist: (instance: string, item: string, note?: string) =>
     miRpc<{ work_order_id: string; number: number; suggested_parts: number }>('mi_work_order_from_checklist', { p_instance: instance, p_item: item, p_note: note ?? null }),
 

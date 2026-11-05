@@ -125,7 +125,7 @@ export default function PartDetailPage() {
         )}
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Vendors" actions={canCatalog ? <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: 'vendor' })}><Plus className="size-4" /> Add</Button> : undefined}>
           {d.vendors.length === 0 ? <Muted>No vendors yet. Reorder suggestions need a preferred one.</Muted> : d.vendors.map((v) => (
             <div key={v.id} className="flex items-center justify-between gap-2 border-t border-border py-2 text-sm first:border-t-0">

@@ -55,6 +55,7 @@ export function Stepper({ value, onChange, min = 0, step = 1, label }: { value: 
       <input
         inputMode="decimal"
         value={String(value)}
+        onFocus={(e) => e.target.select()}
         onChange={(e) => {
           const n = Number(e.target.value)
           if (!Number.isNaN(n)) set(n)

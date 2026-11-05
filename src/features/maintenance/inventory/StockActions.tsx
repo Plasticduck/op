@@ -75,6 +75,7 @@ export function ConsumePanel({ stock, context, onDone, onTransfer }: { stock: St
         p_qty: count,
         p_work_order: woId || null,
         p_asset: assetId ?? chosen?.equipment_id ?? null,
+        ...(context?.source ? { p_source: context.source } : {}),
       }, `Used ${qty(count)} ${stock.part_name}`)
       if (!res.queued && photo) {
         const path = await mi.upload(accountId, 'installed', photo, photo.name)

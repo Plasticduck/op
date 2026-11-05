@@ -149,7 +149,7 @@ function AssetPage({ id }: { id: string }) {
         <Button variant="secondary" size="lg" onClick={() => setLabels([{ type: 'asset', id: a.id, name: a.name, site: a.site_name }])}><Printer className="size-4" /> Label</Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Details" actions={a.can_manage ? <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>Edit</Button> : undefined}>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
             <dt className="text-ink-muted">Tag</dt><dd className="font-mono text-ink">{a.tag ?? 'Not printed yet'}</dd>

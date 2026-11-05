@@ -116,7 +116,7 @@ export function ScanSheet({ initial, onClose }: { initial: ScanContext; onClose:
           )}
         </div>
         {(context.workOrder || context.asset) && (
-          <Button variant="ghost" size="sm" onClick={() => setContext({})}>Clear</Button>
+          <Button variant="ghost" size="sm" onClick={() => setContext((c) => ({ source: c.source }))}>Clear</Button>
         )}
         <Button variant="ghost" size="icon" aria-label="Close" onClick={() => onClose(changed)}><X className="size-5" /></Button>
       </header>
@@ -145,7 +145,7 @@ export function ScanSheet({ initial, onClose }: { initial: ScanContext; onClose:
               </>
             )}
             {result.kind === 'tool' && <ToolActions toolId={result.id} onDone={done} />}
-            {result.kind === 'asset' && <AssetMenu id={result.id} onConsume={(asset) => { setContext({ asset }); again() }} onClose={() => onClose(changed)} />}
+            {result.kind === 'asset' && <AssetMenu id={result.id} onConsume={(asset) => { setContext((c) => ({ asset, source: c.source })); again() }} onClose={() => onClose(changed)} />}
             {result.kind === 'location' && <LocationMenu id={result.id} onPick={setPicked} picked={picked} />}
 
             {(result.kind === 'bin' || result.kind === 'part') && !picked && (

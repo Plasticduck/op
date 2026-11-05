@@ -78,7 +78,7 @@ export default function ReportsTab() {
             <StatCard label="Emergency buys" value={d.emergency.orders} hint={`${moneyWhole(d.emergency.total)}, ${moneyWhole(d.emergency.premium)} over normal price`} />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card title="Inventory value by site"><Bars rows={d.value_by_site} /></Card>
             <Card title="Inventory value by category"><Bars rows={d.value_by_category} /></Card>
             <Card title="Parts cost by site">

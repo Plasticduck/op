@@ -35,11 +35,11 @@ export default function HomeTab() {
   const tasks = todo ? [
     { n: todo.transfers_to_approve, label: 'transfers to approve', to: `${BASE}/transfers` },
     { n: todo.transfers_to_ship, label: 'transfers to ship', to: `${BASE}/transfers` },
-    { n: todo.transfers_to_receive, label: 'transfers arriving', to: `${BASE}/transfers` },
-    { n: todo.counts_open, label: 'counts open', to: `${BASE}/counts` },
+    { n: todo.transfers_to_receive, label: todo.transfers_to_receive === 1 ? 'transfer arriving' : 'transfers arriving', to: `${BASE}/transfers` },
+    { n: todo.counts_open, label: todo.counts_open === 1 ? 'count open' : 'counts open', to: `${BASE}/counts` },
     { n: todo.counts_to_review, label: 'counts to review', to: `${BASE}/counts` },
     { n: todo.pos_to_approve, label: 'POs to approve', to: `${BASE}/pos` },
-    { n: todo.pos_to_receive, label: 'POs to receive', to: `${BASE}/pos` },
+    { n: todo.pos_to_receive, label: todo.pos_to_receive === 1 ? 'PO to receive' : 'POs to receive', to: `${BASE}/pos` },
     { n: todo.part_requests, label: 'part requests', to: `${BASE}/parts?requests=1` },
   ].filter((t) => t.n > 0) : []
 
@@ -78,7 +78,7 @@ export default function HomeTab() {
       )}
 
       {d && (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card title="My tools" actions={<Link to={`${BASE}/tools`} className="text-xs text-accent hover:underline">All tools</Link>}>
             {d.my_tools.length === 0 ? <Muted>You don't have any checked out.</Muted> : d.my_tools.map((t) => (
               <Link key={t.id} to={`${BASE}/tools/${t.id}`} className="flex min-h-11 items-center justify-between gap-2 border-t border-border py-2 text-sm first:border-t-0">

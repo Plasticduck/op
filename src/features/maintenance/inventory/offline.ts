@@ -77,7 +77,7 @@ const NO_SOURCE = new Set(['mi_start_transfer', 'mi_reserve_parts', 'mi_post_cou
 // the server (not enough stock, wrong location) still throws, so it can be shown.
 export async function act<T>(rpc: string, args: Record<string, unknown>, label: string): Promise<ActResult<T>> {
   const id = crypto.randomUUID()
-  const full = { ...args, p_client_txn_id: id, ...(NO_SOURCE.has(rpc) ? {} : { p_source: 'mobile' }) }
+  const full = { ...args, p_client_txn_id: id, ...(NO_SOURCE.has(rpc) ? {} : { p_source: args.p_source ?? 'mobile' }) }
   const enqueue = async (): Promise<ActResult<T>> => {
     await tx('queue', 'readwrite', (s) => s.put({ id, rpc, args: full, label, created_at: Date.now() } satisfies Queued))
     changed()

@@ -695,6 +695,144 @@ begin
 end $$;
 reset role;
 
+-- ===== Checklists: an item names an asset, a problem opens a work order with its parts =====
+do $$
+declare
+  a uuid := current_setting('t.acct')::uuid;
+  cl uuid;
+  item uuid;
+  eq01 uuid;
+  eq19 uuid;
+  i01 uuid;
+  i19 uuid;
+  bom uuid;
+begin
+  insert into public.equipment (account_id, location_id, name, asset_number, type, status)
+  values (a, current_setting('t.mw01')::uuid, 'TEST blower', 990001, 'TEST-BLOWER', 'online') returning id into eq01;
+  insert into public.equipment (account_id, location_id, name, asset_number, type, status)
+  values (a, current_setting('t.mw19')::uuid, 'TEST blower NM', 990002, 'TEST-BLOWER', 'online') returning id into eq19;
+  insert into public.parts (account_id, name, sku) values (a, 'TEST blower belt', 'TEST-BELT') returning id into bom;
+  insert into public.part_assets (part_id, asset_id, qty_per) values (bom, eq01, 2);
+  insert into public.checklists (account_id, name, frequency) values (a, 'TEST opening', 'daily') returning id into cl;
+  insert into public.checklist_items (checklist_id, label, order_index) values (cl, 'TEST blower spins freely', 0) returning id into item;
+  insert into public.checklist_instances (checklist_id, location_id, instance_date, opens_at)
+  values (cl, current_setting('t.mw01')::uuid, current_date, now()) returning id into i01;
+  insert into public.checklist_instances (checklist_id, location_id, instance_date, opens_at)
+  values (cl, current_setting('t.mw19')::uuid, current_date, now()) returning id into i19;
+  perform set_config('t.cl_item', item::text, true);
+  perform set_config('t.cl_i01', i01::text, true);
+  perform set_config('t.cl_i19', i19::text, true);
+  perform set_config('t.cl_eq01', eq01::text, true);
+  perform set_config('t.cl_eq19', eq19::text, true);
+  perform set_config('t.cl_part', bom::text, true);
+end $$;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.outsider'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+begin
+  begin
+    perform public.mi_work_order_from_checklist(current_setting('t.cl_i01')::uuid, current_setting('t.cl_item')::uuid);
+    raise exception 'FAIL 117: a non-member opened a work order from a checklist';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.mi_search_assets('TEST');
+    raise exception 'FAIL 118: a non-member searched assets';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.tech_lbk'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  failed boolean := false;
+  r jsonb;
+begin
+  begin
+    perform public.mi_set_checklist_item_asset(current_setting('t.cl_item')::uuid, current_setting('t.cl_eq01')::uuid);
+  exception when others then failed := true; end;
+  if not failed then raise exception 'FAIL 119: a tech linked a checklist to an asset'; end if;
+  -- No asset linked yet: it still opens, with nothing to suggest.
+  r := public.mi_work_order_from_checklist(current_setting('t.cl_i01')::uuid, current_setting('t.cl_item')::uuid);
+  if (r ->> 'suggested_parts')::int <> 0 or (r ->> 'asset_id') is not null then raise exception 'FAIL 120: %', r; end if;
+end $$;
+reset role;
+
+-- Close that first one so the next run opens a fresh one.
+update public.work_orders set status = 'done' where title = 'Checklist problem: TEST blower spins freely';
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.mgr_lbk'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  hits jsonb;
+begin
+  hits := public.mi_search_assets('TEST blower');
+  if jsonb_array_length(hits) <> 1 or hits -> 0 ->> 'id' <> current_setting('t.cl_eq01') then raise exception 'FAIL 121: search showed another site: %', hits; end if;
+  perform public.mi_set_checklist_item_asset(current_setting('t.cl_item')::uuid, current_setting('t.cl_eq01')::uuid);
+  perform set_config('t.issue_tool', (public.mi_save_tool(jsonb_build_object('name', 'TEST grease gun', 'home_location_id', current_setting('t.lbk'), 'cost', 40))).id::text, true);
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.tech_lbk'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+  again jsonb;
+  line record;
+  n int;
+  t public.mi_tools;
+  failed boolean := false;
+begin
+  if public.mi_checklist_asset(current_setting('t.cl_i01')::uuid, current_setting('t.cl_item')::uuid) <> current_setting('t.cl_eq01')::uuid then
+    raise exception 'FAIL 122: wrong asset for the run''s site';
+  end if;
+  r := public.mi_work_order_from_checklist(current_setting('t.cl_i01')::uuid, current_setting('t.cl_item')::uuid);
+  if (r ->> 'asset_id')::uuid <> current_setting('t.cl_eq01')::uuid or (r ->> 'suggested_parts')::int <> 1 then raise exception 'FAIL 123: %', r; end if;
+  select * into line from public.work_order_parts where work_order_id = (r ->> 'work_order_id')::uuid;
+  if line.catalog_part_id <> current_setting('t.cl_part')::uuid or line.qty_planned <> 0 or line.quantity <> 0 then raise exception 'FAIL 124: suggested part reserved or used stock'; end if;
+  -- Tapping it again goes back to the same one.
+  again := public.mi_work_order_from_checklist(current_setting('t.cl_i01')::uuid, current_setting('t.cl_item')::uuid);
+  if (again ->> 'work_order_id') <> (r ->> 'work_order_id') or not (again ->> 'already_open')::boolean then raise exception 'FAIL 125: second work order %', again; end if;
+  -- Someone at another site can't.
+  begin
+    perform public.mi_work_order_from_checklist(current_setting('t.cl_i19')::uuid, current_setting('t.cl_item')::uuid);
+  exception when others then failed := true; end;
+  if not failed then raise exception 'FAIL 126: opened a work order at another site'; end if;
+  failed := false;
+  begin
+    perform public.mi_checklist_asset(current_setting('t.cl_i19')::uuid, current_setting('t.cl_item')::uuid);
+  exception when others then failed := true; end;
+  if not failed then raise exception 'FAIL 127: read another site''s checklist asset'; end if;
+
+  -- A tool problem from the phone, sent twice by a retry, counts once.
+  select * into t from public.mi_tools where id = current_setting('t.issue_tool')::uuid;
+  r := public.mi_report_tool_issue(t.id, 'damaged', 'Handle cracked', 'mobile', 'txn-tool-issue-1');
+  if (r ->> 'status') is distinct from 'in_repair' then raise exception 'FAIL 128: %', r; end if;
+  r := public.mi_report_tool_issue(t.id, 'damaged', 'Handle cracked', 'mobile', 'txn-tool-issue-1');
+  select count(*) into n from public.mi_tool_checkouts x where x.tool_id = t.id and x.action = 'report_issue';
+  if n <> 1 then raise exception 'FAIL 129: % issue rows', n; end if;
+end $$;
+reset role;
+
+-- At another site, the same template uses that site's asset, and the linked one's parts list.
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.tech_nm'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  if public.mi_checklist_asset(current_setting('t.cl_i19')::uuid, current_setting('t.cl_item')::uuid) <> current_setting('t.cl_eq19')::uuid then
+    raise exception 'FAIL 130: didn''t find this site''s asset of that type';
+  end if;
+  r := public.mi_work_order_from_checklist(current_setting('t.cl_i19')::uuid, current_setting('t.cl_item')::uuid);
+  if (r ->> 'asset_id')::uuid <> current_setting('t.cl_eq19')::uuid or (r ->> 'suggested_parts')::int <> 1 then raise exception 'FAIL 131: %', r; end if;
+  if (select location_id from public.work_orders where id = (r ->> 'work_order_id')::uuid) <> current_setting('t.mw19')::uuid then raise exception 'FAIL 132: wrong site'; end if;
+end $$;
+reset role;
+
 do $$ begin
   raise exception 'ALL PASS (import previews + commits of 500 rows took % ms in total)', current_setting('t.import_ms');
 end $$;

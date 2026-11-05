@@ -72,6 +72,21 @@ export default function MaintenanceInventoryPage() {
     setParams((p) => { p.delete('tag'); return p }, { replace: true })
   }, [tagParam, setParams])
 
+  // A checklist's "Parts used": scan parts onto that asset, marked as coming from the checklist.
+  const sourceParam = params.get('source')
+  const assetParam = params.get('asset')
+  useEffect(() => {
+    if (sourceParam !== 'checklist') return
+    setParams((p) => { p.delete('asset'); p.delete('source'); return p }, { replace: true })
+    if (!assetParam) {
+      setScan({ source: 'checklist' })
+      return
+    }
+    void mi.assetDetail(assetParam)
+      .then((d) => setScan(d.hidden ? { source: 'checklist' } : { asset: { id: d.asset.id, name: d.asset.name, site_id: d.asset.location_id }, source: 'checklist' }))
+      .catch(() => setScan({ source: 'checklist' }))
+  }, [sourceParam, assetParam, setParams])
+
   // Load the scanner's code once the page is idle, so tapping Scan opens it at once.
   useEffect(() => {
     const id = window.setTimeout(() => { void import('./ScanSheet') }, 800)
