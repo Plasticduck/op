@@ -341,7 +341,7 @@ export default function HouseAccountsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="House Accounts"
-        subtitle="Charge-account (fleet and commercial) activity at MW19. Revenue per account for any dates, compared with any other dates."
+        subtitle="Charge-account (fleet and commercial) lube service at MW19. Revenue per account for any dates, compared with any other dates. Wash-only visits are left out."
       />
 
       {/* Range */}
@@ -390,7 +390,10 @@ export default function HouseAccountsPage() {
           </div>
 
           <p className="-mt-2 text-xs text-ink-subtle">
-            {int(rows.length)} {groupSimilar ? 'group' : 'account'}{rows.length === 1 ? '' : 's'} shown{groupSimilar ? ` · ${int(data.accounts.length)} accounts merged by company name` : ''}.{data.truncated ? ' Showing the top 1,000 by revenue for these dates.' : ''} Revenue = House Acct Charge billed at MW19.
+            {int(rows.length)} {groupSimilar ? 'group' : 'account'}{rows.length === 1 ? '' : 's'} shown{groupSimilar ? ` · ${int(data.accounts.length)} accounts merged by company name` : ''}.{data.truncated ? ' Too many accounts to list them all, so the smallest are left out.' : ''}{' '}
+            Revenue = House Acct Charge billed at MW19 on tickets with a lube service.
+            {data.excluded && data.excluded.tickets > 0 && ` Left out: ${int(data.excluded.tickets)} wash-only charge${data.excluded.tickets === 1 ? '' : 's'} (${usd(data.excluded.revenue)}) in these dates.`}
+            {data.washOnLube && data.washOnLube.tickets > 0 && ` ${int(data.washOnLube.tickets)} lube ticket${data.washOnLube.tickets === 1 ? '' : 's'} also had a wash (${usd(data.washOnLube.revenue)} of wash), which stays in the totals.`}
           </p>
 
           {/* Table */}

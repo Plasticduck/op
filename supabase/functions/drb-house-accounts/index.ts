@@ -6,6 +6,12 @@
 // is stored negative, so revenue = -SUM(AMT). Tender lines carry FLAGS = -32768,
 // so FLAGS is NOT filtered.
 //
+// Lube only: a charge counts only when its ticket has at least one lube line (item
+// report category branch 001003, the same lube branch lube-stats counts). Tickets
+// with only washes (or anything else) are left out; `excluded` reports how many and
+// how much for the chosen dates. A counted ticket keeps its whole charge, so
+// `washOnLube` reports wash dollars (branch 001001) that ride along on lube tickets.
+//
 // Returns per-account revenue for a chosen period and a compare period, with %
 // change, visits, average ticket, last visit, and new/lapsed flags, plus a
 // rolled-up summary. The compare period is whatever the caller sends; without one
@@ -83,21 +89,67 @@ const nameOf = (first: unknown, last: unknown, id: unknown): string =>
 // with all non-alphanumerics stripped so spacing/punctuation variants collapse.
 const normCompany = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '')
 
-// One period's per-account charge aggregate, keyed by CUSTOMER OBJID.
-async function periodAccounts(base: string, cookie: string, startTs: string, endTs: string) {
+// The ticket (alias s) has at least one lube line.
+const HAS_LUBE =
+  `EXISTS (SELECT 1 FROM SALEITEMS li ` +
+  `JOIN ITEM lit ON lit.OBJID = li.ITEM ` +
+  `JOIN ITEMRPTCATEGORY lrc ON lrc.OBJID = lit.REPORTCATEGORY ` +
+  `WHERE li.SITE = s.SITE AND li.SALEID = s.OBJID AND lrc.BRANCH STARTING WITH '001003')`
+
+// One period's per-account charge aggregate (lube tickets only), keyed by CUSTOMER
+// OBJID. custom_query returns at most 1,000 rows, and a long range has more
+// accounts than that, so it pages with FIRST/SKIP (highest revenue first, OBJID
+// breaking ties so pages don't overlap) until a short page. MAX_PAGES bounds it.
+const PAGE = 1000
+const MAX_PAGES = 20
+async function periodAccounts(base: string, cookie: string, startTs: string, endTs: string): Promise<{ rows: Any[][]; truncated: boolean }> {
+  const rows: Any[][] = []
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const sql =
+      `SELECT FIRST ${PAGE} SKIP ${rows.length} c.OBJID, TRIM(c.FIRSTNAME), TRIM(c.LASTNAME), TRIM(c.MAINPHONE), ` +
+      `COUNT(DISTINCT s.OBJID), SUM(si.AMT), MAX(s.LOGDATE) ` +
+      `FROM SALE s ` +
+      `JOIN SALEITEMS si ON si.SITE = s.SITE AND si.SALEID = s.OBJID ` +
+      `JOIN CUSTOMERCODE cc ON cc.OBJID = s.CUSTOMERCODE ` +
+      `JOIN CUSTOMER c ON c.OBJID = cc.CUSTOMER ` +
+      `WHERE s.SITE = ${LUBE_SITE} AND si.ITEM = ${HOUSE_CHARGE_ITEM} ` +
+      `AND s.LOGDATE >= '${startTs}' AND s.LOGDATE < '${endTs}' AND ${HAS_LUBE} ` +
+      `GROUP BY c.OBJID, TRIM(c.FIRSTNAME), TRIM(c.LASTNAME), TRIM(c.MAINPHONE) ` +
+      `ORDER BY SUM(si.AMT) ASC, c.OBJID ASC` // AMT is negative: most negative = highest revenue
+    const res = await runSql(base, cookie, sql)
+    const got = res.rows ?? []
+    rows.push(...got)
+    // A full page (or the server saying it cut rows) means there may be more.
+    if (got.length === 0 || (got.length < PAGE && !res.truncated)) return { rows, truncated: false }
+  }
+  return { rows, truncated: true }
+}
+
+// House charges left out for having no lube line: tickets and dollars.
+async function excludedCharges(base: string, cookie: string, startTs: string, endTs: string) {
   const sql =
-    `SELECT c.OBJID, TRIM(c.FIRSTNAME), TRIM(c.LASTNAME), TRIM(c.MAINPHONE), ` +
-    `COUNT(DISTINCT s.OBJID), SUM(si.AMT), MAX(s.LOGDATE) ` +
+    `SELECT COUNT(DISTINCT s.OBJID), SUM(si.AMT) ` +
     `FROM SALE s ` +
     `JOIN SALEITEMS si ON si.SITE = s.SITE AND si.SALEID = s.OBJID ` +
-    `JOIN CUSTOMERCODE cc ON cc.OBJID = s.CUSTOMERCODE ` +
-    `JOIN CUSTOMER c ON c.OBJID = cc.CUSTOMER ` +
     `WHERE s.SITE = ${LUBE_SITE} AND si.ITEM = ${HOUSE_CHARGE_ITEM} ` +
-    `AND s.LOGDATE >= '${startTs}' AND s.LOGDATE < '${endTs}' ` +
-    `GROUP BY c.OBJID, TRIM(c.FIRSTNAME), TRIM(c.LASTNAME), TRIM(c.MAINPHONE) ` +
-    `ORDER BY SUM(si.AMT) ASC` // most negative (highest revenue) first; keeps the top within the 1000-row cap
-  const res = await runSql(base, cookie, sql)
-  return res
+    `AND s.LOGDATE >= '${startTs}' AND s.LOGDATE < '${endTs}' AND NOT ${HAS_LUBE}`
+  const r = (await runSql(base, cookie, sql)).rows?.[0] ?? []
+  return { tickets: Math.round(num(r[0])), revenue: Math.round(-num(r[1]) * 100) / 100 }
+}
+
+// Wash dollars on house-charged lube tickets (they stay in the totals).
+async function washOnLubeTickets(base: string, cookie: string, startTs: string, endTs: string) {
+  const sql =
+    `SELECT COUNT(DISTINCT s.OBJID), SUM(wi.AMT) ` +
+    `FROM SALE s ` +
+    `JOIN SALEITEMS wi ON wi.SITE = s.SITE AND wi.SALEID = s.OBJID ` +
+    `JOIN ITEM wit ON wit.OBJID = wi.ITEM ` +
+    `JOIN ITEMRPTCATEGORY wrc ON wrc.OBJID = wit.REPORTCATEGORY ` +
+    `WHERE s.SITE = ${LUBE_SITE} AND wrc.BRANCH STARTING WITH '001001' ` +
+    `AND s.LOGDATE >= '${startTs}' AND s.LOGDATE < '${endTs}' AND ${HAS_LUBE} ` +
+    `AND EXISTS (SELECT 1 FROM SALEITEMS hi WHERE hi.SITE = s.SITE AND hi.SALEID = s.OBJID AND hi.ITEM = ${HOUSE_CHARGE_ITEM})`
+  const r = (await runSql(base, cookie, sql)).rows?.[0] ?? []
+  return { tickets: Math.round(num(r[0])), revenue: Math.round(num(r[1]) * 100) / 100 }
 }
 
 Deno.serve(async (req) => {
@@ -142,13 +194,18 @@ Deno.serve(async (req) => {
   const priorStartTs = `${priorStart} 00:00:00`
   const priorEndTs = `${addDays(priorEnd, 1)} 00:00:00`
 
-  let curRes: SqlResult, priorRes: SqlResult
+  let curRes: { rows: Any[][]; truncated: boolean }, priorRes: { rows: Any[][]; truncated: boolean }
+  let excluded: { tickets: number; revenue: number } | null = null
+  let washOnLube: { tickets: number; revenue: number } | null = null
   let cookie: string
   try {
     cookie = await login(base, password)
-    ;[curRes, priorRes] = await Promise.all([
+    // The two notes are extras: if either query fails the page still loads.
+    ;[curRes, priorRes, excluded, washOnLube] = await Promise.all([
       periodAccounts(base, cookie, curStartTs, curEndTs),
       periodAccounts(base, cookie, priorStartTs, priorEndTs),
+      excludedCharges(base, cookie, curStartTs, curEndTs).catch(() => null),
+      washOnLubeTickets(base, cookie, curStartTs, curEndTs).catch(() => null),
     ])
   } catch (e) {
     return json({ error: 'query_failed', message: e instanceof Error ? e.message : String(e) }, 502, origin)
@@ -220,6 +277,9 @@ Deno.serve(async (req) => {
     summary,
     accounts,
     truncated: !!(curRes.truncated || priorRes.truncated),
-    note: 'Revenue = House Acct Charge tender (item 4309) at MW19. Employee charges and account payments are excluded.',
+    lubeOnly: true,
+    excluded,
+    washOnLube,
+    note: 'Revenue = House Acct Charge tender (item 4309) at MW19 on tickets with a lube service (branch 001003). Wash-only tickets, employee charges and account payments are excluded.',
   }, 200, origin)
 })

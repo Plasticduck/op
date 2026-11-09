@@ -41,6 +41,12 @@ export type HouseAccountsResult = {
   }
   accounts: HouseAccount[]
   truncated: boolean
+  // Only tickets with a lube service count. `excluded` = house charges left out for
+  // having no lube line; `washOnLube` = wash dollars on counted lube tickets. Both
+  // are for the chosen dates, and null if that query failed.
+  lubeOnly?: boolean
+  excluded?: { tickets: number; revenue: number } | null
+  washOnLube?: { tickets: number; revenue: number } | null
   note?: string
   error?: string
   message?: string
