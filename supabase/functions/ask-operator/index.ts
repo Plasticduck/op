@@ -9,13 +9,19 @@
 //                          through the site-performance function and scoped to the
 //                          sites the caller can see. Only offered to owner/manager
 //                          on accounts with site performance enabled.
+//   flexwash_call / flexwash_describe — every read endpoint of the FlexWash
+//                          partner API, through the company key, for owner/manager
+//                          on an account with FlexWash sites. Managers are kept to
+//                          their own FlexWash car washes (see flexwash.ts).
 //
 // Secrets required (set via `supabase secrets set`):
 //   ANTHROPIC_API_KEY   — Claude API key (function returns 503 'no_key' if absent)
+//   FLEXWASH_CLIENT_ID / FLEXWASH_CLIENT_SECRET — FlexWash company key (FlexWash tools are left out without them)
 // Auto-provided by the platform: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import Anthropic from 'npm:@anthropic-ai/sdk'
+import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexPrompt, flexUserNote, type FlexAccess } from './flexwash.ts'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
 // Safety cap on tool-use rounds per question. A real diagnosis ("why were cars
@@ -278,7 +284,10 @@ const TOOL_DETAIL: Record<string, string> = {
   query_dashboard: 'Comparing every site on the dashboard',
   present_choices: 'Putting some options together',
   build_report: 'Building your report',
+  flexwash_describe: 'Checking a FlexWash report',
+  flexwash_call: 'Pulling FlexWash data',
 }
+const DATA_TOOLS = new Set(['run_sql', 'get_site_performance', 'query_dashboard', 'flexwash_describe', 'flexwash_call'])
 
 // First run of digits in a site name: "MightyWash 001" -> 1, "Mighty Wash #24" -> 24.
 function siteNum(name: unknown): number | null {
@@ -446,6 +455,32 @@ Deno.serve(async (req) => {
     )
   }
 
+  // FlexWash: the same owner/manager gate, on an account with FlexWash sites and
+  // the company key set. Owners see every FlexWash car wash; a manager only the
+  // ones at their sites. Sites are labelled with their Operator location name.
+  let flexAccess: FlexAccess | null = null
+  if (perfAvailable && Deno.env.get('FLEXWASH_CLIENT_ID') && Deno.env.get('FLEXWASH_CLIENT_SECRET')) {
+    const [{ data: fsites }, { data: alocs }] = await Promise.all([
+      svc.from('flexwash_sites').select('site_number, car_wash_id').eq('account_id', profile.account_id).eq('active', true).order('site_number'),
+      svc.from('locations').select('name').eq('account_id', profile.account_id).eq('archived', false),
+    ])
+    const labelByNum = new Map<number, string>()
+    for (const l of alocs ?? []) {
+      const n = siteNum(l.name)
+      if (n != null && !labelByNum.has(n)) labelByNum.set(n, l.name as string)
+    }
+    const sites = (fsites ?? [])
+      .filter((s) => allowedNumbers == null || allowedNumbers.has(s.site_number as number))
+      .map((s) => ({
+        carWashId: String(s.car_wash_id),
+        siteNumber: s.site_number as number,
+        label: labelByNum.get(s.site_number as number) ?? `Site ${s.site_number}`,
+      }))
+    if (sites.length) {
+      flexAccess = { sites, all: profile.role === 'owner', noPay: profile.role_category === 'corporate_display' }
+    }
+  }
+
   let body: {
     question?: string
     history?: { role: 'user' | 'assistant'; content: string }[]
@@ -466,6 +501,8 @@ Deno.serve(async (req) => {
   const tools = perfAvailable
     ? [RUN_SQL_TOOL, PERF_TOOL, QUERY_DASHBOARD_TOOL, PRESENT_CHOICES_TOOL, BUILD_REPORT_TOOL]
     : [RUN_SQL_TOOL, PRESENT_CHOICES_TOOL, BUILD_REPORT_TOOL]
+  const flex = flexAccess ? new FlexWash(svc, flexAccess) : null
+  if (flex) tools.push(FLEX_DESCRIBE_TOOL, FLEX_CALL_TOOL)
 
   const messages: Anthropic.MessageParam[] = []
   for (const h of (body.history ?? []).slice(-8)) {
@@ -504,10 +541,16 @@ Deno.serve(async (req) => {
         max_tokens: MAX_TOKENS,
         system: [
           { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
+          // The FlexWash catalog is the same for every Admin (and for every
+          // manager), so it caches as its own block.
+          ...(flexAccess
+            ? [{ type: 'text' as const, text: flexPrompt(flexAccess.all), cache_control: { type: 'ephemeral' as const } }]
+            : []),
           {
             type: 'text',
             text:
               `Today is ${today}. Answer for this user's data only. ${perfNote}${restrictedNote}` +
+              (flexAccess ? ` ${flexUserNote(flexAccess)}` : '') +
               (finalRound
                 ? ' You have gathered enough. Give your best final answer now using the data already returned; do not ask for more.'
                 : ''),
@@ -535,11 +578,7 @@ Deno.serve(async (req) => {
       // Text before a DATA tool is narration — move it to the activity trail.
       // Text before a presentational tool (choices/report) is the real answer
       // (the question, or the report confirmation), so keep it in place.
-      const usedDataTool = resp.content.some(
-        (b) =>
-          b.type === 'tool_use' &&
-          (b.name === 'run_sql' || b.name === 'get_site_performance' || b.name === 'query_dashboard'),
-      )
+      const usedDataTool = resp.content.some((b) => b.type === 'tool_use' && DATA_TOOLS.has(b.name))
       if (usedDataTool) emit({ t: 'preamble' })
 
       messages.push({ role: 'assistant', content: resp.content })
@@ -636,6 +675,43 @@ Deno.serve(async (req) => {
           steps.push(step)
           emit({ t: 'step', step })
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
+          continue
+        }
+
+        if (block.name === 'flexwash_describe' && flex) {
+          const endpoint = String((block.input as { endpoint?: string })?.endpoint ?? '')
+          const step: Step = { tool: 'flexwash_describe' }
+          let content: string
+          try {
+            content = flex.describe(endpoint)
+          } catch (e) {
+            step.error = e instanceof Error ? e.message : String(e)
+            content = `ERROR: ${step.error}`
+          }
+          steps.push(step)
+          emit({ t: 'step', step })
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content, ...(step.error ? { is_error: true } : {}) })
+          continue
+        }
+
+        if (block.name === 'flexwash_call' && flex) {
+          const input = (block.input ?? {}) as { endpoint?: string; input?: unknown }
+          const endpoint = String(input.endpoint ?? '')
+          const step: Step = { tool: 'flexwash_call', sql: `FlexWash ${endpoint} ${JSON.stringify(input.input ?? {})}` }
+          let content: string
+          try {
+            const r = await flex.call(endpoint, input.input)
+            // Show what was actually sent (a manager's car washes are filled in).
+            step.sql = `FlexWash ${endpoint} ${JSON.stringify(r.input)}`
+            step.rowCount = r.rows
+            content = r.text
+          } catch (e) {
+            step.error = e instanceof Error ? e.message : String(e)
+            content = `ERROR: ${step.error}`
+          }
+          steps.push(step)
+          emit({ t: 'step', step })
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content, ...(step.error ? { is_error: true } : {}) })
           continue
         }
 
