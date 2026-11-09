@@ -1121,6 +1121,7 @@ function SiteBreakdown({ feed, idx }: ViewProps) {
 // ---------- History (from the site_performance_days archive) ----------
 
 const HIST_PRESETS = [
+  { key: 'yesterday', label: 'Yesterday' },
   { key: 'last30', label: 'Last 30' },
   { key: 'last90', label: 'Last 90' },
   { key: 'thismonth', label: 'This month' },
@@ -1144,6 +1145,7 @@ function histPreset(key: string): [string, string] {
   const endOfMonth = (yy: number, mm: number) => ymd(new Date(yy, mm + 1, 0))
   const back = (n: number) => { const s = new Date(now); s.setDate(s.getDate() - n); return ymd(s) }
   switch (key) {
+    case 'yesterday': return [back(1), back(1)]
     case 'last30': return [back(29), today]
     case 'last90': return [back(89), today]
     case 'thismonth': return [startOfMonth(y, m), today]
@@ -1318,7 +1320,7 @@ function History({ idx }: { idx: RegionIndex }) {
     <div className="flex flex-col gap-5">
       <Panel
         title="History"
-        sub={`Per-site totals for ${rangeLabel}`}
+        sub={`Per-site totals for ${rangeLabel}, by region, in site number order`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Seg
@@ -1361,7 +1363,8 @@ function History({ idx }: { idx: RegionIndex }) {
             </>}
           >
             {groups.map((g) => {
-              const rs = [...g.items].sort((a, b) => (b.cph ?? -1) - (a.cph ?? -1))
+              // groupByRegion keeps region order and lists sites by number within each.
+              const rs = g.items
               const cars = sum(rs, (r) => r.cars)
               const hours = sum(rs, (r) => r.hours)
               const sales = sum(rs, (r) => r.sales)
