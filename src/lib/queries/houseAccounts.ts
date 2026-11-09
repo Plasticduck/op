@@ -1,8 +1,8 @@
 import { supabase } from '@/lib/supabase'
 
 // House Account activity for MW19 (DRB Lube). The drb-house-accounts edge function
-// returns per-account charge revenue for a period vs. the preceding equal period,
-// with % change and new/lapsed flags. Credentials live server-side (MW mgr+ gated).
+// returns per-account charge revenue for a period vs. a compare period (by default
+// the preceding equal period), with % change and new/lapsed flags. Credentials live server-side (MW mgr+ gated).
 
 export type HouseAccount = {
   customerId: string
@@ -46,5 +46,9 @@ export type HouseAccountsResult = {
   message?: string
 }
 
-export const houseAccounts = (start: string, end: string) =>
-  supabase.functions.invoke<HouseAccountsResult>('drb-house-accounts', { body: { start, end } })
+// compareStart/compareEnd pick the period to compare against. Leave them out for
+// the period just before, the same length.
+export const houseAccounts = (start: string, end: string, compareStart?: string, compareEnd?: string) =>
+  supabase.functions.invoke<HouseAccountsResult>('drb-house-accounts', {
+    body: compareStart && compareEnd ? { start, end, compareStart, compareEnd } : { start, end },
+  })

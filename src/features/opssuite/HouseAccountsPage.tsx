@@ -1,38 +1,183 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Building2, Download, Search, ArrowUpDown, TrendingUp, TrendingDown, ChevronDown } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type Ref } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Building2, Download, Search, ArrowUpDown, TrendingUp, TrendingDown, ChevronDown, CalendarRange } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import { exportExcel, type ExportColumn } from '@/lib/opsExport'
 import { houseAccounts, type HouseAccountsResult, type HouseAccount } from '@/lib/queries/houseAccounts'
 
 // House Account Activity for MW19 (DRB Lube). Charge-account (fleet/commercial)
-// revenue per account for a period vs. the preceding equal-length period.
+// revenue per account for any dates, compared with the period before, the same
+// dates last year, or any other dates. The choice lives in the URL
+// (?start&end&vs&vsStart&vsEnd) so a view can be bookmarked or shared.
 
-type RangeKey = 'd30' | 'mtd' | 'lastmonth' | 'd90' | 'ytd' | 'lastyear'
-const RANGES: { key: RangeKey; label: string }[] = [
+type PresetKey = 'd30' | 'mtd' | 'lastmonth' | 'd90' | 'ytd' | 'prevyear'
+const PRESETS: { key: PresetKey; label: string }[] = [
   { key: 'd30', label: 'Last 30 days' },
   { key: 'mtd', label: 'This month' },
   { key: 'lastmonth', label: 'Last month' },
   { key: 'd90', label: 'Last 90 days' },
   { key: 'ytd', label: 'This year' },
-  { key: 'lastyear', label: 'Last year' },
+  { key: 'prevyear', label: 'Last year' },
 ]
-function rangeDates(key: RangeKey): { start: string; end: string } {
+type CompareMode = 'prior' | 'lastyear' | 'custom'
+type Range = { start: string; end: string; vs: CompareMode; vsStart: string; vsEnd: string }
+
+const pad = (n: number) => String(n).padStart(2, '0')
+// Local calendar date (toISOString would roll to tomorrow in the evening).
+const localIso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const isIso = (s: string | null | undefined): s is string =>
+  !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s + 'T00:00:00Z')) && s >= '2000-01-01'
+const shiftDays = (s: string, n: number) => new Date(Date.parse(s + 'T00:00:00Z') + n * 86400_000).toISOString().slice(0, 10)
+const dayCount = (start: string, end: string) => Math.round((Date.parse(end + 'T00:00:00Z') - Date.parse(start + 'T00:00:00Z')) / 86400_000) + 1
+const yearBack = (s: string) => `${Number(s.slice(0, 4)) - 1}-${s.slice(5) === '02-29' ? '02-28' : s.slice(5)}`
+
+function presetDates(key: PresetKey): { start: string; end: string } {
   const now = new Date()
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
-  if (key === 'lastmonth') {
-    return { start: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)), end: iso(new Date(now.getFullYear(), now.getMonth(), 0)) }
+  const y = now.getFullYear(), m = now.getMonth(), d = now.getDate()
+  const end = localIso(now)
+  if (key === 'lastmonth') return { start: localIso(new Date(y, m - 1, 1)), end: localIso(new Date(y, m, 0)) }
+  if (key === 'prevyear') return { start: `${y - 1}-01-01`, end: `${y - 1}-12-31` }
+  if (key === 'mtd') return { start: localIso(new Date(y, m, 1)), end }
+  if (key === 'ytd') return { start: `${y}-01-01`, end }
+  if (key === 'd90') return { start: localIso(new Date(y, m, d - 89)), end }
+  return { start: localIso(new Date(y, m, d - 29)), end }
+}
+
+// The compare dates for the automatic choices.
+function autoCompare(start: string, end: string, mode: 'prior' | 'lastyear'): { vsStart: string; vsEnd: string } {
+  if (mode === 'lastyear') return { vsStart: yearBack(start), vsEnd: yearBack(end) }
+  return { vsStart: shiftDays(start, -dayCount(start, end)), vsEnd: shiftDays(start, -1) }
+}
+
+function readRange(p: URLSearchParams): Range {
+  const s = p.get('start'), e = p.get('end')
+  const base = isIso(s) && isIso(e) && s <= e ? { start: s, end: e } : presetDates('d30')
+  const vsParam = p.get('vs')
+  const cs = p.get('vsStart'), ce = p.get('vsEnd')
+  if (vsParam === 'custom' && isIso(cs) && isIso(ce) && cs <= ce) return { ...base, vs: 'custom', vsStart: cs, vsEnd: ce }
+  const mode = vsParam === 'lastyear' ? 'lastyear' : 'prior'
+  return { ...base, vs: mode, ...autoCompare(base.start, base.end, mode) }
+}
+
+function writeRange(r: Range): URLSearchParams {
+  const p = new URLSearchParams({ start: r.start, end: r.end })
+  if (r.vs !== 'prior') p.set('vs', r.vs)
+  if (r.vs === 'custom') { p.set('vsStart', r.vsStart); p.set('vsEnd', r.vsEnd) }
+  return p
+}
+
+const shortDate = (s: string, withYear: boolean) =>
+  new Date(s + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(withYear ? { year: 'numeric' } : {}) })
+function fmtRange(start: string, end: string): string {
+  if (start === end) return shortDate(start, true)
+  return `${shortDate(start, start.slice(0, 4) !== end.slice(0, 4))} to ${shortDate(end, true)}`
+}
+const daysLabel = (start: string, end: string) => { const n = dayCount(start, end); return `${n.toLocaleString()} day${n === 1 ? '' : 's'}` }
+
+const chip = (active: boolean) =>
+  cn('rounded-full px-3 py-1 text-sm font-medium transition', active ? 'bg-accent text-white' : 'bg-content border border-border text-ink-muted hover:text-ink')
+
+function DateField({ label, value, onChange, max, inputRef }: {
+  label: string; value: string; onChange: (v: string) => void; max: string; inputRef?: Ref<HTMLInputElement>
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-ink-muted sm:w-36">
+      {label}
+      <Input ref={inputRef} type="date" value={value} max={max} min="2000-01-01" onChange={(e) => onChange(e.target.value)} />
+    </label>
+  )
+}
+
+// Quick picks, then any dates and what to compare them with. Mounted with a key
+// of the applied range, so its fields start fresh after every change.
+function RangePicker({ applied, onApply }: { applied: Range; onApply: (r: Range) => void }) {
+  const [start, setStart] = useState(applied.start)
+  const [end, setEnd] = useState(applied.end)
+  const [vs, setVs] = useState<CompareMode>(applied.vs)
+  const [vsStart, setVsStart] = useState(applied.vsStart)
+  const [vsEnd, setVsEnd] = useState(applied.vsEnd)
+  const fromRef = useRef<HTMLInputElement>(null)
+  const today = localIso(new Date())
+
+  const datesOk = isIso(start) && isIso(end) && start <= end
+  const vsOk = vs !== 'custom' || (isIso(vsStart) && isIso(vsEnd) && vsStart <= vsEnd)
+  const auto = vs !== 'custom' && datesOk ? autoCompare(start, end, vs) : null
+  const next: Range = { start, end, vs, ...(auto ?? { vsStart, vsEnd }) }
+  const changed = next.start !== applied.start || next.end !== applied.end || next.vs !== applied.vs ||
+    next.vsStart !== applied.vsStart || next.vsEnd !== applied.vsEnd
+  const problem = !datesOk ? 'Pick a From date on or before the To date.'
+    : !vsOk ? 'Pick compare dates with From on or before To.' : null
+  const activePreset = PRESETS.find((p) => { const d = presetDates(p.key); return d.start === applied.start && d.end === applied.end })?.key ?? null
+
+  const pickPreset = (key: PresetKey) => {
+    const d = presetDates(key)
+    // Keep the compare choice: custom compare dates stay, the automatic ones follow the new dates.
+    if (vs === 'custom' && vsOk) onApply({ ...d, vs, vsStart, vsEnd })
+    else if (vs === 'custom') onApply({ ...d, vs: applied.vs, ...(applied.vs === 'custom' ? { vsStart: applied.vsStart, vsEnd: applied.vsEnd } : autoCompare(d.start, d.end, applied.vs)) })
+    else onApply({ ...d, vs, ...autoCompare(d.start, d.end, vs) })
   }
-  if (key === 'lastyear') {
-    return { start: iso(new Date(now.getFullYear() - 1, 0, 1)), end: iso(new Date(now.getFullYear() - 1, 11, 31)) }
+  const pickCompare = (mode: CompareMode) => {
+    // Starting custom compare dates from what was being compared keeps the edit small.
+    if (mode === 'custom' && vs !== 'custom' && auto) { setVsStart(auto.vsStart); setVsEnd(auto.vsEnd) }
+    setVs(mode)
   }
-  const end = iso(now)
-  if (key === 'mtd') return { start: iso(new Date(now.getFullYear(), now.getMonth(), 1)), end }
-  if (key === 'ytd') return { start: iso(new Date(now.getFullYear(), 0, 1)), end }
-  if (key === 'd90') return { start: iso(new Date(now.getTime() - 89 * 86400_000)), end }
-  return { start: iso(new Date(now.getTime() - 29 * 86400_000)), end }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-1">
+        {PRESETS.map((p) => (
+          <button key={p.key} type="button" onClick={() => pickPreset(p.key)} className={chip(activePreset === p.key)}>{p.label}</button>
+        ))}
+        <button type="button" onClick={() => { fromRef.current?.focus(); fromRef.current?.showPicker?.() }} className={chip(activePreset === null)}>
+          Custom dates
+        </button>
+      </div>
+
+      <form
+        onSubmit={(e) => { e.preventDefault(); if (!problem && changed) onApply(next) }}
+        className="flex flex-wrap items-end gap-x-5 gap-y-4 rounded-xl border border-border bg-card p-4"
+      >
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+            <CalendarRange className="size-3.5" /> Dates
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <DateField label="From" value={start} onChange={setStart} max={today} inputRef={fromRef} />
+            <DateField label="To" value={end} onChange={setEnd} max={today} />
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">Compare with</div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex w-full flex-col gap-1 text-xs font-medium text-ink-muted sm:w-52">
+              Period
+              <Select value={vs} onChange={(e) => pickCompare(e.target.value as CompareMode)}>
+                <option value="prior">The period before</option>
+                <option value="lastyear">Same dates last year</option>
+                <option value="custom">Other dates I pick</option>
+              </Select>
+            </label>
+            {vs === 'custom' ? (
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+                <DateField label="From" value={vsStart} onChange={setVsStart} max={today} />
+                <DateField label="To" value={vsEnd} onChange={setVsEnd} max={today} />
+              </div>
+            ) : auto ? (
+              <span className="pb-2.5 text-sm text-ink-muted">{fmtRange(auto.vsStart, auto.vsEnd)}</span>
+            ) : null}
+          </div>
+        </div>
+
+        <Button type="submit" disabled={!changed || !!problem}>Apply</Button>
+        {problem && <p className="w-full text-xs text-danger">{problem}</p>}
+      </form>
+    </div>
+  )
 }
 
 const usd = (n: number) => n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -77,7 +222,9 @@ type DisplayRow = HouseAccount & { count: number; members?: HouseAccount[] }
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 export default function HouseAccountsPage() {
-  const [range, setRange] = useState<RangeKey>('d30')
+  const [params, setParams] = useSearchParams()
+  const applied = useMemo(() => readRange(params), [params])
+  const apply = (r: Range) => setParams(writeRange(r), { replace: true })
   const [data, setData] = useState<HouseAccountsResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -89,11 +236,11 @@ export default function HouseAccountsPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const toggleExpand = (id: string) => setExpanded((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
+  const { start, end, vsStart, vsEnd } = applied
   useEffect(() => {
-    const { start, end } = rangeDates(range)
     let alive = true
     setLoading(true); setError(null)
-    houseAccounts(start, end)
+    houseAccounts(start, end, vsStart, vsEnd)
       .then(({ data: d, error: err }) => {
         if (!alive) return
         if (err) throw new Error(err.message)
@@ -103,7 +250,7 @@ export default function HouseAccountsPage() {
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : 'Failed to load.') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [range])
+  }, [start, end, vsStart, vsEnd])
 
   const toggleSort = (k: SortKey) => {
     if (sortKey === k) setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
@@ -170,14 +317,16 @@ export default function HouseAccountsPage() {
       { header: 'Phone', value: (a) => a.phone ?? '' },
       { header: 'Visits', value: (a) => a.visits },
       { header: 'Avg ticket', value: (a) => a.avgTicket },
-      { header: 'Revenue', value: (a) => a.revenue },
-      { header: 'Prior revenue', value: (a) => a.priorRevenue },
+      { header: `Revenue ${start} to ${end}`, value: (a) => a.revenue },
+      { header: 'Compare visits', value: (a) => a.priorVisits },
+      { header: `Compare revenue ${vsStart} to ${vsEnd}`, value: (a) => a.priorRevenue },
       { header: '% change', value: (a) => (a.pctChange == null ? (a.isNew ? 'new' : '') : a.pctChange) },
       { header: 'Last visit', value: (a) => a.lastVisit ?? '' },
       { header: 'Status', value: (a) => (a.isNew ? 'New' : a.isLapsed ? 'Lapsed' : '') },
     ]
-    void exportExcel('mw19-house-accounts', cols, rows)
+    void exportExcel(`mw19-house-accounts-${start}-to-${end}`, cols, rows)
   }
+  const unevenDays = dayCount(start, end) !== dayCount(vsStart, vsEnd)
 
   const s = data?.summary
   const sortHead = (k: SortKey, label: string, right = false) => (
@@ -192,19 +341,16 @@ export default function HouseAccountsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="House Accounts"
-        subtitle="Charge-account (fleet & commercial) activity at MW19 — revenue per account vs. the prior period."
+        subtitle="Charge-account (fleet and commercial) activity at MW19. Revenue per account for any dates, compared with any other dates."
       />
 
       {/* Range */}
-      <div className="flex flex-wrap items-center gap-1">
-        {RANGES.map((r) => (
-          <button key={r.key} type="button" onClick={() => setRange(r.key)}
-            className={cn('rounded-full px-3 py-1 text-sm font-medium transition', range === r.key ? 'bg-accent text-white' : 'bg-content border border-border text-ink-muted hover:text-ink')}>
-            {r.label}
-          </button>
-        ))}
-        {data && <span className="ml-2 text-xs text-ink-subtle">{data.range.start} to {data.range.end} · vs {data.priorRange.start} to {data.priorRange.end}</span>}
-      </div>
+      <RangePicker key={writeRange(applied).toString()} applied={applied} onApply={apply} />
+      <p className="-mt-3 text-sm text-ink-muted">
+        Showing <span className="font-medium text-ink">{fmtRange(start, end)}</span> ({daysLabel(start, end)}), compared with{' '}
+        <span className="font-medium text-ink">{fmtRange(vsStart, vsEnd)}</span> ({daysLabel(vsStart, vsEnd)}).
+        {unevenDays && <span className="text-warn"> The two periods are different lengths, so totals aren't like for like.</span>}
+      </p>
 
       {error && <div className="rounded-md border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>}
 
@@ -214,12 +360,12 @@ export default function HouseAccountsPage() {
         <>
           {/* Summary */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <StatCard label="Revenue" value={usd(s.totalRevenue)} pct={s.revenuePctChange} sub={`prior ${usd(s.priorTotalRevenue)}`} />
-            <StatCard label="Active accounts" value={int(s.activeAccounts)} sub={`prior ${int(s.priorActiveAccounts)}`} />
-            <StatCard label="Visits" value={int(s.totalVisits)} sub={`prior ${int(s.priorTotalVisits)}`} />
-            <StatCard label="Avg ticket" value={usd2(s.avgTicket)} />
-            <StatCard label="New accounts" value={int(s.newAccounts)} sub="no charges prior period" />
-            <StatCard label="Lapsed" value={int(s.lapsedAccounts)} sub="active prior, none now" />
+            <StatCard label="Revenue" value={usd(s.totalRevenue)} pct={s.revenuePctChange} sub={`vs ${usd(s.priorTotalRevenue)}`} />
+            <StatCard label="Active accounts" value={int(s.activeAccounts)} sub={`vs ${int(s.priorActiveAccounts)}`} />
+            <StatCard label="Visits" value={int(s.totalVisits)} sub={`vs ${int(s.priorTotalVisits)}`} />
+            <StatCard label="Avg ticket" value={usd2(s.avgTicket)} sub={s.priorTotalVisits > 0 ? `vs ${usd2(s.priorTotalRevenue / s.priorTotalVisits)}` : undefined} />
+            <StatCard label="New accounts" value={int(s.newAccounts)} sub="no charges in the compare dates" />
+            <StatCard label="Lapsed" value={int(s.lapsedAccounts)} sub="charged in the compare dates, none now" />
           </div>
 
           {/* Controls */}
@@ -244,7 +390,7 @@ export default function HouseAccountsPage() {
           </div>
 
           <p className="-mt-2 text-xs text-ink-subtle">
-            {int(rows.length)} {groupSimilar ? 'group' : 'account'}{rows.length === 1 ? '' : 's'} shown{groupSimilar ? ` · ${int(data.accounts.length)} accounts merged by company name` : ''}.{data.truncated ? ' Showing the top 1,000 by revenue for this range.' : ''} Revenue = House Acct Charge billed at MW19.
+            {int(rows.length)} {groupSimilar ? 'group' : 'account'}{rows.length === 1 ? '' : 's'} shown{groupSimilar ? ` · ${int(data.accounts.length)} accounts merged by company name` : ''}.{data.truncated ? ' Showing the top 1,000 by revenue for these dates.' : ''} Revenue = House Acct Charge billed at MW19.
           </p>
 
           {/* Table */}
@@ -255,7 +401,7 @@ export default function HouseAccountsPage() {
                   {sortHead('name', 'Account')}
                   {sortHead('visits', 'Visits', true)}
                   {sortHead('avgTicket', 'Avg ticket', true)}
-                  <th className="px-3 py-2.5 text-right font-medium">Prior</th>
+                  <th className="px-3 py-2.5 text-right font-medium" title={fmtRange(vsStart, vsEnd)}>Compare</th>
                   {sortHead('revenue', 'Revenue', true)}
                   {sortHead('pctChange', 'Change', true)}
                   <th className="px-3 py-2.5 font-medium">Last visit</th>
@@ -311,7 +457,7 @@ export default function HouseAccountsPage() {
       ) : (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
           <Building2 className="size-8 text-ink-subtle" />
-          <p className="text-sm text-ink-muted">No house-account activity for this range.</p>
+          <p className="text-sm text-ink-muted">No house-account activity for these dates.</p>
         </div>
       )}
     </div>

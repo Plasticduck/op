@@ -6,11 +6,12 @@
 // is stored negative, so revenue = -SUM(AMT). Tender lines carry FLAGS = -32768,
 // so FLAGS is NOT filtered.
 //
-// Returns per-account revenue for a chosen period and the immediately preceding
-// equal-length period, with % change, visits, average ticket, last visit, and
-// new/lapsed flags, plus a rolled-up summary.
+// Returns per-account revenue for a chosen period and a compare period, with %
+// change, visits, average ticket, last visit, and new/lapsed flags, plus a
+// rolled-up summary. The compare period is whatever the caller sends; without one
+// it is the immediately preceding equal-length period.
 //
-// Body: { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }
+// Body: { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', compareStart?: 'YYYY-MM-DD', compareEnd?: 'YYYY-MM-DD' }
 // Auth: owner/manager of the Mighty Wash account, or the service role.
 // Secrets: MW_DASHBOARD_PASSWORD (503 if absent), MW_DASHBOARD_URL (optional).
 
@@ -122,19 +123,24 @@ Deno.serve(async (req) => {
     if (p.account_id !== MW_ACCOUNT) return json({ error: 'unsupported_account' }, 400, origin)
   }
 
-  let body: { start?: unknown; end?: unknown } = {}
+  let body: { start?: unknown; end?: unknown; compareStart?: unknown; compareEnd?: unknown } = {}
   try { body = await req.json() } catch { /* empty */ }
   if (!isDate(body.start) || !isDate(body.end) || body.start > body.end) {
     return json({ error: 'bad_request', message: 'start and end must be YYYY-MM-DD with start <= end.' }, 400, origin)
   }
   const start = body.start as string
   const end = body.end as string
+  const hasCompare = body.compareStart != null || body.compareEnd != null
+  if (hasCompare && (!isDate(body.compareStart) || !isDate(body.compareEnd) || body.compareStart > body.compareEnd)) {
+    return json({ error: 'bad_request', message: 'compareStart and compareEnd must be YYYY-MM-DD with compareStart <= compareEnd.' }, 400, origin)
+  }
   const days = Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 86400_000) + 1)
   const curStartTs = `${start} 00:00:00`
   const curEndTs = `${addDays(end, 1)} 00:00:00`
-  const priorStart = addDays(start, -days)
+  const priorStart = hasCompare ? (body.compareStart as string) : addDays(start, -days)
+  const priorEnd = hasCompare ? (body.compareEnd as string) : addDays(start, -1)
   const priorStartTs = `${priorStart} 00:00:00`
-  const priorEndTs = `${start} 00:00:00`
+  const priorEndTs = `${addDays(priorEnd, 1)} 00:00:00`
 
   let curRes: SqlResult, priorRes: SqlResult
   let cookie: string
@@ -210,7 +216,7 @@ Deno.serve(async (req) => {
     site: LUBE_SITE,
     siteLabel: 'MW19',
     range: { start, end },
-    priorRange: { start: priorStart, end: addDays(start, -1) },
+    priorRange: { start: priorStart, end: priorEnd },
     summary,
     accounts,
     truncated: !!(curRes.truncated || priorRes.truncated),
