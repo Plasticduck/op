@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Route as RouteEl, Routes, useSearchParams } from 'react-router-dom'
 import {
   BadgeCheck,
   ExternalLink,
@@ -7,9 +8,16 @@ import {
   ListChecks,
   Medal,
   Plus,
+  Route,
   Trash2,
+  Users,
   X,
 } from 'lucide-react'
+import { AcademyProvider } from './academy/AcademyProvider'
+import { useAcademy } from './academy/context'
+import { RoadMap } from './academy/RoadMap'
+import { TeamTab } from './academy/TeamTab'
+import AcademyRoutes from './academy/AcademyRoutes'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LocationGate } from '@/components/layout/LocationGate'
 import { Button } from '@/components/ui/Button'
@@ -42,7 +50,7 @@ const inputCls =
 const labelCls = 'mb-1 block text-xs font-medium text-ink-muted'
 
 type Emp = { id: string; first_name: string; last_name: string; user_id: string | null }
-type Tab = 'training' | 'onboarding' | 'certs' | 'badges'
+type Tab = 'roadmap' | 'team' | 'training' | 'onboarding' | 'certs' | 'badges'
 
 // deno-lint style loose rows for the joined selects
 type AssignRow = {
@@ -72,13 +80,93 @@ const TABS: { key: Tab; label: string; icon: typeof GraduationCap }[] = [
   { key: 'badges', label: 'Badges', icon: Medal },
 ]
 
-function Inner({ locationId }: { locationId: string }) {
+// The Academy's Road Map and Team progress tabs, then the original training tabs.
+const ACADEMY_TABS: { key: Tab; label: string; icon: typeof GraduationCap }[] = [
+  { key: 'roadmap', label: 'Road Map', icon: Route },
+  { key: 'team', label: 'Team progress', icon: Users },
+]
+
+export default function TrainingPage() {
+  return (
+    <AcademyProvider>
+      <Routes>
+        <RouteEl path="academy/*" element={<AcademyRoutes />} />
+        <RouteEl path="*" element={<TrainingHome />} />
+      </Routes>
+    </AcademyProvider>
+  )
+}
+
+function TrainingHome() {
   const { profile } = useAuth()
+  const { outline, loading: academyLoading, me } = useAcademy()
   const isManager = profile?.role === 'owner' || profile?.role === 'manager'
   // The Mighty Wash Academy mascot is MW-specific branding, so it only shows for
   // the Mighty Wash account (other tenants keep a plain header).
   const isMightyWash = profile?.account_id === '54f3e299-1f61-4ed2-9921-3d02160b72e6'
-  const [tab, setTab] = useState<Tab>('training')
+  const academyOn = (outline?.levels.length ?? 0) > 0
+  const tabs = [
+    ...(academyOn ? ACADEMY_TABS.filter((t) => t.key === 'roadmap' || me?.leader) : []),
+    ...TABS,
+  ]
+  const [params, setParams] = useSearchParams()
+  const asked = params.get('tab') as Tab | null
+  const tab: Tab = asked && tabs.some((t) => t.key === asked) ? asked : academyOn ? 'roadmap' : 'training'
+  const setTab = (t: Tab) => setParams({ tab: t }, { replace: true })
+  // Until the Academy has loaded we don't know which tab opens first.
+  const waiting = academyLoading
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={isMightyWash ? 'Mighty Wash Academy' : outline?.program?.title && academyOn ? outline.program.title : 'Training'}
+        subtitle={
+          tab === 'roadmap'
+            ? 'Training for every role, with progress saved to each person.'
+            : tab === 'team'
+              ? 'Academy progress for the people at your sites.'
+              : isManager
+                ? 'Training material, new-hire onboarding, and certifications for your team.'
+                : 'Your assigned training, onboarding, and certifications.'
+        }
+        actions={isMightyWash
+          ? <img src="/mw-academy-mascot.png" alt="Mighty Wash Academy" className="h-16 w-auto shrink-0 sm:h-20" />
+          : undefined}
+      />
+
+      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-content p-1">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition',
+              tab === t.key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
+            )}
+          >
+            <t.icon className="size-4" />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {waiting ? (
+        <p className="text-sm text-ink-muted">Loading…</p>
+      ) : tab === 'roadmap' ? (
+        <RoadMap />
+      ) : tab === 'team' ? (
+        <TeamTab />
+      ) : (
+        <LocationGate>{(locationId) => <Inner locationId={locationId} tab={tab} />}</LocationGate>
+      )}
+    </div>
+  )
+}
+
+function Inner({ locationId, tab }: { locationId: string; tab: Tab }) {
+  const { profile } = useAuth()
+  const isManager = profile?.role === 'owner' || profile?.role === 'manager'
 
   const [emps, setEmps] = useState<Emp[]>([])
   const [items, setItems] = useState<TrainingItem[]>([])
@@ -126,35 +214,6 @@ function Inner({ locationId }: { locationId: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        title={isMightyWash ? 'Mighty Wash Academy' : 'Training'}
-        subtitle={
-          isManager
-            ? 'Training material, new-hire onboarding, and certifications for your team.'
-            : 'Your assigned training, onboarding, and certifications.'
-        }
-        actions={isMightyWash
-          ? <img src="/mw-academy-mascot.png" alt="Mighty Wash Academy" className="h-16 w-auto shrink-0 sm:h-20" />
-          : undefined}
-      />
-
-      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-content p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition',
-              tab === t.key ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink',
-            )}
-          >
-            <t.icon className="size-4" />
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : tab === 'training' ? (
@@ -1326,6 +1385,3 @@ function AwardModal({
   )
 }
 
-export default function TrainingPage() {
-  return <LocationGate>{(locationId) => <Inner locationId={locationId} />}</LocationGate>
-}

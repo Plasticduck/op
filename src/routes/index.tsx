@@ -318,7 +318,7 @@ export const router = createBrowserRouter([
           { path: 'timeclock/kiosk', element: mgr(<KioskPage />) },
           { path: 'timesheets', element: mgr(<TimesheetsPage />) },
           { path: 'reviews', element: mgr(<ReviewsPage />) },
-          { path: 'training', element: emp(<TrainingPage />) },
+          { path: 'training/*', element: emp(<TrainingPage />) },
           { path: 'counseling', element: mgr(<CounselingPage />) },
           { path: 'injuries', element: mgr(<InjuriesPage />) },
           { path: 'uniforms', element: emp(<UniformsPage />) },

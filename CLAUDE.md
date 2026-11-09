@@ -89,7 +89,8 @@ src/
                             explorer, bonuses, commissions, goal tracker, fleet map, site visits,
                             per diem, mileage, event pay, capital requests
     people/                 employees, schedule (drag+drop) + public schedule portal,
-                            timeclock (kiosk + geofence/face), timesheets, reviews, training,
+                            timeclock (kiosk + geofence/face), timesheets, reviews, training
+                            (+ training/academy: the native Academy, see docs/academy),
                             counseling, injuries, uniforms, time-off, calendar, breaks
     hr/                     iSolved labor pages: Labor Data, On the Clock, Salaried Labor
     it/                     Issuetrak, IT Field Checklist
@@ -113,7 +114,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0221.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0222.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
