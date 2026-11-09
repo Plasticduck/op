@@ -37,8 +37,8 @@ export default function LessonPage() {
   const multi = level.courses.filter((c) => c.active).length > 1
   const inCourse = course?.lessons.filter((l) => l.active) ?? []
   const crumb = multi && course
-    ? `Level ${level.num} · ${course.title} · Lesson ${inCourse.findIndex((l) => l.id === meta.id) + 1} of ${inCourse.length}`
-    : `Level ${level.num} · ${level.short_title} · Lesson ${idx + 1} of ${list.length}`
+    ? `${level.name} · ${course.title} · Lesson ${inCourse.findIndex((l) => l.id === meta.id) + 1} of ${inCourse.length}`
+    : `${level.name} · ${level.short_title} · Lesson ${idx + 1} of ${list.length}`
   const quiz = (questions ?? []).filter((q) => q.lesson_id === meta.id && q.kind === 'quiz')
 
   return (
@@ -103,14 +103,14 @@ export default function LessonPage() {
         {prev ? (
           <LinkButton variant="secondary" to={lessonPath(level.key, prev.key)}>← {prev.title}</LinkButton>
         ) : (
-          <LinkButton variant="secondary" to={levelPath(level.key)}>← Level overview</LinkButton>
+          <LinkButton variant="secondary" to={levelPath(level.key)}>← {level.track.unit_label} overview</LinkButton>
         )}
         {next ? (
           <LinkButton variant={done?.done_at ? 'primary' : 'secondary'} to={lessonPath(level.key, next.key)}>{next.title} →</LinkButton>
         ) : level.scenarioCount > 0 ? (
           <LinkButton variant={done?.done_at ? 'primary' : 'secondary'} to={stepPath(level.key, 'scenarios')}>Scenario practice →</LinkButton>
         ) : (
-          <LinkButton variant={done?.done_at ? 'primary' : 'secondary'} to={stepPath(level.key, 'assessment')}>Level assessment →</LinkButton>
+          <LinkButton variant={done?.done_at ? 'primary' : 'secondary'} to={stepPath(level.key, 'assessment')}>{level.track.unit_label} assessment →</LinkButton>
         )}
       </div>
     </article>

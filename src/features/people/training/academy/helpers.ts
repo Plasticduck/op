@@ -16,6 +16,7 @@ export function nextStep(level: OutlineLevel, p: Progress | null): string {
   const s = levelStatus(level, p)
   if (level.scenarioCount > 0 && !s.scenarios) return stepPath(level.key, 'scenarios')
   if (level.assessmentCount > 0 && !s.passed) return stepPath(level.key, 'assessment')
+  if (s.skillsTotal > 0 && s.skillsDone < s.skillsTotal) return stepPath(level.key, 'skills')
   if (!s.signed) return stepPath(level.key, 'signoff')
   return levelPath(level.key)
 }

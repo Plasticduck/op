@@ -11,7 +11,7 @@ export function ScenariosPage() {
   const last = progress?.scenarios.get(level.id)?.[0]
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <Eyebrow tone="red">Level {level.num} · {level.short_title} · Apply it</Eyebrow>
+      <Eyebrow tone="red">{level.name} · {level.short_title} · Apply it</Eyebrow>
       <h2 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">Scenario practice</h2>
       <p className="text-[15px] leading-relaxed text-ink-muted">
         {qs.length || level.scenarioCount} situations you will actually face in this role. Choose what you would do, then check against
@@ -40,9 +40,9 @@ export function ScenariosPage() {
         />
       )}
       <div className="mt-6 flex flex-wrap justify-between gap-2">
-        <LinkButton variant="secondary" to={levelPath(level.key)}>← Level overview</LinkButton>
+        <LinkButton variant="secondary" to={levelPath(level.key)}>← {level.track.unit_label} overview</LinkButton>
         {level.assessmentCount > 0 ? (
-          <LinkButton variant={last ? 'primary' : 'secondary'} to={stepPath(level.key, 'assessment')}>Level assessment →</LinkButton>
+          <LinkButton variant={last ? 'primary' : 'secondary'} to={stepPath(level.key, 'assessment')}>{level.track.unit_label} assessment →</LinkButton>
         ) : (
           <LinkButton variant={last ? 'primary' : 'secondary'} to={stepPath(level.key, 'signoff')}>Sign-off →</LinkButton>
         )}
@@ -60,8 +60,8 @@ export function AssessmentPage() {
   const left = level.lessons.filter((l) => !progress?.lessons.get(l.id)?.done_at).length
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <Eyebrow tone="red">Level {level.num} · {level.short_title} · Apply it</Eyebrow>
-      <h2 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">Level assessment</h2>
+      <Eyebrow tone="red">{level.name} · {level.short_title} · Apply it</Eyebrow>
+      <h2 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">{level.track.unit_label} assessment</h2>
       <p className="text-[15px] leading-relaxed text-ink-muted">
         {qs.length || level.assessmentCount} questions from this level. Pass mark is {level.pass_pct}%.{' '}
         {left
@@ -102,11 +102,15 @@ export function AssessmentPage() {
         {level.scenarioCount > 0 ? (
           <LinkButton variant="secondary" to={stepPath(level.key, 'scenarios')}>← Scenario practice</LinkButton>
         ) : (
-          <LinkButton variant="secondary" to={levelPath(level.key)}>← Level overview</LinkButton>
+          <LinkButton variant="secondary" to={levelPath(level.key)}>← {level.track.unit_label} overview</LinkButton>
         )}
-        <LinkButton variant={passed ? 'primary' : 'secondary'} to={stepPath(level.key, 'signoff')}>
-          {level.ack_formal ? 'Acknowledgment' : 'Sign-off'} →
-        </LinkButton>
+        {level.skills.length > 0 ? (
+          <LinkButton variant={passed ? 'primary' : 'secondary'} to={stepPath(level.key, 'skills')}>Hands-on skills →</LinkButton>
+        ) : (
+          <LinkButton variant={passed ? 'primary' : 'secondary'} to={stepPath(level.key, 'signoff')}>
+            {level.ack_formal ? 'Acknowledgment' : 'Sign-off'} →
+          </LinkButton>
+        )}
       </div>
     </div>
   )

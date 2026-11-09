@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, CheckCheck, Download, Search, UserPlus } from 'lucide-react'
+import { Check, CheckCheck, Download, Lock, Search, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useLocations } from '@/lib/locations'
-import { academy, teamLevelPct, teamLevelUnits, type TeamRow } from '@/lib/queries/academy'
+import { academy, teamCertified, teamLevelPct, teamLevelUnits, type TeamRow } from '@/lib/queries/academy'
 import { cn } from '@/lib/utils'
 import { ACADEMY_BASE, useAcademy } from './context'
 import { TraineePicker } from './TraineePicker'
@@ -48,6 +48,8 @@ export function TeamTab() {
   useEffect(() => { void load() }, [load])
 
   const levels = useMemo(() => outline?.levels ?? [], [outline])
+  const tracks = outline?.tracks ?? []
+  const all = outline?.allLevels ?? []
   const keys = levels.map((l) => l.key)
   const siteName = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations])
   const shown = (rows ?? []).filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase()))
@@ -71,13 +73,13 @@ export function TeamTab() {
   }
 
   const exportCsv = () => {
-    const head = ['Name', 'Login', 'Site', 'Role', 'Overall %', ...levels.flatMap((l) => [`L${l.num} %`, `L${l.num} assessment`, `L${l.num} signed`, `L${l.num} verified`]), 'Last active']
+    const head = ['Name', 'Login', 'Site', 'Role', 'Overall %', ...levels.flatMap((l) => [`${l.code} %`, `${l.code} assessment`, `${l.code} signed`, `${l.code} verified`, `${l.code} certified`]), 'Last active']
     const lines = shown.map((r) => [
       r.name, r.is_user ? 'yes' : 'no', r.location_id ? siteName.get(r.location_id) ?? '' : '',
       levels.find((l) => l.key === r.level_key)?.title ?? '', String(overall(r, keys)),
       ...levels.flatMap((l) => {
         const t = r.levels[l.key]
-        return [String(teamLevelPct(t)), t?.best != null ? String(t.best) : '', t?.signed_on ?? '', t?.verified ? 'yes' : '']
+        return [String(teamLevelPct(t)), t?.best != null ? String(t.best) : '', t?.signed_on ?? '', t?.verified ? 'yes' : '', teamCertified(r, l, all).certified ? 'yes' : '']
       }),
       r.last_active_at ? r.last_active_at.slice(0, 10) : '',
     ])
@@ -118,7 +120,7 @@ export function TeamTab() {
                 <li key={t.signoff_id!} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                   <span className="min-w-0">
                     <b className="text-ink">{row.name}</b>
-                    <span className="text-ink-muted"> · Level {level.num} {level.short_title} · signed {fmtDate(t.signed_on)}</span>
+                    <span className="text-ink-muted"> · {level.short_title} · signed {fmtDate(t.signed_on)}</span>
                   </span>
                   {own ? (
                     <span className="text-xs text-ink-subtle">Someone else verifies yours</span>
@@ -147,12 +149,19 @@ export function TeamTab() {
           <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
-                <th className="px-3 py-2 font-medium">Person</th>
-                <th className="px-3 py-2 font-medium">Site</th>
-                <th className="px-3 py-2 font-medium">Role</th>
-                <th className="px-3 py-2 font-medium">Overall</th>
-                {levels.map((l) => <th key={l.id} className="px-2 py-2 text-center font-medium" title={l.title}>L{l.num}</th>)}
-                <th className="px-3 py-2 font-medium">Last active</th>
+                <th rowSpan={2} className="px-3 py-2 font-medium">Person</th>
+                <th rowSpan={2} className="px-3 py-2 font-medium">Site</th>
+                <th rowSpan={2} className="px-3 py-2 font-medium">Role</th>
+                <th rowSpan={2} className="px-3 py-2 font-medium">Overall</th>
+                {tracks.map((t) => (
+                  <th key={t.id} colSpan={t.levels.length} className="border-l border-border px-2 pt-2 text-center font-medium normal-case tracking-normal">{t.title}</th>
+                ))}
+                <th rowSpan={2} className="border-l border-border px-3 py-2 font-medium">Last active</th>
+              </tr>
+              <tr>
+                {levels.map((l, i) => (
+                  <th key={l.id} className={cn('px-2 pb-2 text-center font-medium', (i === 0 || levels[i - 1].track_id !== l.track_id) && 'border-l border-border')} title={l.title}>{l.code}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -176,24 +185,30 @@ export function TeamTab() {
                         <b className="tabular-nums text-ink">{pct}%</b>
                       </div>
                     </td>
-                    {levels.map((l) => {
+                    {levels.map((l, i) => {
                       const t = r.levels[l.key]
                       const p = teamLevelPct(t)
+                      const c = teamCertified(r, l, all)
+                      // Signed, but not certified yet: parts unfinished, or a required level (GM needs T1).
+                      const held = !!t?.signoff_id && !c.certified
+                      const note = held
+                        ? c.missing.length ? `, signed, waiting on ${c.missing.map((m) => m.short_title).join(', ')}` : ', signed, parts still open'
+                        : t?.signoff_id ? (t.verified ? ', certified and verified' : ', certified') : ''
                       return (
-                        <td key={l.id} className="px-2 py-2 text-center">
+                        <td key={l.id} className={cn('px-2 py-2 text-center', (i === 0 || levels[i - 1].track_id !== l.track_id) && 'border-l border-border')}>
                           <span
-                            title={`${l.title}: ${p}%${t?.best != null ? `, assessment ${t.best}%` : ''}${t?.signoff_id ? (t.verified ? ', verified' : ', signed') : ''}`}
+                            title={`${l.title}: ${p}%${t?.best != null ? `, assessment ${t.best}%` : ''}${t?.skills_total ? `, skills ${t.skills_done}/${t.skills_total}` : ''}${note}`}
                             className={cn(
                               'inline-flex h-6 min-w-9 items-center justify-center rounded-md px-1 text-xs font-semibold tabular-nums',
-                              t?.verified ? 'bg-ok text-white' : t?.signoff_id ? 'bg-ok-soft text-ok' : p > 0 ? 'bg-accent-soft text-accent' : 'bg-content text-ink-subtle',
+                              held ? 'bg-warn-soft text-warn' : t?.verified ? 'bg-ok text-white' : t?.signoff_id ? 'bg-ok-soft text-ok' : p > 0 ? 'bg-accent-soft text-accent' : 'bg-content text-ink-subtle',
                             )}
                           >
-                            {t?.verified ? <CheckCheck className="size-3.5" /> : t?.signoff_id ? <Check className="size-3.5" /> : `${p}%`}
+                            {held ? (c.missing.length ? <Lock className="size-3.5" /> : `${p}%`) : t?.verified ? <CheckCheck className="size-3.5" /> : t?.signoff_id ? <Check className="size-3.5" /> : `${p}%`}
                           </span>
                         </td>
                       )
                     })}
-                    <td className="px-3 py-2 text-ink-muted">{fmtDate(r.last_active_at)}</td>
+                    <td className="border-l border-border px-3 py-2 text-ink-muted">{fmtDate(r.last_active_at)}</td>
                   </tr>
                 )
               })}
@@ -201,7 +216,7 @@ export function TeamTab() {
           </table>
         </div>
       )}
-      <p className="text-xs text-ink-subtle">One check means signed off; two checks means a leader verified it. Click a person for their full record.</p>
+      <p className="text-xs text-ink-subtle">One check means certified; two checks means a leader also verified the sign-off. A lock means signed but waiting on a required level (a General Manager needs T1 Maintenance). Click a person for their full record.</p>
       {picking && <TraineePicker onClose={() => setPicking(false)} onStarted={() => navigate('/app/training')} />}
     </div>
   )

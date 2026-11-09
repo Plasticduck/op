@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowDown, ArrowUp, Plus } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/auth'
 import { academy, type EditQuestion, type OutlineCourse, type OutlineLevel } from '@/lib/queries/academy'
@@ -15,12 +15,15 @@ export default function LevelEditor() {
   const { level: find } = useAcademy()
   const level = find(levelKey)
   if (!level) return <div className="flex flex-col gap-3"><BackLink to={EDIT_BASE}>Edit the Academy</BackLink><p className="text-sm text-ink-muted">Level not found.</p></div>
-  return <Editor key={level.id + level.updated_at} level={level} />
+  return <Editor key={level.id + level.updated_at + level.requires.join()} level={level} />
 }
 
 function Editor({ level }: { level: OutlineLevel }) {
-  const { reloadOutline, toast } = useAcademy()
+  const { outline, reloadOutline, toast } = useAcademy()
   const { profile } = useAuth()
+  const unit = level.track.unit_label
+  const [skills, setSkills] = useState<string[]>(level.skills)
+  const [requires, setRequires] = useState<string[]>(level.requires)
   const [f, setF] = useState({
     title: level.title, short_title: level.short_title, role_text: level.role_text ?? '', blurb: level.blurb ?? '', why: level.why ?? '',
     draft: level.draft, pass_pct: String(level.pass_pct), ack_formal: level.ack_formal, ack_title: level.ack_title ?? '', ack_statement: level.ack_statement,
@@ -38,15 +41,17 @@ function Editor({ level }: { level: OutlineLevel }) {
     setBusy(true)
     try {
       const pass = Math.round(Number(f.pass_pct))
-      if (!f.title.trim() || !f.short_title.trim()) throw new Error('Give the level a name and a short name')
+      if (!f.title.trim() || !f.short_title.trim()) throw new Error(`Give the ${unit.toLowerCase()} a name and a short name`)
       if (!(pass >= 1 && pass <= 100)) throw new Error('Pass mark is a percent from 1 to 100')
       await academy.saveLevel(level.id, {
         title: f.title.trim(), short_title: f.short_title.trim(), role_text: f.role_text.trim() || null, blurb: f.blurb.trim() || null,
         why: f.why.trim() || null, draft: f.draft, pass_pct: pass, ack_formal: f.ack_formal, ack_title: f.ack_title.trim() || null,
-        ack_statement: f.ack_statement.trim(), updated_by: profile?.id ?? null, ...patch,
+        ack_statement: f.ack_statement.trim(), skills: [...new Set(skills.map((x) => x.trim()).filter(Boolean))],
+        updated_by: profile?.id ?? null, ...patch,
       })
+      if (!patch && profile) await academy.setPrereqs(profile.account_id, level.id, requires)
       await reloadOutline()
-      toast(patch?.active === false ? 'Level retired' : patch?.active ? 'Level restored' : 'Level saved')
+      toast(patch?.active === false ? `${unit} retired` : patch?.active ? `${unit} restored` : `${unit} saved`)
     } catch (e) {
       toast(errText(e))
     } finally {
@@ -73,10 +78,10 @@ function Editor({ level }: { level: OutlineLevel }) {
     <div className="mx-auto flex max-w-4xl flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <BackLink to={EDIT_BASE}>Edit the Academy</BackLink>
-        <Link to={levelPath(level.key)} className="text-sm text-accent hover:underline">View level</Link>
+        <Link to={levelPath(level.key)} className="text-sm text-accent hover:underline">View {unit.toLowerCase()}</Link>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-semibold text-ink">Level {level.num}: {level.title}</h2>
+        <h2 className="text-xl font-semibold text-ink">{level.track.title} · {level.name}: {level.title}</h2>
         {!level.active && <Pill>retired</Pill>}
       </div>
 
@@ -86,7 +91,7 @@ function Editor({ level }: { level: OutlineLevel }) {
           <Field label="Short name" hint="Used in the ladder and buttons"><Text value={f.short_title} onChange={set('short_title')} /></Field>
           <Field label="The role" className="sm:col-span-2"><Area value={f.role_text} onChange={set('role_text')} rows={2} /></Field>
           <Field label="Summary" className="sm:col-span-2"><Area value={f.blurb} onChange={set('blurb')} rows={2} /></Field>
-          <Field label="Why this level matters" className="sm:col-span-2"><Area value={f.why} onChange={set('why')} rows={3} /></Field>
+          <Field label={`Why this ${unit.toLowerCase()} matters`} className="sm:col-span-2"><Area value={f.why} onChange={set('why')} rows={3} /></Field>
           <Field label="Assessment pass mark (%)"><input type="number" min={1} max={100} value={f.pass_pct} onChange={(e) => set('pass_pct')(e.target.value)} className={inputCls} /></Field>
           <div className="flex items-end pb-2"><Toggle checked={f.draft} onChange={set('draft')} label="Draft (pending leadership review)" /></div>
         </div>
@@ -100,11 +105,39 @@ function Editor({ level }: { level: OutlineLevel }) {
             </Field>
           </div>
         </div>
+        <div className="rounded-lg border border-border p-3">
+          <div className="font-medium text-ink">Hands-on skills</div>
+          <p className="mb-2 text-xs text-ink-muted">Things a leader watches the person do and checks off. Leave empty for a knowledge-only {unit.toLowerCase()}.</p>
+          <div className="flex flex-col gap-1.5">
+            {skills.map((sk, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={sk} onChange={(e) => setSkills(skills.map((x, j) => (j === i ? e.target.value : x)))} className={inputCls} placeholder="e.g. Change the oil in an air compressor" />
+                <button type="button" aria-label="Remove skill" onClick={() => setSkills(skills.filter((_, j) => j !== i))} className="rounded p-1 text-ink-muted hover:bg-content"><X className="size-4" /></button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={() => setSkills([...skills, ''])} className="mt-1.5 text-xs text-accent hover:underline">+ Add a skill</button>
+          <p className="mt-1 text-xs text-ink-subtle">Renaming a skill clears its check-offs, since it's a different skill.</p>
+        </div>
+        <div className="rounded-lg border border-border p-3">
+          <div className="font-medium text-ink">Required first</div>
+          <p className="mb-2 text-xs text-ink-muted">This {unit.toLowerCase()} can't be signed off until these are complete.</p>
+          <div className="grid gap-1 sm:grid-cols-2">
+            {(outline?.allLevels ?? []).filter((x) => x.id !== level.id && x.active).map((x) => (
+              <Toggle
+                key={x.id}
+                checked={requires.includes(x.id)}
+                onChange={(on) => setRequires(on ? [...requires, x.id] : requires.filter((r) => r !== x.id))}
+                label={`${x.track.title} · ${x.code} ${x.short_title}`}
+              />
+            ))}
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save level'}</Button>
+          <Button onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : `Save ${unit.toLowerCase()}`}</Button>
           {level.active
-            ? <Button variant="secondary" disabled={busy} onClick={() => void save({ active: false })}>Retire level</Button>
-            : <Button variant="secondary" disabled={busy} onClick={() => void save({ active: true })}>Restore level</Button>}
+            ? <Button variant="secondary" disabled={busy} onClick={() => void save({ active: false })}>Retire {unit.toLowerCase()}</Button>
+            : <Button variant="secondary" disabled={busy} onClick={() => void save({ active: true })}>Restore {unit.toLowerCase()}</Button>}
         </div>
       </Card>
 

@@ -412,7 +412,9 @@ export type Database = {
           pass_pct: number
           role_text: string | null
           short_title: string
+          skills: string[]
           title: string
+          track_id: string
           updated_at: string
           updated_by: string | null
           why: string | null
@@ -432,7 +434,9 @@ export type Database = {
           pass_pct?: number
           role_text?: string | null
           short_title: string
+          skills?: string[]
           title: string
+          track_id: string
           updated_at?: string
           updated_by?: string | null
           why?: string | null
@@ -452,7 +456,9 @@ export type Database = {
           pass_pct?: number
           role_text?: string | null
           short_title?: string
+          skills?: string[]
           title?: string
+          track_id?: string
           updated_at?: string
           updated_by?: string | null
           why?: string | null
@@ -466,10 +472,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "academy_levels_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "academy_tracks"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "academy_levels_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_prereqs: {
+        Row: {
+          account_id: string
+          level_id: string
+          requires_id: string
+        }
+        Insert: {
+          account_id: string
+          level_id: string
+          requires_id: string
+        }
+        Update: {
+          account_id?: string
+          level_id?: string
+          requires_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_prereqs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_prereqs_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "academy_levels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_prereqs_requires_id_fkey"
+            columns: ["requires_id"]
+            isOneToOne: false
+            referencedRelation: "academy_levels"
             referencedColumns: ["id"]
           },
         ]
@@ -695,6 +748,134 @@ export type Database = {
           {
             foreignKeyName: "academy_signoffs_verified_by_fkey"
             columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_skill_checks: {
+        Row: {
+          account_id: string
+          checked_at: string
+          checked_by: string | null
+          checked_name: string | null
+          learner_id: string
+          level_id: string
+          skill: string
+        }
+        Insert: {
+          account_id: string
+          checked_at?: string
+          checked_by?: string | null
+          checked_name?: string | null
+          learner_id: string
+          level_id: string
+          skill: string
+        }
+        Update: {
+          account_id?: string
+          checked_at?: string
+          checked_by?: string | null
+          checked_name?: string | null
+          learner_id?: string
+          level_id?: string
+          skill?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_skill_checks_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_skill_checks_checked_by_fkey"
+            columns: ["checked_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_skill_checks_learner_id_fkey"
+            columns: ["learner_id"]
+            isOneToOne: false
+            referencedRelation: "academy_learners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_skill_checks_level_id_fkey"
+            columns: ["level_id"]
+            isOneToOne: false
+            referencedRelation: "academy_levels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_tracks: {
+        Row: {
+          account_id: string
+          active: boolean
+          code_prefix: string
+          created_at: string
+          eyebrow: string | null
+          headline: string | null
+          id: string
+          intro: string | null
+          key: string
+          sort: number
+          title: string
+          unit_label: string
+          updated_at: string
+          updated_by: string | null
+          why: string | null
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          code_prefix?: string
+          created_at?: string
+          eyebrow?: string | null
+          headline?: string | null
+          id?: string
+          intro?: string | null
+          key: string
+          sort?: number
+          title: string
+          unit_label?: string
+          updated_at?: string
+          updated_by?: string | null
+          why?: string | null
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          code_prefix?: string
+          created_at?: string
+          eyebrow?: string | null
+          headline?: string | null
+          id?: string
+          intro?: string | null
+          key?: string
+          sort?: number
+          title?: string
+          unit_label?: string
+          updated_at?: string
+          updated_by?: string | null
+          why?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_tracks_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_tracks_updated_by_fkey"
+            columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -13711,6 +13892,10 @@ export type Database = {
       _auth_user_id_by_email: { Args: { p_email: string }; Returns: string }
       academy__can_act: { Args: { p_learner: string }; Returns: boolean }
       academy__can_see: { Args: { p_learner: string }; Returns: boolean }
+      academy__complete: {
+        Args: { p_learner: string; p_level: string }
+        Returns: boolean
+      }
       academy__editor: { Args: never; Returns: boolean }
       academy__grade: {
         Args: { p_answers: Json; p_ids: string[]; p_reveal: boolean }
@@ -13725,6 +13910,15 @@ export type Database = {
       academy_check_quiz: {
         Args: { p_answers: Json; p_learner?: string; p_lesson: string }
         Returns: Json
+      }
+      academy_check_skill: {
+        Args: {
+          p_learner: string
+          p_level: string
+          p_on: boolean
+          p_skill: string
+        }
+        Returns: undefined
       }
       academy_import_local: { Args: { p_state: Json }; Returns: Json }
       academy_level_questions: {

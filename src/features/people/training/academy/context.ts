@@ -36,5 +36,7 @@ export function useAcademy(): AcademyCtx {
 
 export const levelPath = (key: string) => `${ACADEMY_BASE}/${key}`
 export const lessonPath = (levelKey: string, lessonKey: string) => `${ACADEMY_BASE}/${levelKey}/${lessonKey}`
-export const stepPath = (levelKey: string, step: 'scenarios' | 'assessment' | 'signoff') => `${ACADEMY_BASE}/${levelKey}/${step}`
+export const stepPath = (levelKey: string, step: 'scenarios' | 'assessment' | 'skills' | 'signoff') => `${ACADEMY_BASE}/${levelKey}/${step}`
+// A track's home: its tab on the Training page.
+export const trackPath = (trackKey: string) => `/app/training?tab=${trackKey}`
 export const EDIT_BASE = `${ACADEMY_BASE}/edit`

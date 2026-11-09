@@ -11,11 +11,12 @@ import {
   Route,
   Trash2,
   Users,
+  Wrench,
   X,
 } from 'lucide-react'
 import { AcademyProvider } from './academy/AcademyProvider'
 import { useAcademy } from './academy/context'
-import { RoadMap } from './academy/RoadMap'
+import { TrackHome } from './academy/RoadMap'
 import { TeamTab } from './academy/TeamTab'
 import AcademyRoutes from './academy/AcademyRoutes'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -50,7 +51,7 @@ const inputCls =
 const labelCls = 'mb-1 block text-xs font-medium text-ink-muted'
 
 type Emp = { id: string; first_name: string; last_name: string; user_id: string | null }
-type Tab = 'roadmap' | 'team' | 'training' | 'onboarding' | 'certs' | 'badges'
+type Tab = 'training' | 'onboarding' | 'certs' | 'badges'
 
 // deno-lint style loose rows for the joined selects
 type AssignRow = {
@@ -80,11 +81,10 @@ const TABS: { key: Tab; label: string; icon: typeof GraduationCap }[] = [
   { key: 'badges', label: 'Badges', icon: Medal },
 ]
 
-// The Academy's Road Map and Team progress tabs, then the original training tabs.
-const ACADEMY_TABS: { key: Tab; label: string; icon: typeof GraduationCap }[] = [
-  { key: 'roadmap', label: 'Road Map', icon: Route },
-  { key: 'team', label: 'Team progress', icon: Users },
-]
+// The Academy's tracks get a tab each (Site Support, Maintenance), then Team progress
+// for leaders, then the original training tabs.
+const TRACK_ICON: Record<string, typeof GraduationCap> = { 'site-support': Route, maintenance: Wrench }
+const LEGACY_TABS = new Set<string>(['training', 'onboarding', 'certs', 'badges'])
 
 export default function TrainingPage() {
   return (
@@ -104,15 +104,19 @@ function TrainingHome() {
   // The Mighty Wash Academy mascot is MW-specific branding, so it only shows for
   // the Mighty Wash account (other tenants keep a plain header).
   const isMightyWash = profile?.account_id === '54f3e299-1f61-4ed2-9921-3d02160b72e6'
-  const academyOn = (outline?.levels.length ?? 0) > 0
-  const tabs = [
-    ...(academyOn ? ACADEMY_TABS.filter((t) => t.key === 'roadmap' || me?.leader) : []),
+  const tracks = outline?.tracks ?? []
+  const academyOn = tracks.length > 0
+  const tabs: { key: string; label: string; icon: typeof GraduationCap }[] = [
+    ...tracks.map((t) => ({ key: t.key, label: t.title, icon: TRACK_ICON[t.key] ?? GraduationCap })),
+    ...(academyOn && me?.leader ? [{ key: 'team', label: 'Team progress', icon: Users }] : []),
     ...TABS,
   ]
   const [params, setParams] = useSearchParams()
-  const asked = params.get('tab') as Tab | null
-  const tab: Tab = asked && tabs.some((t) => t.key === asked) ? asked : academyOn ? 'roadmap' : 'training'
-  const setTab = (t: Tab) => setParams({ tab: t }, { replace: true })
+  // "roadmap" was the Academy's tab before it had tracks.
+  const asked = params.get('tab') === 'roadmap' ? tracks[0]?.key ?? null : params.get('tab')
+  const tab: string = asked && tabs.some((t) => t.key === asked) ? asked : academyOn ? tracks[0].key : 'training'
+  const setTab = (t: string) => setParams({ tab: t }, { replace: true })
+  const track = tracks.find((t) => t.key === tab)
   // Until the Academy has loaded we don't know which tab opens first.
   const waiting = academyLoading
 
@@ -121,8 +125,8 @@ function TrainingHome() {
       <PageHeader
         title={isMightyWash ? 'Mighty Wash Academy' : outline?.program?.title && academyOn ? outline.program.title : 'Training'}
         subtitle={
-          tab === 'roadmap'
-            ? 'Training for every role, with progress saved to each person.'
+          track
+            ? `${track.title} training, with progress saved to each person.`
             : tab === 'team'
               ? 'Academy progress for the people at your sites.'
               : isManager
@@ -153,13 +157,13 @@ function TrainingHome() {
 
       {waiting ? (
         <p className="text-sm text-ink-muted">Loading…</p>
-      ) : tab === 'roadmap' ? (
-        <RoadMap />
+      ) : track ? (
+        <TrackHome key={track.id} track={track} />
       ) : tab === 'team' ? (
         <TeamTab />
-      ) : (
-        <LocationGate>{(locationId) => <Inner locationId={locationId} tab={tab} />}</LocationGate>
-      )}
+      ) : LEGACY_TABS.has(tab) ? (
+        <LocationGate>{(locationId) => <Inner locationId={locationId} tab={tab as Tab} />}</LocationGate>
+      ) : null}
     </div>
   )
 }

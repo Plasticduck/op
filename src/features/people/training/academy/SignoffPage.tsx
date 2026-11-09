@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/Button'
-import { academy, levelStatus } from '@/lib/queries/academy'
+import { academy, levelStatus, nextInTrack } from '@/lib/queries/academy'
 import { cn } from '@/lib/utils'
 import { levelPath, useAcademy } from './context'
 import { Card, Eyebrow, LinkButton, Pill, WhyBox } from './ui'
+import { PrereqNote } from './PrereqNote'
 import { errText, fmtDate, todayIso, useLevel, useMySites } from './helpers'
 
 const inputCls = 'h-10 w-full rounded-md border border-border bg-content px-3 text-sm text-ink outline-none focus:border-accent'
@@ -22,10 +23,11 @@ function Signoff() {
   const { profile } = useAuth()
   const sites = useMySites()
   const sign = progress?.signoffs.get(level.id)
-  const s = levelStatus(level, progress)
+  const s = levelStatus(level, progress, outline!.allLevels)
   const formal = level.ack_formal
-  const levels = outline!.levels
-  const next = levels[levels.indexOf(level) + 1]
+  const next = nextInTrack(outline!, level)
+  const unit = level.track.unit_label
+  const lower = unit.toLowerCase()
 
   const [name, setName] = useState(learner?.name ?? '')
   const [site, setSite] = useState(learner?.location_id ?? '')
@@ -37,6 +39,7 @@ function Signoff() {
   const [error, setError] = useState<string | null>(null)
 
   const ready = s.done === s.total && (level.scenarioCount === 0 || s.scenarios) && (level.assessmentCount === 0 || s.passed)
+    && s.skillsDone === s.skillsTotal
   const ownLearner = !!learner && learner.id === me?.learner?.id
   const canWithdraw = !!sign && (!sign.verified_at || (!!me?.leader && !ownLearner))
 
@@ -49,7 +52,7 @@ function Signoff() {
     try {
       await academy.sign({ learner: learner.id, level: level.id, name, location: site, signedOn: date, leaderName: leader, verify: !!trainee && verify })
       await reloadProgress()
-      toast(formal ? 'Acknowledgment signed' : 'Level signed off')
+      toast(formal ? 'Acknowledgment signed' : `${unit} signed off`)
     } catch (e) {
       setError(errText(e))
     } finally {
@@ -72,7 +75,7 @@ function Signoff() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <Eyebrow tone="red">Level {level.num} · {level.short_title}</Eyebrow>
+      <Eyebrow tone="red">{level.name} · {level.short_title}</Eyebrow>
       <h2 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">
         {formal ? (level.ack_title || 'Acknowledgment') : `${level.title} sign-off`}
       </h2>
@@ -107,10 +110,19 @@ function Signoff() {
                 {sign.verified_at ? 'Reopen' : 'Take back'}
               </Button>
             )}
-            <LinkButton variant="secondary" to={levelPath(level.key)}>Back to level</LinkButton>
+            <LinkButton variant="secondary" to={levelPath(level.key)}>Back to {lower}</LinkButton>
             {next && <LinkButton to={levelPath(next.key)}>Start {next.short_title}</LinkButton>}
           </div>
         </>
+      ) : learner && s.missing.length > 0 ? (
+        // e.g. General Manager waits on T1 Maintenance.
+        <Card className="flex flex-col gap-3">
+          <p className="text-[15px] leading-relaxed text-ink">{level.ack_statement}</p>
+          <PrereqNote level={level} />
+          <div className="flex flex-wrap gap-2">
+            {s.missing.map((m) => <LinkButton key={m.id} to={levelPath(m.key)}>Go to {m.short_title}</LinkButton>)}
+          </div>
+        </Card>
       ) : !learner ? (
         <Card>
           <p className="text-[15px] leading-relaxed text-ink">{level.ack_statement}</p>
@@ -122,8 +134,9 @@ function Signoff() {
           {!ready && (
             <p className="text-sm text-ink-muted">
               You can sign now, but the program expects the lessons{level.scenarioCount ? ', scenarios' : ''}
-              {level.assessmentCount ? ' and assessment' : ''} to be complete first. {s.done} of {s.total} lessons done
-              {level.assessmentCount ? (s.passed ? ', assessment passed' : ', assessment not yet passed') : ''}.
+              {level.assessmentCount ? ', assessment' : ''}{s.skillsTotal ? ' and hands-on skills' : ''} to be complete first. {s.done} of {s.total} lessons done
+              {level.assessmentCount ? (s.passed ? ', assessment passed' : ', assessment not yet passed') : ''}
+              {s.skillsTotal ? `, ${s.skillsDone} of ${s.skillsTotal} skills checked off` : ''}.
             </p>
           )}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -151,7 +164,7 @@ function Signoff() {
             <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 size-4" />
             <span className="text-ink">
               Typing {trainee ? 'their' : 'my'} name above is {trainee ? 'their' : 'my'} signature.{' '}
-              {formal ? 'I agree to meet these standards at my site.' : `${trainee ? 'They' : 'I'} can perform the standards in this level and will hold them on every shift.`}
+              {formal ? 'I agree to meet these standards at my site.' : `${trainee ? 'They' : 'I'} can perform the standards in this ${lower} and will hold them on every shift.`}
             </span>
           </label>
           {trainee && (
@@ -163,7 +176,7 @@ function Signoff() {
           {error && <p className="text-sm text-danger">{error}</p>}
           <div>
             <Button onClick={() => void submit()} disabled={busy}>
-              {busy ? 'Signing…' : formal ? 'Sign acknowledgment' : 'Sign off this level'}
+              {busy ? 'Signing…' : formal ? 'Sign acknowledgment' : `Sign off this ${lower}`}
             </Button>
           </div>
         </Card>

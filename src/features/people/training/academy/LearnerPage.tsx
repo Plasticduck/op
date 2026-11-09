@@ -91,19 +91,22 @@ export default function LearnerPage() {
       </Card>
 
       {outline.levels.map((level) => {
-        const s = levelStatus(level, progress)
+        const s = levelStatus(level, progress, outline.allLevels)
+        const checks = progress?.skills.get(level.id)
         const tries = progress?.assessments.get(level.id) ?? []
         const scen = progress?.scenarios.get(level.id)?.[0]
         const sign = progress?.signoffs.get(level.id)
-        const started = s.got > 0 || tries.length > 0
+        const started = s.got > 0 || tries.length > 0 || s.skillsDone > 0
         return (
           <Card key={level.id} className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <Eyebrow>Level {level.num}</Eyebrow>
+                <Eyebrow>{level.track.title} · {level.name}</Eyebrow>
                 <h3 className="font-semibold text-ink">{level.title}</h3>
               </div>
               <div className="flex items-center gap-2">
+                {s.complete && <Pill tone="ok">certified</Pill>}
+                {s.signed && s.missing.length > 0 && <Pill tone="warn">waiting on {s.missing.map((m) => m.short_title).join(', ')}</Pill>}
                 <Bar pct={s.pct} className="w-28" />
                 <b className="tabular-nums text-ink">{s.pct}%</b>
               </div>
@@ -175,6 +178,32 @@ export default function LearnerPage() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+            {level.skills.length > 0 && (
+              <div className="rounded-lg border border-border p-3 text-sm">
+                <Eyebrow>Hands-on skills · {s.skillsDone} of {s.skillsTotal}</Eyebrow>
+                <ul className="mt-1.5 flex flex-col gap-1.5">
+                  {level.skills.map((sk) => {
+                    const c = checks?.get(sk)
+                    return (
+                      <li key={sk} className="flex flex-wrap items-start gap-2">
+                        <span className="mt-0.5"><Dot done={!!c} /></span>
+                        <span className="min-w-0 flex-1 text-ink">
+                          {sk}
+                          {c && <span className="block text-xs text-ok">Checked off by {c.checked_name ?? 'a leader'} on {fmtDate(c.checked_at)}</span>}
+                        </span>
+                        {me?.leader && !own && (
+                          <Button size="sm" variant={c ? 'ghost' : 'secondary'} disabled={!!busy}
+                            onClick={() => void act(`s${level.id}${sk}`, () => academy.checkSkill(learner.id, level.id, sk, !c), c ? 'Check removed' : 'Checked off')}>
+                            {c ? 'Undo' : 'Watched it done'}
+                          </Button>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+                {own && <p className="mt-2 text-xs text-ink-muted">A leader checks these off after watching each one done.</p>}
               </div>
             )}
           </Card>
