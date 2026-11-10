@@ -69,11 +69,24 @@ async function call<T>(body: Record<string, unknown>, fallback: string): Promise
   return data as T
 }
 
+export type CnArea = { kind: 'drive_time' | 'radius_ring' | string; minutes: number | null; miles: number | null; geometry: any }
+export type CnBox = { w: number; s: number; e: number; n: number }
+export type CnLayerRows = { columns: string[]; rows: any[][]; truncated: boolean }
+// map_config.heat / shapes / overlays / lenses / areas entries.
+export type CnHeat = { id: string; kind: 'density' | 'value' | string; label: string; column?: string; weights?: Record<string, number>; min?: { value: number; column: string } }
+export type CnShape = { id: string; sql: string; label: string; value: string; format?: string }
+export type CnOverlay = { id: string; sql: string; kind: 'line' | 'signs' | 'points' | 'markers' | string; label: string; value?: string; min_zoom?: number; title?: string; colors?: Record<string, string>; color_by?: string }
+export type CnLens = { id: string; label: string; quiet?: boolean; rings?: boolean; shape?: string; heat?: string; overlays?: string[] }
+
 export const corenavMap = {
   setup: (universe?: string) => call<CnSetup>({ action: 'setup', ...(universe ? { universe } : {}) }, "Couldn't load CoreNav's map."),
   points: (universe: string) => call<CnPoints>({ action: 'points', universe }, "Couldn't load CoreNav's sites."),
   site: (universe: string, siteId: string, entityId: string | null) =>
     call<{ tabs: CnTab[] }>({ action: 'site', universe, site_id: siteId, entity_id: entityId ?? '' }, "Couldn't load that site from CoreNav."),
+  areas: (universe: string, siteId: string) =>
+    call<{ areas: CnArea[] }>({ action: 'areas', universe, site_id: siteId }, "Couldn't load that site's drive times."),
+  layer: (universe: string, kind: 'shape' | 'overlay', id: string, bbox?: CnBox) =>
+    call<CnLayerRows>({ action: 'layer', universe, kind, id, ...(bbox ? { bbox } : {}) }, "Couldn't load that CoreNav layer."),
 }
 
 // Which colour group a point falls in, the way CoreNav's map decides it.

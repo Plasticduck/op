@@ -13,6 +13,12 @@
 //   site { site_id, entity_id } -> { tabs }  One site's sidebar, built from CoreNav's
 //                own sidebar setup: field lists, the site scorecard, tables (people),
 //                monthly series and the typical-week traffic grid.
+//   areas { site_id } -> { areas }  That site's drive-time areas and mile rings
+//                (CoreNav's `areas` table, GeoJSON), for the map and its competitors.
+//   layer { kind: 'shape' | 'overlay', id, bbox?: { w, s, e, n } } -> { columns, rows,
+//                truncated }  One demand shading (map_config.shapes) or road/places
+//                overlay (map_config.overlays), run with CoreNav's own SQL and limited
+//                to the area on screen (bbox) where the table has bounds columns.
 //   record { entity_id } -> { record }  One company in full.
 //   describe, query (service role only, for checks).
 //
@@ -164,6 +170,7 @@ Deno.serve(async (req) => {
   let body: {
     action?: string; universe?: string | null; sql?: string; site_id?: string; entity_id?: string
     table?: string; cursor?: string; as_user?: string
+    kind?: string; id?: string; bbox?: { w?: number; s?: number; e?: number; n?: number }
   } = {}
   try { body = await req.json() } catch { /* empty */ }
 
@@ -229,6 +236,59 @@ Deno.serve(async (req) => {
         sections: jobs.map((j: Json, i: number) => (j.t === t ? done[i] : null)).filter(Boolean),
       }))
       return json({ tabs }, 200, origin)
+    }
+
+    if (body.action === 'areas') {
+      const siteId = String(body.site_id ?? '')
+      if (!siteId) return json({ error: 'bad_request', message: 'site_id is required.' }, 400, origin)
+      const cfg = await tool(session, 'map_config', u)
+      const table = cfg?.config?.areas?.table ?? 'areas'
+      const key = cfg?.config?.areas?.key ?? 'site_id'
+      const r = await tool(session, 'query', {
+        ...u,
+        sql: `select kind, minutes, miles, geometry from ${ident(table)} where ${ident(key)} = ${lit(siteId)} and kind <> 'site_pin'`,
+      })
+      const areas = ((r.rows ?? []) as unknown[][]).map(([kind, minutes, miles, geometry]) => {
+        let g: unknown = null
+        try { g = typeof geometry === 'string' ? JSON.parse(geometry) : geometry } catch { /* skip a broken shape */ }
+        return { kind, minutes, miles, geometry: g }
+      }).filter((a) => a.geometry)
+      return json({ areas }, 200, origin)
+    }
+
+    if (body.action === 'layer') {
+      const cfg = (await tool(session, 'map_config', u))?.config ?? {}
+      const list: Json[] = body.kind === 'shape' ? cfg.shapes ?? [] : body.kind === 'overlay' ? cfg.overlays ?? [] : []
+      const def = list.find((x: Json) => x.id === body.id)
+      if (!def?.sql) return json({ error: 'bad_request', message: 'Unknown layer.' }, 400, origin)
+      const b = body.bbox ?? {}
+      const box = [b.w, b.s, b.e, b.n].map(Number)
+      const hasBox = box.every((x) => Number.isFinite(x)) && box[0] < box[2] && box[1] < box[3]
+      const [w, s, e, n] = box.map((x) => Math.round(x * 1e5) / 1e5)
+      let sql = String(def.sql)
+      if (/\{[wsen]\}/.test(sql)) {
+        // CoreNav's overlays name the screen's edges; they need a box.
+        if (!hasBox) return json({ error: 'bad_request', message: 'This layer needs the map area.' }, 400, origin)
+        sql = sql.replace(/\{w\}/g, String(w)).replace(/\{e\}/g, String(e)).replace(/\{s\}/g, String(s)).replace(/\{n\}/g, String(n))
+      } else if (hasBox) {
+        // A shading over a table with bounds columns: keep what's on screen.
+        const m = sql.match(/^\s*select\s+[\s\S]+\s+from\s+([A-Za-z_][A-Za-z0-9_]*)\s*$/i)
+        if (m) sql = `${sql} where max_lon >= ${w} and min_lon <= ${e} and max_lat >= ${s} and min_lat <= ${n}`
+      }
+      const cap = body.kind === 'shape' ? 15_000 : 20_000
+      let columns: string[] | null = null
+      const rows: unknown[] = []
+      let cursor: string | undefined
+      let truncated = false
+      for (let page = 0; page < 5; page++) {
+        const r = await tool(session, 'query', { ...u, sql, ...(cursor ? { cursor } : {}) })
+        columns ??= r.columns ?? null
+        rows.push(...(r.rows ?? []))
+        cursor = r.next_cursor ?? undefined
+        if (!cursor) break
+        if (rows.length >= cap || page === 4) { truncated = true; break }
+      }
+      return json({ columns, rows, truncated }, 200, origin)
     }
 
     if (body.action === 'describe' && asService) {

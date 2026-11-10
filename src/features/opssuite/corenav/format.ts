@@ -8,9 +8,23 @@ const WORDS: Record<string, string> = {
   n: 'count', rev: 'revenue', acq: '', url: 'website', hpms: '', '0p5pct': '0.5%', '12m': '(12 mo)', '10': '(10 min)',
 }
 
+// Fields CoreNav doesn't label whose spelled-out names read badly.
+const FIELDS: Record<string, string> = {
+  median_hh_income: 'Median household income',
+  hh_100k_plus_share: 'Households over $100k',
+  households_8km: 'Households within 8 km',
+  hh100k_8km: 'Households over $100k within 8 km',
+  tunnels_8km: 'Tunnels within 8 km',
+  inbay_8km: 'In-bay washes within 8 km',
+  mw_8km: 'Mighty Wash sites within 8 km',
+  hh_per_tunnel: 'Households per tunnel',
+  hh100k_per_tunnel: 'Households over $100k per tunnel',
+  no_tunnel: 'No tunnel within 8 km',
+}
+
 export function labelFor(labels: Record<string, string>, table: string, field: string): string {
   const rel = table === '' ? 'universe' : table
-  const known = labels[`${rel}.${field}`] ?? labels[`universe.${field}`]
+  const known = labels[`${rel}.${field}`] ?? labels[`universe.${field}`] ?? FIELDS[field]
   if (known) return known
   const words = field.split('_').map((w) => (w in WORDS ? WORDS[w] : w)).filter(Boolean)
   const s = words.join(' ').replace(/\s+/g, ' ').trim()

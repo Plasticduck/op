@@ -15,7 +15,17 @@ export type PanelHead = {
   stats: { label: string; value: string }[]
 }
 
-export function SitePanel({ head, tabs, loading, error, labels, openUrl, onClose }: {
+// The washes inside this site's drive-time area (CoreNav's "competitors" view),
+// worked out on the page from the area and the sites already on the map.
+export type Competitors = {
+  loading: boolean
+  minutes: number
+  error: string | null
+  rows: { id: string; name: string; sub: string; format: string; rating: number | null; tier: string | null; mi: number; mw: boolean }[]
+  onPick: (id: string) => void
+}
+
+export function SitePanel({ head, tabs, loading, error, labels, openUrl, onClose, competitors }: {
   head: PanelHead
   tabs: CnTab[] | null
   loading: boolean
@@ -23,6 +33,7 @@ export function SitePanel({ head, tabs, loading, error, labels, openUrl, onClose
   labels: Record<string, string>
   openUrl: string
   onClose: () => void
+  competitors: Competitors | null
 }) {
   const [active, setActive] = useState(0)
   const tab = tabs?.[Math.min(active, (tabs?.length ?? 1) - 1)]
@@ -83,7 +94,7 @@ export function SitePanel({ head, tabs, loading, error, labels, openUrl, onClose
           <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
         ) : tab ? (
           <div className="space-y-5">
-            {tab.sections.map((s, i) => <Section key={i} s={s} labels={labels} openUrl={openUrl} />)}
+            {tab.sections.map((s, i) => <Section key={i} s={s} labels={labels} openUrl={openUrl} competitors={competitors} />)}
           </div>
         ) : null}
       </div>
@@ -95,7 +106,41 @@ function Title({ children }: { children: ReactNode }) {
   return <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">{children}</h3>
 }
 
-function Section({ s, labels, openUrl }: { s: CnSection; labels: Record<string, string>; openUrl: string }) {
+function CompetitorList({ title, c }: { title: string | null; c: Competitors }) {
+  return (
+    <section>
+      <Title>{title ?? `Competitors inside ${c.minutes} minutes`}</Title>
+      {c.loading ? (
+        <p className="flex items-center gap-2 text-[12.5px] text-ink-subtle"><Loader2 className="size-3.5 animate-spin" /> Working out the {c.minutes}-minute drive area…</p>
+      ) : c.error ? (
+        <p className="text-[12.5px] text-danger">{c.error}</p>
+      ) : !c.rows.length ? (
+        <p className="text-[12.5px] text-ink-subtle">No other washes inside the {c.minutes}-minute drive area.</p>
+      ) : (
+        <>
+          <p className="mb-1.5 text-[11.5px] text-ink-subtle">{c.rows.length} other wash{c.rows.length === 1 ? '' : 'es'} inside the {c.minutes}-minute drive area, nearest first.</p>
+          <ul className="divide-y divide-border/60 rounded-lg border border-border">
+            {c.rows.map((r) => (
+              <li key={r.id}>
+                <button type="button" onClick={() => c.onPick(r.id)} className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-content">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] font-medium text-ink">{r.mw ? '★ ' : ''}{r.name}</span>
+                    <span className="block truncate text-[11px] text-ink-subtle">{[r.format, r.sub].filter(Boolean).join(' · ')}</span>
+                  </span>
+                  {r.tier && <span className="rounded-full bg-warn-soft px-1.5 py-0.5 text-[10px] font-medium text-warn">Tier {r.tier}</span>}
+                  {r.rating != null && <span className="text-[11px] text-ink-muted">{r.rating.toFixed(1)}★</span>}
+                  <span className="w-12 text-right text-[11px] tabular text-ink-muted">{r.mi.toFixed(1)} mi</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  )
+}
+
+function Section({ s, labels, openUrl, competitors }: { s: CnSection; labels: Record<string, string>; openUrl: string; competitors: Competitors | null }) {
   switch (s.kind) {
     case 'fields': {
       const entries = Object.entries(s.values).filter(([, v]) => v != null && v !== '')
@@ -250,6 +295,7 @@ function Section({ s, labels, openUrl }: { s: CnSection; labels: Record<string, 
     case 'empty':
       return s.title ? <section><Title>{s.title}</Title><p className="text-[12.5px] text-ink-subtle">Nothing on file.</p></section> : null
     case 'unsupported':
+      if (s.view === 'competitors' && competitors) return <CompetitorList title={s.title} c={competitors} />
       return (
         <section>
           {s.title && <Title>{s.title}</Title>}

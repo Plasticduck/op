@@ -62,8 +62,12 @@ but not what RLS allows. See **Access control** below.
   connection: `corenav-map` returns CoreNav's map setup (map_config), its points
   (~14,700 sites) and one site's sidebar built from CoreNav's sidebar setup;
   the page styles it the way that setup says (`src/features/opssuite/corenav/`).
-  Not drawn yet: CoreNav's heat, demand shading, drive times, road overlays and
-  the competitors view (Open in CoreNav has them).
+  It also draws CoreNav's heat (worked out from the points, `corenav/heat.ts`),
+  demand shading and roads/places (`layer` action, fetched for the view's bbox),
+  drive times around the picked site (`areas` action) with the washes inside the
+  10-minute one, and CoreNav's lenses. Only the washes' canvas takes taps:
+  shading, heat and drive times sit in lower panes with pointer-events off, and
+  tappable overlays share the washes' canvas, sent to the back.
 - **Payments:** Stripe — subscription billing (embedded pricing table on the
   Billing page, Checkout from the BillingGate lock screen, Customer Portal,
   webhook, per-site quantity for Multi-Site) and **Stripe Connect** for per-site
