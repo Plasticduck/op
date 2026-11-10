@@ -2314,6 +2314,48 @@ export type Database = {
           },
         ]
       }
+      corenav_connections: {
+        Row: {
+          account_id: string
+          connected_at: string
+          last_error: string | null
+          secret_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          connected_at?: string
+          last_error?: string | null
+          secret_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          connected_at?: string
+          last_error?: string | null
+          secret_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "corenav_connections_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "corenav_connections_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       counseling_records: {
         Row: {
           acknowledged_at: string | null
@@ -9986,6 +10028,65 @@ export type Database = {
           },
         ]
       }
+      oauth_clients: {
+        Row: {
+          client_id: string
+          provider: string
+          redirect_uris: string[]
+          registered_at: string
+          secret_id: string | null
+        }
+        Insert: {
+          client_id: string
+          provider: string
+          redirect_uris: string[]
+          registered_at?: string
+          secret_id?: string | null
+        }
+        Update: {
+          client_id?: string
+          provider?: string
+          redirect_uris?: string[]
+          registered_at?: string
+          secret_id?: string | null
+        }
+        Relationships: []
+      }
+      oauth_states: {
+        Row: {
+          code_verifier: string
+          created_at: string
+          provider: string
+          redirect_uri: string
+          state: string
+          user_id: string
+        }
+        Insert: {
+          code_verifier: string
+          created_at?: string
+          provider: string
+          redirect_uri: string
+          state: string
+          user_id: string
+        }
+        Update: {
+          code_verifier?: string
+          created_at?: string
+          provider?: string
+          redirect_uri?: string
+          state?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oauth_states_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       onboarding_templates: {
         Row: {
           account_id: string
@@ -14042,6 +14143,21 @@ export type Database = {
           revoked_at: string
         }[]
       }
+      corenav_set_error: {
+        Args: { p_error: string; p_user: string }
+        Returns: undefined
+      }
+      corenav_status: { Args: never; Returns: Json }
+      corenav_tokens_connect: {
+        Args: { p_tokens: Json; p_user: string }
+        Returns: undefined
+      }
+      corenav_tokens_delete: { Args: { p_user: string }; Returns: undefined }
+      corenav_tokens_get: { Args: { p_user: string }; Returns: Json }
+      corenav_tokens_save: {
+        Args: { p_tokens: Json; p_user: string }
+        Returns: undefined
+      }
       currently_working: { Args: { p_location_id: string }; Returns: Json }
       employee_has_pin: { Args: { p_employee_id: string }; Returns: boolean }
       ensure_checklist_instance: {
@@ -15684,6 +15800,16 @@ export type Database = {
         | { Args: { p_day: string }; Returns: Json }
       notify_location_managers: {
         Args: { p_kind: string; p_location_id: string; p_payload: Json }
+        Returns: undefined
+      }
+      oauth_client_get: { Args: { p_provider: string }; Returns: Json }
+      oauth_client_save: {
+        Args: {
+          p_client_id: string
+          p_client_secret: string
+          p_provider: string
+          p_redirect_uris: string[]
+        }
         Returns: undefined
       }
       operator_ask_sql: { Args: { query: string }; Returns: Json }

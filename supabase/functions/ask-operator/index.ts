@@ -13,6 +13,9 @@
 //                          partner API, through the company key, for owner/manager
 //                          on an account with FlexWash sites. Managers are kept to
 //                          their own FlexWash car washes (see flexwash.ts).
+//   corenav_*            — the read-only tools of the person's own CoreNav login,
+//                          when they've connected it (Connect to CoreNav; see
+//                          corenav-oauth and _shared/corenav.ts). Mighty Wash only.
 //
 // Secrets required (set via `supabase secrets set`):
 //   ANTHROPIC_API_KEY   — Claude API key (function returns 503 'no_key' if absent)
@@ -22,6 +25,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import Anthropic from 'npm:@anthropic-ai/sdk'
 import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexPrompt, flexUserNote, type FlexAccess } from './flexwash.ts'
+import { CORENAV_ACCOUNT, CoreNavSession, ReconnectNeeded, accessTokenFor } from '../_shared/corenav.ts'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
 // Safety cap on tool-use rounds per question. A real diagnosis ("why were cars
@@ -289,6 +293,18 @@ const TOOL_DETAIL: Record<string, string> = {
 }
 const DATA_TOOLS = new Set(['run_sql', 'get_site_performance', 'query_dashboard', 'flexwash_describe', 'flexwash_call'])
 
+// Rows in a CoreNav answer, when it's JSON with a list in it.
+function countRows(text: string): number {
+  try {
+    const d = JSON.parse(text)
+    if (Array.isArray(d)) return d.length
+    if (d && typeof d === 'object') for (const v of Object.values(d)) if (Array.isArray(v)) return v.length
+    return 1
+  } catch {
+    return text.trim() ? 1 : 0
+  }
+}
+
 // First run of digits in a site name: "MightyWash 001" -> 1, "Mighty Wash #24" -> 24.
 function siteNum(name: unknown): number | null {
   const m = String(name ?? '').match(/(\d+)/)
@@ -481,6 +497,29 @@ Deno.serve(async (req) => {
     }
   }
 
+  // CoreNav: the person's own CoreNav login, when they've connected it. Their
+  // token decides what CoreNav shows them; only read-only tools are offered.
+  let corenav: CoreNavSession | null = null
+  let corenavNote = ''
+  if (profile.account_id === CORENAV_ACCOUNT && profile.role_category !== 'corporate_display') {
+    try {
+      const token = await accessTokenFor(svc, uid)
+      if (token) corenav = await CoreNavSession.open(token)
+      else {
+        corenavNote = ' This user has not connected CoreNav. If they ask about CoreNav, tell them to tap Connect to CoreNav at the top of Operator AI and sign in with their mighty-wash.com email.'
+      }
+    } catch (e) {
+      corenavNote = e instanceof ReconnectNeeded
+        ? " This user's CoreNav sign-in has expired. If they ask about CoreNav, tell them to tap Reconnect CoreNav at the top of Operator AI."
+        : ` CoreNav isn't responding right now (${e instanceof Error ? e.message : String(e)}). If they ask about CoreNav, say so and suggest trying again shortly.`
+    }
+  }
+  if (corenav) {
+    corenavNote = corenav.tools.length
+      ? ' This user connected their own CoreNav login: the corenav_ tools read their CoreNav workspace, showing only what that login can see. CoreNav is a separate system from Operator; use these tools for anything about CoreNav or the records in it (their descriptions say what each covers), and Operator tools for Operator data. They only read; if asked to change something in CoreNav, say it has to be done in CoreNav.'
+      : ' This user connected CoreNav, but their login offers no read-only tools, so CoreNav data is not available here.'
+  }
+
   let body: {
     question?: string
     history?: { role: 'user' | 'assistant'; content: string }[]
@@ -503,6 +542,12 @@ Deno.serve(async (req) => {
     : [RUN_SQL_TOOL, PRESENT_CHOICES_TOOL, BUILD_REPORT_TOOL]
   const flex = flexAccess ? new FlexWash(svc, flexAccess) : null
   if (flex) tools.push(FLEX_DESCRIBE_TOOL, FLEX_CALL_TOOL)
+  if (corenav) {
+    for (const t of corenav.tools) {
+      tools.push({ name: t.apiName, description: t.description, input_schema: t.inputSchema as Anthropic.Tool['input_schema'] })
+    }
+  }
+  const isDataTool = (name: string) => DATA_TOOLS.has(name) || !!corenav?.byApiName.has(name)
 
   const messages: Anthropic.MessageParam[] = []
   for (const h of (body.history ?? []).slice(-8)) {
@@ -551,6 +596,7 @@ Deno.serve(async (req) => {
             text:
               `Today is ${today}. Answer for this user's data only. ${perfNote}${restrictedNote}` +
               (flexAccess ? ` ${flexUserNote(flexAccess)}` : '') +
+              corenavNote +
               (finalRound
                 ? ' You have gathered enough. Give your best final answer now using the data already returned; do not ask for more.'
                 : ''),
@@ -578,7 +624,7 @@ Deno.serve(async (req) => {
       // Text before a DATA tool is narration — move it to the activity trail.
       // Text before a presentational tool (choices/report) is the real answer
       // (the question, or the report confirmation), so keep it in place.
-      const usedDataTool = resp.content.some((b) => b.type === 'tool_use' && DATA_TOOLS.has(b.name))
+      const usedDataTool = resp.content.some((b) => b.type === 'tool_use' && isDataTool(b.name))
       if (usedDataTool) emit({ t: 'preamble' })
 
       messages.push({ role: 'assistant', content: resp.content })
@@ -590,7 +636,7 @@ Deno.serve(async (req) => {
           t: 'phase',
           phase: 'tool',
           tool: block.name,
-          detail: TOOL_DETAIL[block.name] ?? 'Working through your data',
+          detail: TOOL_DETAIL[block.name] ?? (corenav?.byApiName.has(block.name) ? 'Looking it up in CoreNav' : 'Working through your data'),
         })
 
         if (block.name === 'run_sql') {
@@ -715,6 +761,25 @@ Deno.serve(async (req) => {
           continue
         }
 
+        if (corenav?.byApiName.has(block.name)) {
+          const t = corenav.byApiName.get(block.name)!
+          const step: Step = { tool: 'corenav', sql: `CoreNav ${t.name} ${JSON.stringify(block.input ?? {})}` }
+          let content: string
+          try {
+            const r = await corenav.call(block.name, block.input)
+            content = r.text
+            if (r.isError) step.error = r.text.slice(0, 300)
+            step.rowCount = countRows(r.text)
+          } catch (e) {
+            step.error = e instanceof Error ? e.message : String(e)
+            content = `ERROR: ${step.error}`
+          }
+          steps.push(step)
+          emit({ t: 'step', step })
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content, ...(step.error ? { is_error: true } : {}) })
+          continue
+        }
+
         if (block.name === 'present_choices') {
           const input = (block.input ?? {}) as {
             options?: { label?: string; hint?: string }[]
@@ -788,6 +853,8 @@ Deno.serve(async (req) => {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       return json({ error: 'internal', message, steps }, 500, origin)
+    } finally {
+      await corenav?.close()
     }
   }
 
@@ -818,6 +885,7 @@ Deno.serve(async (req) => {
         })
       } finally {
         open = false
+        await corenav?.close()
         try {
           controller.close()
         } catch {
