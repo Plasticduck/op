@@ -27,12 +27,15 @@ export const CONNECTORS: Record<ProviderKey, {
     label: 'FlexWash',
     blurb: 'FlexWash with your own login, including what the company connection can\'t see, like the member roster.',
     callbackPath: '/app/flexwash/callback',
-    // FlexWash answers "Unknown client" until it allows Operator (2026-11-10).
-    // Remove this line once Connect to FlexWash works.
-    previewEmails: ['kevan@washlyfe.com'],
   },
 }
-export const PROVIDER_ORDER: ProviderKey[] = ['corenav', 'flexwash']
+// The rows in Operator AI > Connections. FlexWash is left out for now (Kevan,
+// 2026-11-10): its sign-in answers "Unknown client" until FlexWash allows
+// Operator. Everything behind it stays in place (mcp-oauth, the FlexWash return
+// page, ask-operator's login-first routing, public/oauth/flexwash-client.json),
+// so adding 'flexwash' back here turns it on. The company FlexWash API is
+// separate and unaffected.
+export const PROVIDER_ORDER: ProviderKey[] = ['corenav']
 
 export type ConnStatus = { connected: boolean; connected_at?: string; needs_reconnect?: boolean }
 export type ConnStatuses = Record<ProviderKey, ConnStatus>

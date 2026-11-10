@@ -54,7 +54,8 @@ but not what RLS allows. See **Access control** below.
   CoreNav: Operator registered itself. FlexWash: Operator's client ID is the URL
   of `public/oauth/flexwash-client.json` (client ID metadata document); FlexWash
   answered "Unknown client" on 2026-11-10 until it allows Operator, so the
-  FlexWash row is kevan-only (`previewEmails` in `src/lib/queries/connections.ts`).
+  FlexWash row is off (left out of `PROVIDER_ORDER` in
+  `src/lib/queries/connections.ts`; adding it back turns it on).
 - **Payments:** Stripe — subscription billing (embedded pricing table on the
   Billing page, Checkout from the BillingGate lock screen, Customer Portal,
   webhook, per-site quantity for Multi-Site) and **Stripe Connect** for per-site
