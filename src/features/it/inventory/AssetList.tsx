@@ -59,8 +59,8 @@ const STATUS_TYPE_LABEL: Record<string, string> = {
   deployable: 'Ready to use (any)', pending: 'Being set up (any)', undeployable: 'Not working (any)',
 }
 
-// The IT Inventory list. Defaults to the site you're working in (the site
-// switcher) with "All sites" for a company-wide view. One search box covers
+// The IT Inventory list. Opens on "All sites" (Kevan's call, 2026-11-10); the
+// Site menu narrows it to one site. One search box covers
 // tag, name, serial, model, manufacturer, IP, MAC and notes; pressing Enter on
 // an exact tag or serial (which is what a USB or Bluetooth barcode scanner
 // does) opens it. Filters, columns and sort live in the URL, so the back
@@ -94,7 +94,7 @@ export function AssetList({ onScan }: { onScan: () => void }) {
   const [bulk, setBulk] = useState<null | 'checkout' | 'checkin' | 'status' | 'move' | 'remove'>(null)
   const [collecting, setCollecting] = useState(false)
 
-  const f = readFilters(params, activeLocation?.id ?? 'all')
+  const f = readFilters(params, 'all')
   const sortKey = params.get('sort') ?? 'tag'
   const sortDir = params.get('dir') === 'desc' ? 'desc' : 'asc'
   const setParam = (patch: Record<string, string>) =>
