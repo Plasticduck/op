@@ -28,7 +28,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { CONNECT_ACCOUNT, PROVIDERS, ReconnectNeeded, openSession } from '../_shared/connect.ts'
-import type { McpSession } from '../_shared/mcp.ts'
+import { McpUnavailable, cleanMcpError, type McpSession } from '../_shared/mcp.ts'
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -62,7 +62,7 @@ const MAX_PAGES = 8
 // A CoreNav tool's answer as JSON (its text is JSON; errors come back as text).
 async function tool(s: McpSession, name: string, args: Record<string, unknown>): Promise<Json> {
   const r = await s.callByName(name, args, 8_000_000)
-  if (r.isError) throw new Error(r.text.slice(0, 500) || `CoreNav ${name} failed.`)
+  if (r.isError) throw new Error(r.text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || `CoreNav ${name} failed.`)
   try { return JSON.parse(r.text) } catch { return { text: r.text } }
 }
 
@@ -154,7 +154,10 @@ async function siteSection(s: McpSession, u: Record<string, unknown>, sec: Secti
     }
     return { kind: 'unsupported', title, view: sec.view ?? null }
   } catch (e) {
-    return { kind: 'error', title, message: e instanceof Error ? e.message.slice(0, 300) : String(e) }
+    // CoreNav itself down: fail the whole sidebar (one message, Try again) rather
+    // than every section.
+    if (e instanceof McpUnavailable) throw e
+    return { kind: 'error', title, message: cleanMcpError('CoreNav', e).message }
   }
 }
 
@@ -330,8 +333,10 @@ Deno.serve(async (req) => {
 
     return json({ error: 'bad_request', message: 'Unknown action.' }, 400, origin)
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e)
-    return json({ error: e instanceof ReconnectNeeded ? 'reconnect' : 'failed', message }, e instanceof ReconnectNeeded ? 401 : 502, origin)
+    if (e instanceof ReconnectNeeded) return json({ error: 'reconnect', message: e.message }, 401, origin)
+    // CoreNav down or slow: say so plainly (never its host's HTML error page).
+    if (e instanceof McpUnavailable) return json({ error: 'unavailable', message: e.message }, 503, origin)
+    return json({ error: 'failed', message: cleanMcpError('CoreNav', e).message }, 502, origin)
   } finally {
     await session?.close()
   }

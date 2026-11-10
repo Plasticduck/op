@@ -64,7 +64,9 @@ async function call<T>(body: Record<string, unknown>, fallback: string): Promise
     if (ctx instanceof Response) {
       try { ctxCode = ((await ctx.clone().json()) as { error?: string })?.error } catch { /* not JSON */ }
     }
-    throw new CoreNavMapError(await fnErrorMessage(error, data as { message?: string; error?: string } | null, fallback), code ?? ctxCode)
+    const message = await fnErrorMessage(error, data as { message?: string; error?: string } | null, fallback)
+    // Never show a raw web page (a host's error page) as the message.
+    throw new CoreNavMapError(/<(!doctype|html|head|body)\b/i.test(message) ? fallback : message.slice(0, 400), code ?? ctxCode)
   }
   return data as T
 }

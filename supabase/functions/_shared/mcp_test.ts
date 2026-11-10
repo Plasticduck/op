@@ -8,7 +8,7 @@ import { createServer } from 'node:http'
 import { z } from 'npm:zod@3'
 import { McpServer } from 'npm:@modelcontextprotocol/sdk@1/server/mcp.js'
 import { StreamableHTTPServerTransport } from 'npm:@modelcontextprotocol/sdk@1/server/streamableHttp.js'
-import { McpSession, apiNameFor, isReadOnlyTool, toTools } from './mcp.ts'
+import { McpSession, McpUnavailable, apiNameFor, cleanMcpError, isReadOnlyTool, toTools } from './mcp.ts'
 import { PROVIDERS, authorizeUrl, getOAuthClient, pkceChallenge, signInProblem } from './connect.ts'
 
 Deno.test('read-only rule: annotations first, then the name', () => {
@@ -189,6 +189,46 @@ Deno.test({
       assert(!calls.includes('create_deal') && !calls.includes('update_stage'))
       assertEquals(calls, ['get_deal:d7', 'list_deals'])
       await s.close()
+    } finally {
+      await new Promise((r) => http.close(r))
+    }
+  },
+})
+
+Deno.test('failures read as one plain sentence, never a host error page', () => {
+  const page = '<!DOCTYPE html><html><head><title>502</title></head><body><h1>Bad Gateway</h1><p>This service is currently unavailable.</p></body></html>'
+  const down = cleanMcpError('CoreNav', Object.assign(new Error(`Streamable HTTP error: Error POSTing to endpoint: ${page}`), { code: 502 }))
+  assert(down instanceof McpUnavailable)
+  assertEquals(down.message, "CoreNav isn't answering right now (its server returned 502). That's on CoreNav's side; try again in a few minutes.")
+  assert(cleanMcpError('CoreNav', new Error(page)) instanceof McpUnavailable)
+  assert(cleanMcpError('CoreNav', new Error('Error POSTing to endpoint (HTTP 503): busy')) instanceof McpUnavailable)
+  const slow = cleanMcpError('CoreNav', new Error('Connecting to CoreNav timed out'))
+  assert(slow instanceof McpUnavailable)
+  assertStringIncludes(slow.message, 'taking too long')
+  assert(cleanMcpError('CoreNav', new TypeError('fetch failed')) instanceof McpUnavailable)
+  const denied = cleanMcpError('CoreNav', Object.assign(new Error('{"error":"invalid_token"}'), { code: 401 }))
+  assert(!(denied instanceof McpUnavailable))
+  assertStringIncludes(denied.message, 'Reconnect CoreNav')
+  // Anything else: tags gone, short.
+  const other = cleanMcpError('CoreNav', new Error(`Binder Error: <b>no</b> column ${'x'.repeat(400)}`))
+  assert(!other.message.includes('<b>') && other.message.length <= 301)
+  assertEquals(cleanMcpError('CoreNav', down), down)
+})
+
+Deno.test({
+  name: 'MCP session: a down server (HTML 502) fails with a plain message',
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const http = createServer((_req, res) => {
+      res.writeHead(502, { 'Content-Type': 'text/html' }).end('<!DOCTYPE html><html><body><h1>Bad Gateway</h1></body></html>')
+    })
+    await new Promise<void>((r) => http.listen(0, '127.0.0.1', () => r()))
+    const url = `http://127.0.0.1:${(http.address() as { port: number }).port}/api/mcp`
+    try {
+      const e = await assertRejects(() => McpSession.open(url, 'any', 'corenav', 'CoreNav'))
+      assert(e instanceof McpUnavailable)
+      assertEquals((e as Error).message, "CoreNav isn't answering right now (its server returned 502). That's on CoreNav's side; try again in a few minutes.")
     } finally {
       await new Promise((r) => http.close(r))
     }

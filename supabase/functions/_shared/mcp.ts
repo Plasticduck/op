@@ -80,6 +80,29 @@ export function toTools(prefix: string, label: string, list: McpToolInfo[], rule
 const withTimeout = <T>(p: Promise<T>, ms: number, what: string) =>
   Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${what} timed out`)), ms))])
 
+// The server is down, slow or unreachable (not a problem with the request).
+export class McpUnavailable extends Error {}
+
+// A failure as one plain sentence. When a server is down its host answers with a
+// whole HTML error page, and the MCP client puts all of it in the message.
+export function cleanMcpError(label: string, e: unknown): Error {
+  if (e instanceof McpUnavailable) return e
+  const raw = e instanceof Error ? e.message : String(e)
+  const code = Number((e as { code?: unknown })?.code)
+  const status = code >= 100 && code < 600 ? code : Number(raw.match(/\b(?:HTTP|status)\s*\(?(\d{3})\b/i)?.[1] ?? NaN)
+  const html = /<(!doctype|html|head|body)\b/i.test(raw)
+  if (status >= 500 || (html && !(status >= 400))) {
+    return new McpUnavailable(`${label} isn't answering right now${status ? ` (its server returned ${status})` : ''}. That's on ${label}'s side; try again in a few minutes.`)
+  }
+  if (/timed out/i.test(raw)) return new McpUnavailable(`${label} is taking too long to answer right now. Try again in a few minutes.`)
+  if (/fetch failed|network|ECONN|ENOTFOUND|EAI_AGAIN|connection (refused|reset|closed)/i.test(raw)) {
+    return new McpUnavailable(`Couldn't reach ${label} right now. Try again in a few minutes.`)
+  }
+  if (status === 401 || status === 403) return new Error(`${label} turned down your sign-in (${status}). Reconnect ${label} and try again.`)
+  const text = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  return new Error(text.length > 300 ? `${text.slice(0, 300)}…` : text || `${label} failed.`)
+}
+
 export class McpSession {
   readonly byApiName: Map<string, McpTool>
   readonly byName: Map<string, McpTool>
@@ -100,20 +123,25 @@ export class McpSession {
       requestInit: { headers: { Authorization: `Bearer ${token}` } },
     })
     const client = new Client({ name: 'operator-ai', version: '1.0.0' })
-    await withTimeout(client.connect(transport), 12_000, `Connecting to ${label}`)
-    const all: McpToolInfo[] = []
-    let cursor: string | undefined
-    for (let page = 0; page < 10; page++) {
-      const r = (await withTimeout(client.listTools(cursor ? { cursor } : undefined), 12_000, `Listing ${label} tools`)) as {
-        tools: McpToolInfo[]
-        nextCursor?: string
+    try {
+      await withTimeout(client.connect(transport), 12_000, `Connecting to ${label}`)
+      const all: McpToolInfo[] = []
+      let cursor: string | undefined
+      for (let page = 0; page < 10; page++) {
+        const r = (await withTimeout(client.listTools(cursor ? { cursor } : undefined), 12_000, `Listing ${label} tools`)) as {
+          tools: McpToolInfo[]
+          nextCursor?: string
+        }
+        all.push(...r.tools)
+        cursor = r.nextCursor
+        if (!cursor) break
       }
-      all.push(...r.tools)
-      cursor = r.nextCursor
-      if (!cursor) break
+      const { tools, skipped } = toTools(prefix, label, all, rules)
+      return new McpSession(client, label, tools, skipped, client.getInstructions()?.trim() || null)
+    } catch (e) {
+      await client.close().catch(() => {})
+      throw cleanMcpError(label, e)
     }
-    const { tools, skipped } = toTools(prefix, label, all, rules)
-    return new McpSession(client, label, tools, skipped, client.getInstructions()?.trim() || null)
   }
 
   // Runs one tool (by its server name) and returns its text, cut to `max` characters.
@@ -122,7 +150,7 @@ export class McpSession {
     const r = (await withTimeout(
       this.client.callTool({ name, arguments: (args && typeof args === 'object' ? args : {}) as Record<string, unknown> }),
       60_000, `${this.label} ${name}`,
-    )) as { content?: unknown[]; structuredContent?: unknown; isError?: boolean }
+    ).catch((e) => { throw cleanMcpError(this.label, e) })) as { content?: unknown[]; structuredContent?: unknown; isError?: boolean }
     const parts: string[] = []
     for (const c of (r.content ?? []) as { type: string; text?: string; resource?: { text?: string; uri?: string } }[]) {
       if (c.type === 'text' && c.text) parts.push(c.text)

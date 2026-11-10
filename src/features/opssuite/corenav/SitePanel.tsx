@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ExternalLink, Loader2, Star, X } from 'lucide-react'
+import { ExternalLink, Loader2, RotateCw, Star, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CnSection, CnTab } from '@/lib/queries/corenavMap'
 import { labelFor, showValue } from './format'
@@ -25,11 +25,12 @@ export type Competitors = {
   onPick: (id: string) => void
 }
 
-export function SitePanel({ head, tabs, loading, error, labels, openUrl, onClose, competitors }: {
+export function SitePanel({ head, tabs, loading, error, onRetry, labels, openUrl, onClose, competitors }: {
   head: PanelHead
   tabs: CnTab[] | null
   loading: boolean
   error: string | null
+  onRetry: () => void
   labels: Record<string, string>
   openUrl: string
   onClose: () => void
@@ -91,7 +92,12 @@ export function SitePanel({ head, tabs, loading, error, labels, openUrl, onClose
         {loading ? (
           <div className="flex items-center gap-2 py-6 text-sm text-ink-muted"><Loader2 className="size-4 animate-spin" /> Reading this site from CoreNav…</div>
         ) : error ? (
-          <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
+          <div data-testid="cn-site-error">
+            <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
+            <button type="button" onClick={onRetry} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:border-accent/50">
+              <RotateCw className="size-4" /> Try again
+            </button>
+          </div>
         ) : tab ? (
           <div className="space-y-5">
             {tab.sections.map((s, i) => <Section key={i} s={s} labels={labels} openUrl={openUrl} competitors={competitors} />)}

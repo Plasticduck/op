@@ -236,11 +236,22 @@ export default function CoreNavMapPage() {
     return c
   }, [pts, visible])
 
-  const pick = useCallback((p: Pt) => {
-    setSelected(p)
+  // One site's CoreNav sidebar (again on Try again).
+  const loadSite = useCallback((p: Pt) => {
     setSiteTabs(null)
     setSiteError(null)
     setSiteLoading(true)
+    const req = ++siteReq.current
+    if (!setup) return
+    corenavMap.site(setup.universe, p.id, p.entity)
+      .then((r) => { if (req === siteReq.current) setSiteTabs(r.tabs) })
+      .catch((e) => { if (req === siteReq.current) setSiteError(e instanceof Error ? e.message : "Couldn't load that site.") })
+      .finally(() => { if (req === siteReq.current) setSiteLoading(false) })
+  }, [setup])
+
+  const pick = useCallback((p: Pt) => {
+    setSelected(p)
+    loadSite(p)
     const map = mapRef.current
     if (map && window.innerWidth < 1024) {
       // On a phone the sheet covers the lower part of the map: keep the site above it.
@@ -249,13 +260,15 @@ export default function CoreNavMapPage() {
     } else if (map && !map.getBounds().contains([p.lat, p.lng])) {
       map.panTo([p.lat, p.lng])
     }
-    const req = ++siteReq.current
-    if (!setup) return
-    corenavMap.site(setup.universe, p.id, p.entity)
-      .then((r) => { if (req === siteReq.current) setSiteTabs(r.tabs) })
-      .catch((e) => { if (req === siteReq.current) setSiteError(e instanceof Error ? e.message : "Couldn't load that site.") })
-      .finally(() => { if (req === siteReq.current) setSiteLoading(false) })
-  }, [setup])
+  }, [loadSite])
+
+  // Try again on the site panel: its sidebar, and its drive times if they failed too.
+  const [areaTry, setAreaTry] = useState(0)
+  const retrySite = () => {
+    if (!selected) return
+    loadSite(selected)
+    setAreaTry((n) => n + 1)
+  }
 
   // The map, once.
   useEffect(() => {
@@ -560,7 +573,7 @@ export default function CoreNavMapPage() {
       .then((r) => { areaCache.set(key, r.areas); if (live) setAreas({ id: selected.id, list: r.areas, error: null }) })
       .catch((e) => { if (live) setAreas({ id: selected.id, list: null, error: e instanceof Error ? e.message : "Couldn't load that site's drive times." }) })
     return () => { live = false }
-  }, [selected, setup, areaCfg])
+  }, [selected, setup, areaCfg, areaTry])
 
   const siteAreas = selected && areas?.id === selected.id ? areas.list : null
 
@@ -959,7 +972,7 @@ export default function CoreNavMapPage() {
         <div className={cn('absolute z-[550] overflow-hidden border border-border shadow-2xl',
           'inset-x-0 h-[62%] rounded-t-2xl', BOTTOM_NAV.replace('lg:bottom-0', ''),
           'lg:inset-x-auto lg:bottom-3 lg:right-3 lg:top-14 lg:h-auto lg:w-[380px] lg:rounded-2xl')}>
-          <SitePanel key={selected.id} head={head} tabs={siteTabs} loading={siteLoading} error={siteError}
+          <SitePanel key={selected.id} head={head} tabs={siteTabs} loading={siteLoading} error={siteError} onRetry={retrySite}
             labels={setup?.labels ?? {}} openUrl={CORENAV_MAP_URL} onClose={() => setSelected(null)} competitors={competitors} />
         </div>
       )}
