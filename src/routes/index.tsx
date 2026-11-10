@@ -139,7 +139,7 @@ const ReportingPage = lz(() => import('@/features/reports/ReportingPage'))
 const PreBuiltReportPage = lz(() => import('@/features/reports/PreBuiltReportPage'))
 const InsightsPage = lz(() => import('@/features/insights/InsightsPage'))
 const AskOperatorPage = lz(() => import('@/features/ask/AskOperatorPage'))
-const CoreNavCallback = lz(() => import('@/features/ask/CoreNavCallback'))
+const ConnectorCallback = lz(() => import('@/features/ask/ConnectorCallback'))
 const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
 const ItFieldChecklistPage = lz(() => import('@/features/it/ItFieldChecklistPage'))
 const ItInventoryPage = lz(() => import('@/features/it/inventory/ItInventoryPage'))
@@ -233,8 +233,9 @@ export const router = createBrowserRouter([
           { path: 'dashboard', element: s(<DashboardPage />) },
 
           { path: 'ask', element: s(<AskOperatorPage />) },
-          // CoreNav sends people back here after they sign in (Connect to CoreNav).
-          { path: 'corenav/callback', element: s(<CoreNavCallback />) },
+          // CoreNav and FlexWash send people back here after they sign in (Operator AI > Connections).
+          { path: 'corenav/callback', element: s(<ConnectorCallback />) },
+          { path: 'flexwash/callback', element: s(<ConnectorCallback />) },
           { path: 'issuetrak', element: tech(<IssuetrakPage />) },
           { path: 'it-field-checklist', element: tech(<ItFieldChecklistPage />) },
           { path: 'it-field-checklist/:id', element: tech(<ItFieldChecklistPage />) },

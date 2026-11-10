@@ -14,8 +14,11 @@
 //                          on an account with FlexWash sites. Managers are kept to
 //                          their own FlexWash car washes (see flexwash.ts).
 //   corenav_*            — the read-only tools of the person's own CoreNav login,
-//                          when they've connected it (Connect to CoreNav; see
-//                          corenav-oauth and _shared/corenav.ts). Mighty Wash only.
+//                          when they've connected it (Connections > Connect to
+//                          CoreNav; see mcp-oauth and _shared/connect.ts).
+//   A person's own FlexWash login (Connect to FlexWash) runs behind the same
+//   flexwash_* tools, with the company connection as backup (flexwash.ts).
+//   Connections are Mighty Wash only and open side by side for each question.
 //
 // Secrets required (set via `supabase secrets set`):
 //   ANTHROPIC_API_KEY   — Claude API key (function returns 503 'no_key' if absent)
@@ -24,8 +27,9 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import Anthropic from 'npm:@anthropic-ai/sdk'
-import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexPrompt, flexUserNote, type FlexAccess } from './flexwash.ts'
-import { CORENAV_ACCOUNT, CoreNavSession, ReconnectNeeded, accessTokenFor } from '../_shared/corenav.ts'
+import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexCatalog, flexPrompt, flexUserNote, type FlexAccess } from './flexwash.ts'
+import { CONNECT_ACCOUNT, PROVIDERS, ReconnectNeeded, openSession, type ProviderKey } from '../_shared/connect.ts'
+import type { McpSession } from '../_shared/mcp.ts'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
 // Safety cap on tool-use rounds per question. A real diagnosis ("why were cars
@@ -497,28 +501,38 @@ Deno.serve(async (req) => {
     }
   }
 
-  // CoreNav: the person's own CoreNav login, when they've connected it. Their
-  // token decides what CoreNav shows them; only read-only tools are offered.
-  let corenav: CoreNavSession | null = null
-  let corenavNote = ''
-  if (profile.account_id === CORENAV_ACCOUNT && profile.role_category !== 'corporate_display') {
-    try {
-      const token = await accessTokenFor(svc, uid)
-      if (token) corenav = await CoreNavSession.open(token)
-      else {
-        corenavNote = ' This user has not connected CoreNav. If they ask about CoreNav, tell them to tap Connect to CoreNav at the top of Operator AI and sign in with their mighty-wash.com email.'
+  // Connections: the person's own CoreNav and FlexWash logins, when they've
+  // connected them. Opened side by side; each one's token decides what that
+  // service shows them, and only read-only tools are offered.
+  const sessions: Partial<Record<ProviderKey, McpSession>> = {}
+  const connectNotes: string[] = []
+  if (profile.account_id === CONNECT_ACCOUNT && profile.role_category !== 'corporate_display') {
+    const keys: ProviderKey[] = ['corenav', 'flexwash']
+    const opened = await Promise.allSettled(keys.map((k) => openSession(svc, uid, PROVIDERS[k])))
+    opened.forEach((r, i) => {
+      const k = keys[i]
+      const label = PROVIDERS[k].label
+      if (r.status === 'fulfilled') {
+        if (r.value) sessions[k] = r.value
+        else if (k === 'corenav') {
+          connectNotes.push('This user has not connected CoreNav. If they ask about CoreNav, tell them to open Connections at the top of Operator AI and connect CoreNav with their mighty-wash.com email.')
+        }
+        return
       }
-    } catch (e) {
-      corenavNote = e instanceof ReconnectNeeded
-        ? " This user's CoreNav sign-in has expired. If they ask about CoreNav, tell them to tap Reconnect CoreNav at the top of Operator AI."
-        : ` CoreNav isn't responding right now (${e instanceof Error ? e.message : String(e)}). If they ask about CoreNav, say so and suggest trying again shortly.`
-    }
+      const e = r.reason
+      const backup = k === 'flexwash' && flexAccess ? ' The company FlexWash connection still answers for now.' : ''
+      connectNotes.push(e instanceof ReconnectNeeded
+        ? `This user's ${label} sign-in has expired. If they ask about ${label}, tell them to reconnect it under Connections at the top of Operator AI.${backup}`
+        : `${label} isn't responding right now (${e instanceof Error ? e.message : String(e)}). If they ask about ${label}, say so and suggest trying again shortly.${backup}`)
+    })
   }
+  const corenav = sessions.corenav ?? null
   if (corenav) {
-    corenavNote = corenav.tools.length
-      ? ' This user connected their own CoreNav login: the corenav_ tools read their CoreNav workspace, showing only what that login can see. CoreNav is a separate system from Operator; use these tools for anything about CoreNav or the records in it (their descriptions say what each covers), and Operator tools for Operator data. They only read; if asked to change something in CoreNav, say it has to be done in CoreNav.'
-      : ' This user connected CoreNav, but their login offers no read-only tools, so CoreNav data is not available here.'
+    connectNotes.push(corenav.tools.length
+      ? 'This user connected their own CoreNav login: the corenav_ tools read their CoreNav workspace, showing only what that login can see. CoreNav is a separate system from Operator; use these tools for anything about CoreNav or the records in it (their descriptions say what each covers), FlexWash tools for FlexWash, and Operator tools for Operator data, combining them when a question spans systems. They only read; if asked to change something in CoreNav, say it has to be done in CoreNav.'
+      : 'This user connected CoreNav, but their login offers no read-only tools, so CoreNav data is not available here.')
   }
+  const closeSessions = () => Promise.all(Object.values(sessions).map((x) => x?.close()))
 
   let body: {
     question?: string
@@ -540,7 +554,10 @@ Deno.serve(async (req) => {
   const tools = perfAvailable
     ? [RUN_SQL_TOOL, PERF_TOOL, QUERY_DASHBOARD_TOOL, PRESENT_CHOICES_TOOL, BUILD_REPORT_TOOL]
     : [RUN_SQL_TOOL, PRESENT_CHOICES_TOOL, BUILD_REPORT_TOOL]
-  const flex = flexAccess ? new FlexWash(svc, flexAccess) : null
+  // FlexWash: their own login (when it has tools) first, the company connection
+  // for everyone it covers.
+  const flexLogin = sessions.flexwash?.tools.length ? sessions.flexwash : null
+  const flex = flexAccess || flexLogin ? new FlexWash(svc, flexAccess, undefined, flexLogin) : null
   if (flex) tools.push(FLEX_DESCRIBE_TOOL, FLEX_CALL_TOOL)
   if (corenav) {
     for (const t of corenav.tools) {
@@ -588,15 +605,15 @@ Deno.serve(async (req) => {
           { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
           // The FlexWash catalog is the same for every Admin (and for every
           // manager), so it caches as its own block.
-          ...(flexAccess
-            ? [{ type: 'text' as const, text: flexPrompt(flexAccess.all), cache_control: { type: 'ephemeral' as const } }]
+          ...(flex
+            ? [{ type: 'text' as const, text: flexPrompt(flexCatalog(flexAccess, flexLogin), flex.ownLogin), cache_control: { type: 'ephemeral' as const } }]
             : []),
           {
             type: 'text',
             text:
               `Today is ${today}. Answer for this user's data only. ${perfNote}${restrictedNote}` +
-              (flexAccess ? ` ${flexUserNote(flexAccess)}` : '') +
-              corenavNote +
+              (flex ? ` ${flexUserNote(flexAccess, flex.ownLogin)}` : '') +
+              (connectNotes.length ? ` ${connectNotes.join(' ')}` : '') +
               (finalRound
                 ? ' You have gathered enough. Give your best final answer now using the data already returned; do not ask for more.'
                 : ''),
@@ -748,7 +765,7 @@ Deno.serve(async (req) => {
           try {
             const r = await flex.call(endpoint, input.input)
             // Show what was actually sent (a manager's car washes are filled in).
-            step.sql = `FlexWash ${endpoint} ${JSON.stringify(r.input)}`
+            step.sql = `FlexWash${r.via === 'login' ? ' (your login)' : ''} ${endpoint} ${JSON.stringify(r.input)}`
             step.rowCount = r.rows
             content = r.text
           } catch (e) {
@@ -854,7 +871,7 @@ Deno.serve(async (req) => {
       const message = e instanceof Error ? e.message : String(e)
       return json({ error: 'internal', message, steps }, 500, origin)
     } finally {
-      await corenav?.close()
+      await closeSessions()
     }
   }
 
@@ -885,7 +902,7 @@ Deno.serve(async (req) => {
         })
       } finally {
         open = false
-        await corenav?.close()
+        await closeSessions()
         try {
           controller.close()
         } catch {

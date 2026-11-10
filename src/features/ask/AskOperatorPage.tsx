@@ -25,7 +25,7 @@ import { ChoicePicker } from '@/features/ask/ChoicePicker'
 import { ReportCard } from '@/features/ask/ReportCard'
 import { buildSiteMatcher } from '@/features/ask/siteLinks'
 import { StarMark } from '@/features/ask/StarMark'
-import { CoreNavConnect } from '@/features/ask/CoreNavConnect'
+import { ConnectionsMenu } from '@/features/ask/ConnectionsMenu'
 import { useTypewriter } from '@/features/ask/useTypewriter'
 import { cn } from '@/lib/utils'
 
@@ -237,7 +237,7 @@ export default function AskOperatorPage() {
       <header className="flex items-center gap-2.5 py-4">
         <StarMark className="size-5 text-accent" />
         <h1 className="text-lg font-semibold tracking-tight text-ink">Operator AI</h1>
-        <CoreNavConnect />
+        <ConnectionsMenu />
       </header>
 
       {/* -mr-4 pr-4 pushes the scrollbar out into the page gutter so it stops

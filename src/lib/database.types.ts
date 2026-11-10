@@ -2314,48 +2314,6 @@ export type Database = {
           },
         ]
       }
-      corenav_connections: {
-        Row: {
-          account_id: string
-          connected_at: string
-          last_error: string | null
-          secret_id: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          account_id: string
-          connected_at?: string
-          last_error?: string | null
-          secret_id: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          account_id?: string
-          connected_at?: string
-          last_error?: string | null
-          secret_id?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "corenav_connections_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "corenav_connections_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       counseling_records: {
         Row: {
           acknowledged_at: string | null
@@ -7593,6 +7551,51 @@ export type Database = {
             columns: ["market_research_id"]
             isOneToOne: false
             referencedRelation: "market_research"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mcp_connections: {
+        Row: {
+          account_id: string
+          connected_at: string
+          last_error: string | null
+          provider: string
+          secret_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          connected_at?: string
+          last_error?: string | null
+          provider: string
+          secret_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          connected_at?: string
+          last_error?: string | null
+          provider?: string
+          secret_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_connections_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mcp_connections_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -14522,6 +14525,27 @@ export type Database = {
           p_user_agent?: string
         }
         Returns: Json
+      }
+      mcp_set_error: {
+        Args: { p_error: string; p_provider: string; p_user: string }
+        Returns: undefined
+      }
+      mcp_status: { Args: never; Returns: Json }
+      mcp_tokens_connect: {
+        Args: { p_provider: string; p_tokens: Json; p_user: string }
+        Returns: undefined
+      }
+      mcp_tokens_delete: {
+        Args: { p_provider: string; p_user: string }
+        Returns: undefined
+      }
+      mcp_tokens_get: {
+        Args: { p_provider: string; p_user: string }
+        Returns: Json
+      }
+      mcp_tokens_save: {
+        Args: { p_provider: string; p_tokens: Json; p_user: string }
+        Returns: undefined
       }
       mi__account: { Args: never; Returns: string }
       mi__add_interval: {
