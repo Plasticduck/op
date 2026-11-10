@@ -37,6 +37,19 @@ Deno.test('tool names fit Claude: prefixed, cleaned, unique, at most 64', () => 
   assertStringIncludes(tools[0].description, 'CoreNav: ')
 })
 
+Deno.test("CoreNav's reviewed list: its unmarked read tools in, its writes and link/map out", () => {
+  // CoreNav's real tool list (2026-11-10); none carry annotations.
+  const names = ['describe', 'query', 'save_view', 'map_config', 'save_map', 'record', 'link', 'images', 'map']
+  const { tools, skipped } = toTools('corenav', 'CoreNav', names.map((name) => ({ name })), PROVIDERS.corenav.toolRules)
+  assertEquals(tools.map((t) => t.name).sort(), ['describe', 'images', 'map_config', 'query', 'record'])
+  assertEquals(skipped.sort(), ['link', 'map', 'save_map', 'save_view'])
+  // Without the list, the name rule alone would have dropped record, map_config and images.
+  const plain = toTools('corenav', 'CoreNav', names.map((name) => ({ name })))
+  assertEquals(plain.tools.map((t) => t.name).sort(), ['describe', 'query'])
+  // A skip entry wins even over a server's own read-only mark.
+  assertEquals(toTools('x', 'X', [{ name: 'link', annotations: { readOnlyHint: true } }], { skip: ['link'] }).tools.length, 0)
+})
+
 Deno.test('PKCE challenge is base64url(SHA-256(verifier)), unpadded', async () => {
   const v = 'dBjftJeZ4CVP-mJ0kz7eV2Ou4xVuZ8AR9KoJxLc2NMs'
   const expected = encodeBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v))))
@@ -106,7 +119,7 @@ Deno.test({
 function standIn(token: string) {
   const calls: string[] = []
   const make = () => {
-    const s = new McpServer({ name: 'stand-in', version: '1.0.0' })
+    const s = new McpServer({ name: 'stand-in', version: '1.0.0' }, { instructions: 'Deals live in the deals table.' })
     s.registerTool('get_deal', { description: 'One deal by id.', inputSchema: { id: z.string() }, annotations: { readOnlyHint: true } },
       ({ id }: { id: string }) => { calls.push('get_deal:' + id); return { content: [{ type: 'text', text: JSON.stringify({ id, name: 'Lubbock West', stage: 'LOI' }) }] } })
     s.registerTool('list_deals', { description: 'All deals.', inputSchema: {} },
@@ -156,6 +169,7 @@ Deno.test({
       const s = await McpSession.open(url, 'good-token', 'corenav', 'CoreNav')
       assertEquals(s.tools.map((t) => t.name).sort(), ['big_export', 'broken_report', 'get_deal', 'list_deals'])
       assertEquals(s.skipped.sort(), ['create_deal', 'update_stage'])
+      assertEquals(s.instructions, 'Deals live in the deals table.')
       assertStringIncludes(s.byApiName.get('corenav_get_deal')!.description, 'CoreNav: One deal by id.')
       assertEquals((s.byApiName.get('corenav_get_deal')!.inputSchema as { required?: string[] }).required, ['id'])
 

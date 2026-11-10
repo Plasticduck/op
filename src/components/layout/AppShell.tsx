@@ -29,6 +29,7 @@ const FULL_BLEED_PATTERNS = [
   /^\/app\/ask($|\/)/,
   /^\/app\/market-explorer($|\/)/,
   /^\/app\/fleet-map($|\/)/,
+  /^\/app\/corenav-map($|\/)/,
   /^\/app\/messages($|\/)/,
   /^\/app\/work-orders($|\/)/,
   /^\/app\/work-orders-new($|\/)/,

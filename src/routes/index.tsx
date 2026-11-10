@@ -151,6 +151,7 @@ const SchedulePortalPage = lz(() => import('@/features/people/schedule/ScheduleP
 const SocialCalendarPage = lz(() => import('@/features/social/SocialCalendarPage'))
 const MarketingDashboardPage = lz(() => import('@/features/opssuite/MarketingDashboardPage'))
 const MarketExplorerPage = lz(() => import('@/features/opssuite/MarketExplorerPage'))
+const CoreNavMapPage = lz(() => import('@/features/opssuite/CoreNavMapPage'))
 const FleetMapPage = lz(() => import('@/features/opssuite/FleetMapPage'))
 const FleetManagementPage = lz(() => import('@/features/opssuite/FleetManagementPage'))
 const SiteVisitsPage = lz(() => import('@/features/opssuite/SiteVisitsPage'))
@@ -294,6 +295,7 @@ export const router = createBrowserRouter([
           { path: 'signage', element: emp(<SignagePage />) },
           { path: 'site-performance', element: mgr(<SitePerformancePage />) },
           { path: 'market-explorer', element: mgr(<MarketExplorerPage />) },
+          { path: 'corenav-map', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive']}><RequireSitePerformance>{s(<CoreNavMapPage />)}</RequireSitePerformance></RequirePermRole> },
           { path: 'fleet-map', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<FleetMapPage />)}</RequireEmails> },
           { path: 'fleet-management', element: <RequireRole allow={['owner']}><RequireSitePerformance>{s(<FleetManagementPage />)}</RequireSitePerformance></RequireRole> },
           { path: 'site-visits', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<SiteVisitsPage />)}</RequireEmails> },

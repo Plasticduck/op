@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
       let skipped: string[] = []
       let toolsError: string | null = null
       try {
-        const session = await McpSession.open(p.mcp, tokens.access_token, p.toolPrefix, p.label)
+        const session = await McpSession.open(p.mcp, tokens.access_token, p.toolPrefix, p.label, p.toolRules)
         tools = session.tools.map((t) => t.name)
         skipped = session.skipped
         await session.close()

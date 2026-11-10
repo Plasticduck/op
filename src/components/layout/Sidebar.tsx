@@ -37,6 +37,7 @@ import {
   Folders,
   Gauge,
   Globe,
+  Compass,
   Hammer,
   ListChecks,
   Building2,
@@ -176,6 +177,14 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Market Explorer',
         icon: Globe,
         roles: ['owner', 'manager'],
+      },
+      {
+        // CoreNav's expansion map (Mighty Wash). Each person signs in to CoreNav.
+        to: '/app/corenav-map',
+        label: 'CoreNav Map',
+        icon: Compass,
+        roles: ['owner', 'regional_manager', 'executive'],
+        flag: 'site_performance',
       },
       {
         to: '/app/site-visits',

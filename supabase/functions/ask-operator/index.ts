@@ -531,6 +531,10 @@ Deno.serve(async (req) => {
     connectNotes.push(corenav.tools.length
       ? 'This user connected their own CoreNav login: the corenav_ tools read their CoreNav workspace, showing only what that login can see. CoreNav is a separate system from Operator; use these tools for anything about CoreNav or the records in it (their descriptions say what each covers), FlexWash tools for FlexWash, and Operator tools for Operator data, combining them when a question spans systems. They only read; if asked to change something in CoreNav, say it has to be done in CoreNav.'
       : 'This user connected CoreNav, but their login offers no read-only tools, so CoreNav data is not available here.')
+    // CoreNav's own guide to its data (universes, tables, joins, SQL tips).
+    if (corenav.tools.length && corenav.instructions) {
+      connectNotes.push(`CoreNav's own notes on using it: ${corenav.instructions.slice(0, 3000)}`)
+    }
   }
   const closeSessions = () => Promise.all(Object.values(sessions).map((x) => x?.close()))
 

@@ -55,12 +55,17 @@ export function apiNameFor(prefix: string, name: string, taken: Set<string>): st
   return n
 }
 
-export function toTools(prefix: string, label: string, list: McpToolInfo[]): { tools: McpTool[]; skipped: string[] } {
+// A provider's reviewed tool list, for servers that don't mark their tools:
+// `read` are checked to only read; `skip` stay out whatever their name says.
+export type ToolRules = { read?: string[]; skip?: string[] }
+
+export function toTools(prefix: string, label: string, list: McpToolInfo[], rules: ToolRules = {}): { tools: McpTool[]; skipped: string[] } {
   const taken = new Set<string>()
   const tools: McpTool[] = []
   const skipped: string[] = []
   for (const t of list) {
-    if (!isReadOnlyTool(t)) { skipped.push(t.name); continue }
+    const ok = rules.skip?.includes(t.name) ? false : rules.read?.includes(t.name) ? true : isReadOnlyTool(t)
+    if (!ok) { skipped.push(t.name); continue }
     const schema = t.inputSchema && typeof t.inputSchema === 'object' ? t.inputSchema : {}
     tools.push({
       name: t.name,
@@ -78,12 +83,19 @@ const withTimeout = <T>(p: Promise<T>, ms: number, what: string) =>
 export class McpSession {
   readonly byApiName: Map<string, McpTool>
   readonly byName: Map<string, McpTool>
-  private constructor(private client: Client, readonly label: string, readonly tools: McpTool[], readonly skipped: string[]) {
+  private constructor(
+    private client: Client,
+    readonly label: string,
+    readonly tools: McpTool[],
+    readonly skipped: string[],
+    // What the server says about using it (its tables, joins, tips), if anything.
+    readonly instructions: string | null,
+  ) {
     this.byApiName = new Map(tools.map((t) => [t.apiName, t]))
     this.byName = new Map(tools.map((t) => [t.name, t]))
   }
 
-  static async open(server: string, token: string, prefix: string, label: string): Promise<McpSession> {
+  static async open(server: string, token: string, prefix: string, label: string, rules: ToolRules = {}): Promise<McpSession> {
     const transport = new StreamableHTTPClientTransport(new URL(server), {
       requestInit: { headers: { Authorization: `Bearer ${token}` } },
     })
@@ -100,8 +112,8 @@ export class McpSession {
       cursor = r.nextCursor
       if (!cursor) break
     }
-    const { tools, skipped } = toTools(prefix, label, all)
-    return new McpSession(client, label, tools, skipped)
+    const { tools, skipped } = toTools(prefix, label, all, rules)
+    return new McpSession(client, label, tools, skipped, client.getInstructions()?.trim() || null)
   }
 
   // Runs one tool (by its server name) and returns its text, cut to `max` characters.

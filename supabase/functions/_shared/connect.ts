@@ -14,7 +14,7 @@
 //            FLEXWASH_MCP_CLIENT_SECRET if they give one); that wins.
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
-import { McpSession } from './mcp.ts'
+import { McpSession, type ToolRules } from './mcp.ts'
 
 export type ProviderKey = 'corenav' | 'flexwash'
 export type Provider = {
@@ -31,6 +31,8 @@ export type Provider = {
   scope?: string
   redirectUris: string[]
   toolPrefix: string
+  // Reviewed tool list, for a server that doesn't mark which tools only read.
+  toolRules?: ToolRules
   // Ask the provider's sign-in page whether it accepts Operator before sending
   // anyone there, so a refusal becomes a clear message instead of their error page.
   probe?: boolean
@@ -51,6 +53,15 @@ export const PROVIDERS: Record<ProviderKey, Provider> = {
     // Changing this list makes Operator register with CoreNav again.
     redirectUris: ['https://operator.washlyfe.com/app/corenav/callback', 'http://localhost:5173/app/corenav/callback'],
     toolPrefix: 'corenav',
+    // CoreNav marks none of its tools, so its list is reviewed (2026-11-10, tools
+    // describe, query, save_view, map_config, save_map, record, link, images, map).
+    // save_view and save_map change CoreNav for everyone; link makes shareable data
+    // URLs (lasting ones end only when the key is revoked); map draws in a screen
+    // Operator AI can't show (the CoreNav Map page shows CoreNav's map instead).
+    toolRules: {
+      read: ['describe', 'query', 'record', 'map_config', 'images'],
+      skip: ['save_view', 'save_map', 'link', 'map'],
+    },
   },
   flexwash: {
     key: 'flexwash',
@@ -214,7 +225,7 @@ export async function accessTokenFor(svc: SupabaseClient, userId: string, p: Pro
 // The person's session with this provider, or null when they haven't connected it.
 export async function openSession(svc: SupabaseClient, userId: string, p: Provider): Promise<McpSession | null> {
   const token = await accessTokenFor(svc, userId, p)
-  return token ? McpSession.open(p.mcp, token, p.toolPrefix, p.label) : null
+  return token ? McpSession.open(p.mcp, token, p.toolPrefix, p.label, p.toolRules) : null
 }
 
 export async function revokeAndForget(svc: SupabaseClient, userId: string, p: Provider): Promise<void> {

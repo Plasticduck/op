@@ -56,6 +56,10 @@ but not what RLS allows. See **Access control** below.
   answered "Unknown client" on 2026-11-10 until it allows Operator, so the
   FlexWash row is off (left out of `PROVIDER_ORDER` in
   `src/lib/queries/connections.ts`; adding it back turns it on).
+  CoreNav marks none of its MCP tools, so `toolRules` in connect.ts is its
+  reviewed read/skip list. Operations - Admin > CoreNav Map (`/app/corenav-map`)
+  embeds CoreNav's own map page; it signs in with a CoreNav workspace key
+  (CoreNav's Google sign-in won't load inside a frame).
 - **Payments:** Stripe — subscription billing (embedded pricing table on the
   Billing page, Checkout from the BillingGate lock screen, Customer Portal,
   webhook, per-site quantity for Multi-Site) and **Stripe Connect** for per-site
