@@ -175,21 +175,53 @@ export function AssetForm({
     : undefined
   const modelCategory = typedCategory?.id ?? form.category_id
 
+  // In Edit the item keeps its model while its category changes (Kevan,
+  // 2026-11-10): the database only resets the category when the model changes.
+  const editing = mode === 'edit'
+  const currentModel = editing && asset?.model_id ? refs.model.get(asset.model_id) ?? null : null
+  const [categoryTouched, setCategoryTouched] = useState(false)
+
   // The model the typed text points at, if it already exists.
   const matchedModel = useMemo(() => {
     const t = form.model.trim().toLowerCase()
     if (!t) return null
-    const hits = refs.models.filter((m) => m.name.toLowerCase() === t && (!modelCategory || m.category_id === modelCategory))
+    if (currentModel && currentModel.name.toLowerCase() === t) return currentModel
+    // Adding: only models in the picked category. Editing: a model by that name
+    // in any category (the item's category is already filled in, so limiting to
+    // it would make a duplicate of a model filed elsewhere), this one's first.
+    let hits = refs.models.filter((m) => m.name.toLowerCase() === t && (editing || !modelCategory || m.category_id === modelCategory))
+    if (editing && hits.length > 1) {
+      const same = hits.filter((m) => m.category_id === modelCategory)
+      if (same.length) hits = same
+    }
     if (hits.length <= 1) return hits[0] ?? null
     const mf = form.manufacturer.trim().toLowerCase()
     return hits.find((m) => refs.manufacturer.get(m.manufacturer_id ?? '')?.name.toLowerCase() === mf) ?? hits[0]
-  }, [form.model, modelCategory, form.manufacturer, refs])
+  }, [form.model, modelCategory, form.manufacturer, refs, currentModel, editing])
   const newModel = !!form.model.trim() && !matchedModel
-  const needsOther = pickedOther && !matchedModel
-  const modelOptions = refs.models.filter((m) => !modelCategory || m.category_id === modelCategory)
+  // Adding: a known model decides the category. Editing: only a newly picked
+  // model does, until the category is picked by hand.
+  const modelChanged = editing && (matchedModel?.id ?? null) !== (asset?.model_id ?? null)
+  const categoryFromModel = !!matchedModel && (editing ? modelChanged && !categoryTouched : true)
+  const categoryValue = categoryFromModel ? matchedModel!.category_id : form.category_id
+  const needsOther = pickedOther && !categoryFromModel
+  const modelOptions = refs.models.filter((m) => editing || !modelCategory || m.category_id === modelCategory)
   const modelWarrantyMonths = matchedModel?.default_warranty_months ?? null
   const areas = refs.areas.filter((a) => a.location_id === form.location_id)
-  const cfs = fieldsFor(refs, matchedModel?.category_id ?? modelCategory, matchedModel?.id ?? (newModel ? null : asset?.model_id))
+  const cfs = fieldsFor(refs, categoryFromModel ? matchedModel!.category_id : modelCategory, matchedModel?.id ?? (newModel ? null : asset?.model_id))
+
+  // Site in Edit: a checked-out item can move with a person or a loan to
+  // another site (the check-out follows it, migration 0224). Checked out to an
+  // area or another device, it's checked in first, like Move.
+  const assigned = editing ? asset?.assigned_type ?? null : null
+  const siteLocked = assigned === 'area' || assigned === 'asset'
+  const siteHint = !assigned
+    ? undefined
+    : siteLocked
+      ? `Checked out to ${asset?.assigned_label ?? 'something at this site'}. Check it in first to move it.`
+      : form.location_id !== asset?.location_id
+        ? `It stays checked out to ${asset?.assigned_label ?? 'them'}.`
+        : undefined
 
   const checkDuplicates = async (serialText = form.serial, macText = form.mac) => {
     const mac = macText.trim() ? normalizeMac(macText) : null
@@ -262,7 +294,10 @@ export function AssetForm({
   const validate = (): boolean => {
     const e: Partial<Record<keyof Form, string>> = {}
     if (!form.location_id) e.location_id = 'Pick the site.'
-    if (!form.category_id && !matchedModel) e.category_id = 'Pick a category or a model.'
+    else if (assigned === 'site' && asset?.assigned_id === form.location_id && form.location_id !== asset?.location_id) {
+      e.location_id = `It's lent to ${asset?.assigned_label ?? 'that site'}. Check it in first, then move it there.`
+    }
+    if (!categoryValue) e.category_id = 'Pick a category or a model.'
     if (needsOther) {
       const what = form.other_category.trim().toLowerCase()
       if (!what) e.other_category = 'Type what it is.'
@@ -321,7 +356,7 @@ export function AssetForm({
     let refsChanged = false
     let saved: { id: string; asset_tag: string }[] | null = null
     try {
-      let categoryId = matchedModel?.category_id ?? form.category_id
+      let categoryId = categoryValue
       if (needsOther) {
         const { data, error: err } = await itInventory.categoryFromOther(form.other_category.trim())
         if (err || !data) throw new Error(err?.message ?? 'Could not save.')
@@ -388,8 +423,15 @@ export function AssetForm({
       }
 
       if (mode === 'edit' && asset) {
+        const modelBefore = asset.model_id
         const { error: err } = await itInventory.updateAsset(asset.id, fields)
         if (err) throw new Error(err.message)
+        // Switching to another model resets the category to that model's in the
+        // database. If a different category was picked too, set it after.
+        if (matchedModel && matchedModel.id !== modelBefore && categoryId !== matchedModel.category_id) {
+          const { error: catErr } = await itInventory.updateAsset(asset.id, { category_id: categoryId })
+          if (catErr) throw new Error(catErr.message)
+        }
         await saveSecrets([asset.id])
         if (refsChanged) onRefsChanged()
         onSaved([{ id: asset.id, asset_tag: asset.asset_tag }])
@@ -474,9 +516,9 @@ export function AssetForm({
         )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Site" required error={errors.location_id}>
+          <Field label="Site" required error={errors.location_id} hint={siteHint}>
             {(id) => (
-              <Select id={id} value={form.location_id} disabled={mode === 'edit' && !!asset?.assigned_type}
+              <Select id={id} value={form.location_id} disabled={siteLocked}
                 onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value, area_id: '' }))} invalid={!!errors.location_id}>
                 <option value="">Pick a site</option>
                 {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -484,10 +526,11 @@ export function AssetForm({
             )}
           </Field>
           <div className="space-y-3">
-            <Field label="Category" required={!matchedModel} error={errors.category_id}>
+            <Field label="Category" required={!categoryFromModel} error={errors.category_id}>
               {(id) => (
-                <Select id={id} value={matchedModel?.category_id ?? form.category_id} onChange={set('category_id')}
-                  disabled={!!matchedModel} invalid={!!errors.category_id}>
+                <Select id={id} value={categoryValue}
+                  onChange={(e) => { setCategoryTouched(true); setForm((f) => ({ ...f, category_id: e.target.value })) }}
+                  disabled={categoryFromModel && !editing} invalid={!!errors.category_id}>
                   <option value="">Pick a category</option>
                   {assetCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </Select>
@@ -504,7 +547,9 @@ export function AssetForm({
             )}
           </div>
           <Field label="Model" error={errors.model}
-            hint={labelHint('model') ?? (newModel ? 'New model. It will be saved for next time.' : matchedModel ? 'Category comes from the model.' : 'Start typing to pick one you have used before.')}>
+            hint={labelHint('model') ?? (newModel ? 'New model. It will be saved for next time.'
+              : matchedModel ? (!editing ? 'Category comes from the model.' : modelChanged ? "Category changes to this model's unless you pick one." : undefined)
+                : 'Start typing to pick one you have used before.')}>
             {(id) => (
               <>
                 <Input id={id} list="it-models" value={form.model} onChange={set('model')} placeholder="e.g. XPT pay station" autoComplete="off" />
