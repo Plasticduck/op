@@ -438,15 +438,28 @@ export default function PresentationMode() {
         </div>
       </div>
 
-      <div className="relative z-0 px-6 pb-1.5 pt-0.5 text-center text-[11px] text-ink-subtle sm:px-10">
+      {/* Tall enough for Mighty Max to run along the bar without covering the tiles. */}
+      <div className="relative z-0 flex min-h-11 items-end justify-center px-6 pb-1.5 pt-0.5 text-center text-[11px] text-ink-subtle sm:min-h-14 sm:px-10 xl:min-h-[4.5rem]">
         Press Esc or Tab, or tap the X, to exit presentation mode.
       </div>
 
-      {/* auto-scroll progress: a subtle gray bar pinned to the bottom of the screen */}
+      {/* auto-scroll progress: a subtle gray bar pinned to the bottom of the screen,
+          with Mighty Max running at its leading edge. The step matches the 120 ms
+          ticker so the motion is continuous; a reset (0) jumps back instead of
+          sliding backwards across the screen. */}
       <div className="relative z-30 h-1.5 w-full shrink-0 bg-ink/10">
         <div
-          className="h-full bg-ink-subtle transition-[width] duration-100 ease-linear"
+          className={cn('h-full bg-ink-subtle', progress > 0 && 'transition-[width] duration-[120ms] ease-linear')}
           style={{ width: `${Math.max(0, Math.min(100, progress * 100))}%` }}
+        />
+        <img
+          src="/mighty-max-running.gif"
+          alt=""
+          aria-hidden="true"
+          data-testid="presentation-runner"
+          className={cn('pointer-events-none absolute bottom-[3px] h-11 w-auto -translate-x-1/2 select-none sm:h-16 xl:h-20',
+            progress > 0 && 'transition-[left] duration-[120ms] ease-linear')}
+          style={{ left: `${Math.max(0, Math.min(100, progress * 100))}%` }}
         />
       </div>
     </div>
