@@ -13,6 +13,8 @@ type State =
   | { kind: 'done'; result: ConnFinish }
   | { kind: 'failed'; message: string }
 
+const BACK_LABELS: Record<string, string> = { '/app/ask': 'Back to Operator AI', '/app/corenav-map': 'Back to CoreNav Map' }
+
 // The code is single use; React's dev double-run of effects must not spend it twice.
 const finished = new Set<string>()
 
@@ -43,7 +45,18 @@ export default function ConnectorCallback() {
       .catch((e) => setView({ kind: 'failed', message: e instanceof Error ? e.message : `Couldn't finish connecting ${label}.` }))
   }, [code, state, denied, provider, label])
 
-  const back = () => navigate('/app/ask', { replace: true })
+  // Where they started the sign-in (the CoreNav Map page sets this), else Operator AI.
+  const [backTo] = useState(() => {
+    try {
+      const v = sessionStorage.getItem('connect.back')
+      return v && /^\/app\/[a-z0-9/-]+$/.test(v) ? v : '/app/ask'
+    } catch { return '/app/ask' }
+  })
+  const backLabel = BACK_LABELS[backTo] ?? 'Back'
+  const back = () => {
+    try { sessionStorage.removeItem('connect.back') } catch { /* private mode */ }
+    navigate(backTo, { replace: true })
+  }
   const retry = async () => {
     setRetrying(true)
     try {
@@ -81,7 +94,7 @@ export default function ConnectorCallback() {
               Left out because they change data in {label}: {view.result.skipped.join(', ')}. Operator AI only reads.
             </p>
           )}
-          <Button className="mt-6" onClick={back}>Back to Operator AI</Button>
+          <Button className="mt-6" onClick={back}>{backLabel}</Button>
         </>
       )}
 
@@ -91,7 +104,7 @@ export default function ConnectorCallback() {
           <h1 className="mt-4 text-lg font-semibold text-ink">{label} isn't connected</h1>
           <p className="mt-2 text-sm leading-relaxed text-ink-muted">{view.message}</p>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
-            <Button variant="secondary" onClick={back}>Back to Operator AI</Button>
+            <Button variant="secondary" onClick={back}>{backLabel}</Button>
             <Button onClick={() => void retry()} disabled={retrying}>
               {retrying && <Loader2 className="size-4 animate-spin" />} Try again
             </Button>

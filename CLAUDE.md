@@ -58,8 +58,12 @@ but not what RLS allows. See **Access control** below.
   `src/lib/queries/connections.ts`; adding it back turns it on).
   CoreNav marks none of its MCP tools, so `toolRules` in connect.ts is its
   reviewed read/skip list. Operations - Admin > CoreNav Map (`/app/corenav-map`)
-  embeds CoreNav's own map page; it signs in with a CoreNav workspace key
-  (CoreNav's Google sign-in won't load inside a frame).
+  draws CoreNav on Operator's own Leaflet map through the person's CoreNav
+  connection: `corenav-map` returns CoreNav's map setup (map_config), its points
+  (~14,700 sites) and one site's sidebar built from CoreNav's sidebar setup;
+  the page styles it the way that setup says (`src/features/opssuite/corenav/`).
+  Not drawn yet: CoreNav's heat, demand shading, drive times, road overlays and
+  the competitors view (Open in CoreNav has them).
 - **Payments:** Stripe — subscription billing (embedded pricing table on the
   Billing page, Checkout from the BillingGate lock screen, Customer Portal,
   webhook, per-site quantity for Multi-Site) and **Stripe Connect** for per-site
