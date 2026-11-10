@@ -1,0 +1,10 @@
+{
+  "client_id": "https://operator.washlyfe.com/oauth/flexwash-client.json",
+  "client_name": "Operator AI (Mighty Wash)",
+  "client_uri": "https://operator.washlyfe.com",
+  "logo_uri": "https://operator.washlyfe.com/icon-192.png",
+  "redirect_uris": ["https://operator.washlyfe.com/app/flexwash/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
