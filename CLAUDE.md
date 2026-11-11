@@ -129,6 +129,9 @@ src/
     it/                     Issuetrak, IT Field Checklist
     maintenance/            Chemicals, Maintenance Orders, inventory/ (Maintenance Inventory) and log/ (Maintenance Log), see docs/maintenance-inventory
     facilities/             Service Board
+    secretshoppers/         Secret Shoppers: shoppers sign in with a PIN, file a 1-5 star visit
+                            report with photos/videos, emailed on submit. All data goes through
+                            the secret-shopper fn (tables RLS-locked, migration 0232)
     cameras/                Spot AI camera feeds
     messages/               Slack-style chat: site rooms + DMs + groups, @mentions,
                             reactions, pins, threads, files
@@ -147,7 +150,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0231.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0232.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides

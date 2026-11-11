@@ -8,6 +8,7 @@ import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
 import { MI_EMAILS } from '@/features/maintenance/inventory/access'
+import { SECRET_SHOPPER_EMAILS } from '@/features/secretshoppers/access'
 
 // Lazily load a route chunk, but if the fetch fails because the chunk no longer
 // exists at that URL (a new deploy rotated the hashed filenames, or the dev
@@ -88,6 +89,7 @@ const WorkOrdersNewPage = lz(() => import('@/features/ops/work-orders/WorkOrders
 const MaintenanceOrdersPage = lz(() => import('@/features/maintenance/MaintenanceOrdersPage'))
 const MaintenanceInventoryPage = lz(() => import('@/features/maintenance/inventory/MaintenanceInventoryPage'))
 const MaintenanceLogPage = lz(() => import('@/features/maintenance/log/MaintenanceLogPage'))
+const SecretShoppersPage = lz(() => import('@/features/secretshoppers/SecretShoppersPage'))
 const ChemicalsPage = lz(() => import('@/features/maintenance/ChemicalsPage'))
 const CategoriesPage = lz(() => import('@/features/ops/categories/CategoriesPage'))
 const VendorsPage = lz(() => import('@/features/ops/vendors/VendorsPage'))
@@ -267,6 +269,7 @@ export const router = createBrowserRouter([
           { path: 'maintenance-orders', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<MaintenanceOrdersPage />)}</RequireEmails> },
           { path: 'maintenance-inventory/*', element: <RequireEmails allow={MI_EMAILS}>{s(<MaintenanceInventoryPage />)}</RequireEmails> },
           { path: 'maintenance-log/*', element: <RequireEmails allow={MI_EMAILS}>{s(<MaintenanceLogPage />)}</RequireEmails> },
+          { path: 'secret-shoppers', element: <RequireEmails allow={SECRET_SHOPPER_EMAILS}>{s(<SecretShoppersPage />)}</RequireEmails> },
           { path: 'chemicals', element: mgr(<ChemicalsPage />) },
           { path: 'categories', element: tech(<CategoriesPage />) },
           { path: 'vendors', element: mgr(<VendorsPage />) },

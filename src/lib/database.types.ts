@@ -11913,6 +11913,170 @@ export type Database = {
           },
         ]
       }
+      secret_shopper_bad_pins: {
+        Row: {
+          created_at: string
+          id: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          user_id?: string
+        }
+        Relationships: []
+      }
+      secret_shopper_visits: {
+        Row: {
+          account_id: string
+          comments: string
+          created_at: string
+          emailed_at: string | null
+          id: string
+          location_id: string
+          media: Json
+          overall_rating: number
+          ratings: Json
+          shopper_id: string
+          shopper_name: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          team_members: string | null
+          visited_at: string
+          wash_package: string | null
+        }
+        Insert: {
+          account_id: string
+          comments: string
+          created_at?: string
+          emailed_at?: string | null
+          id?: string
+          location_id: string
+          media?: Json
+          overall_rating: number
+          ratings: Json
+          shopper_id: string
+          shopper_name: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          team_members?: string | null
+          visited_at: string
+          wash_package?: string | null
+        }
+        Update: {
+          account_id?: string
+          comments?: string
+          created_at?: string
+          emailed_at?: string | null
+          id?: string
+          location_id?: string
+          media?: Json
+          overall_rating?: number
+          ratings?: Json
+          shopper_id?: string
+          shopper_name?: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          team_members?: string | null
+          visited_at?: string
+          wash_package?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "secret_shopper_visits_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "secret_shopper_visits_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "secret_shopper_visits_shopper_id_fkey"
+            columns: ["shopper_id"]
+            isOneToOne: false
+            referencedRelation: "secret_shoppers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "secret_shopper_visits_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      secret_shoppers: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          last_sign_in_at: string | null
+          name: string
+          phone: string | null
+          pin_hash: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          last_sign_in_at?: string | null
+          name: string
+          phone?: string | null
+          pin_hash: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          last_sign_in_at?: string | null
+          name?: string
+          phone?: string | null
+          pin_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "secret_shoppers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "secret_shoppers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_tokens: {
         Row: {
           expires_at: string
@@ -16499,6 +16663,15 @@ export type Database = {
       revoke_biometric_consent: {
         Args: { p_employee_id: string }
         Returns: undefined
+      }
+      secret_shopper_hash_pin: { Args: { p_pin: string }; Returns: string }
+      secret_shopper_match_pin: {
+        Args: { p_account_id: string; p_pin: string }
+        Returns: string
+      }
+      secret_shopper_pin_taken: {
+        Args: { p_account_id: string; p_except?: string; p_pin: string }
+        Returns: boolean
       }
       set_employee_pin: {
         Args: { p_employee_id: string; p_pin: string }
