@@ -169,7 +169,7 @@ export default function PartDetailPage() {
 
         <Card title="Used on">
           {d.assets.length === 0 ? <Muted>No assets list this part yet. Add it from an asset's parts list.</Muted> : d.assets.map((a) => (
-            <Link key={a.id} to={`${BASE}/assets/${a.id}`} className="flex justify-between gap-2 border-t border-border py-2 text-sm first:border-t-0">
+            <Link key={a.id} to={`${BASE}/equipment/${a.id}`} className="flex justify-between gap-2 border-t border-border py-2 text-sm first:border-t-0">
               <span className="truncate text-accent">{a.name}</span>
               <span className="shrink-0 text-ink-muted">{a.site_name}, x{qty(a.qty_per)}</span>
             </Link>

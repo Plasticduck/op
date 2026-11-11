@@ -14,6 +14,7 @@ import { useMi } from './context'
 import { dayTime, errText, LOCATION_TYPE_LABEL, qty } from './format'
 import { ImportPanel } from './ImportPanel'
 import { LabelsDialog, type LabelItem } from './LabelsDialog'
+import { TemplatesCard } from './tunnel/TemplatesCard'
 import { Card, ErrorNote, Muted, SearchBox, useDebounced } from './ui'
 
 export default function SettingsTab() {
@@ -30,6 +31,7 @@ export default function SettingsTab() {
       {admin && <Rules />}
       {admin && <People />}
       <Locations />
+      <div id="tunnels"><TemplatesCard /></div>
       {me.rank >= 3 && <SiteRules />}
       {director && <Categories />}
       {director && <Kits />}

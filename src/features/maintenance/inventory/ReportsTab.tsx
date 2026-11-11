@@ -98,7 +98,7 @@ export default function ReportsTab() {
                 <ul className="flex flex-col divide-y divide-border">
                   {d.top_assets.map((a) => (
                     <li key={a.asset_id} className="flex justify-between gap-2 py-1.5 text-sm">
-                      <Link to={`${BASE}/assets/${a.asset_id}`} className="truncate text-accent hover:underline">{a.label}</Link>
+                      <Link to={`${BASE}/equipment/${a.asset_id}`} className="truncate text-accent hover:underline">{a.label}</Link>
                       <span className="shrink-0 tabular-nums text-ink-muted">{moneyWhole(a.value)}</span>
                     </li>
                   ))}

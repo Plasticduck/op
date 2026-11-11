@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { NavLink, Route, Routes, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, ScanLine, X } from 'lucide-react'
+import { Link, Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { BarChart3, CheckCircle2, ScanLine, Settings, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useAuth } from '@/lib/auth'
 import { mi, MI_ROLE_LABEL, type MiMe, type MiRefs } from '@/lib/queries/maintenanceInventory'
@@ -8,15 +8,24 @@ import { primeScanSound } from '@/lib/scan/feedback'
 import { cn } from '@/lib/utils'
 import { MiContext, type MiCtx, type ScanContext } from './context'
 import { errText } from './format'
+import { SectionNav } from './SectionNav'
 import { SyncBar } from './SyncBar'
 import { ErrorNote, Loading } from './ui'
-import HomeTab from './HomeTab'
+
+// Maintenance Inventory (docs/maintenance-inventory). Laid out like IT Inventory: one
+// title, a segmented control for the screens (Overview, Equipment, Parts, Tools, Stock,
+// Work orders), tools in the header, and a Scan button one thumb away on every screen.
+// A machine's page is full screen, without the header.
 
 const ScanSheet = lazy(() => import('./ScanSheet').then((m) => ({ default: m.ScanSheet })))
+const OverviewPage = lazy(() => import('./OverviewPage'))
+const EquipmentList = lazy(() => import('./equipment/EquipmentList').then((m) => ({ default: m.EquipmentList })))
+const EquipmentDetailPage = lazy(() => import('./equipment/EquipmentDetail').then((m) => ({ default: m.EquipmentDetailPage })))
+const TunnelPage = lazy(() => import('./tunnel/TunnelPage'))
+const TemplateEditorPage = lazy(() => import('./tunnel/TemplateEditorPage'))
 const PartsTab = lazy(() => import('./PartsTab'))
 const PartDetailPage = lazy(() => import('./PartDetailPage'))
 const ToolsTab = lazy(() => import('./ToolsTab'))
-const AssetsTab = lazy(() => import('./AssetsTab'))
 const WorkOrdersTab = lazy(() => import('./WorkOrdersTab'))
 const ReorderTab = lazy(() => import('./ReorderTab'))
 const PosTab = lazy(() => import('./PosTab'))
@@ -26,24 +35,14 @@ const ReportsTab = lazy(() => import('./ReportsTab'))
 const SettingsTab = lazy(() => import('./SettingsTab'))
 
 const BASE = '/app/maintenance-inventory'
-const TABS: Array<{ to: string; label: string; end?: boolean; minRank: number }> = [
-  { to: BASE, label: 'Home', end: true, minRank: 1 },
-  { to: `${BASE}/parts`, label: 'Parts', minRank: 1 },
-  { to: `${BASE}/tools`, label: 'Tools', minRank: 1 },
-  { to: `${BASE}/assets`, label: 'Assets', minRank: 1 },
-  { to: `${BASE}/work-orders`, label: 'Work orders', minRank: 1 },
-  { to: `${BASE}/transfers`, label: 'Transfers', minRank: 1 },
-  { to: `${BASE}/counts`, label: 'Counts', minRank: 1 },
-  { to: `${BASE}/reorder`, label: 'Reorder', minRank: 2 },
-  { to: `${BASE}/pos`, label: 'POs', minRank: 2 },
-  { to: `${BASE}/reports`, label: 'Reports', minRank: 2 },
-  { to: `${BASE}/settings`, label: 'Settings', minRank: 2 },
-]
+// Full-screen pages: no title or section bar.
+const BARE = /^\/app\/maintenance-inventory\/equipment\/[0-9a-f]{8}-/i
 
 let noteTimer = 0
 
 export default function MaintenanceInventoryPage() {
   const { profile } = useAuth()
+  const { pathname } = useLocation()
   const [me, setMe] = useState<MiMe | null>(null)
   const [refs, setRefs] = useState<MiRefs | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -120,66 +119,99 @@ export default function MaintenanceInventoryPage() {
   }
   if (!ctx) return <Loading />
 
+  const bare = BARE.test(pathname)
+  const routes = (
+    <Suspense fallback={<Loading />}>
+      <Routes>
+        <Route index element={<OverviewPage />} />
+        <Route path="scan" element={<OverviewPage />} />
+        <Route path="equipment" element={<EquipmentList />} />
+        <Route path="equipment/:id" element={<EquipmentRoute />} />
+        <Route path="tunnel" element={<TunnelPage />} />
+        {/* Older links (the Maintenance Log, stickers' history links) still work. */}
+        <Route path="assets" element={<Navigate to={`${BASE}/equipment`} replace />} />
+        <Route path="assets/:id" element={<AssetRedirect />} />
+        <Route path="parts" element={<PartsTab />} />
+        <Route path="parts/:id" element={<PartDetailPage />} />
+        <Route path="tools" element={<ToolsTab />} />
+        <Route path="tools/:id" element={<ToolsTab />} />
+        <Route path="work-orders" element={<WorkOrdersTab />} />
+        <Route path="work-orders/:id" element={<WorkOrdersTab />} />
+        <Route path="stock" element={<Navigate to={`${BASE}/transfers`} replace />} />
+        <Route path="transfers" element={<TransfersTab />} />
+        <Route path="counts" element={<CountsTab />} />
+        <Route path="counts/:id" element={<CountsTab />} />
+        <Route path="reorder" element={<ReorderTab />} />
+        <Route path="pos" element={<PosTab />} />
+        <Route path="pos/:id" element={<PosTab />} />
+        <Route path="reports" element={<ReportsTab />} />
+        <Route path="settings" element={<SettingsTab />} />
+        <Route path="settings/tunnels/:id" element={<TemplateEditorPage />} />
+        <Route path="*" element={<OverviewPage />} />
+      </Routes>
+    </Suspense>
+  )
+
   return (
     <MiContext.Provider value={ctx}>
-      <div className="flex flex-col gap-4">
-        <PageHeader title="Maintenance Inventory" subtitle={`${MI_ROLE_LABEL[ctx.me.role]}${ctx.me.has_sample_data ? '. Sample data is loaded: Settings can remove it.' : ''}`} />
-        <SyncBar />
-        <nav aria-label="Maintenance Inventory" className="flex w-full gap-0.5 overflow-x-auto rounded-lg border border-border bg-card p-0.5 [scrollbar-width:none] sm:w-fit">
-          {TABS.filter((t) => ctx.me.rank >= t.minRank).map((t) => (
-            <NavLink key={t.to} to={t.to} end={t.end}
-              className={({ isActive }) => cn('shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-center text-sm font-medium transition', isActive ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:text-ink')}>
-              {t.label}
-            </NavLink>
-          ))}
-        </nav>
+      {bare ? routes : (
+        <div className="flex flex-col gap-4">
+          <PageHeader
+            title="Maintenance Inventory"
+            subtitle={`${MI_ROLE_LABEL[ctx.me.role]}${ctx.me.has_sample_data ? '. Sample data is loaded: Settings can remove it.' : ''}`}
+            actions={ctx.me.rank >= 2 ? (
+              <>
+                <ToolLink to={`${BASE}/reports`} icon={BarChart3} label="Reports" active={pathname.startsWith(`${BASE}/reports`)} />
+                <ToolLink to={`${BASE}/settings`} icon={Settings} label="Settings" active={pathname.startsWith(`${BASE}/settings`)} />
+              </>
+            ) : undefined}
+          />
+          <SyncBar />
+          <SectionNav rank={ctx.me.rank} />
+          {routes}
+        </div>
+      )}
 
-        <Suspense fallback={<Loading />}>
-          <Routes>
-            <Route index element={<HomeTab />} />
-            <Route path="scan" element={<HomeTab />} />
-            <Route path="parts" element={<PartsTab />} />
-            <Route path="parts/:id" element={<PartDetailPage />} />
-            <Route path="tools" element={<ToolsTab />} />
-            <Route path="tools/:id" element={<ToolsTab />} />
-            <Route path="assets" element={<AssetsTab />} />
-            <Route path="assets/:id" element={<AssetsTab />} />
-            <Route path="work-orders" element={<WorkOrdersTab />} />
-            <Route path="work-orders/:id" element={<WorkOrdersTab />} />
-            <Route path="transfers" element={<TransfersTab />} />
-            <Route path="counts" element={<CountsTab />} />
-            <Route path="counts/:id" element={<CountsTab />} />
-            <Route path="reorder" element={<ReorderTab />} />
-            <Route path="pos" element={<PosTab />} />
-            <Route path="pos/:id" element={<PosTab />} />
-            <Route path="reports" element={<ReportsTab />} />
-            <Route path="settings" element={<SettingsTab />} />
-            <Route path="*" element={<HomeTab />} />
-          </Routes>
+      {/* Always one thumb away, above the phone's bottom bar. */}
+      <button type="button" aria-label="Scan" onClick={() => { primeScanSound(); setScan({}) }}
+        className={cn('fixed right-4 z-40 grid size-14 place-items-center rounded-full bg-accent text-white shadow-lg transition hover:bg-accent-hover active:scale-95 lg:bottom-6 lg:right-6',
+          bare ? 'bottom-[calc(1rem+env(safe-area-inset-bottom))]' : 'bottom-24')}>
+        <ScanLine className="size-6" />
+      </button>
+
+      {note && (
+        <div role="status" className={cn('fixed inset-x-4 bottom-40 z-[80] mx-auto flex max-w-md items-start gap-2 rounded-lg px-4 py-3 text-sm shadow-lg lg:bottom-24',
+          note.tone === 'ok' ? 'bg-ok text-white' : note.tone === 'warn' ? 'bg-warn text-white' : 'bg-danger text-white')}>
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0 flex-1">{note.text}</span>
+          <button type="button" aria-label="Dismiss" onClick={() => setNote(null)}><X className="size-4" /></button>
+        </div>
+      )}
+
+      {scan && (
+        <Suspense fallback={<div className="fixed inset-0 z-[70] bg-content"><Loading /></div>}>
+          <ScanSheet initial={scan} onClose={closeScan} />
         </Suspense>
-
-        {/* Always one thumb away, above the phone's bottom bar. */}
-        <button type="button" aria-label="Scan" onClick={() => { primeScanSound(); setScan({}) }}
-          className="fixed bottom-24 right-4 z-40 grid size-14 place-items-center rounded-full bg-accent text-white shadow-lg transition hover:bg-accent-hover active:scale-95 lg:bottom-6 lg:right-6">
-          <ScanLine className="size-6" />
-        </button>
-
-        {note && (
-          <div role="status" className={cn('fixed inset-x-4 bottom-40 z-[80] mx-auto flex max-w-md items-start gap-2 rounded-lg px-4 py-3 text-sm shadow-lg lg:bottom-24',
-            note.tone === 'ok' ? 'bg-ok text-white' : note.tone === 'warn' ? 'bg-warn text-white' : 'bg-danger text-white')}>
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-            <span className="min-w-0 flex-1">{note.text}</span>
-            <button type="button" aria-label="Dismiss" onClick={() => setNote(null)}><X className="size-4" /></button>
-          </div>
-        )}
-
-        {scan && (
-          <Suspense fallback={<div className="fixed inset-0 z-[70] bg-content"><Loading /></div>}>
-            <ScanSheet initial={scan} onClose={closeScan} />
-          </Suspense>
-        )}
-      </div>
+      )}
     </MiContext.Provider>
   )
 }
 
+function EquipmentRoute() {
+  const { id } = useParams()
+  return id ? <EquipmentDetailPage key={id} id={id} /> : null
+}
+
+function AssetRedirect() {
+  const { id } = useParams()
+  return <Navigate to={`${BASE}/equipment/${id ?? ''}`} replace />
+}
+
+function ToolLink({ to, icon: Icon, label, active }: { to: string; icon: typeof Settings; label: string; active: boolean }) {
+  return (
+    <Link to={to} className={cn('inline-flex h-10 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition',
+      active ? 'border-accent bg-accent-soft text-accent' : 'border-border bg-card text-ink hover:bg-content')}>
+      <Icon className="size-4" /> <span className="hidden sm:inline">{label}</span>
+    </Link>
+  )
+}

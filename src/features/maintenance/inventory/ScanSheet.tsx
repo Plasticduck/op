@@ -301,7 +301,7 @@ function AssetMenu({ id, onConsume, onClose }: { id: string; onConsume: (a: { id
           </div>
         ))}
       </div>
-      <Link to={`/app/maintenance-inventory/assets/${a.id}`} onClick={onClose} className="flex items-center justify-center gap-1 text-sm text-accent hover:underline"><ClipboardList className="size-4" /> History and details</Link>
+      <Link to={`/app/maintenance-inventory/equipment/${a.id}`} onClick={onClose} className="flex items-center justify-center gap-1 text-sm text-accent hover:underline"><ClipboardList className="size-4" /> History and details</Link>
     </div>
   )
 }

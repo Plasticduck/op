@@ -2890,6 +2890,7 @@ export type Database = {
           description: string | null
           id: string
           install_date: string | null
+          last_audited_at: string | null
           last_serviced_at: string | null
           location_id: string
           maintainx_id: number | null
@@ -2899,11 +2900,14 @@ export type Database = {
           parent_asset_id: string | null
           purchase_date: string | null
           qr_code: string | null
+          retired_at: string | null
           serial_number: string | null
           service_interval_days: number | null
           status: string
           type: string | null
           updated_at: string
+          usage_basis: string
+          usage_packages: string[] | null
           vendor_id: string | null
           warranty_expiry: string | null
         }
@@ -2917,6 +2921,7 @@ export type Database = {
           description?: string | null
           id?: string
           install_date?: string | null
+          last_audited_at?: string | null
           last_serviced_at?: string | null
           location_id: string
           maintainx_id?: number | null
@@ -2926,11 +2931,14 @@ export type Database = {
           parent_asset_id?: string | null
           purchase_date?: string | null
           qr_code?: string | null
+          retired_at?: string | null
           serial_number?: string | null
           service_interval_days?: number | null
           status?: string
           type?: string | null
           updated_at?: string
+          usage_basis?: string
+          usage_packages?: string[] | null
           vendor_id?: string | null
           warranty_expiry?: string | null
         }
@@ -2944,6 +2952,7 @@ export type Database = {
           description?: string | null
           id?: string
           install_date?: string | null
+          last_audited_at?: string | null
           last_serviced_at?: string | null
           location_id?: string
           maintainx_id?: number | null
@@ -2953,11 +2962,14 @@ export type Database = {
           parent_asset_id?: string | null
           purchase_date?: string | null
           qr_code?: string | null
+          retired_at?: string | null
           serial_number?: string | null
           service_interval_days?: number | null
           status?: string
           type?: string | null
           updated_at?: string
+          usage_basis?: string
+          usage_packages?: string[] | null
           vendor_id?: string | null
           warranty_expiry?: string | null
         }
@@ -8119,6 +8131,56 @@ export type Database = {
           },
         ]
       }
+      mi_equipment_events: {
+        Row: {
+          account_id: string
+          action: string
+          actor_name: string | null
+          actor_user_id: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string
+          equipment_id: string
+          id: string
+          location_id: string | null
+          note: string | null
+        }
+        Insert: {
+          account_id: string
+          action: string
+          actor_name?: string | null
+          actor_user_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          equipment_id: string
+          id?: string
+          location_id?: string | null
+          note?: string | null
+        }
+        Update: {
+          account_id?: string
+          action?: string
+          actor_name?: string | null
+          actor_user_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          equipment_id?: string
+          id?: string
+          location_id?: string | null
+          note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_equipment_events_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mi_idempotency: {
         Row: {
           account_id: string
@@ -8371,6 +8433,7 @@ export type Database = {
           performed_by_name: string | null
           prev_last_done_at: string | null
           prev_next_due_date: string | null
+          resets_usage: boolean
           result: string
           schedule_id: string | null
           site_id: string
@@ -8405,6 +8468,7 @@ export type Database = {
           performed_by_name?: string | null
           prev_last_done_at?: string | null
           prev_next_due_date?: string | null
+          resets_usage?: boolean
           result?: string
           schedule_id?: string | null
           site_id: string
@@ -8439,6 +8503,7 @@ export type Database = {
           performed_by_name?: string | null
           prev_last_done_at?: string | null
           prev_next_due_date?: string | null
+          resets_usage?: boolean
           result?: string
           schedule_id?: string | null
           site_id?: string
@@ -9019,6 +9084,54 @@ export type Database = {
             columns: ["po_id"]
             isOneToOne: false
             referencedRelation: "mi_purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_saved_views: {
+        Row: {
+          account_id: string
+          created_at: string
+          entity: string
+          id: string
+          is_shared: boolean
+          name: string
+          params: Json
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          entity?: string
+          id?: string
+          is_shared?: boolean
+          name: string
+          params?: Json
+          user_id?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          entity?: string
+          id?: string
+          is_shared?: boolean
+          name?: string
+          params?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_saved_views_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_saved_views_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -9889,6 +10002,164 @@ export type Database = {
             columns: ["to_location_id"]
             isOneToOne: false
             referencedRelation: "mi_stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_tunnel_items: {
+        Row: {
+          account_id: string
+          asset_id: string | null
+          created_at: string
+          h_ft: number
+          id: string
+          kind: string
+          label: string
+          layout_id: string
+          match_type: string | null
+          props: Json
+          rotation: number
+          side: string
+          sort_order: number
+          w_ft: number
+          x_ft: number
+          y_ft: number
+          zone: string | null
+        }
+        Insert: {
+          account_id: string
+          asset_id?: string | null
+          created_at?: string
+          h_ft?: number
+          id?: string
+          kind: string
+          label?: string
+          layout_id: string
+          match_type?: string | null
+          props?: Json
+          rotation?: number
+          side?: string
+          sort_order?: number
+          w_ft?: number
+          x_ft?: number
+          y_ft?: number
+          zone?: string | null
+        }
+        Update: {
+          account_id?: string
+          asset_id?: string | null
+          created_at?: string
+          h_ft?: number
+          id?: string
+          kind?: string
+          label?: string
+          layout_id?: string
+          match_type?: string | null
+          props?: Json
+          rotation?: number
+          side?: string
+          sort_order?: number
+          w_ft?: number
+          x_ft?: number
+          y_ft?: number
+          zone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_tunnel_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tunnel_items_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tunnel_items_layout_id_fkey"
+            columns: ["layout_id"]
+            isOneToOne: false
+            referencedRelation: "mi_tunnel_layouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_tunnel_layouts: {
+        Row: {
+          account_id: string
+          based_on: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_template: boolean
+          length_ft: number
+          location_id: string | null
+          name: string
+          tunnel_no: number
+          updated_at: string
+          updated_by: string | null
+          version: number
+          width_ft: number
+          zones: Json
+        }
+        Insert: {
+          account_id: string
+          based_on?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_template?: boolean
+          length_ft?: number
+          location_id?: string | null
+          name: string
+          tunnel_no?: number
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+          width_ft?: number
+          zones?: Json
+        }
+        Update: {
+          account_id?: string
+          based_on?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_template?: boolean
+          length_ft?: number
+          location_id?: string | null
+          name?: string
+          tunnel_no?: number
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+          width_ft?: number
+          zones?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_tunnel_layouts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tunnel_layouts_based_on_fkey"
+            columns: ["based_on"]
+            isOneToOne: false
+            referencedRelation: "mi_tunnel_layouts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tunnel_layouts_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]
@@ -14548,6 +14819,7 @@ export type Database = {
         Returns: undefined
       }
       mi__account: { Args: never; Returns: string }
+      mi__actor_name: { Args: { p_user: string }; Returns: string }
       mi__add_interval: {
         Args: { p_date: string; p_n: number; p_unit: string }
         Returns: string
@@ -14561,12 +14833,25 @@ export type Database = {
           user_id: string
         }[]
       }
+      mi__area_for: {
+        Args: { p_account: string; p_name: string; p_site: string }
+        Returns: string
+      }
       mi__can_approve_transfer: {
         Args: { p_from: string; p_to: string }
         Returns: boolean
       }
       mi__checklist_asset: {
         Args: { p_linked: string; p_site: string }
+        Returns: string
+      }
+      mi__clone_one: {
+        Args: {
+          p_children: boolean
+          p_name: string
+          p_parent: string
+          p_src: string
+        }
         Returns: string
       }
       mi__entry_parts_cost: {
@@ -14885,6 +15170,28 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      mi__tunnel_items_json: { Args: { p_layout: string }; Returns: Json }
+      mi__tunnel_layout_json: {
+        Args: { l: Database["public"]["Tables"]["mi_tunnel_layouts"]["Row"] }
+        Returns: Json
+      }
+      mi__usage: {
+        Args: { p_account: string; p_assets: string[] }
+        Returns: {
+          asset_id: string
+          basis: string
+          cars_12m: number
+          cars_30d: number
+          cars_all: number
+          cars_since: number
+          cars_today: number
+          data_from: string
+          data_through: string
+          since: string
+          since_source: string
+          state: string
+        }[]
       }
       mi__wo_part: {
         Args: { p_location: string; p_part: string; p_wo: string }
@@ -15258,6 +15565,34 @@ export type Database = {
         }
         Returns: Json
       }
+      mi_equipment_bulk: {
+        Args: { p_ids: string[]; p_op: string; p_value?: string }
+        Returns: Json
+      }
+      mi_equipment_clone: {
+        Args: {
+          p_asset: string
+          p_count?: number
+          p_names?: string[]
+          p_with_children?: boolean
+        }
+        Returns: Json
+      }
+      mi_equipment_detail: { Args: { p_asset: string }; Returns: Json }
+      mi_equipment_list: {
+        Args: { p_include_retired?: boolean }
+        Returns: Json
+      }
+      mi_equipment_restore: { Args: { p_ids: string[] }; Returns: Json }
+      mi_equipment_retire: {
+        Args: { p_ids: string[]; p_note?: string }
+        Returns: Json
+      }
+      mi_equipment_save: { Args: { p: Json }; Returns: Json }
+      mi_equipment_timeline: {
+        Args: { p_asset: string; p_limit?: number }
+        Returns: Json
+      }
       mi_export_stock: { Args: never; Returns: Json }
       mi_finish_tool_audit: { Args: { p_audit: string }; Returns: Json }
       mi_home: { Args: never; Returns: Json }
@@ -15470,6 +15805,15 @@ export type Database = {
           p_part: string
           p_qty: number
           p_work_order: string
+        }
+        Returns: Json
+      }
+      mi_reset_usage: {
+        Args: {
+          p_asset: string
+          p_client_txn_id?: string
+          p_note?: string
+          p_on?: string
         }
         Returns: Json
       }
@@ -15780,6 +16124,27 @@ export type Database = {
         Returns: Json
       }
       mi_transfers_list: { Args: { p_status?: string }; Returns: Json }
+      mi_tunnel_apply: {
+        Args: {
+          p_commit?: boolean
+          p_opts?: Json
+          p_sites: string[]
+          p_source: string
+        }
+        Returns: Json
+      }
+      mi_tunnel_delete: { Args: { p_layout: string }; Returns: undefined }
+      mi_tunnel_get: {
+        Args: { p_site: string; p_tunnel?: number }
+        Returns: Json
+      }
+      mi_tunnel_link_item: {
+        Args: { p_asset: string; p_item: string }
+        Returns: Json
+      }
+      mi_tunnel_save: { Args: { p: Json }; Returns: Json }
+      mi_tunnel_template: { Args: { p_layout: string }; Returns: Json }
+      mi_tunnel_templates: { Args: never; Returns: Json }
       mi_update_asset: {
         Args: { p: Json; p_asset: string }
         Returns: undefined

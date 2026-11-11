@@ -56,6 +56,10 @@ type Detail = {
   vendor_id: string | null
   install_date: string | null
   crit_class: string | null
+  usage_basis: string
+  usage_packages: string[] | null
+  last_audited_at: string | null
+  retired_at: string | null
   location: { id: string; name: string } | null
   parent: { id: string; name: string; asset_number: number } | null
   sub_assets: Array<{ id: string; name: string; asset_number: number; status: AssetStatus; criticality: AssetCriticality }>
@@ -123,7 +127,9 @@ export function AssetDetail({
   const removeAsset = async () => {
     if (!d) return
     if (!window.confirm(`Delete asset "${d.name}"? This also removes any sub-assets.`)) return
-    await assets.remove(d.id)
+    // Machines with maintenance history can't be deleted (they're retired instead).
+    const { error } = await assets.remove(d.id)
+    if (error) { window.alert(error.message); return }
     onChanged()
     onBack()
   }

@@ -176,7 +176,7 @@ export default function LogTab() {
             {assetName ?? 'this machine'}
             <button type="button" aria-label="Show every machine" onClick={() => setParams((p) => { p.delete('asset'); return p })}><X className="size-3.5" /></button>
           </span>
-          <Link to={`${INV}/assets/${assetFilter}`} className="text-accent hover:underline">Machine details</Link>
+          <Link to={`${INV}/equipment/${assetFilter}`} className="text-accent hover:underline">Machine details</Link>
         </div>
       ) : (
         <Chips value={range} onChange={setRange} options={RANGES} />

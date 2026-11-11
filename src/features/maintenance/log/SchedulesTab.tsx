@@ -146,7 +146,7 @@ function SchedulePage({ id }: { id: string }) {
           <h1 className="text-xl font-semibold text-ink">{s.title}</h1>
           <p className="text-sm text-ink-muted">
             {s.site_name}
-            {s.asset_id && <> · <Link to={`${INV}/assets/${s.asset_id}`} className="text-accent hover:underline">{s.asset_name}</Link></>}
+            {s.asset_id && <> · <Link to={`${INV}/equipment/${s.asset_id}`} className="text-accent hover:underline">{s.asset_name}</Link></>}
             {' · '}{TASK_TYPE[s.task_type]}{s.priority !== 'medium' ? `, ${s.priority} priority` : ''}
           </p>
         </div>
