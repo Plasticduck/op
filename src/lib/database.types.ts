@@ -7941,6 +7941,166 @@ export type Database = {
           },
         ]
       }
+      mi_audit_items: {
+        Row: {
+          account_id: string
+          checked_at: string | null
+          checked_by: string | null
+          checked_by_name: string | null
+          equipment_id: string | null
+          expected: boolean
+          found_area_id: string | null
+          id: string
+          listed_area_id: string | null
+          note: string | null
+          other_site_id: string | null
+          result: string
+          run_id: string
+          sticker_condition: string | null
+          tag: string | null
+        }
+        Insert: {
+          account_id: string
+          checked_at?: string | null
+          checked_by?: string | null
+          checked_by_name?: string | null
+          equipment_id?: string | null
+          expected: boolean
+          found_area_id?: string | null
+          id?: string
+          listed_area_id?: string | null
+          note?: string | null
+          other_site_id?: string | null
+          result?: string
+          run_id: string
+          sticker_condition?: string | null
+          tag?: string | null
+        }
+        Update: {
+          account_id?: string
+          checked_at?: string | null
+          checked_by?: string | null
+          checked_by_name?: string | null
+          equipment_id?: string | null
+          expected?: boolean
+          found_area_id?: string | null
+          id?: string
+          listed_area_id?: string | null
+          note?: string | null
+          other_site_id?: string | null
+          result?: string
+          run_id?: string
+          sticker_condition?: string | null
+          tag?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_audit_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_audit_items_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_audit_items_found_area_id_fkey"
+            columns: ["found_area_id"]
+            isOneToOne: false
+            referencedRelation: "mi_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_audit_items_listed_area_id_fkey"
+            columns: ["listed_area_id"]
+            isOneToOne: false
+            referencedRelation: "mi_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_audit_items_other_site_id_fkey"
+            columns: ["other_site_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_audit_items_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "mi_audit_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mi_audit_runs: {
+        Row: {
+          account_id: string
+          completed_at: string | null
+          completed_by: string | null
+          completed_by_name: string | null
+          id: string
+          location_id: string
+          note: string | null
+          scope: string
+          started_at: string
+          started_by: string | null
+          started_by_name: string | null
+          status: string
+          summary: Json | null
+        }
+        Insert: {
+          account_id: string
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_by_name?: string | null
+          id?: string
+          location_id: string
+          note?: string | null
+          scope?: string
+          started_at?: string
+          started_by?: string | null
+          started_by_name?: string | null
+          status?: string
+          summary?: Json | null
+        }
+        Update: {
+          account_id?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_by_name?: string | null
+          id?: string
+          location_id?: string
+          note?: string | null
+          scope?: string
+          started_at?: string
+          started_by?: string | null
+          started_by_name?: string | null
+          status?: string
+          summary?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mi_audit_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_audit_runs_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mi_bins: {
         Row: {
           account_id: string
@@ -9558,33 +9718,60 @@ export type Database = {
       mi_tags: {
         Row: {
           account_id: string
+          applied_at: string | null
+          batch_id: string | null
           code: string
+          condition: string | null
+          condition_at: string | null
           created_at: string
-          entity_id: string
+          entity_id: string | null
           entity_type: string
+          former_entity_id: string | null
           id: string
           last_printed_at: string | null
           printed_count: number
+          retired_at: string | null
+          site_id: string | null
+          source: string
+          status: string
         }
         Insert: {
           account_id: string
+          applied_at?: string | null
+          batch_id?: string | null
           code: string
+          condition?: string | null
+          condition_at?: string | null
           created_at?: string
-          entity_id: string
+          entity_id?: string | null
           entity_type: string
+          former_entity_id?: string | null
           id?: string
           last_printed_at?: string | null
           printed_count?: number
+          retired_at?: string | null
+          site_id?: string | null
+          source?: string
+          status?: string
         }
         Update: {
           account_id?: string
+          applied_at?: string | null
+          batch_id?: string | null
           code?: string
+          condition?: string | null
+          condition_at?: string | null
           created_at?: string
-          entity_id?: string
+          entity_id?: string | null
           entity_type?: string
+          former_entity_id?: string | null
           id?: string
           last_printed_at?: string | null
           printed_count?: number
+          retired_at?: string | null
+          site_id?: string | null
+          source?: string
+          status?: string
         }
         Relationships: [
           {
@@ -9592,6 +9779,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mi_tags_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]
@@ -14837,6 +15031,30 @@ export type Database = {
         Args: { p_account: string; p_name: string; p_site: string }
         Returns: string
       }
+      mi__audit_run: {
+        Args: { p_open?: boolean; p_run: string }
+        Returns: {
+          account_id: string
+          completed_at: string | null
+          completed_by: string | null
+          completed_by_name: string | null
+          id: string
+          location_id: string
+          note: string | null
+          scope: string
+          started_at: string
+          started_by: string | null
+          started_by_name: string | null
+          status: string
+          summary: Json | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "mi_audit_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       mi__can_approve_transfer: {
         Args: { p_from: string; p_to: string }
         Returns: boolean
@@ -15275,6 +15493,37 @@ export type Database = {
       mi_archive_schedule: { Args: { p_id: string }; Returns: undefined }
       mi_asset_detail: { Args: { p_asset: string }; Returns: Json }
       mi_assets_list: { Args: { p_q?: string; p_site: string }; Returns: Json }
+      mi_audit_cancel: { Args: { p_run: string }; Returns: undefined }
+      mi_audit_complete: {
+        Args: { p_note?: string; p_rest_missing?: boolean; p_run: string }
+        Returns: Json
+      }
+      mi_audit_detail: { Args: { p_run: string }; Returns: Json }
+      mi_audit_mark: {
+        Args: {
+          p_area?: string
+          p_condition?: string
+          p_item: string
+          p_note?: string
+          p_result: string
+        }
+        Returns: undefined
+      }
+      mi_audit_scan: {
+        Args: {
+          p_area?: string
+          p_code: string
+          p_condition?: string
+          p_run: string
+        }
+        Returns: Json
+      }
+      mi_audit_start: {
+        Args: { p_scope?: string; p_site: string }
+        Returns: string
+      }
+      mi_audits_list: { Args: never; Returns: Json }
+      mi_blank_tags: { Args: { p_site?: string }; Returns: Json }
       mi_can_act_at: { Args: { p_location: string }; Returns: boolean }
       mi_can_manage_at: { Args: { p_location: string }; Returns: boolean }
       mi_cancel_count: { Args: { p_count: string }; Returns: undefined }
@@ -15359,6 +15608,10 @@ export type Database = {
           p_to_user?: string
           p_tool: string
         }
+        Returns: Json
+      }
+      mi_claim_tag: {
+        Args: { p_asset: string; p_code: string; p_replace?: boolean }
         Returns: Json
       }
       mi_close_po: {
@@ -15595,7 +15848,15 @@ export type Database = {
       }
       mi_export_stock: { Args: never; Returns: Json }
       mi_finish_tool_audit: { Args: { p_audit: string }; Returns: Json }
+      mi_generate_blank_tags: {
+        Args: { p_count: number; p_site?: string }
+        Returns: Json
+      }
       mi_home: { Args: never; Returns: Json }
+      mi_import_equipment: {
+        Args: { p_commit?: boolean; p_rows: Json }
+        Returns: Json
+      }
       mi_import_parts: {
         Args: { p_commit?: boolean; p_rows: Json }
         Returns: Json
@@ -15818,6 +16079,10 @@ export type Database = {
         Returns: Json
       }
       mi_resolve_scan: { Args: { p_raw: string }; Returns: Json }
+      mi_retire_tag: {
+        Args: { p_code: string; p_reason?: string }
+        Returns: undefined
+      }
       mi_return_part: {
         Args: {
           p_asset?: string
@@ -16012,6 +16277,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      mi_set_tag_condition: {
+        Args: { p_codes: string[]; p_condition: string }
+        Returns: Json
+      }
       mi_set_tool_status: {
         Args: { p_notes?: string; p_status: string; p_tool: string }
         Returns: {
@@ -16079,6 +16348,7 @@ export type Database = {
         }
         Returns: Json
       }
+      mi_sticker_queue: { Args: { p_site?: string }; Returns: Json }
       mi_stock_elsewhere: {
         Args: { p_exclude?: string; p_part: string }
         Returns: Json

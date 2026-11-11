@@ -33,6 +33,7 @@ export function matches(r: EquipmentRow, f: EquipmentFilters, ctx: { zoneName: (
   if (f.crit && (f.crit === '-' ? !!r.crit_class : r.crit_class !== f.crit)) return false
   if (f.sticker === 'needs' && !needsSticker(r)) return false
   if (f.sticker === 'printed' && !r.tag_printed) return false
+  if ((f.sticker === 'faded' || f.sticker === 'missing' || f.sticker === 'damaged') && r.tag_condition !== f.sticker) return false
   if (f.wo === 'open' && !r.open_wos) return false
   if (f.wo === 'none' && r.open_wos) return false
   if (f.usage === 'counted' && r.cars_since == null) return false

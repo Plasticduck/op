@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { mi, type AssetDetail, type ScanResult, type StockRow } from '@/lib/queries/maintenanceInventory'
+import { miEquipment } from '@/lib/queries/miEquipment'
 import { parseScan } from '@/features/it/inventory/scan'
 import { useMi, type ScanContext } from './context'
 import { errText, money, qty } from './format'
@@ -144,6 +145,18 @@ export function ScanSheet({ initial, onClose }: { initial: ScanContext; onClose:
                 <Button variant="secondary" onClick={again}>Scan something else</Button>
               </>
             )}
+            {result.kind === 'blank' && <BlankMenu code={result.code} onClaimed={(id) => { notify(`${result.code} is on it now.`); setChanged(true); navigate(`/app/maintenance-inventory/equipment/${id}`); onClose(true) }} onAgain={again} />}
+            {result.kind === 'retired' && (
+              <>
+                <WarnNote>
+                  {result.code} was replaced{result.former_name ? <> on <b>{result.former_name}</b></> : ''}{result.current_code ? `, which wears ${result.current_code} now` : ''}. Peel it off so nobody scans it again.
+                </WarnNote>
+                {result.former_id && result.entity_type === 'asset' && (
+                  <Link to={`/app/maintenance-inventory/equipment/${result.former_id}`} onClick={() => onClose(changed)} className="text-center text-sm text-accent hover:underline">Open that machine</Link>
+                )}
+                <Button variant="secondary" onClick={again}>Scan something else</Button>
+              </>
+            )}
             {result.kind === 'tool' && <ToolActions toolId={result.id} onDone={done} />}
             {result.kind === 'asset' && <AssetMenu id={result.id} onConsume={(asset) => { setContext((c) => ({ asset, source: c.source })); again() }} onClose={() => onClose(changed)} />}
             {result.kind === 'location' && <LocationMenu id={result.id} onPick={setPicked} picked={picked} />}
@@ -257,6 +270,61 @@ function UnknownScan({ raw, onAgain, onDone }: { raw: string; onAgain: () => voi
         {error && <div className="mt-2"><ErrorNote>{error}</ErrorNote></div>}
         <Button className="mt-2 w-full" disabled={busy || !name.trim()} onClick={() => void propose()}>Propose this part</Button>
       </div>
+    </div>
+  )
+}
+
+// A blank sticker from the roll: which machine is it going on?
+function BlankMenu({ code, onClaimed, onAgain }: { code: string; onClaimed: (assetId: string) => void; onAgain: () => void }) {
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState<Array<{ id: string; name: string; type: string | null; site_name: string }>>([])
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<{ id: string; message: string } | null>(null)
+  useEffect(() => {
+    if (q.trim().length < 2) { setRows([]); return }
+    let alive = true
+    const t = window.setTimeout(() => { void mi.searchAssets(q.trim()).then((r) => { if (alive) setRows(r) }).catch(() => {}) }, 250)
+    return () => { alive = false; window.clearTimeout(t) }
+  }, [q])
+  const claim = async (id: string, replace: boolean) => {
+    setBusy(id)
+    setError(null)
+    try {
+      await miEquipment.claimTag(code, id, replace)
+      onClaimed(id)
+    } catch (e) {
+      const m = errText(e)
+      if (/Replace it\?$/.test(m)) setConfirm({ id, message: m })
+      else setError(m)
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <div className="font-mono text-lg font-semibold text-ink">{code}</div>
+        <p className="text-sm text-ink-muted">A blank sticker that isn't on anything yet. Find the machine it's going on.</p>
+      </div>
+      <SearchBox value={q} onChange={setQ} placeholder="Top Brush 1, Hydra Flex..." />
+      {error && <ErrorNote>{error}</ErrorNote>}
+      {confirm && (
+        <div className="flex flex-col gap-2 rounded-md bg-warn-soft p-3 text-sm text-warn">
+          <span>{confirm.message} The old one will be retired.</span>
+          <Button onClick={() => void claim(confirm.id, true)} disabled={!!busy}>Replace it</Button>
+        </div>
+      )}
+      {rows.map((r) => (
+        <RowButton key={r.id} onClick={() => void claim(r.id, false)}>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium text-ink">{r.name}</div>
+            <div className="truncate text-xs text-ink-muted">{[r.site_name, r.type].filter(Boolean).join(' · ')}</div>
+          </div>
+          {busy === r.id && <Loader2 className="size-4 animate-spin" />}
+        </RowButton>
+      ))}
+      <Button variant="secondary" onClick={onAgain}>Scan something else</Button>
     </div>
   )
 }

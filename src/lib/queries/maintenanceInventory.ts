@@ -88,6 +88,10 @@ export type ScanResult =
   | { kind: 'part'; code: string; id: string; name: string; stock: StockRow[] }
   | { kind: 'tool' | 'asset' | 'location' | 'po'; code: string; id: string }
   | { kind: 'other_site'; code: string; message: string }
+  // A sticker printed ahead of time that isn't on anything yet.
+  | { kind: 'blank'; code: string; entity_type: string }
+  // A sticker that was replaced or retired; says what it used to be on.
+  | { kind: 'retired'; code: string; entity_type: string; former_id: string | null; former_name: string | null; current_code: string | null }
   | { kind: 'unknown'; raw: string }
 
 export type ToolStatus = 'available' | 'checked_out' | 'in_repair' | 'lost' | 'retired'

@@ -15,6 +15,7 @@ import { useMi } from '../context'
 import { day, errText, money, qty } from '../format'
 import { ErrorNote, Loading, Muted, SearchBox, useDebounced } from '../ui'
 import { CRIT, EQUIPMENT_BASE, shortName, STATUS, USAGE_BASIS, warrantyState } from './format'
+import { StickerCard } from './StickerCard'
 
 const ScheduleForm = lazy(() => import('../../log/ScheduleForm'))
 const LOG = '/app/maintenance-log'
@@ -145,6 +146,8 @@ export function EquipmentOverview({ d, reload, compact }: { d: EquipmentDetail; 
             <Row label="Last audited">{a.last_audited_at ? day(a.last_audited_at) : null}</Row>
             {a.retired_at && <Row label="Retired">{day(a.retired_at)}</Row>}
           </Section>
+
+          <StickerCard d={d} reload={reload} />
 
           <BomSection d={d} reload={reload} />
 

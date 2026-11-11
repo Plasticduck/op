@@ -96,10 +96,17 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
 
   const authHeader = req.headers.get('Authorization') ?? ''
-  const userClient = createClient(url, anonKey, { global: { headers: { Authorization: authHeader } } })
-  const { data: userData } = await userClient.auth.getUser()
-  const uid = userData.user?.id
-  if (!uid) return json({ error: 'unauthorized' }, 401, origin)
+  // mi-scan-public files tickets for people who aren't signed in (a sticker scan) and
+  // asks for the title itself, with the service key. Exact match only.
+  const token = authHeader.replace(/^Bearer\s+/i, '')
+  const isService = !!token && token === serviceKey
+  let uid: string | undefined
+  if (!isService) {
+    const userClient = createClient(url, anonKey, { global: { headers: { Authorization: authHeader } } })
+    const { data: userData } = await userClient.auth.getUser()
+    uid = userData.user?.id
+    if (!uid) return json({ error: 'unauthorized' }, 401, origin)
+  }
 
   let workOrderId = ''
   try {
@@ -116,7 +123,7 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (!wo) return json({ error: 'not_found' }, 404, origin)
   // Only the person who filed the ticket triggers classification.
-  if (wo.requested_by !== uid) return json({ error: 'forbidden' }, 403, origin)
+  if (!isService && wo.requested_by !== uid) return json({ error: 'forbidden' }, 403, origin)
   if (wo.work_type_source !== 'default' || wo.reviewed_at) {
     return json({ skipped: 'already_set' }, 200, origin)
   }

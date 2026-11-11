@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router-dom'
-import { BarChart3, CheckCircle2, ScanLine, Settings, X } from 'lucide-react'
+import { BarChart3, CheckCircle2, ClipboardCheck, ScanLine, Settings, Sticker, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useAuth } from '@/lib/auth'
 import { mi, MI_ROLE_LABEL, type MiMe, type MiRefs } from '@/lib/queries/maintenanceInventory'
@@ -23,6 +23,10 @@ const EquipmentList = lazy(() => import('./equipment/EquipmentList').then((m) =>
 const EquipmentDetailPage = lazy(() => import('./equipment/EquipmentDetail').then((m) => ({ default: m.EquipmentDetailPage })))
 const TunnelPage = lazy(() => import('./tunnel/TunnelPage'))
 const TemplateEditorPage = lazy(() => import('./tunnel/TemplateEditorPage'))
+const StickersPage = lazy(() => import('./stickers/StickersPage'))
+const AuditsPage = lazy(() => import('./audits/AuditsPage'))
+const ImportPage = lazy(() => import('./import/ImportPage'))
+const AuditRunPage = lazy(() => import('./audits/AuditRunPage'))
 const PartsTab = lazy(() => import('./PartsTab'))
 const PartDetailPage = lazy(() => import('./PartDetailPage'))
 const ToolsTab = lazy(() => import('./ToolsTab'))
@@ -128,6 +132,10 @@ export default function MaintenanceInventoryPage() {
         <Route path="equipment" element={<EquipmentList />} />
         <Route path="equipment/:id" element={<EquipmentRoute />} />
         <Route path="tunnel" element={<TunnelPage />} />
+        <Route path="stickers" element={<StickersPage />} />
+        <Route path="audits" element={<AuditsPage />} />
+        <Route path="audits/:runId" element={<AuditRunPage />} />
+        <Route path="import" element={<ImportPage />} />
         {/* Older links (the Maintenance Log, stickers' history links) still work. */}
         <Route path="assets" element={<Navigate to={`${BASE}/equipment`} replace />} />
         <Route path="assets/:id" element={<AssetRedirect />} />
@@ -159,12 +167,14 @@ export default function MaintenanceInventoryPage() {
           <PageHeader
             title="Maintenance Inventory"
             subtitle={`${MI_ROLE_LABEL[ctx.me.role]}${ctx.me.has_sample_data ? '. Sample data is loaded: Settings can remove it.' : ''}`}
-            actions={ctx.me.rank >= 2 ? (
+            actions={
               <>
-                <ToolLink to={`${BASE}/reports`} icon={BarChart3} label="Reports" active={pathname.startsWith(`${BASE}/reports`)} />
-                <ToolLink to={`${BASE}/settings`} icon={Settings} label="Settings" active={pathname.startsWith(`${BASE}/settings`)} />
+                <ToolLink to={`${BASE}/stickers`} icon={Sticker} label="Stickers" active={pathname.startsWith(`${BASE}/stickers`)} />
+                <ToolLink to={`${BASE}/audits`} icon={ClipboardCheck} label="Audits" active={pathname.startsWith(`${BASE}/audits`)} />
+                {ctx.me.rank >= 2 && <ToolLink to={`${BASE}/reports`} icon={BarChart3} label="Reports" active={pathname.startsWith(`${BASE}/reports`)} />}
+                {ctx.me.rank >= 2 && <ToolLink to={`${BASE}/settings`} icon={Settings} label="Settings" active={pathname.startsWith(`${BASE}/settings`)} />}
               </>
-            ) : undefined}
+            }
           />
           <SyncBar />
           <SectionNav rank={ctx.me.rank} />

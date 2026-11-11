@@ -17,9 +17,11 @@ import { ErrorNote, Loading } from './ui'
 
 // Stickers for bins, tools, assets and locations: same templates, calibration, logo and
 // QR link as IT Inventory, so the same scanner reads them. A tag's code is made the first
-// time it's printed.
+// time it's printed. Blank stickers come with their code already (and no name).
 
-export type LabelItem = { type: 'bin' | 'tool' | 'asset' | 'location'; id: string; name: string; site?: string | null }
+export type LabelItem =
+  | { type: 'bin' | 'tool' | 'asset' | 'location'; id: string; name: string; site?: string | null; code?: undefined }
+  | { type: 'asset'; code: string; id?: undefined; name?: string | null; site?: string | null }
 
 const toTemplate = (t: LabelSetup['templates'][number]): PrintTemplate => ({
   name: t.name,
@@ -30,7 +32,7 @@ const toTemplate = (t: LabelSetup['templates'][number]): PrintTemplate => ({
   scale: Number(t.scale),
 })
 
-export function LabelsDialog({ items, onClose }: { items: LabelItem[]; onClose: () => void }) {
+export function LabelsDialog({ items, onClose, onPrinted }: { items: LabelItem[]; onClose: () => void; onPrinted?: () => void }) {
   const [setup, setSetup] = useState<LabelSetup | null>(null)
   const [labels, setLabels] = useState<LabelContent[] | null>(null)
   const [templateId, setTemplateId] = useState('')
@@ -52,8 +54,8 @@ export function LabelsDialog({ items, onClose }: { items: LabelItem[]; onClose: 
         const shortCode = s.settings.short_code
         const out: LabelContent[] = []
         for (const it of items) {
-          const tag = await mi.ensureTag(it.type, it.id)
-          out.push({ tag, url: tagUrl(shortCode, tag), name: it.name, site: it.site ?? null })
+          const tag = it.code ?? await mi.ensureTag(it.type, it.id)
+          out.push({ tag, url: tagUrl(shortCode, tag), name: it.name ?? null, site: it.site ?? null })
         }
         if (alive) setLabels(out)
         if (s.settings.label_show_logo && s.settings.label_logo_path) {
@@ -85,6 +87,7 @@ export function LabelsDialog({ items, onClose }: { items: LabelItem[]; onClose: 
       const { doc } = await buildLabelsPdf(tpl, labels, { copies, logo })
       doc.save(`maintenance-labels-${format(new Date(), 'yyyy-MM-dd-HHmm')}.pdf`)
       await mi.markPrinted(labels.map((l) => l.tag))
+      onPrinted?.()
       onClose()
     } catch (e) {
       setError(errText(e))

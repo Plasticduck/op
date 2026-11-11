@@ -47,8 +47,17 @@ export const daysSince = (iso: string | null | undefined): number | null =>
 
 export const isMachine = (r: Pick<EquipmentRow, 'parent_id'>) => !r.parent_id
 
-// A machine (not a component) that has no sticker yet, or one that was never printed.
-export const needsSticker = (r: EquipmentRow) => r.status !== 'retired' && isMachine(r) && (!r.tag || !r.tag_printed)
+// A machine (not a component) with no sticker, one never printed, or one marked faded,
+// missing or damaged.
+export const needsSticker = (r: EquipmentRow) =>
+  r.status !== 'retired' && isMachine(r) && (!r.tag || !r.tag_printed || (!!r.tag_condition && r.tag_condition !== 'ok'))
+
+export const TAG_CONDITION: Record<'ok' | 'faded' | 'missing' | 'damaged', { label: string; tone: Tone }> = {
+  ok: { label: 'Readable', tone: 'ok' },
+  faded: { label: 'Faded', tone: 'warn' },
+  missing: { label: 'Missing', tone: 'danger' },
+  damaged: { label: 'Damaged', tone: 'danger' },
+}
 
 export function warrantyState(iso: string | null | undefined): { label: string; tone: Tone } | null {
   if (!iso) return null

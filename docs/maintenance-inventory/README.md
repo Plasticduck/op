@@ -5,6 +5,8 @@ Parts, tools, stock counts, transfers, purchase orders and reorder suggestions a
 - [SPEC.md](SPEC.md): the original prompt
 - [INTEGRATION_NOTES.md](INTEGRATION_NOTES.md): what it reuses in Operator, and where it departs from the prompt
 - [MAINTENANCE_LOG.md](MAINTENANCE_LOG.md): the Maintenance Log page, schedules and parts forecast built on this data
+- [EQUIPMENT.md](EQUIPMENT.md): machines, laid out like IT Inventory: list, history, use counter, stickers, audits, import, public problem reports
+- [TUNNEL.md](TUNNEL.md): top-down tunnel diagrams linked to real machines, templates and the editor
 
 ## Giving someone access
 

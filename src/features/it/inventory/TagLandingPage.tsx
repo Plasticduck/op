@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CircleCheck, Loader2, TriangleAlert, Wrench } from 'lucide-react'
 import { NAV_GROUPS, navEmailOk } from '@/components/layout/Sidebar'
@@ -18,24 +18,33 @@ import { TAG_RE } from './scan'
 // to. Signed out, it links to sign-in and comes back here, so IT staff can get
 // to the item from a phone camera.
 
-// Same gate as the IT Inventory nav item (roles + pre-launch email list).
-function canOpenInventory(p: Profile): boolean {
-  const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === '/app/it-inventory')
+const MiPublicReport = lazy(() => import('@/features/maintenance/inventory/public/MiPublicReport'))
+
+// Same gate as the module's nav item (roles + pre-launch email list).
+function canOpen(p: Profile, to: string): boolean {
+  const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === to)
   if (!item) return false
   const role = permRole(p.role, p.role_category)
   return permRoleInList(role, item.roles) && navEmailOk(item, p.email, role)
 }
+const canOpenInventory = (p: Profile) => canOpen(p, '/app/it-inventory')
 
 export default function TagLandingPage() {
   const { short = '', tag = '' } = useParams()
   const navigate = useNavigate()
   const { profile, loading } = useAuth()
-  const [mode, setMode] = useState<'checking' | 'report' | 'unknown' | 'other'>('checking')
+  const [mode, setMode] = useState<'checking' | 'report' | 'unknown' | 'other' | 'mi_report' | 'mi_signin'>('checking')
 
   useEffect(() => {
     if (loading) return
-    // Maintenance Inventory's stickers share this link. Its page handles who can use them.
-    if (/^MF-/i.test(tag)) { navigate(`/app/maintenance-inventory?tag=${encodeURIComponent(tag)}`, { replace: true }); return }
+    // Maintenance Inventory's stickers share this link. Its team goes straight to the
+    // sticker; anyone else can report a problem with a machine (MF-A-). Bins, tools and
+    // stock locations are only for the team.
+    if (/^MF-/i.test(tag)) {
+      if (profile && canOpen(profile, '/app/maintenance-inventory')) { navigate(`/app/maintenance-inventory?tag=${encodeURIComponent(tag)}`, { replace: true }); return }
+      setMode(/^MF-A-/i.test(tag) ? 'mi_report' : 'mi_signin')
+      return
+    }
     if (!profile || !canOpenInventory(profile)) { setMode('report'); return }
     let alive = true
     void itInventory.resolveTag(short, tag).then((res) => {
@@ -57,6 +66,17 @@ export default function TagLandingPage() {
           <div className="grid place-items-center py-10 text-ink-muted"><Loader2 className="size-6 animate-spin" /></div>
         ) : mode === 'report' ? (
           <PublicReport short={short} tag={tag} signedIn={!!profile} />
+        ) : mode === 'mi_report' ? (
+          <Suspense fallback={<div className="grid place-items-center py-10 text-ink-muted"><Loader2 className="size-6 animate-spin" /></div>}>
+            <MiPublicReport short={short} tag={tag.toUpperCase()} signedIn={!!profile} />
+          </Suspense>
+        ) : mode === 'mi_signin' ? (
+          <div className="rounded-lg border border-border bg-card p-6 text-center">
+            <Wrench className="mx-auto mb-3 size-10 text-accent" />
+            <h1 className="text-lg font-semibold text-ink">A maintenance sticker</h1>
+            <p className="mt-1 text-sm text-ink-muted">{tag.toUpperCase()} is for the maintenance team's parts, tools and stock.</p>
+            {!profile && <p className="mt-4 text-sm"><Link to="/login" state={{ from: `/t/${short}/${tag}` }} className="font-medium text-accent hover:underline">Sign in</Link> to use it.</p>}
+          </div>
         ) : (
           <div className="rounded-lg border border-border bg-card p-6 text-center">
             <TriangleAlert className="mx-auto mb-3 size-10 text-warn" />

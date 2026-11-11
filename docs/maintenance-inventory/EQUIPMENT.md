@@ -58,6 +58,49 @@ MW33, MW35, Spotless as of 2026-11-11) say so.
 run a machine (tire shine) once package counts are stored by day. Until then
 `packages` counts every car.
 
+## Stickers (0229)
+
+Machine stickers are `MF-A-#####` in `mi_tags`, on IT Inventory's label templates,
+logo and short code, so one scanner reads both. A tag is `unused` (a blank printed
+ahead of time), `applied` or `retired`; a retired tag keeps who it was on in
+`former_entity_id`, and a code is never reused (trigger `mi__tags_guard`).
+
+- **Stickers** tool (`/stickers`): the print queue (machines with no sticker, one
+  never printed, or one marked faded, missing or damaged; components don't get
+  stickers) and blank batches (`mi_generate_blank_tags`).
+- Scanning a blank asks which machine it's going on (`mi_claim_tag`); a machine
+  that already has one is asked to replace it, which retires the old one. Scanning
+  a retired sticker says what it was on.
+- The machine page's Sticker section marks its condition and puts a new one on.
+
+## Audits (0230)
+
+**Audits** tool (`/audits`, `/audits/:id`): walk a site and scan each machine's
+sticker or tick it off. One open audit per site; others join it. Scans report
+found, found in a different zone, at another site, an unknown sticker, a blank
+(put it on a machine there and then), or a retired one. Finishing (all checked, or
+the rest counted missing) marks found machines audited, moves them to the zone
+they were found in, records sticker condition, and writes the history.
+Tests: `supabase/tests/mi_audits.sql`.
+
+## Import (0231)
+
+`/import` (directors and admins; the Import button on the list). One row per
+machine or component; matches by sticker, asset number, MaintainX id, then site
+and name. `parent` can be a row higher up. Preview runs and rolls back; importing
+is all or nothing. Tests: `supabase/tests/mi_import.sql`.
+
+## Public problem report
+
+A machine sticker's QR (`/t/<short>/MF-A-...`) takes anyone who can't open the
+module to a report page (`public/MiPublicReport.tsx`). Edge function
+`mi-scan-public` (public) shows only name, type, site and zone and files an
+untriaged **Maintenance** ticket in Work Orders NEW (department `maintenance`,
+`equipment_id` set; high priority if "not running at all"), with a
+`problem_reported` line on the machine's history. Five a machine an hour. It then
+calls `classify-work-order` with the service key for the AI title. Bin, tool and
+location stickers ask non-members to sign in.
+
 ## Permissions
 
 Module ranks (`mi_members`): site tech 1, site manager 2, regional 3, corporate

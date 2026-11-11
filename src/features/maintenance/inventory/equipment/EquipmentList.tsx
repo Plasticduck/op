@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import {
   ArrowDown, ArrowUp, Bookmark, Check as CheckIcon, Columns3, Download, Factory, Layers, ListFilter, Loader2, MapPin, Plus, Printer,
-  RefreshCw, ScanLine, Search, ShieldAlert, SquareCheck, Sticker, Trash2, Archive, X,
+  RefreshCw, ScanLine, Search, ShieldAlert, SquareCheck, Sticker, Trash2, Archive, Upload, X,
 } from 'lucide-react'
 import { Field } from '@/components/forms/Field'
 import { Badge } from '@/components/ui/Badge'
@@ -205,7 +205,12 @@ export function EquipmentList() {
           <option value="retired">Retired</option>
           <option value="any">Any status</option>
         </Select>
-        {canEdit && <Button onClick={() => setAdding(true)}><Plus className="size-4" /> Add</Button>}
+        <div className="flex gap-2">
+          {me.rank >= 4 && (
+            <Button variant="secondary" onClick={() => navigate('/app/maintenance-inventory/import')} aria-label="Import from a spreadsheet"><Upload className="size-4" /><span className="lg:hidden xl:inline"> Import</span></Button>
+          )}
+          {canEdit && <Button onClick={() => setAdding(true)} className="flex-1"><Plus className="size-4" /> Add</Button>}
+        </div>
       </div>
 
       {rows.length > 0 && (
@@ -266,7 +271,7 @@ export function EquipmentList() {
             <FilterSelect f={f} k="type" label="Type" setParam={setParam} options={typeNames.map((t) => [t, t])} />
             <FilterSelect f={f} k="crit" label="Criticality" setParam={setParam} options={[['A', CRIT.A.label], ['B', CRIT.B.label], ['C', CRIT.C.label], ['-', 'Not set']]} />
             <FilterSelect f={f} k="wo" label="Work orders" setParam={setParam} options={[['open', 'Has open work orders'], ['none', 'No open work orders']]} />
-            <FilterSelect f={f} k="sticker" label="Sticker" setParam={setParam} options={[['needs', 'Needs a sticker'], ['printed', 'Printed']]} />
+            <FilterSelect f={f} k="sticker" label="Sticker" setParam={setParam} options={[['needs', 'Needs a sticker'], ['printed', 'Printed'], ['faded', 'Faded'], ['missing', 'Missing'], ['damaged', 'Damaged']]} />
             <FilterSelect f={f} k="usage" label="Use counter" setParam={setParam} options={[['counted', 'Counting cars'], ['unset', 'No start date yet']]} />
             <FilterSelect f={f} k="warranty" label="Warranty" setParam={setParam} options={[['active', 'Under warranty'], ['expiring', 'Ending in 60 days'], ['expired', 'Ended'], ['none', 'No warranty date']]} />
             <FilterSelect f={f} k="mfr" label="Manufacturer" setParam={setParam} options={mfrNames.map((m) => [m, m])} />
