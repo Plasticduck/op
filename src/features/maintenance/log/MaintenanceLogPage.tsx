@@ -90,7 +90,7 @@ export default function MaintenanceLogPage() {
 
   const ctx = useMemo<MiCtx | null>(() => {
     if (!me || !me.member || !refs || !profile) return null
-    return { me, refs, accountId: profile.account_id, userId: profile.id, reload, openScan: () => navigate('/app/maintenance-inventory'), notify }
+    return { me, refs, accountId: profile.account_id, userId: profile.id, reload, openScan: () => navigate('/app/maintenance-inventory/scan'), notify }
   }, [me, refs, profile, reload, notify, navigate])
 
   const logCtx = useMemo<LogCtx>(() => ({

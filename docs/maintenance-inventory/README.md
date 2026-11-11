@@ -30,7 +30,7 @@ Spend limits and the count-difference limit are under Settings. Today Kevan and 
 1. Open what you want to label:
    - **Bins and locations:** Settings > Locations and bins > Labels
    - **Tools:** Tools > Labels
-   - **Assets:** Assets > Labels
+   - **Machines:** Equipment > Stickers
 2. Pick a sticker size and print the PDF at 100% (no "fit to page").
 
 Each sticker carries a QR code and a barcode for its `MF-` tag. A phone's own camera can read the QR code and, once signed in, opens straight on that item. Scan inside the app works too.

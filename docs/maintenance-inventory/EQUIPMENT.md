@@ -7,8 +7,8 @@ Maintenance Inventory's machines, run the way IT Inventory runs devices. Built
 
 | What | Where |
 |---|---|
-| Shell, section bar | `src/features/maintenance/inventory/MaintenanceInventoryPage.tsx`, `SectionNav.tsx` |
-| Overview | `OverviewPage.tsx` (Home's to-dos, then equipment by site, zone, and what's down) |
+| Shell, header, section bar | `src/features/maintenance/inventory/MaintenanceInventoryPage.tsx`, `SectionNav.tsx` |
+| Overview | `OverviewPage.tsx` (needs attention, totals, by site or zone by zone, by type; site picker in `?site=`) |
 | List | `equipment/EquipmentList.tsx`, `filters.ts`, `columns.tsx` |
 | Machine page | `equipment/EquipmentDetail.tsx`; body shared with the tunnel panel in `EquipmentBody.tsx` |
 | Add, edit, clone | `equipment/EquipmentForm.tsx` |
@@ -20,6 +20,15 @@ Maintenance Inventory's machines, run the way IT Inventory runs devices. Built
 
 Routes: `/app/maintenance-inventory/equipment` and `/equipment/:id`. The old
 `/assets` and `/assets/:id` redirect there.
+
+## Layout
+
+The same as IT Inventory: each screen has the title, a line about that screen and its
+buttons, then the section bar (Overview, Equipment, Tunnel, Audits, Parts, Tools, Stock,
+Work orders). Equipment's buttons are Stickers, Scan (desktop), Add and a menu with
+Import, Reports and Settings; other screens have the menu. Stickers, Import, Reports and
+Settings are pages of their own with a way back. On phones Scan floats on every screen
+except an audit. `/scan` (the Maintenance Log's Scan) opens the scanner over the Overview.
 
 ## Decisions
 

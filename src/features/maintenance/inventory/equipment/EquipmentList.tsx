@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import {
   ArrowDown, ArrowUp, Bookmark, Check as CheckIcon, Columns3, Download, Factory, Layers, ListFilter, Loader2, MapPin, Plus, Printer,
-  RefreshCw, ScanLine, Search, ShieldAlert, SquareCheck, Sticker, Trash2, Archive, Upload, X,
+  RefreshCw, ScanLine, Search, ShieldAlert, SquareCheck, Sticker, Trash2, Archive, X,
 } from 'lucide-react'
 import { Field } from '@/components/forms/Field'
 import { Badge } from '@/components/ui/Badge'
@@ -142,7 +142,7 @@ export function EquipmentList() {
   }
   const currentParams = (): ViewParams => {
     const out: ViewParams = {}
-    for (const [k, v] of params.entries()) if (v && k !== 'site') out[k] = v
+    for (const [k, v] of params.entries()) if (v && k !== 'site' && k !== 'add') out[k] = v
     return out
   }
 
@@ -171,6 +171,9 @@ export function EquipmentList() {
   const printFor = (list: EquipmentRow[]) => setLabels(list.filter((r) => r.status !== 'retired').map((r) => ({ type: 'asset', id: r.id, name: shortName(r.name), site: siteName.get(r.location_id) })))
 
   const canEdit = me.rank >= 2
+  // The header's Add button (drawn by the shell) asks with ?add=1.
+  const showAdd = canEdit && (adding || params.get('add') === '1')
+  const closeAdd = () => { setAdding(false); setParam({ add: '' }) }
   const nPanel = panelCount(f)
 
   return (
@@ -183,7 +186,7 @@ export function EquipmentList() {
       )}
       {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">Couldn't load the equipment: {error}</p>}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_180px_190px_190px_auto]">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_200px_200px_200px]">
         <div className="relative sm:col-span-2 lg:col-span-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-subtle" />
           <Input value={f.q} onChange={(e) => setParam({ q: e.target.value })} className="pl-9" onKeyDown={(e) => { if (e.key === 'Enter') jump() }}
@@ -205,12 +208,6 @@ export function EquipmentList() {
           <option value="retired">Retired</option>
           <option value="any">Any status</option>
         </Select>
-        <div className="flex gap-2">
-          {me.rank >= 4 && (
-            <Button variant="secondary" onClick={() => navigate('/app/maintenance-inventory/import')} aria-label="Import from a spreadsheet"><Upload className="size-4" /><span className="lg:hidden xl:inline"> Import</span></Button>
-          )}
-          {canEdit && <Button onClick={() => setAdding(true)} className="flex-1"><Plus className="size-4" /> Add</Button>}
-        </div>
       </div>
 
       {rows.length > 0 && (
@@ -334,8 +331,8 @@ export function EquipmentList() {
         }} />
       )}
       {labels && <LabelsDialog items={labels} onClose={() => { setLabels(null); void load() }} />}
-      {adding && (
-        <EquipmentForm m={{ mode: 'add', siteId: f.site !== 'all' ? f.site : undefined }} onClose={() => setAdding(false)}
+      {showAdd && (
+        <EquipmentForm m={{ mode: 'add', siteId: f.site !== 'all' ? f.site : undefined }} onClose={closeAdd}
           onSaved={(s) => { setAdding(false); navigate(`${EQUIPMENT_BASE}/${s.ids[0].id}`, { state: { flash: `${s.message} Print its sticker when you're ready.` } }) }} />
       )}
       {savingView && (

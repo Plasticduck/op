@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 
 // The module's screens as a segmented control under the page title, the same as IT
 // Inventory's. Stock groups transfers, counts, reorder and POs under one tab with its own
 // row underneath. On a phone the bar scrolls sideways and keeps the current screen in view.
+// `aside` sits at the other end of the bar (the Overview's site picker).
 
 const BASE = '/app/maintenance-inventory'
 
@@ -12,6 +13,7 @@ const SECTIONS: Array<{ to: string; label: string; end?: boolean; match?: RegExp
   { to: BASE, label: 'Overview', end: true, minRank: 1 },
   { to: `${BASE}/equipment`, label: 'Equipment', minRank: 1 },
   { to: `${BASE}/tunnel`, label: 'Tunnel', minRank: 1 },
+  { to: `${BASE}/audits`, label: 'Audits', minRank: 1 },
   { to: `${BASE}/parts`, label: 'Parts', minRank: 1 },
   { to: `${BASE}/tools`, label: 'Tools', minRank: 1 },
   { to: `${BASE}/transfers`, label: 'Stock', match: /\/(transfers|counts|reorder|pos)(\/|$)/, minRank: 1 },
@@ -30,7 +32,7 @@ const tab = (active: boolean) => cn(
   active ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:text-ink',
 )
 
-export function SectionNav({ rank }: { rank: number }) {
+export function SectionNav({ rank, aside, className }: { rank: number; aside?: ReactNode; className?: string }) {
   const nav = useRef<HTMLElement>(null)
   const { pathname } = useLocation()
   useEffect(() => {
@@ -38,17 +40,20 @@ export function SectionNav({ rank }: { rank: number }) {
   }, [pathname])
   const inStock = /\/(transfers|counts|reorder|pos)(\/|$)/.test(pathname)
   return (
-    <div className="flex flex-col gap-2">
-      <nav ref={nav} aria-label="Maintenance Inventory"
-        className="flex w-full gap-0.5 overflow-x-auto rounded-lg border border-border bg-card p-0.5 [scrollbar-width:none] sm:w-fit">
-        {SECTIONS.filter((s) => rank >= s.minRank).map((s) => (
-          <NavLink key={s.to} to={s.to} end={s.end}
-            aria-current={s.match ? (s.match.test(pathname) ? 'page' : undefined) : undefined}
-            className={({ isActive }) => tab(s.match ? s.match.test(pathname) : isActive)}>
-            {s.label}
-          </NavLink>
-        ))}
-      </nav>
+    <div className={cn('flex flex-col gap-2', className)}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <nav ref={nav} aria-label="Maintenance Inventory"
+          className="flex w-full min-w-0 gap-0.5 overflow-x-auto rounded-lg border border-border bg-card p-0.5 [scrollbar-width:none] sm:w-fit">
+          {SECTIONS.filter((s) => rank >= s.minRank).map((s) => (
+            <NavLink key={s.to} to={s.to} end={s.end}
+              aria-current={s.match ? (s.match.test(pathname) ? 'page' : undefined) : undefined}
+              className={({ isActive }) => tab(s.match ? s.match.test(pathname) : isActive)}>
+              {s.label}
+            </NavLink>
+          ))}
+        </nav>
+        {aside}
+      </div>
       {inStock && (
         <nav aria-label="Stock" className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
           {STOCK.filter((s) => rank >= s.minRank).map((s) => (

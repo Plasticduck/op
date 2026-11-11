@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowLeft, Download, Upload } from 'lucide-react'
+import { Download, Upload } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { downloadCsv, readSpreadsheet } from '@/lib/csv'
@@ -81,8 +80,7 @@ export default function ImportPage() {
   if (me.rank < 4) return <ErrorNote>Only a corporate maintenance director or admin can import equipment.</ErrorNote>
   return (
     <div className="flex flex-col gap-3">
-      <Link to="/app/maintenance-inventory/equipment" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"><ArrowLeft className="size-4" /> Equipment</Link>
-      <Card title="Import equipment" actions={<Button size="sm" variant="ghost" onClick={() => downloadCsv('maintenance-equipment-template', [COLUMNS, ...EXAMPLES])}><Download className="size-4" /> Template</Button>}>
+      <Card title="Your spreadsheet" actions={<Button size="sm" variant="ghost" onClick={() => downloadCsv('maintenance-equipment-template', [COLUMNS, ...EXAMPLES])}><Download className="size-4" /> Template</Button>}>
         <div className="mb-3 space-y-1 text-sm text-ink-muted">
           <p>One row per machine or component. A row updates the machine with the same sticker tag, asset number, MaintainX id, or site and name; anything else is added. Blank cells leave what's there.</p>
           <p><b>parent</b> names the machine a component belongs to (its name or sticker, at the same site; it can be a row above). <b>tag</b> claims a blank sticker or records one already on it. <b>status</b>: running, down for maintenance, broken down or retired. <b>use_counted</b>: every car, some packages or no.</p>
