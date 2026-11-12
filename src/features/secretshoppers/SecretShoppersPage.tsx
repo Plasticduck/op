@@ -34,8 +34,9 @@ export default function SecretShoppersPage() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm text-ink">
-              Send shoppers this link, or have them scan the code with their phone camera. They sign in with their PIN.
-              Nothing in Operator links to it.
+              Send shoppers this link, or have them scan the code with their phone camera. They tap Create a PIN to
+              make their own account, or sign in with a PIN you set below. Anyone with the link can make an account,
+              so share it only with shoppers. Nothing in Operator links to it.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <code className="min-w-0 truncate rounded-md border border-border bg-content px-3 py-2 font-mono text-sm text-ink">{appUrl}</code>

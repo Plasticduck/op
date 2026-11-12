@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { format } from 'date-fns'
-import { Camera, CheckCircle2, KeyRound, Loader2, LogOut, Play, RotateCcw, Send, Star, X } from 'lucide-react'
+import { Camera, CheckCircle2, KeyRound, Loader2, LogOut, Play, RotateCcw, Send, Star, UserPlus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -17,8 +17,8 @@ import { RATING_CATEGORIES, STAR_WORDS } from './ratings'
 
 // The Secret Shopper phone app (ss.html, served at /ss). A shopper visits a
 // site unannounced, opens this from the icon on their home screen, signs in
-// with their PIN and rates the visit 1-5 stars on each question, with comments,
-// photos and videos. Submitting emails the report to leadership. No Operator
+// with their PIN (or creates one) and rates the visit 1-5 stars on each
+// question, with comments, photos and videos. Submitting emails the report to leadership. No Operator
 // login: the PIN is the whole sign-in, and it lives only in this page's memory,
 // so closing the app signs out.
 //
@@ -34,6 +34,7 @@ export default function ShopperApp() {
   const [done, setDone] = useState<Done | null>(null)
   const [formKey, setFormKey] = useState(0)
   const [dirty, setDirty] = useState(false)
+  const [creating, setCreating] = useState(false)
 
   const signOut = () => {
     if (!done && dirty && !window.confirm('Sign out? The report you started will be lost.')) return
@@ -66,7 +67,11 @@ export default function ShopperApp() {
 
       <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-[calc(env(safe-area-inset-bottom)+2rem)] pt-5">
         {!session ? (
-          <PinGate onSignedIn={(s) => { setSession(s); setDone(null) }} />
+          creating ? (
+            <CreatePin onSignedIn={(s) => { setSession(s); setDone(null); setCreating(false) }} onBack={() => setCreating(false)} />
+          ) : (
+            <PinGate onSignedIn={(s) => { setSession(s); setDone(null) }} onCreate={() => setCreating(true)} />
+          )
         ) : done ? (
           <SubmittedCard
             done={done}
@@ -91,18 +96,18 @@ export default function ShopperApp() {
 
 // ---- PIN ---------------------------------------------------------------------
 
-function PinGate({ onSignedIn }: { onSignedIn: (s: ShopperSession) => void }) {
+// The button stays tappable: a short PIN gets told why instead of a dead,
+// grayed-out button.
+function PinGate({ onSignedIn, onCreate }: { onSignedIn: (s: ShopperSession) => void; onCreate: () => void }) {
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // The button stays tappable: a short PIN gets told why instead of a dead,
-  // grayed-out button (PINs set before 2026-11-12 could be 4 or 5 digits).
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!pin || busy) return
-    if (pin.length < 6) {
-      setError('PINs are 6 to 8 digits. If you were given a shorter one, ask for a new PIN.')
+    if (pin.length < 4) {
+      setError('PINs are 4 to 6 digits.')
       return
     }
     setBusy(true)
@@ -117,7 +122,7 @@ function PinGate({ onSignedIn }: { onSignedIn: (s: ShopperSession) => void }) {
     <form onSubmit={(e) => void submit(e)} noValidate className="mx-auto mt-6 max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
       <img src="/ss-logo.png" alt="Mighty Wash" className="mx-auto h-auto w-60 max-w-full" />
       <h1 className="mt-5 text-xl font-semibold text-ink">Enter your PIN</h1>
-      <p className="mt-1 text-sm text-ink-muted">Use the PIN you were given to start a report.</p>
+      <p className="mt-1 text-sm text-ink-muted">Sign in to start a report.</p>
       <Input
         type="password"
         inputMode="numeric"
@@ -133,6 +138,80 @@ function PinGate({ onSignedIn }: { onSignedIn: (s: ShopperSession) => void }) {
       {error && <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
       <Button type="submit" size="lg" className="mt-4 h-12! w-full" disabled={busy}>
         {busy ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />} Continue
+      </Button>
+      <div className="mt-6 border-t border-border pt-5">
+        <p className="text-sm text-ink-muted">Don't have a PIN yet?</p>
+        <Button type="button" variant="secondary" size="lg" className="mt-2 h-12! w-full" onClick={onCreate} disabled={busy}>
+          <UserPlus className="size-4" /> Create a PIN
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// A shopper makes their own account: name, optional phone, and a 4 to 6 digit
+// PIN they pick (typed twice). They're signed straight in.
+function CreatePin({ onSignedIn, onBack }: { onSignedIn: (s: ShopperSession) => void; onBack: () => void }) {
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [pin, setPin] = useState('')
+  const [pin2, setPin2] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const digits = (v: string) => v.replace(/\D/g, '').slice(0, 6)
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    if (!name.trim()) { setError('Enter your name.'); return }
+    if (pin.length < 4) { setError('Pick a PIN that is 4 to 6 digits.'); return }
+    if (pin !== pin2) { setError("The two PINs don't match."); setPin2(''); return }
+    setBusy(true)
+    setError(null)
+    const { data, error: err } = await secretShoppers.signUp({ name, phone, pin })
+    setBusy(false)
+    if (!data) { setError(err); return }
+    onSignedIn(data)
+  }
+
+  const label = 'mb-1.5 block text-left text-sm font-medium text-ink'
+  return (
+    <form onSubmit={(e) => void submit(e)} noValidate className="mx-auto mt-6 max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <img src="/ss-logo.png" alt="Mighty Wash" className="mx-auto h-auto w-48 max-w-full" />
+      <h1 className="mt-4 text-center text-xl font-semibold text-ink">Create your PIN</h1>
+      <p className="mt-1 text-center text-sm text-ink-muted">Pick 4 to 6 digits you'll remember. You'll use it every time you open the app.</p>
+      <div className="mt-5 space-y-4">
+        <div>
+          <label htmlFor="cp-name" className={label}>Your name</label>
+          <Input id="cp-name" value={name} maxLength={100} autoComplete="name" autoFocus
+            onChange={(e) => { setName(e.target.value); setError(null) }} className="h-12!" />
+        </div>
+        <div>
+          <label htmlFor="cp-phone" className={label}>Phone <span className="font-normal text-ink-subtle">(optional)</span></label>
+          <Input id="cp-phone" type="tel" value={phone} maxLength={40} autoComplete="tel"
+            onChange={(e) => setPhone(e.target.value)} className="h-12!" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="cp-pin" className={label}>PIN</label>
+            <Input id="cp-pin" type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="new-password" maxLength={6}
+              value={pin} onChange={(e) => { setPin(digits(e.target.value)); setError(null) }}
+              className="h-12! text-center text-xl! tracking-[0.3em]" />
+          </div>
+          <div>
+            <label htmlFor="cp-pin2" className={label}>PIN again</label>
+            <Input id="cp-pin2" type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="new-password" maxLength={6}
+              value={pin2} onChange={(e) => { setPin2(digits(e.target.value)); setError(null) }}
+              className="h-12! text-center text-xl! tracking-[0.3em]" />
+          </div>
+        </div>
+      </div>
+      {error && <p className="mt-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+      <Button type="submit" size="lg" className="mt-5 h-12! w-full" disabled={busy}>
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />} Create PIN and sign in
+      </Button>
+      <Button type="button" variant="ghost" className="mt-2 w-full" onClick={onBack} disabled={busy}>
+        I already have a PIN
       </Button>
     </form>
   )

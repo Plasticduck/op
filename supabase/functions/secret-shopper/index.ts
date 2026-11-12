@@ -8,10 +8,15 @@
 // company they report to. So this function runs without the gateway's JWT
 // check (config.toml, --no-verify-jwt), wrong PINs are capped per IP address
 // and overall, and the admin actions check the caller's Operator session here.
-// Service role throughout: the tables are RLS-locked (migrations 0232, 0233).
+// Anyone with the link can also create their own PIN (sign_up), so the link is
+// the real gate; sign-ups are capped per IP and overall, and an admin can turn
+// any account off. Service role throughout: the tables are RLS-locked
+// (migrations 0232-0234).
 //
 // Actions (shopper, PIN only):
 //   sign_in      { pin }                                -> { ok, shopper: { id, name }, sites: [{ id, name }] }
+//   sign_up      { name, phone?, pin }                  -> same as sign_in
+//                Creates the shopper (in the admins' company) and signs them in.
 //   start        { pin, report, files: [{ name, type, size }] }
 //                                                       -> { ok, visit_id, uploads: [{ path, token }] }
 //                Saves the report as 'uploading' and hands out one signed
@@ -55,13 +60,22 @@ const WORDS = ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent']
 const BUCKET = 'secret-shopper-media'
 const MAX_FILES = 20
 const MAX_FILE_BYTES = 50 * 1024 * 1024 // the project's upload limit
-const PIN_RE = /^\d{6,8}$/
+// New PINs are 4 to 6 digits (Kevan, 2026-11-12). Sign-in also takes 7 or 8,
+// for PINs set while the rule was briefly 6 to 8.
+const PIN_RE = /^\d{4,6}$/
+const SIGN_IN_PIN_RE = /^\d{4,8}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // Wrong PINs allowed from one IP address per 15 minutes, and from everyone
 // together per hour. The overall cap is what keeps PINs from being guessed
 // from many addresses at once; while it's hit, PIN sign-in pauses for everyone.
 const MAX_BAD_PINS_PER_IP = 8
 const MAX_BAD_PINS_PER_HOUR = 20
+// Self sign-ups: per IP address per day, and from everyone together per hour.
+const MAX_SIGNUPS_PER_IP_PER_DAY = 3
+const MAX_SIGNUPS_PER_HOUR = 10
+// Shoppers who create their own PIN join this admin's company, the same one
+// the shoppers admins add themselves are in.
+const SIGNUP_COMPANY_OF = ADMIN_EMAILS[0]
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -129,7 +143,7 @@ Deno.serve(async (req) => {
       const [{ data: shoppers, error }, { data: visits }] = await Promise.all([
         svc
           .from('secret_shoppers')
-          .select('id, name, phone, email, active, last_sign_in_at, created_at')
+          .select('id, name, phone, email, active, self_signup, last_sign_in_at, created_at')
           .eq('account_id', accountId)
           .order('name'),
         svc.from('secret_shopper_visits').select('shopper_id').eq('account_id', accountId).eq('status', 'submitted'),
@@ -147,7 +161,7 @@ Deno.serve(async (req) => {
     const pin = clip(body.pin, 20)
     if (!name) return json({ error: 'bad_request', message: "Enter the shopper's name." }, 400, origin)
     if (!id && !pin) return json({ error: 'bad_request', message: 'Give the shopper a PIN.' }, 400, origin)
-    if (pin && !PIN_RE.test(pin)) return json({ error: 'bad_request', message: 'A PIN is 6 to 8 digits.' }, 400, origin)
+    if (pin && !PIN_RE.test(pin)) return json({ error: 'bad_request', message: 'A PIN is 4 to 6 digits.' }, 400, origin)
     if (id) {
       const { data: existing } = await svc.from('secret_shoppers').select('id').eq('id', id).eq('account_id', accountId).maybeSingle()
       if (!existing) return json({ error: 'not_found', message: 'That shopper is gone.' }, 404, origin)
@@ -179,8 +193,13 @@ Deno.serve(async (req) => {
   }
 
   // ---- Everything a shopper does starts with their PIN -------------------------
-  if (!['sign_in', 'start', 'finish'].includes(action)) {
+  if (!['sign_in', 'sign_up', 'start', 'finish'].includes(action)) {
     return json({ error: 'bad_request', message: 'Unknown action.' }, 400, origin)
+  }
+  // Any open site in the shopper's company.
+  const sitesOf = async (accountId: string) => {
+    const { data } = await svc.from('locations').select('id, name').eq('account_id', accountId).eq('archived', false).order('name')
+    return data ?? []
   }
   const ip = clientIp(req)
   const { count: mine } = await svc
@@ -193,8 +212,9 @@ Deno.serve(async (req) => {
   }
 
   // finish needs an existing report (an unguessable id) before the PIN is even
-  // checked, so it can't be used to guess PINs; sign_in and start can, so they
-  // also stop while the overall cap is hit.
+  // checked, so it can't be used to guess PINs; sign_in, sign_up (a "taken"
+  // PIN gives one away) and start can, so they also stop while the overall
+  // cap is hit.
   // deno-lint-ignore no-explicit-any
   let visit: any = null
   if (action === 'finish') {
@@ -214,8 +234,58 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ---- sign_up: a shopper creates their own PIN -------------------------------
+  if (action === 'sign_up') {
+    const name = clip(body.name, 100)
+    const phone = clip(body.phone, 40) || null
+    const newPin = clip(body.pin, 20)
+    if (!name) return json({ error: 'bad_request', message: 'Enter your name.' }, 400, origin)
+    if (!PIN_RE.test(newPin)) return json({ error: 'bad_request', message: 'Pick a PIN that is 4 to 6 digits.' }, 400, origin)
+
+    const [{ count: fromHere }, { count: lately }] = await Promise.all([
+      svc.from('secret_shoppers').select('id', { count: 'exact', head: true })
+        .eq('self_signup', true).eq('signup_ip', ip).gte('created_at', new Date(Date.now() - 24 * 60 * 60_000).toISOString()),
+      svc.from('secret_shoppers').select('id', { count: 'exact', head: true })
+        .eq('self_signup', true).gte('created_at', new Date(Date.now() - 60 * 60_000).toISOString()),
+    ])
+    if ((fromHere ?? 0) >= MAX_SIGNUPS_PER_IP_PER_DAY) {
+      return json({ error: 'rate_limited', message: 'Too many new accounts from here today. Try again tomorrow.' }, 429, origin)
+    }
+    if ((lately ?? 0) >= MAX_SIGNUPS_PER_HOUR) {
+      return json({ error: 'rate_limited', message: 'New accounts are paused for a little while. Try again later.' }, 429, origin)
+    }
+
+    const { data: owner } = await svc.from('users').select('account_id').ilike('email', SIGNUP_COMPANY_OF).limit(1).maybeSingle()
+    if (!owner) return json({ error: 'not_configured', message: "New accounts can't be made right now." }, 500, origin)
+
+    // PINs sign people in on their own, so they must be unique. Saying "taken"
+    // reveals a working PIN, so it counts as a wrong guess.
+    const { data: taken } = await svc.rpc('secret_shopper_pin_in_use', { p_pin: newPin, p_except: null })
+    if (taken) {
+      await svc.from('secret_shopper_bad_pins').insert({ ip })
+      return json({ error: 'pin_taken', message: 'That PIN is taken. Pick a different one.' }, 409, origin)
+    }
+    const { data: hash, error: hashErr } = await svc.rpc('secret_shopper_hash_pin', { p_pin: newPin })
+    if (hashErr || !hash) return json({ error: 'save_failed', message: hashErr?.message ?? 'Could not set the PIN.' }, 500, origin)
+    const { data: created, error: insErr } = await svc
+      .from('secret_shoppers')
+      .insert({
+        account_id: owner.account_id,
+        name,
+        phone,
+        pin_hash: hash as string,
+        self_signup: true,
+        signup_ip: ip,
+        last_sign_in_at: new Date().toISOString(),
+      })
+      .select('id, name')
+      .single()
+    if (insErr || !created) return json({ error: 'save_failed', message: insErr?.message ?? 'Could not create your account.' }, 500, origin)
+    return json({ ok: true, shopper: { id: created.id, name: created.name }, sites: await sitesOf(owner.account_id) }, 200, origin)
+  }
+
   const pin = clip(body.pin, 20)
-  const { data: shopperId } = PIN_RE.test(pin)
+  const { data: shopperId } = SIGN_IN_PIN_RE.test(pin)
     ? await svc.rpc('secret_shopper_find_by_pin', { p_pin: pin })
     : { data: null }
   if (!shopperId || (visit && visit.shopper_id !== shopperId)) {
@@ -232,14 +302,7 @@ Deno.serve(async (req) => {
 
   if (action === 'sign_in') {
     await svc.from('secret_shoppers').update({ last_sign_in_at: new Date().toISOString() }).eq('id', shopper.id)
-    // Any open site in the shopper's company.
-    const { data: sites } = await svc
-      .from('locations')
-      .select('id, name')
-      .eq('account_id', accountId)
-      .eq('archived', false)
-      .order('name')
-    return json({ ok: true, shopper: { id: shopper.id, name: shopper.name }, sites: sites ?? [] }, 200, origin)
+    return json({ ok: true, shopper: { id: shopper.id, name: shopper.name }, sites: await sitesOf(accountId) }, 200, origin)
   }
 
   if (action === 'start') {

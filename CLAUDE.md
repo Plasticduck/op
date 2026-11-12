@@ -131,11 +131,11 @@ src/
     facilities/             Service Board
     secretshoppers/         Secret Shoppers: ShopperApp is a separate phone app (ss.html ->
                             src/ss.tsx, served at /ss, own manifest + home-screen icon, no
-                            Operator login): PIN sign-in, 1-5 star visit report with
+                            Operator login): PIN sign-in or self-made PIN, 1-5 star visit report with
                             photos/videos, emailed on submit. SecretShoppersPage is the admin
                             page (/app/secret-shoppers, by URL only, not in nav). All data goes
                             through the secret-shopper fn (verify_jwt off; tables RLS-locked,
-                            migrations 0232-0233)
+                            migrations 0232-0234)
     cameras/                Spot AI camera feeds
     messages/               Slack-style chat: site rooms + DMs + groups, @mentions,
                             reactions, pins, threads, files
@@ -154,7 +154,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0233.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0234.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides

@@ -429,7 +429,8 @@ verify_jwt = false
 verify_jwt = false
 
 # Secret Shopper phone app (/ss): shoppers have no Operator login, the PIN is
-# the credential (throttled per IP and overall). Its admin actions check the
+# the credential (throttled per IP and overall; shoppers can also create their
+# own, capped per IP). Its admin actions check the
 # caller's Operator session inside the function.
 [functions.secret-shopper]
 verify_jwt = false

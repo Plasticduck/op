@@ -30,6 +30,7 @@ export type ManagedShopper = {
   phone: string | null
   email: string | null
   active: boolean
+  self_signup: boolean // made their own PIN in the app
   last_sign_in_at: string | null
   created_at: string
   reports: number
@@ -62,6 +63,16 @@ export const secretShoppers = {
     const r = await call<{ shopper: ShopperSession['shopper']; sites: ShopperSite[] }>({ action: 'sign_in', pin }, "Couldn't check that PIN.")
     if (r.error !== null) return r
     return { data: { pin, shopper: r.data.shopper, sites: r.data.sites }, error: null }
+  },
+
+  // A shopper makes their own account ("Create a PIN") and is signed straight in.
+  signUp: async (s: { name: string; phone: string; pin: string }): Promise<Result<ShopperSession>> => {
+    const r = await call<{ shopper: ShopperSession['shopper']; sites: ShopperSite[] }>(
+      { action: 'sign_up', name: s.name.trim(), phone: s.phone.trim(), pin: s.pin },
+      "Couldn't create your account.",
+    )
+    if (r.error !== null) return r
+    return { data: { pin: s.pin, shopper: r.data.shopper, sites: r.data.sites }, error: null }
   },
 
   // Save the report, upload each photo/video, then mark it submitted and email

@@ -6,14 +6,15 @@ import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { secretShoppers, type ManagedShopper } from '@/lib/queries/secretShoppers'
 
-// Add secret shoppers and give each one a PIN (6 to 8 digits, unique). PINs are
-// stored hashed, so a PIN shows once, right after it's set; after that it can
-// only be replaced.
+// Add secret shoppers and give each one a PIN (4 to 6 digits, unique), and
+// manage the ones who made their own PIN in the app. PINs are stored hashed,
+// so a PIN shows once, right after it's set; after that it can only be
+// replaced.
 
 type Draft = { id?: string; name: string; phone: string; email: string; pin: string; active: boolean }
 const blank: Draft = { name: '', phone: '', email: '', pin: '', active: true }
 
-const randomPin = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, '0')
+const randomPin = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 10_000).padStart(4, '0')
 
 export function ShoppersPanel() {
   const [shoppers, setShoppers] = useState<ManagedShopper[] | null>(null)
@@ -30,7 +31,7 @@ export function ShoppersPanel() {
   }, [])
   useEffect(() => { void load() }, [load])
 
-  const pinOk = draft ? (draft.id ? draft.pin.length === 0 || draft.pin.length >= 6 : draft.pin.length >= 6) : false
+  const pinOk = draft ? (draft.id ? draft.pin.length === 0 || draft.pin.length >= 4 : draft.pin.length >= 4) : false
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
@@ -63,7 +64,7 @@ export function ShoppersPanel() {
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Shoppers and PINs</h2>
-          <p className="mt-0.5 text-sm text-ink-muted">Each shopper signs in with their own PIN. Reports show their name.</p>
+          <p className="mt-0.5 text-sm text-ink-muted">Each shopper signs in with their own PIN, set here or made in the app. Reports show their name.</p>
         </div>
         {!draft && (
           <Button size="sm" onClick={() => { setShownPin(null); setError(null); setDraft({ ...blank }) }}>
@@ -104,12 +105,12 @@ export function ShoppersPanel() {
           </div>
           <div>
             <label htmlFor="ms-pin" className="mb-1 block text-sm font-medium text-ink">
-              {draft.id ? 'New PIN' : 'PIN'} <span className="font-normal text-ink-subtle">{draft.id ? '(6 to 8 digits; leave blank to keep the current one)' : '(6 to 8 digits)'}</span>
+              {draft.id ? 'New PIN' : 'PIN'} <span className="font-normal text-ink-subtle">{draft.id ? '(4 to 6 digits; leave blank to keep the current one)' : '(4 to 6 digits)'}</span>
             </label>
             <div className="flex gap-2">
-              <Input id="ms-pin" inputMode="numeric" autoComplete="off" value={draft.pin} maxLength={8}
+              <Input id="ms-pin" inputMode="numeric" autoComplete="off" value={draft.pin} maxLength={6}
                 className="font-mono tracking-widest sm:max-w-[12rem]"
-                onChange={(e) => setDraft({ ...draft, pin: e.target.value.replace(/\D/g, '').slice(0, 8) })} />
+                onChange={(e) => setDraft({ ...draft, pin: e.target.value.replace(/\D/g, '').slice(0, 6) })} />
               <Button type="button" variant="secondary" onClick={() => setDraft({ ...draft, pin: randomPin() })}>
                 <Dices className="size-4" /> Make one up
               </Button>
@@ -144,6 +145,7 @@ export function ShoppersPanel() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-ink">{s.name}</span>
+                  {s.self_signup && <Badge tone="neutral">Made their own PIN</Badge>}
                   {!s.active && <Badge tone="neutral">Off</Badge>}
                 </div>
                 <div className="truncate text-xs text-ink-muted">
