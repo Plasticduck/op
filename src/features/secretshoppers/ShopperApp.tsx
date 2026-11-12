@@ -273,7 +273,6 @@ function ReportForm({ session, onDirty, onSubmitted }: {
   const [siteId, setSiteId] = useState('')
   const site = sites.byId.get(siteId)
   const [visitedAt, setVisitedAt] = useState(localNow)
-  const [washPackage, setWashPackage] = useState('')
   const [teamMembers, setTeamMembers] = useState('')
   const [stars, setStars] = useState<Record<string, number>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
@@ -290,7 +289,7 @@ function ReportForm({ session, onDirty, onSubmitted }: {
   useEffect(() => () => { for (const f of filesRef.current) URL.revokeObjectURL(f.url) }, [])
 
   // A refresh, a closed tab or a stray "Sign out" would lose a long report.
-  const dirty = !!(siteId || washPackage || teamMembers || comments || files.length || Object.keys(stars).length)
+  const dirty = !!(siteId || teamMembers || comments || files.length || Object.keys(stars).length)
   useEffect(() => { onDirty(dirty) }, [dirty, onDirty])
   useEffect(() => {
     if (!dirty || busy) return
@@ -351,7 +350,6 @@ function ReportForm({ session, onDirty, onSubmitted }: {
       {
         location_id: siteId,
         visited_at: visitTime.toISOString(),
-        wash_package: washPackage.trim(),
         team_members: teamMembers.trim(),
         ratings: Object.fromEntries(RATING_CATEGORIES.map((c) => [c.key, { stars: stars[c.key], comment: (notes[c.key] ?? '').trim() }])),
         comments: comments.trim(),
@@ -390,11 +388,6 @@ function ReportForm({ session, onDirty, onSubmitted }: {
             <label htmlFor="ss-when-input" className={fieldLabel}>When you visited</label>
             <Input id="ss-when-input" type="datetime-local" value={visitedAt} max={localNow()}
               onChange={(e) => setVisitedAt(e.target.value)} invalid={flag('ss-when')} className="h-12!" />
-          </div>
-          <div>
-            <label htmlFor="ss-package" className={fieldLabel}>Wash package you bought <span className="font-normal text-ink-subtle">(optional)</span></label>
-            <Input id="ss-package" value={washPackage} maxLength={200} onChange={(e) => setWashPackage(e.target.value)}
-              placeholder="Which wash did you buy?" className="h-12!" />
           </div>
           <div>
             <label htmlFor="ss-team" className={fieldLabel}>Team members you dealt with <span className="font-normal text-ink-subtle">(optional)</span></label>

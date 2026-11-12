@@ -18,7 +18,6 @@ export type ShopperSession = { pin: string; shopper: { id: string; name: string 
 export type ShopperReport = {
   location_id: string
   visited_at: string // ISO
-  wash_package: string
   team_members: string
   ratings: Record<string, { stars: number; comment: string }>
   comments: string
