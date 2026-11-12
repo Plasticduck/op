@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import ShopperApp from '@/features/secretshoppers/ShopperApp'
 
-// Entry for shop.html, the Secret Shopper phone app (/shop). Just the shopper
+// Entry for ss.html, the Secret Shopper phone app (/ss). Just the shopper
 // flow: no Operator login, router or app shell.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

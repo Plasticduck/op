@@ -1,18 +1,17 @@
 {
-  "id": "/shop",
+  "id": "/ss",
   "name": "Secret Shopper",
   "short_name": "Secret Shopper",
-  "description": "Rate a visit to any of our car wash sites.",
-  "start_url": "/shop",
-  "scope": "/shop",
+  "description": "Rate a visit to any Mighty Wash site.",
+  "start_url": "/ss",
+  "scope": "/ss",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0B0F14",
+  "background_color": "#FFFFFF",
   "theme_color": "#0B0F14",
   "icons": [
-    { "src": "/shop-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/shop-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/shop-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "/shop-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "/ss-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/ss-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/ss-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -7,11 +7,11 @@ import { ShoppersPanel } from './ShoppersPanel'
 
 // Secret Shoppers admin (/app/secret-shoppers, SECRET_SHOPPER_EMAILS only, not
 // in the sidebar). Shoppers themselves never come here: they use the Secret
-// Shopper phone app at /shop (ShopperApp, its own page and home-screen icon).
+// Shopper phone app at /ss (ShopperApp, its own page and home-screen icon).
 // This page hands out that link and manages who can sign in to it.
 
 export default function SecretShoppersPage() {
-  const appUrl = `${window.location.origin}/shop`
+  const appUrl = `${window.location.origin}/ss`
   const [copied, setCopied] = useState(false)
 
   const copy = async () => {
@@ -42,7 +42,7 @@ export default function SecretShoppersPage() {
               <Button variant="secondary" size="sm" onClick={() => void copy()}>
                 {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? 'Copied' : 'Copy link'}
               </Button>
-              <a href="/shop" target="_blank" rel="noreferrer"
+              <a href="/ss" target="_blank" rel="noreferrer"
                 className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-accent hover:bg-accent-soft">
                 <ExternalLink className="size-4" /> Open
               </a>

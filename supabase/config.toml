@@ -428,7 +428,7 @@ verify_jwt = false
 [functions.mi-scan-public]
 verify_jwt = false
 
-# Secret Shopper phone app (/shop): shoppers have no Operator login, the PIN is
+# Secret Shopper phone app (/ss): shoppers have no Operator login, the PIN is
 # the credential (throttled per IP and overall). Its admin actions check the
 # caller's Operator session inside the function.
 [functions.secret-shopper]

@@ -15,7 +15,7 @@ import {
 } from '@/lib/queries/secretShoppers'
 import { RATING_CATEGORIES, STAR_WORDS } from './ratings'
 
-// The Secret Shopper phone app (shop.html, served at /shop). A shopper visits a
+// The Secret Shopper phone app (ss.html, served at /ss). A shopper visits a
 // site unannounced, opens this from the icon on their home screen, signs in
 // with their PIN and rates the visit 1-5 stars on each question, with comments,
 // photos and videos. Submitting emails the report to leadership. No Operator
@@ -47,7 +47,7 @@ export default function ShopperApp() {
     <div className="flex min-h-dvh flex-col bg-content">
       <header className="sticky top-0 z-10 bg-[#0B0F14] pt-[env(safe-area-inset-top)] text-white shadow-sm">
         <div className="mx-auto flex h-14 w-full max-w-xl items-center gap-3 px-4">
-          <img src="/shop-icon-192.png" alt="" className="size-8 rounded-lg" />
+          <img src="/ss-icon-192.png" alt="" className="size-8 rounded-lg" />
           <div className="min-w-0 flex-1">
             <div className="font-semibold leading-tight">Secret Shopper</div>
             {session && <div className="truncate text-xs text-white/60">Signed in as {session.shopper.name}</div>}
@@ -96,9 +96,15 @@ function PinGate({ onSignedIn }: { onSignedIn: (s: ShopperSession) => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // The button stays tappable: a short PIN gets told why instead of a dead,
+  // grayed-out button (PINs set before 2026-11-12 could be 4 or 5 digits).
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (pin.length < 6 || busy) return
+    if (!pin || busy) return
+    if (pin.length < 6) {
+      setError('PINs are 6 to 8 digits. If you were given a shorter one, ask for a new PIN.')
+      return
+    }
     setBusy(true)
     setError(null)
     const { data, error: err } = await secretShoppers.signIn(pin)
@@ -108,9 +114,9 @@ function PinGate({ onSignedIn }: { onSignedIn: (s: ShopperSession) => void }) {
   }
 
   return (
-    <form onSubmit={(e) => void submit(e)} className="mx-auto mt-6 max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
-      <img src="/shop-icon-192.png" alt="" className="mx-auto size-16 rounded-2xl" />
-      <h1 className="mt-4 text-xl font-semibold text-ink">Enter your PIN</h1>
+    <form onSubmit={(e) => void submit(e)} noValidate className="mx-auto mt-6 max-w-sm rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+      <img src="/ss-logo.png" alt="Mighty Wash" className="mx-auto h-auto w-60 max-w-full" />
+      <h1 className="mt-5 text-xl font-semibold text-ink">Enter your PIN</h1>
       <p className="mt-1 text-sm text-ink-muted">Use the PIN you were given to start a report.</p>
       <Input
         type="password"
@@ -121,11 +127,11 @@ function PinGate({ onSignedIn }: { onSignedIn: (s: ShopperSession) => void }) {
         maxLength={8}
         aria-label="PIN"
         value={pin}
-        onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+        onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, 8)); setError(null) }}
         className="mt-5 h-14! text-center text-2xl! tracking-[0.5em]"
       />
       {error && <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-      <Button type="submit" size="lg" className="mt-4 h-12! w-full" disabled={pin.length < 6 || busy}>
+      <Button type="submit" size="lg" className="mt-4 h-12! w-full" disabled={busy}>
         {busy ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />} Continue
       </Button>
     </form>

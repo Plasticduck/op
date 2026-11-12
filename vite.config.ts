@@ -3,22 +3,22 @@ import { defineConfig, type Connect, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// /shop is the Secret Shopper phone app, its own page (shop.html) with its own
-// home-screen manifest. vercel.json rewrites /shop to it in production; this
+// /ss is the Secret Shopper phone app, its own page (ss.html) with its own
+// home-screen manifest. vercel.json rewrites /ss to it in production; this
 // does the same for `vite` and `vite preview`.
-const rewriteShop: Connect.NextHandleFunction = (req, _res, next) => {
+const rewriteSs: Connect.NextHandleFunction = (req, _res, next) => {
   const [p, q] = (req.url ?? '').split('?')
-  if (p === '/shop' || p === '/shop/') req.url = `/shop.html${q ? `?${q}` : ''}`
+  if (p === '/ss' || p === '/ss/') req.url = `/ss.html${q ? `?${q}` : ''}`
   next()
 }
-const shopPage: Plugin = {
-  name: 'shop-page',
-  configureServer: (server) => { server.middlewares.use(rewriteShop) },
-  configurePreviewServer: (server) => { server.middlewares.use(rewriteShop) },
+const ssPage: Plugin = {
+  name: 'ss-page',
+  configureServer: (server) => { server.middlewares.use(rewriteSs) },
+  configurePreviewServer: (server) => { server.middlewares.use(rewriteSs) },
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), shopPage],
+  plugins: [react(), tailwindcss(), ssPage],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -31,7 +31,7 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
-        shop: path.resolve(__dirname, 'shop.html'),
+        ss: path.resolve(__dirname, 'ss.html'),
       },
     },
   },

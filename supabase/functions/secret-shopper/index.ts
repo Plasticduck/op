@@ -1,5 +1,5 @@
 // secret-shopper — Supabase Edge Function (Deno).
-// Backs the Secret Shopper phone app (/shop, shop.html) and its admin page
+// Backs the Secret Shopper phone app (/ss, ss.html) and its admin page
 // (/app/secret-shoppers). A shopper opens the app from their home screen, signs
 // in with their PIN, fills in a 1-5 star report about one visit with photos and
 // videos, and it's emailed to leadership.

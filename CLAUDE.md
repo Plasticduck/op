@@ -129,8 +129,8 @@ src/
     it/                     Issuetrak, IT Field Checklist
     maintenance/            Chemicals, Maintenance Orders, inventory/ (Maintenance Inventory) and log/ (Maintenance Log), see docs/maintenance-inventory
     facilities/             Service Board
-    secretshoppers/         Secret Shoppers: ShopperApp is a separate phone app (shop.html ->
-                            src/shop.tsx, served at /shop, own manifest + home-screen icon, no
+    secretshoppers/         Secret Shoppers: ShopperApp is a separate phone app (ss.html ->
+                            src/ss.tsx, served at /ss, own manifest + home-screen icon, no
                             Operator login): PIN sign-in, 1-5 star visit report with
                             photos/videos, emailed on submit. SecretShoppersPage is the admin
                             page (/app/secret-shoppers, by URL only, not in nav). All data goes

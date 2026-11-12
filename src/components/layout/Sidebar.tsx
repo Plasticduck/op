@@ -320,7 +320,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
-  // Secret Shoppers is deliberately not in the nav: shoppers use the /shop
+  // Secret Shoppers is deliberately not in the nav: shoppers use the /ss
   // phone app, and Kevan and Joshua manage it at /app/secret-shoppers by URL.
   {
     label: 'Site Essentials',

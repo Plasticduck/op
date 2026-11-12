@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Secret Shopper phone app, served at /shop (vercel.json rewrite; a dev-server
+  Secret Shopper phone app, served at /ss (vercel.json rewrite; a dev-server
   plugin in vite.config.ts does the same locally). It's a separate page from
   index.html so it has its own manifest and home-screen icon: saving it to a
   phone's home screen opens the shopper app, not Operator. Nothing in Operator
@@ -21,9 +21,9 @@
         } catch (e) {}
       })()
     </script>
-    <link rel="icon" type="image/png" sizes="192x192" href="/shop-icon-192.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/shop-icon-180.png" />
-    <link rel="manifest" href="/shop.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/ss-icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/ss-icon-180.png" />
+    <link rel="manifest" href="/ss.webmanifest" />
 
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -39,6 +39,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/shop.tsx"></script>
+    <script type="module" src="/src/ss.tsx"></script>
   </body>
 </html>

@@ -5,8 +5,8 @@
   "outputDirectory": "dist",
   "redirects": [{ "source": "/training/mighty-wash-academy.html", "destination": "/app/training", "permanent": false }],
   "rewrites": [
-    { "source": "/shop", "destination": "/shop.html" },
-    { "source": "/shop/", "destination": "/shop.html" },
+    { "source": "/ss", "destination": "/ss.html" },
+    { "source": "/ss/", "destination": "/ss.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
@@ -30,7 +30,7 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
-      "source": "/shop.webmanifest",
+      "source": "/ss.webmanifest",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     }
   ]
