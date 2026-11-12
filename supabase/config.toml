@@ -428,6 +428,12 @@ verify_jwt = false
 [functions.mi-scan-public]
 verify_jwt = false
 
+# Secret Shopper phone app (/shop): shoppers have no Operator login, the PIN is
+# the credential (throttled per IP and overall). Its admin actions check the
+# caller's Operator session inside the function.
+[functions.secret-shopper]
+verify_jwt = false
+
 # QuickBooks Web Connector (SOAP). It logs in with its own user name and
 # password (qb_check_login), not a Supabase session.
 [functions.qbwc]

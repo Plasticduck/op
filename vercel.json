@@ -4,7 +4,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "redirects": [{ "source": "/training/mighty-wash-academy.html", "destination": "/app/training", "permanent": false }],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "rewrites": [
+    { "source": "/shop", "destination": "/shop.html" },
+    { "source": "/shop/", "destination": "/shop.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -23,6 +27,10 @@
     },
     {
       "source": "/manifest.webmanifest",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/shop.webmanifest",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     }
   ]

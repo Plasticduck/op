@@ -1,11 +1,16 @@
 // secret-shopper — Supabase Edge Function (Deno).
-// Backs the Secret Shoppers page (/app/secret-shoppers). A shopper signs in
-// with their PIN, fills in a 1-5 star report about one visit with photos and
-// videos, and it's emailed to leadership. Needs a signed-in Operator user (the
-// page lives inside the app); the PIN says which shopper is reporting. Service
-// role throughout: the tables are RLS-locked (migration 0232).
+// Backs the Secret Shopper phone app (/shop, shop.html) and its admin page
+// (/app/secret-shoppers). A shopper opens the app from their home screen, signs
+// in with their PIN, fills in a 1-5 star report about one visit with photos and
+// videos, and it's emailed to leadership.
 //
-// Actions:
+// Shoppers have no Operator login: the PIN alone says who they are and which
+// company they report to. So this function runs without the gateway's JWT
+// check (config.toml, --no-verify-jwt), wrong PINs are capped per IP address
+// and overall, and the admin actions check the caller's Operator session here.
+// Service role throughout: the tables are RLS-locked (migrations 0232, 0233).
+//
+// Actions (shopper, PIN only):
 //   sign_in      { pin }                                -> { ok, shopper: { id, name }, sites: [{ id, name }] }
 //   start        { pin, report, files: [{ name, type, size }] }
 //                                                       -> { ok, visit_id, uploads: [{ path, token }] }
@@ -14,14 +19,15 @@
 //   finish       { pin, visit_id }                      -> { ok, emailed, sent_to?, message? }
 //                Keeps the files that actually arrived, marks it submitted and
 //                emails it.
-//   admin_list   {}                                     -> { ok, shoppers: [...] }        (ADMIN_EMAILS only)
-//   admin_save   { id?, name, phone?, email?, pin?, active? } -> { ok, id }               (ADMIN_EMAILS only)
+// Actions (signed-in Operator user on ADMIN_EMAILS):
+//   admin_list   {}                                     -> { ok, shoppers: [...] }
+//   admin_save   { id?, name, phone?, email?, pin?, active? } -> { ok, id }
 //
 // report = { location_id, visited_at (ISO), wash_package?, team_members?,
 //            ratings: { [key]: { stars: 1-5, comment? } }, comments }
 //
 // Required secret: RESEND_API_KEY. Optional: RESEND_FROM.
-// Deploy: npx supabase functions deploy secret-shopper --project-ref ppwjqifyyihesuoubixk --use-api
+// Deploy: npx supabase functions deploy secret-shopper --project-ref ppwjqifyyihesuoubixk --use-api --no-verify-jwt
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Resend } from 'npm:resend@4'
@@ -49,8 +55,13 @@ const WORDS = ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent']
 const BUCKET = 'secret-shopper-media'
 const MAX_FILES = 20
 const MAX_FILE_BYTES = 50 * 1024 * 1024 // the project's upload limit
-// Wrong PINs allowed per Operator login per 15 minutes.
-const MAX_BAD_PINS = 8
+const PIN_RE = /^\d{6,8}$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Wrong PINs allowed from one IP address per 15 minutes, and from everyone
+// together per hour. The overall cap is what keeps PINs from being guessed
+// from many addresses at once; while it's hit, PIN sign-in pauses for everyone.
+const MAX_BAD_PINS_PER_IP = 8
+const MAX_BAD_PINS_PER_HOUR = 20
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -80,6 +91,12 @@ function esc(s: unknown): string {
 }
 const clip = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n)
 
+// The caller's address as the Supabase gateway passes it on.
+function clientIp(req: Request): string {
+  const fwd = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  return (fwd || req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || 'unknown').slice(0, 64)
+}
+
 type Rating = { key: string; label: string; stars: number; comment: string }
 type Media = { path: string; kind: 'image' | 'video'; name: string; size: number }
 
@@ -91,26 +108,22 @@ Deno.serve(async (req) => {
     auth: { persistSession: false },
   })
 
-  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
-  const { data: authData } = jwt ? await svc.auth.getUser(jwt) : { data: { user: null } }
-  if (!authData.user) return json({ error: 'unauthorized', message: 'Sign in to Operator first.' }, 401, origin)
-  const { data: caller } = await svc
-    .from('users')
-    .select('id, account_id, email')
-    .eq('id', authData.user.id)
-    .maybeSingle()
-  if (!caller) return json({ error: 'unauthorized', message: 'Sign in to Operator first.' }, 401, origin)
-  const accountId: string = caller.account_id
-
   let body: Record<string, unknown> = {}
   try { body = await req.json() } catch { /* empty */ }
   const action = String(body.action ?? '')
 
-  // ---- Managing shoppers -----------------------------------------------------
+  // ---- Managing shoppers (signed-in Operator admins) -----------------------------
   if (action === 'admin_list' || action === 'admin_save') {
+    const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+    const { data: authData } = jwt ? await svc.auth.getUser(jwt) : { data: { user: null } }
+    const { data: caller } = authData.user
+      ? await svc.from('users').select('id, account_id, email').eq('id', authData.user.id).maybeSingle()
+      : { data: null }
+    if (!caller) return json({ error: 'unauthorized', message: 'Sign in to Operator first.' }, 401, origin)
     if (!ADMIN_EMAILS.includes((caller.email ?? '').toLowerCase())) {
       return json({ error: 'forbidden', message: "You can't manage secret shoppers." }, 403, origin)
     }
+    const accountId: string = caller.account_id
 
     if (action === 'admin_list') {
       const [{ data: shoppers, error }, { data: visits }] = await Promise.all([
@@ -134,15 +147,15 @@ Deno.serve(async (req) => {
     const pin = clip(body.pin, 20)
     if (!name) return json({ error: 'bad_request', message: "Enter the shopper's name." }, 400, origin)
     if (!id && !pin) return json({ error: 'bad_request', message: 'Give the shopper a PIN.' }, 400, origin)
-    if (pin && !/^\d{4,8}$/.test(pin)) return json({ error: 'bad_request', message: 'A PIN is 4 to 8 digits.' }, 400, origin)
+    if (pin && !PIN_RE.test(pin)) return json({ error: 'bad_request', message: 'A PIN is 6 to 8 digits.' }, 400, origin)
     if (id) {
       const { data: existing } = await svc.from('secret_shoppers').select('id').eq('id', id).eq('account_id', accountId).maybeSingle()
       if (!existing) return json({ error: 'not_found', message: 'That shopper is gone.' }, 404, origin)
     }
     let pinHash: string | null = null
     if (pin) {
-      const { data: taken } = await svc.rpc('secret_shopper_pin_taken', { p_account_id: accountId, p_pin: pin, p_except: id })
-      if (taken) return json({ error: 'pin_taken', message: 'Another shopper already has that PIN. Pick a different one.' }, 409, origin)
+      const { data: taken } = await svc.rpc('secret_shopper_pin_in_use', { p_pin: pin, p_except: id })
+      if (taken) return json({ error: 'pin_taken', message: 'That PIN is already in use. Pick a different one.' }, 409, origin)
       const { data: hash, error: hashErr } = await svc.rpc('secret_shopper_hash_pin', { p_pin: pin })
       if (hashErr || !hash) return json({ error: 'save_failed', message: hashErr?.message ?? 'Could not set the PIN.' }, 500, origin)
       pinHash = hash as string
@@ -169,52 +182,78 @@ Deno.serve(async (req) => {
   if (!['sign_in', 'start', 'finish'].includes(action)) {
     return json({ error: 'bad_request', message: 'Unknown action.' }, 400, origin)
   }
-  const since = new Date(Date.now() - 15 * 60_000).toISOString()
-  const { count: bad } = await svc
+  const ip = clientIp(req)
+  const { count: mine } = await svc
     .from('secret_shopper_bad_pins')
     .select('id', { count: 'exact', head: true })
-    .eq('user_id', caller.id)
-    .gte('created_at', since)
-  if ((bad ?? 0) >= MAX_BAD_PINS) {
+    .eq('ip', ip)
+    .gte('created_at', new Date(Date.now() - 15 * 60_000).toISOString())
+  if ((mine ?? 0) >= MAX_BAD_PINS_PER_IP) {
     return json({ error: 'rate_limited', message: 'Too many wrong PINs. Wait 15 minutes and try again.' }, 429, origin)
   }
+
+  // finish needs an existing report (an unguessable id) before the PIN is even
+  // checked, so it can't be used to guess PINs; sign_in and start can, so they
+  // also stop while the overall cap is hit.
+  // deno-lint-ignore no-explicit-any
+  let visit: any = null
+  if (action === 'finish') {
+    const visitId = String(body.visit_id ?? '')
+    const { data: v } = UUID_RE.test(visitId)
+      ? await svc.from('secret_shopper_visits').select('*, location:location_id(name, timezone)').eq('id', visitId).maybeSingle()
+      : { data: null }
+    if (!v) return json({ error: 'not_found', message: 'That report is gone.' }, 404, origin)
+    visit = v
+  } else {
+    const { count: everyone } = await svc
+      .from('secret_shopper_bad_pins')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', new Date(Date.now() - 60 * 60_000).toISOString())
+    if ((everyone ?? 0) >= MAX_BAD_PINS_PER_HOUR) {
+      return json({ error: 'rate_limited', message: 'PIN sign-in is paused for a little while after too many wrong PINs. Try again later.' }, 429, origin)
+    }
+  }
+
   const pin = clip(body.pin, 20)
-  const { data: shopperId } = /^\d{4,8}$/.test(pin)
-    ? await svc.rpc('secret_shopper_match_pin', { p_account_id: accountId, p_pin: pin })
+  const { data: shopperId } = PIN_RE.test(pin)
+    ? await svc.rpc('secret_shopper_find_by_pin', { p_pin: pin })
     : { data: null }
-  if (!shopperId) {
-    await svc.from('secret_shopper_bad_pins').insert({ user_id: caller.id })
+  if (!shopperId || (visit && visit.shopper_id !== shopperId)) {
+    await svc.from('secret_shopper_bad_pins').insert({ ip })
     return json({ error: 'bad_pin', message: "That PIN didn't work." }, 401, origin)
   }
   const { data: shopper } = await svc
     .from('secret_shoppers')
-    .select('id, name')
+    .select('id, name, account_id')
     .eq('id', shopperId as string)
     .single()
   if (!shopper) return json({ error: 'bad_pin', message: "That PIN didn't work." }, 401, origin)
+  const accountId: string = shopper.account_id
 
   if (action === 'sign_in') {
     await svc.from('secret_shoppers').update({ last_sign_in_at: new Date().toISOString() }).eq('id', shopper.id)
-    // Any site in the company, not just the ones this Operator login can see.
+    // Any open site in the shopper's company.
     const { data: sites } = await svc
       .from('locations')
       .select('id, name')
       .eq('account_id', accountId)
       .eq('archived', false)
       .order('name')
-    return json({ ok: true, shopper, sites: sites ?? [] }, 200, origin)
+    return json({ ok: true, shopper: { id: shopper.id, name: shopper.name }, sites: sites ?? [] }, 200, origin)
   }
 
   if (action === 'start') {
     const r = (body.report ?? {}) as Record<string, unknown>
     const locationId = String(r.location_id ?? '')
-    const { data: loc } = await svc
-      .from('locations')
-      .select('id')
-      .eq('id', locationId)
-      .eq('account_id', accountId)
-      .eq('archived', false)
-      .maybeSingle()
+    const { data: loc } = UUID_RE.test(locationId)
+      ? await svc
+        .from('locations')
+        .select('id')
+        .eq('id', locationId)
+        .eq('account_id', accountId)
+        .eq('archived', false)
+        .maybeSingle()
+      : { data: null }
     if (!loc) return json({ error: 'bad_request', message: 'Pick the site you visited.' }, 400, origin)
 
     const visited = new Date(String(r.visited_at ?? ''))
@@ -256,7 +295,6 @@ Deno.serve(async (req) => {
       location_id: loc.id,
       shopper_id: shopper.id,
       shopper_name: shopper.name,
-      submitted_by: caller.id,
       visited_at: visited.toISOString(),
       wash_package: clip(r.wash_package, 200) || null,
       team_members: clip(r.team_members, 500) || null,
@@ -277,17 +315,8 @@ Deno.serve(async (req) => {
   }
 
   // ---- finish ---------------------------------------------------------------
-  const visitId = String(body.visit_id ?? '')
-  const { data: v } = await svc
-    .from('secret_shopper_visits')
-    .select('*, location:location_id(name, timezone)')
-    .eq('id', visitId)
-    .eq('account_id', accountId)
-    .maybeSingle()
-  // deno-lint-ignore no-explicit-any
-  const visit = v as any
-  if (!visit || visit.shopper_id !== shopper.id) return json({ error: 'not_found', message: 'That report is gone.' }, 404, origin)
   if (visit.emailed_at) return json({ ok: true, emailed: true, sent_to: RECIPIENTS }, 200, origin)
+
 
   // Keep only the photos and videos that made it up. A submitted report whose
   // email failed comes back through here to try the email again.

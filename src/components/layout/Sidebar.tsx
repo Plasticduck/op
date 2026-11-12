@@ -68,7 +68,6 @@ import {
   Timer,
   Truck,
   UserPlus,
-  VenetianMask,
   UsersRound,
   Wallet,
   Warehouse,
@@ -84,7 +83,6 @@ import type { PermRole } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
 import { MI_EMAILS } from '@/features/maintenance/inventory/access'
-import { SECRET_SHOPPER_EMAILS } from '@/features/secretshoppers/access'
 
 type NavItem = {
   to: string
@@ -322,20 +320,8 @@ export const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
-  {
-    label: 'Secret Shoppers',
-    roles: ['owner', 'manager', 'employee', 'technician'],
-    items: [
-      {
-        to: '/app/secret-shoppers',
-        label: 'Secret Shoppers',
-        icon: VenetianMask,
-        // Shoppers sign in on the page with their own PIN.
-        roles: ['owner', 'manager', 'employee', 'technician'],
-        emails: SECRET_SHOPPER_EMAILS, // pre-launch: Kevan and Joshua, see features/secretshoppers/access.ts
-      },
-    ],
-  },
+  // Secret Shoppers is deliberately not in the nav: shoppers use the /shop
+  // phone app, and Kevan and Joshua manage it at /app/secret-shoppers by URL.
   {
     label: 'Site Essentials',
     roles: ['owner', 'manager', 'employee', 'technician'],

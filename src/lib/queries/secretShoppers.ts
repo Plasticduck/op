@@ -2,8 +2,8 @@ import { supabase } from '@/lib/supabase'
 import { fnErrorMessage } from '@/lib/fnError'
 
 // Secret Shoppers. Everything goes through the secret-shopper edge function:
-// the tables are RLS-locked (migration 0232) because a shopper is identified by
-// their PIN, not by the Operator login the page is open on. Photos and videos
+// the tables are RLS-locked (migrations 0232, 0233) and a shopper is identified
+// by their PIN alone (the /shop phone app has no Operator login). Photos and videos
 // go straight to the private secret-shopper-media bucket on signed upload URLs
 // the function hands out once the PIN checks out.
 
