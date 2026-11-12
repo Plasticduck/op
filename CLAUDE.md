@@ -125,7 +125,10 @@ src/
                             timeclock (kiosk + geofence/face), timesheets, reviews, training
                             (+ training/academy: the native Academy, see docs/academy),
                             counseling, injuries, uniforms, time-off, calendar, breaks
-    hr/                     iSolved labor pages: Labor Data, On the Clock, Salaried Labor
+    hr/                     iSolved labor pages: Labor Data, On the Clock, Salaried Labor.
+                            On the Clock also has a FlexWash tab (?tab=flexwash): hours + cost
+                            by site from FlexWash's time clock via flexwash-labor (FlexWash's API
+                            has totals only, no names or punch times); region scoping in hr/regions.ts
     it/                     Issuetrak, IT Field Checklist
     maintenance/            Chemicals, Maintenance Orders, inventory/ (Maintenance Inventory) and log/ (Maintenance Log), see docs/maintenance-inventory
     facilities/             Service Board
