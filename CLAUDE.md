@@ -134,7 +134,8 @@ src/
     facilities/             Service Board
     secretshoppers/         Secret Shoppers: ShopperApp is a separate phone app (ss.html ->
                             src/ss.tsx, served at /ss, own manifest + home-screen icon, no
-                            Operator login): PIN sign-in or self-made PIN, 1-5 star visit report with
+                            Operator login): PIN sign-in or self-made PIN, sites picked by address
+                            (locations.address, grouped by city), 1-5 star visit report with
                             photos/videos, emailed on submit. SecretShoppersPage is the admin
                             page (/app/secret-shoppers, by URL only, not in nav). All data goes
                             through the secret-shopper fn (verify_jwt off; tables RLS-locked,
