@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { format } from 'date-fns'
-import { Camera, CheckCircle2, KeyRound, Loader2, LogOut, Play, RotateCcw, Send, Star, UserPlus, X } from 'lucide-react'
+import { Camera, CheckCircle2, KeyRound, Loader2, LogOut, MapPin, Play, RotateCcw, Send, Star, UserPlus, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -11,6 +11,7 @@ import {
   SHOPPER_MAX_FILES,
   SHOPPER_MEDIA_MAX_BYTES,
   type ShopperSession,
+  type ShopperSite,
   type SubmitResult,
 } from '@/lib/queries/secretShoppers'
 import { RATING_CATEGORIES, STAR_WORDS } from './ratings'
@@ -48,7 +49,7 @@ export default function ShopperApp() {
     <div className="flex min-h-dvh flex-col bg-content">
       <header className="sticky top-0 z-10 bg-[#0B0F14] pt-[env(safe-area-inset-top)] text-white shadow-sm">
         <div className="mx-auto flex h-14 w-full max-w-xl items-center gap-3 px-4">
-          <img src="/ss-icon-192.png" alt="" className="size-8 rounded-lg" />
+          <img src="/ss-mark.png" alt="" className="h-8 w-auto" />
           <div className="min-w-0 flex-1">
             <div className="font-semibold leading-tight">Secret Shopper</div>
             {session && <div className="truncate text-xs text-white/60">Signed in as {session.shopper.name}</div>}
@@ -224,6 +225,41 @@ type Picked = { id: string; file: File; url: string; kind: 'image' | 'video' }
 const localNow = () => format(new Date(), "yyyy-MM-dd'T'HH:mm")
 const mb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`
 
+// Shoppers don't know site numbers, so the site list goes by address: one group
+// per city, each street followed by its site number. Settings holds addresses
+// in a few styles ("6506 82nd Street, Lubbock, Texas, 79424", "4416 114th St,
+// Lubbock, TX 79424", "Dalhart, TX"), so the state, ZIP and country are dropped
+// from the end and the last part left is the city.
+const ADDRESS_TAIL = /^(?:(?:[A-Z]{2}|Texas|New Mexico|Oklahoma)?\s*(?:\d{5}(?:-\d{4})?)?|USA|United States)$/
+type SiteChoice = { id: string; name: string; street: string; city: string; full: string; option: string; short: string }
+
+function siteChoices(sites: ShopperSite[]) {
+  const all: SiteChoice[] = sites.map((s) => {
+    const full = (s.address ?? '').trim()
+    const parts = full.split(',').map((p) => p.trim()).filter(Boolean)
+    while (parts.length && ADDRESS_TAIL.test(parts[parts.length - 1])) parts.pop()
+    // A lone part with a house number is a street with no city.
+    const city = parts.length > 1 || !/\d/.test(parts[0] ?? '') ? (parts.pop() ?? '') : ''
+    const street = parts.join(', ')
+    return {
+      id: s.id, name: s.name, street, city, full,
+      option: street ? `${street} (${s.name})` : s.name,
+      short: street && city ? `${street}, ${city}` : city ? `${s.name}, ${city}` : street || s.name,
+    }
+  })
+  // Within a city, order by street name rather than house number.
+  const streetKey = (c: SiteChoice) => c.street.replace(/^\d+[A-Za-z]?\s+/, '')
+  const order = (a: SiteChoice, b: SiteChoice) =>
+    a.street && b.street
+      ? streetKey(a).localeCompare(streetKey(b), undefined, { numeric: true, sensitivity: 'base' })
+      : a.street ? -1 : b.street ? 1 : compareLocationName(a.name, b.name)
+  const cities = [...new Set(all.map((c) => c.city).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+  const groups = cities.map((city) => ({ label: city, items: all.filter((c) => c.city === city).sort(order) }))
+  const noCity = all.filter((c) => !c.city).sort(order)
+  if (noCity.length) groups.push({ label: 'Other sites', items: noCity })
+  return { groups, byId: new Map(all.map((c) => [c.id, c])) }
+}
+
 const fieldLabel = 'mb-1.5 block text-sm font-medium text-ink'
 const sectionTitle = 'text-sm font-semibold uppercase tracking-wide text-ink-muted'
 const textArea = 'w-full border text-base text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-accent'
@@ -233,8 +269,9 @@ function ReportForm({ session, onDirty, onSubmitted }: {
   onDirty: (dirty: boolean) => void
   onSubmitted: (d: Done) => void
 }) {
-  const sites = useMemo(() => [...session.sites].sort((a, b) => compareLocationName(a.name, b.name)), [session.sites])
+  const sites = useMemo(() => siteChoices(session.sites), [session.sites])
   const [siteId, setSiteId] = useState('')
+  const site = sites.byId.get(siteId)
   const [visitedAt, setVisitedAt] = useState(localNow)
   const [washPackage, setWashPackage] = useState('')
   const [teamMembers, setTeamMembers] = useState('')
@@ -324,7 +361,7 @@ function ReportForm({ session, onDirty, onSubmitted }: {
     )
     setBusy(null)
     if (!data) { setError(err); return }
-    onSubmitted({ ...data, site: sites.find((s) => s.id === siteId)?.name ?? 'the site' })
+    onSubmitted({ ...data, site: site?.short ?? 'the site' })
   }
 
   return (
@@ -337,8 +374,17 @@ function ReportForm({ session, onDirty, onSubmitted }: {
             <Select id="ss-site-select" value={siteId} onChange={(e) => setSiteId(e.target.value)}
               className={cn('h-12!', flag('ss-site') && 'border-danger')}>
               <option value="">Select a site…</option>
-              {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {sites.groups.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.items.map((s) => <option key={s.id} value={s.id}>{s.option}</option>)}
+                </optgroup>
+              ))}
             </Select>
+            {site?.full && (
+              <p className="mt-1.5 flex items-start gap-1.5 text-sm text-ink-muted">
+                <MapPin className="mt-0.5 size-4 shrink-0" aria-hidden /> {site.full}
+              </p>
+            )}
           </div>
           <div id="ss-when">
             <label htmlFor="ss-when-input" className={fieldLabel}>When you visited</label>

@@ -12,7 +12,7 @@ const BUCKET = 'secret-shopper-media'
 export const SHOPPER_MEDIA_MAX_BYTES = 50 * 1024 * 1024 // the project's upload limit
 export const SHOPPER_MAX_FILES = 20
 
-export type ShopperSite = { id: string; name: string }
+export type ShopperSite = { id: string; name: string; address: string | null }
 export type ShopperSession = { pin: string; shopper: { id: string; name: string }; sites: ShopperSite[] }
 
 export type ShopperReport = {

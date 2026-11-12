@@ -196,9 +196,10 @@ Deno.serve(async (req) => {
   if (!['sign_in', 'sign_up', 'start', 'finish'].includes(action)) {
     return json({ error: 'bad_request', message: 'Unknown action.' }, 400, origin)
   }
-  // Any open site in the shopper's company.
+  // Any open site in the shopper's company, with its address: shoppers pick by
+  // street and city, since they don't know the site numbers.
   const sitesOf = async (accountId: string) => {
-    const { data } = await svc.from('locations').select('id, name').eq('account_id', accountId).eq('archived', false).order('name')
+    const { data } = await svc.from('locations').select('id, name, address').eq('account_id', accountId).eq('archived', false).order('name')
     return data ?? []
   }
   const ip = clientIp(req)
