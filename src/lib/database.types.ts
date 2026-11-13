@@ -3093,6 +3093,445 @@ export type Database = {
           },
         ]
       }
+      esign_consents: {
+        Row: {
+          account_id: string
+          consented_at: string
+          disclosure_sha256: string
+          disclosure_version: string
+          id: string
+          ip: string | null
+          user_agent: string | null
+          user_email: string
+          user_id: string | null
+          user_name: string
+          withdrawn_at: string | null
+          withdrawn_ip: string | null
+          withdrawn_user_agent: string | null
+        }
+        Insert: {
+          account_id: string
+          consented_at?: string
+          disclosure_sha256: string
+          disclosure_version: string
+          id?: string
+          ip?: string | null
+          user_agent?: string | null
+          user_email: string
+          user_id?: string | null
+          user_name: string
+          withdrawn_at?: string | null
+          withdrawn_ip?: string | null
+          withdrawn_user_agent?: string | null
+        }
+        Update: {
+          account_id?: string
+          consented_at?: string
+          disclosure_sha256?: string
+          disclosure_version?: string
+          id?: string
+          ip?: string | null
+          user_agent?: string | null
+          user_email?: string
+          user_id?: string | null
+          user_name?: string
+          withdrawn_at?: string | null
+          withdrawn_ip?: string | null
+          withdrawn_user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "esign_consents_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "esign_consents_disclosure_version_fkey"
+            columns: ["disclosure_version"]
+            isOneToOne: false
+            referencedRelation: "esign_disclosures"
+            referencedColumns: ["version"]
+          },
+          {
+            foreignKeyName: "esign_consents_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      esign_disclosures: {
+        Row: {
+          active: boolean
+          body: string
+          body_sha256: string
+          created_at: string
+          title: string
+          version: string
+        }
+        Insert: {
+          active?: boolean
+          body: string
+          body_sha256: string
+          created_at?: string
+          title: string
+          version: string
+        }
+        Update: {
+          active?: boolean
+          body?: string
+          body_sha256?: string
+          created_at?: string
+          title?: string
+          version?: string
+        }
+        Relationships: []
+      }
+      esign_envelopes: {
+        Row: {
+          account_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          created_by_email: string
+          created_by_name: string
+          created_ip: string | null
+          created_user_agent: string | null
+          declined_at: string | null
+          document: Json
+          document_hash: string
+          id: string
+          last_reminded_at: string | null
+          message: string | null
+          seal_certificate: string | null
+          seal_error: string | null
+          sealed_at: string | null
+          sealed_pdf_path: string | null
+          sealed_pdf_sha256: string | null
+          sent_at: string
+          sign_in_order: boolean
+          source_id: string
+          source_type: string
+          status: string
+          title: string
+          version: number
+          void_reason: string | null
+          voided_at: string | null
+          voided_by_name: string | null
+        }
+        Insert: {
+          account_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_email: string
+          created_by_name: string
+          created_ip?: string | null
+          created_user_agent?: string | null
+          declined_at?: string | null
+          document: Json
+          document_hash: string
+          id?: string
+          last_reminded_at?: string | null
+          message?: string | null
+          seal_certificate?: string | null
+          seal_error?: string | null
+          sealed_at?: string | null
+          sealed_pdf_path?: string | null
+          sealed_pdf_sha256?: string | null
+          sent_at?: string
+          sign_in_order?: boolean
+          source_id: string
+          source_type: string
+          status?: string
+          title: string
+          version?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_name?: string | null
+        }
+        Update: {
+          account_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_email?: string
+          created_by_name?: string
+          created_ip?: string | null
+          created_user_agent?: string | null
+          declined_at?: string | null
+          document?: Json
+          document_hash?: string
+          id?: string
+          last_reminded_at?: string | null
+          message?: string | null
+          seal_certificate?: string | null
+          seal_error?: string | null
+          sealed_at?: string | null
+          sealed_pdf_path?: string | null
+          sealed_pdf_sha256?: string | null
+          sent_at?: string
+          sign_in_order?: boolean
+          source_id?: string
+          source_type?: string
+          status?: string
+          title?: string
+          version?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "esign_envelopes_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "esign_envelopes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      esign_events: {
+        Row: {
+          account_id: string
+          actor_email: string | null
+          actor_name: string | null
+          actor_user_id: string | null
+          at: string
+          detail: Json
+          envelope_id: string
+          event: string
+          id: number
+          ip: string | null
+          recipient_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          account_id: string
+          actor_email?: string | null
+          actor_name?: string | null
+          actor_user_id?: string | null
+          at?: string
+          detail?: Json
+          envelope_id: string
+          event: string
+          id?: never
+          ip?: string | null
+          recipient_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          account_id?: string
+          actor_email?: string | null
+          actor_name?: string | null
+          actor_user_id?: string | null
+          at?: string
+          detail?: Json
+          envelope_id?: string
+          event?: string
+          id?: never
+          ip?: string | null
+          recipient_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "esign_events_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "esign_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "esign_events_envelope_id_fkey"
+            columns: ["envelope_id"]
+            isOneToOne: false
+            referencedRelation: "esign_envelopes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "esign_events_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "esign_recipients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      esign_recipients: {
+        Row: {
+          account_id: string
+          consent_id: string | null
+          created_at: string
+          decline_reason: string | null
+          declined_at: string | null
+          email: string
+          envelope_id: string
+          id: string
+          ip: string | null
+          label: string | null
+          name: string
+          paper_file_path: string | null
+          paper_file_sha256: string | null
+          paper_recorded_by: string | null
+          paper_requested_at: string | null
+          required_by_rule: string | null
+          role: string
+          routing_order: number
+          sent_at: string | null
+          signature_image: string | null
+          signature_kind: string | null
+          signature_name: string | null
+          signature_sha256: string | null
+          signed_at: string | null
+          signed_document_hash: string | null
+          status: string
+          user_agent: string | null
+          user_id: string | null
+          viewed_at: string | null
+        }
+        Insert: {
+          account_id: string
+          consent_id?: string | null
+          created_at?: string
+          decline_reason?: string | null
+          declined_at?: string | null
+          email: string
+          envelope_id: string
+          id?: string
+          ip?: string | null
+          label?: string | null
+          name: string
+          paper_file_path?: string | null
+          paper_file_sha256?: string | null
+          paper_recorded_by?: string | null
+          paper_requested_at?: string | null
+          required_by_rule?: string | null
+          role: string
+          routing_order: number
+          sent_at?: string | null
+          signature_image?: string | null
+          signature_kind?: string | null
+          signature_name?: string | null
+          signature_sha256?: string | null
+          signed_at?: string | null
+          signed_document_hash?: string | null
+          status?: string
+          user_agent?: string | null
+          user_id?: string | null
+          viewed_at?: string | null
+        }
+        Update: {
+          account_id?: string
+          consent_id?: string | null
+          created_at?: string
+          decline_reason?: string | null
+          declined_at?: string | null
+          email?: string
+          envelope_id?: string
+          id?: string
+          ip?: string | null
+          label?: string | null
+          name?: string
+          paper_file_path?: string | null
+          paper_file_sha256?: string | null
+          paper_recorded_by?: string | null
+          paper_requested_at?: string | null
+          required_by_rule?: string | null
+          role?: string
+          routing_order?: number
+          sent_at?: string | null
+          signature_image?: string | null
+          signature_kind?: string | null
+          signature_name?: string | null
+          signature_sha256?: string | null
+          signed_at?: string | null
+          signed_document_hash?: string | null
+          status?: string
+          user_agent?: string | null
+          user_id?: string | null
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "esign_recipients_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "esign_recipients_consent_id_fkey"
+            columns: ["consent_id"]
+            isOneToOne: false
+            referencedRelation: "esign_consents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "esign_recipients_envelope_id_fkey"
+            columns: ["envelope_id"]
+            isOneToOne: false
+            referencedRelation: "esign_envelopes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "esign_recipients_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      esign_saved_signatures: {
+        Row: {
+          image: string
+          kind: string
+          typed_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          image: string
+          kind: string
+          typed_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          image?: string
+          kind?: string
+          typed_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "esign_saved_signatures_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_pay_requests: {
         Row: {
           account_id: string
@@ -11538,6 +11977,266 @@ export type Database = {
           },
         ]
       }
+      purchase_approval_rules: {
+        Row: {
+          account_id: string
+          active: boolean
+          category: string | null
+          created_at: string
+          id: string
+          label: string | null
+          min_amount: number
+          signer_ids: string[]
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          category?: string | null
+          created_at?: string
+          id?: string
+          label?: string | null
+          min_amount?: number
+          signer_ids?: string[]
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          category?: string | null
+          created_at?: string
+          id?: string
+          label?: string | null
+          min_amount?: number
+          signer_ids?: string[]
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_approval_rules_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_request_files: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          kind: string
+          locked: boolean
+          mime: string | null
+          name: string
+          path: string
+          removed_at: string | null
+          request_id: string
+          sha256: string | null
+          size: number | null
+          uploaded_by: string | null
+          uploaded_by_name: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          kind?: string
+          locked?: boolean
+          mime?: string | null
+          name: string
+          path: string
+          removed_at?: string | null
+          request_id: string
+          sha256?: string | null
+          size?: number | null
+          uploaded_by?: string | null
+          uploaded_by_name?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          locked?: boolean
+          mime?: string | null
+          name?: string
+          path?: string
+          removed_at?: string | null
+          request_id?: string
+          sha256?: string | null
+          size?: number | null
+          uploaded_by?: string | null
+          uploaded_by_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_request_files_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_request_files_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_request_files_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_requests: {
+        Row: {
+          account_id: string
+          actual_amount: number | null
+          approved_at: string | null
+          category: string | null
+          closed_at: string | null
+          created_at: string
+          envelope_id: string | null
+          ever_sent: boolean
+          gl_code: string | null
+          id: string
+          justification: string | null
+          line_items: Json
+          needed_by: string | null
+          number: number
+          payment_method: string | null
+          po_number: string | null
+          priority: string
+          purchase_note: string | null
+          purchased_at: string | null
+          purchased_by: string | null
+          purchased_by_name: string | null
+          requester_email: string
+          requester_id: string | null
+          requester_name: string
+          shipping: number
+          site: string | null
+          status: string
+          submitted_at: string | null
+          subtotal: number
+          tax: number
+          title: string
+          total: number
+          updated_at: string
+          vendor: string | null
+        }
+        Insert: {
+          account_id: string
+          actual_amount?: number | null
+          approved_at?: string | null
+          category?: string | null
+          closed_at?: string | null
+          created_at?: string
+          envelope_id?: string | null
+          ever_sent?: boolean
+          gl_code?: string | null
+          id?: string
+          justification?: string | null
+          line_items?: Json
+          needed_by?: string | null
+          number?: never
+          payment_method?: string | null
+          po_number?: string | null
+          priority?: string
+          purchase_note?: string | null
+          purchased_at?: string | null
+          purchased_by?: string | null
+          purchased_by_name?: string | null
+          requester_email?: string
+          requester_id?: string | null
+          requester_name?: string
+          shipping?: number
+          site?: string | null
+          status?: string
+          submitted_at?: string | null
+          subtotal?: number
+          tax?: number
+          title?: string
+          total?: number
+          updated_at?: string
+          vendor?: string | null
+        }
+        Update: {
+          account_id?: string
+          actual_amount?: number | null
+          approved_at?: string | null
+          category?: string | null
+          closed_at?: string | null
+          created_at?: string
+          envelope_id?: string | null
+          ever_sent?: boolean
+          gl_code?: string | null
+          id?: string
+          justification?: string | null
+          line_items?: Json
+          needed_by?: string | null
+          number?: never
+          payment_method?: string | null
+          po_number?: string | null
+          priority?: string
+          purchase_note?: string | null
+          purchased_at?: string | null
+          purchased_by?: string | null
+          purchased_by_name?: string | null
+          requester_email?: string
+          requester_id?: string | null
+          requester_name?: string
+          shipping?: number
+          site?: string | null
+          status?: string
+          submitted_at?: string | null
+          subtotal?: number
+          tax?: number
+          title?: string
+          total?: number
+          updated_at?: string
+          vendor?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_requests_envelope_id_fkey"
+            columns: ["envelope_id"]
+            isOneToOne: false
+            referencedRelation: "esign_envelopes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_requests_purchased_by_fkey"
+            columns: ["purchased_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_requests_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           auth: string
@@ -14962,6 +15661,24 @@ export type Database = {
         Args: { p_location_id: string }
         Returns: string[]
       }
+      esign_can_view: { Args: { p_envelope: string }; Returns: boolean }
+      esign_is_admin: { Args: never; Returns: boolean }
+      esign_verify_pdf: {
+        Args: { p_sha256: string }
+        Returns: {
+          completed_at: string
+          document_hash: string
+          envelope_id: string
+          sealed_at: string
+          sent_at: string
+          signers: Json
+          source_id: string
+          source_type: string
+          status: string
+          title: string
+          version: number
+        }[]
+      }
       gen_invoice_inbox_token: { Args: never; Returns: string }
       generate_due_pm_work_orders: { Args: never; Returns: number }
       generate_pm_plan: { Args: { p_plan_id: string }; Returns: string }
@@ -16802,6 +17519,18 @@ export type Database = {
         Args: { p_advance?: boolean; p_plan_id: string }
         Returns: string
       }
+      pr_can_view: { Args: { p_request: string }; Returns: boolean }
+      pr_is_finance: { Args: never; Returns: boolean }
+      pr_is_my_draft: { Args: { p_request: string }; Returns: boolean }
+      pr_is_recipient: { Args: { p_request: string }; Returns: boolean }
+      pr_me: {
+        Args: never
+        Returns: {
+          email: string
+          name: string
+        }[]
+      }
+      pr_path_request: { Args: { p_name: string }; Returns: string }
       qb_check_login: {
         Args: { p_password: string; p_username: string }
         Returns: string

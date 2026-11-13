@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Bell, Check, ChevronDown, CreditCard, LogOut, Search, Wrench } from 'lucide-react'
+import { AlertTriangle, Bell, Check, ChevronDown, CreditCard, FileSignature, LogOut, Search, Wrench } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { PresentationToggle } from '@/components/ui/PresentationToggle'
@@ -27,6 +27,12 @@ function renderNotification(n: Notification): { icon: typeof Bell; text: string;
         icon: AlertTriangle,
         text: `Low stock: ${String(p.name ?? 'a part')} (${String(p.quantity ?? 0)} left)`,
         to: '/app/parts',
+      }
+    case 'purchase_request':
+      return {
+        icon: FileSignature,
+        text: String(p.text ?? `Update on ${String(p.number ?? 'a purchase request')}`),
+        to: `/app/purchase-requests?r=${String(p.request_id ?? '')}`,
       }
     default:
       return { icon: Bell, text: n.kind, to: '/app/dashboard' }

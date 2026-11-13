@@ -119,6 +119,8 @@ src/
     layout/                 AppShell, Sidebar (nav catalog), BottomNav, TopBar,
                             CommandPalette (Cmd-K), BillingGate
     ui/                     Button, Input, Select, Modal, Badge, Logo, ...
+    esign/                  e-signature UI: SignaturePad (draw or type), AdoptAndSign (disclosure
+                            consent + signature + intent), VerifyPdfModal, EsignSettingsModal
     data/                   DataTable, StatCardRow, Charts (inline-SVG), MonthGrid, QrCodeImage
     forms/  feedback/
   features/
@@ -147,6 +149,13 @@ src/
     maintenance/            Chemicals, Maintenance Orders, inventory/ (Maintenance Inventory) and log/ (Maintenance Log), see docs/maintenance-inventory
     facilities/             Service Board
     secretshoppers/         Secret Shoppers: ShopperApp is a separate phone app (ss.html ->
+    purchasing/             Finance > Purchase Request (/app/purchase-requests): drafts, approvers
+                            (in order or any order, owner approval rules by amount/category), e-signed
+                            by the requester then each approver, sealed PDF with a certificate of
+                            completion. Every signing step runs in the purchase-requests fn; the
+                            esign_* tables are append-only (triggers) so other documents can reuse
+                            them (source_type). Legal map: docs/purchase-requests/ESIGN.md.
+                            Pre-launch list: PURCHASE_REQUEST_EMAILS in purchasing/access.ts
                             src/ss.tsx, served at /ss, own manifest + home-screen icon, no
                             Operator login): PIN sign-in or self-made PIN, sites picked by address
                             (locations.address, grouped by city), 1-5 star visit report with
@@ -172,7 +181,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0237.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0238.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides

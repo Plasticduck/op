@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
+  FileSignature,
   Armchair,
   BookOpenCheck,
   Boxes,
@@ -82,6 +83,7 @@ import { pageAllowed, permRoleInList } from '@/lib/permissions'
 import type { PermRole } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
+import { PURCHASE_REQUEST_EMAILS } from '@/features/purchasing/access'
 import { MI_EMAILS } from '@/features/maintenance/inventory/access'
 
 type NavItem = {
@@ -347,8 +349,10 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    // Group roles include 'manager' for Purchase Request; managers see no other
+    // item here, and the empty-group filter hides the group if none apply.
     label: 'Finance',
-    roles: ['owner', 'regional_manager', 'executive', 'technician', 'finance'],
+    roles: ['owner', 'manager', 'regional_manager', 'executive', 'technician', 'finance'],
     items: [
       {
         to: '/app/invoices',
@@ -356,6 +360,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Wallet,
         roles: ['owner', 'regional_manager', 'executive', 'technician'],
         optIn: ['technician'],
+      },
+      {
+        to: '/app/purchase-requests',
+        label: 'Purchase Request',
+        icon: FileSignature,
+        roles: ['owner', 'manager', 'technician'],
+        emails: PURCHASE_REQUEST_EMAILS ?? undefined, // pre-launch list in features/purchasing/access.ts
       },
       {
         to: '/app/per-diem',

@@ -7,6 +7,7 @@ import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSiteP
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
+import { PURCHASE_REQUEST_EMAILS } from '@/features/purchasing/access'
 import { MI_EMAILS } from '@/features/maintenance/inventory/access'
 import { SECRET_SHOPPER_EMAILS } from '@/features/secretshoppers/access'
 
@@ -118,6 +119,7 @@ const SiteReviewsPage = lz(() => import('@/features/opssuite/SiteReviewsPage'))
 const SiteAuditsPage = lz(() => import('@/features/opssuite/SiteAuditsPage'))
 const InvoicesPage = lz(() => import('@/features/opssuite/InvoicesPage'))
 const PerDiemPage = lz(() => import('@/features/opssuite/PerDiemPage'))
+const PurchaseRequestsPage = lz(() => import('@/features/purchasing/PurchaseRequestsPage'))
 const MileagePage = lz(() => import('@/features/opssuite/MileagePage'))
 const InventoryPage = lz(() => import('@/features/opssuite/InventoryPage'))
 const MarketResearchPage = lz(() => import('@/features/opssuite/MarketResearchPage'))
@@ -288,6 +290,7 @@ export const router = createBrowserRouter([
           { path: 'site-reviews', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive']}>{s(<SiteReviewsPage />)}</RequirePermRole> },
           { path: 'site-audits', element: mgr(<SiteAuditsPage />) },
           { path: 'invoices', element: tech(<InvoicesPage />) },
+          { path: 'purchase-requests', element: PURCHASE_REQUEST_EMAILS ? <RequireEmails allow={PURCHASE_REQUEST_EMAILS}>{tech(<PurchaseRequestsPage />)}</RequireEmails> : tech(<PurchaseRequestsPage />) },
           { path: 'per-diem', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive', 'finance']}>{s(<PerDiemPage />)}</RequirePermRole> },
           { path: 'mileage', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive', 'finance']}>{s(<MileagePage />)}</RequirePermRole> },
           { path: 'labor', element: mgr(<LaborDashboardPage />) },
