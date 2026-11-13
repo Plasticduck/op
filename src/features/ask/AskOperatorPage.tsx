@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowUp,
   Car,
   Database,
   FileText,
   Gauge,
+  History,
   Loader2,
+  SquarePen,
   TrendingDown,
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
 import {
+  askHistory,
   askOperator,
+  type AiConversation,
+  type AiStoredMessage,
   type AskAction,
   type AskStep,
   type AskTurn,
@@ -27,6 +32,7 @@ import { buildSiteMatcher } from '@/features/ask/siteLinks'
 import { StarMark } from '@/features/ask/StarMark'
 import { ConnectionsMenu } from '@/features/ask/ConnectionsMenu'
 import { useTypewriter } from '@/features/ask/useTypewriter'
+import { HistoryPanel } from '@/features/ask/HistoryPanel'
 import { cn } from '@/lib/utils'
 
 type Msg = {
@@ -37,6 +43,14 @@ type Msg = {
   actions?: AskAction[]
   error?: boolean
 }
+
+const fromStored = (m: AiStoredMessage): Msg => ({
+  role: m.role,
+  content: m.content,
+  steps: m.steps?.length ? m.steps : undefined,
+  actions: m.actions?.length ? m.actions : undefined,
+  error: m.error || undefined,
+})
 
 const SUGGESTIONS = [
   { icon: Car, q: 'Which site washed the most cars last month?' },
@@ -61,6 +75,18 @@ export default function AskOperatorPage() {
   // length the moment the stream closes.
   const [pending, setPending] = useState<Msg | null>(null)
 
+  // The saved conversation on screen (?c= in the address, so a reload or a link
+  // reopens it). convoRef is the one already showing, so setting ?c after the
+  // first answer doesn't reload it from the database mid-stream.
+  const [params, setParams] = useSearchParams()
+  const convoParam = params.get('c')
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const convoRef = useRef<string | null>(null)
+  const [loadingConvo, setLoadingConvo] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyKey, setHistoryKey] = useState(0)
+  const [recent, setRecent] = useState<AiConversation[]>([])
+
   const typed = useTypewriter(draft)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -77,6 +103,48 @@ export default function AskOperatorPage() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, typed, activities, busy])
+
+  // Open the conversation in the address (or a blank one when there is none).
+  useEffect(() => {
+    if (convoParam === convoRef.current) return
+    convoRef.current = convoParam
+    setConversationId(convoParam)
+    setMessages([])
+    if (!convoParam) return
+    let live = true
+    setLoadingConvo(true)
+    askHistory.get(convoParam)
+      .then(({ conversation, messages: stored }) => {
+        if (!live) return
+        if (!conversation) {
+          // Deleted, or not theirs: start fresh.
+          convoRef.current = null
+          setConversationId(null)
+          setParams({}, { replace: true })
+          return
+        }
+        setMessages(stored.map(fromStored))
+      })
+      .catch(() => { if (live) setMessages([{ role: 'assistant', content: "Couldn't load that conversation.", error: true }]) })
+      .finally(() => { if (live) setLoadingConvo(false) })
+    return () => { live = false }
+  }, [convoParam, setParams])
+
+  // A few recent conversations to pick up from the empty screen.
+  useEffect(() => {
+    askHistory.list(3).then(setRecent).catch(() => setRecent([]))
+  }, [historyKey])
+
+  const newConversation = () => {
+    convoRef.current = null
+    setConversationId(null)
+    setMessages([])
+    setInput('')
+    setParams({})
+  }
+  const openConversation = (id: string) => {
+    if (id !== convoRef.current) setParams({ c: id })
+  }
 
   // Rotate the car wash verb while it works.
   useEffect(() => {
@@ -157,6 +225,13 @@ export default function AskOperatorPage() {
     try {
       await askOperator.askStream(question, history, (ev) => {
         switch (ev.t) {
+          case 'conversation':
+            if (ev.id !== convoRef.current) {
+              convoRef.current = ev.id
+              setConversationId(ev.id)
+              setParams({ c: ev.id }, { replace: true })
+            }
+            break
           case 'phase':
             if (ev.phase === 'tool') {
               setPhase('tool')
@@ -216,7 +291,8 @@ export default function AskOperatorPage() {
             finish(ev.message ?? 'Something went wrong answering that.', true)
             break
         }
-      })
+      }, undefined, conversationId)
+      setHistoryKey((k) => k + 1)
       // Stream ended without a terminal event (server restart, dropped
       // connection). Keep whatever text arrived rather than losing it.
       if (!settled) finish(answer.trim() || 'The answer was cut off. Try asking again.')
@@ -230,7 +306,7 @@ export default function AskOperatorPage() {
     void send(input)
   }
 
-  const empty = messages.length === 0 && !busy
+  const empty = messages.length === 0 && !busy && !loadingConvo
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col px-4 pb-4 lg:px-8">
@@ -238,7 +314,19 @@ export default function AskOperatorPage() {
         <StarMark className="size-5 text-accent" />
         <h1 className="text-lg font-semibold tracking-tight text-ink">Operator AI</h1>
         <ConnectionsMenu />
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => setHistoryOpen(true)} disabled={busy} title="Your conversations" aria-label="Your conversations"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-ink-muted transition hover:bg-card hover:text-ink disabled:opacity-40">
+            <History className="size-4" /> <span className="hidden sm:inline">History</span>
+          </button>
+          <button type="button" onClick={newConversation} disabled={busy || (!conversationId && messages.length === 0)} title="New conversation" aria-label="New conversation"
+            className="grid size-9 place-items-center rounded-full text-ink-muted transition hover:bg-card hover:text-ink disabled:opacity-40">
+            <SquarePen className="size-4" />
+          </button>
+        </div>
       </header>
+      <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} currentId={conversationId}
+        onOpen={openConversation} onNew={newConversation} refreshKey={historyKey} />
 
       {/* -mr-4 pr-4 pushes the scrollbar out into the page gutter so it stops
           crowding the text, while the content stays aligned with the header
@@ -247,7 +335,11 @@ export default function AskOperatorPage() {
         ref={scrollRef}
         className="scrollbar-slim -mr-4 flex min-h-0 flex-1 flex-col overflow-y-auto pb-6 pr-4 lg:-mr-6 lg:pr-6"
       >
-        {empty ? (
+        {loadingConvo ? (
+          <div className="flex flex-1 items-center justify-center gap-2 text-sm text-ink-muted">
+            <Loader2 className="size-4 animate-spin" /> Opening your conversation…
+          </div>
+        ) : empty ? (
           <div className="flex flex-1 flex-col items-center justify-center px-2 py-8 text-center">
             <StarMark active className="size-11 text-accent" />
             <h2 className="mt-5 text-2xl font-semibold tracking-tight text-ink">
@@ -272,6 +364,26 @@ export default function AskOperatorPage() {
                 </button>
               ))}
             </div>
+            {recent.length > 0 && (
+              <div className="mt-7 w-full max-w-xl text-left">
+                <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">Pick up where you left off</h3>
+                <ul className="mt-2 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+                  {recent.map((c) => (
+                    <li key={c.id}>
+                      <button type="button" onClick={() => openConversation(c.id)}
+                        className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition hover:bg-content">
+                        <History className="size-4 shrink-0 text-ink-subtle" />
+                        <span className="min-w-0 flex-1 truncate text-[13.5px] text-ink">{c.title}</span>
+                        <span className="shrink-0 text-[11px] text-ink-subtle">{new Date(c.last_message_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button type="button" onClick={() => setHistoryOpen(true)} className="mt-2 px-1 text-[12.5px] font-medium text-accent hover:underline">
+                  See all conversations
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-7">

@@ -942,6 +942,41 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_conversations: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          last_message_at: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          title?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_insights: {
         Row: {
           account_id: string
@@ -1028,6 +1063,53 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_messages: {
+        Row: {
+          actions: Json | null
+          content: string
+          conversation_id: string
+          created_at: string
+          error: boolean
+          id: string
+          role: string
+          search: unknown
+          steps: Json | null
+          user_id: string
+        }
+        Insert: {
+          actions?: Json | null
+          content?: string
+          conversation_id: string
+          created_at?: string
+          error?: boolean
+          id?: string
+          role: string
+          search?: unknown
+          steps?: Json | null
+          user_id: string
+        }
+        Update: {
+          actions?: Json | null
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          error?: boolean
+          id?: string
+          role?: string
+          search?: unknown
+          steps?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
             referencedColumns: ["id"]
           },
         ]
@@ -14818,6 +14900,18 @@ export type Database = {
       admin_accept_invitation: {
         Args: { p_token: string; p_user_id: string; p_user_name?: string }
         Returns: string
+      }
+      ai_search_conversations: {
+        Args: { p_exclude?: string; p_limit?: number; p_query: string }
+        Returns: {
+          conversation_id: string
+          created_at: string
+          message_id: string
+          rank: number
+          role: string
+          snippet: string
+          title: string
+        }[]
       }
       auth_account_id: { Args: never; Returns: string }
       auth_can_see_employee: { Args: { emp: string }; Returns: boolean }

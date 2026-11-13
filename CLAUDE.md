@@ -48,6 +48,13 @@ but not what RLS allows. See **Access control** below.
   `_shared/hourly_cars.ts`: SiteWatch Carwashes lines by the hour on the ticket (equals
   the official daily cars exactly), FlexWash temporal wash stats by hour, moved from the
   zone FlexWash has for the car wash into the site's real one (NM sites Mountain).
+  Conversation history: each person's Operator AI conversations are kept in
+  `ai_conversations` / `ai_messages` (migration 0237, RLS: their own only; the app can
+  read, rename and delete, ask-operator writes the turns with the service role so an
+  answer is saved even if the page closes). The page shows them in a History panel
+  (`features/ask/HistoryPanel.tsx`, `?c=<id>` reopens one); a continued conversation's
+  earlier turns come from the database. `recall_conversations` (`ask-operator/history.ts`)
+  lets the model search (`ai_search_conversations`, full-text) and reread past ones.
   Connections (Mighty Wash only, Operator AI header > Connections): each person
   connects their own CoreNav and FlexWash logins (OAuth + PKCE). `mcp-oauth` runs
   the sign-in; tokens live in Vault (`mcp_connections`, migrations 0225-0226,
@@ -165,7 +172,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0236.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0237.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides

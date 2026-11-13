@@ -37,6 +37,7 @@ export type AskEvent =
   | { t: 'action'; kind: 'report'; payload: ReportSpec }
   | { t: 'done'; answer?: string; steps?: AskStep[] }
   | { t: 'error'; error?: string; message?: string }
+  | { t: 'conversation'; id: string; title: string; created?: boolean }
 
 const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ask-operator`
 
@@ -58,6 +59,8 @@ export const askOperator = {
     history: AskTurn[],
     onEvent: (ev: AskEvent) => void,
     signal?: AbortSignal,
+    // The saved conversation this question continues (null starts a new one).
+    conversationId?: string | null,
   ): Promise<void> => {
     const { data } = await supabase.auth.getSession()
     const token = data.session?.access_token
@@ -71,7 +74,7 @@ export const askOperator = {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ question, history, stream: true }),
+      body: JSON.stringify({ question, history, stream: true, ...(conversationId ? { conversation_id: conversationId } : {}) }),
     })
 
     const isStream = (res.headers.get('content-type') ?? '').includes('text/event-stream')
@@ -113,5 +116,60 @@ export const askOperator = {
         cut = buf.indexOf('\n\n')
       }
     }
+  },
+}
+
+// Saved conversations (ai_conversations / ai_messages). Each person sees only
+// their own; ask-operator writes the turns, the app lists, reads, renames and
+// deletes them.
+export type AiConversation = { id: string; title: string; created_at: string; last_message_at: string }
+export type AiStoredMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  steps: AskStep[] | null
+  actions: AskAction[] | null
+  error: boolean
+  created_at: string
+}
+export type AiSearchHit = { conversation_id: string; title: string; role: string; created_at: string; snippet: string }
+
+export const askHistory = {
+  list: async (limit = 100): Promise<AiConversation[]> => {
+    const { data, error } = await supabase
+      .from('ai_conversations')
+      .select('id, title, created_at, last_message_at')
+      .order('last_message_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return (data ?? []) as AiConversation[]
+  },
+  get: async (id: string): Promise<{ conversation: AiConversation | null; messages: AiStoredMessage[] }> => {
+    const [c, m] = await Promise.all([
+      supabase.from('ai_conversations').select('id, title, created_at, last_message_at').eq('id', id).maybeSingle(),
+      supabase
+        .from('ai_messages')
+        .select('id, role, content, steps, actions, error, created_at')
+        .eq('conversation_id', id)
+        .order('created_at', { ascending: true })
+        .limit(500),
+    ])
+    if (c.error) throw c.error
+    if (m.error) throw m.error
+    return { conversation: (c.data ?? null) as AiConversation | null, messages: (m.data ?? []) as unknown as AiStoredMessage[] }
+  },
+  // Words in past messages (stemmed), best matches first.
+  search: async (query: string): Promise<AiSearchHit[]> => {
+    const { data, error } = await supabase.rpc('ai_search_conversations', { p_query: query, p_limit: 30 })
+    if (error) throw error
+    return (data ?? []) as AiSearchHit[]
+  },
+  rename: async (id: string, title: string) => {
+    const { error } = await supabase.from('ai_conversations').update({ title }).eq('id', id)
+    if (error) throw error
+  },
+  remove: async (id: string) => {
+    const { error } = await supabase.from('ai_conversations').delete().eq('id', id)
+    if (error) throw error
   },
 }

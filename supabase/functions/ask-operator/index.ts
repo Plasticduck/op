@@ -31,6 +31,7 @@ import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexCatalog, flexPrompt, 
 import { CONNECT_ACCOUNT, PROVIDERS, ReconnectNeeded, openSession, type ProviderKey } from '../_shared/connect.ts'
 import type { McpSession } from '../_shared/mcp.ts'
 import { HOURLY_TOOL, hourlyCars } from './hourly.ts'
+import { RECALL_TOOL, openConversation, recall, recentNote, saveAnswer, type Convo } from './history.ts'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
 // Safety cap on tool-use rounds per question. A real diagnosis ("why were cars
@@ -298,8 +299,9 @@ const TOOL_DETAIL: Record<string, string> = {
   flexwash_describe: 'Checking a FlexWash report',
   flexwash_call: 'Pulling FlexWash data',
   hourly_cars: 'Counting cars by hour',
+  recall_conversations: 'Looking back through your past conversations',
 }
-const DATA_TOOLS = new Set(['run_sql', 'get_site_performance', 'query_dashboard', 'flexwash_describe', 'flexwash_call', 'hourly_cars'])
+const DATA_TOOLS = new Set(['run_sql', 'get_site_performance', 'query_dashboard', 'flexwash_describe', 'flexwash_call', 'hourly_cars', 'recall_conversations'])
 
 // Rows in a CoreNav answer, when it's JSON with a list in it.
 function countRows(text: string): number {
@@ -546,6 +548,7 @@ Deno.serve(async (req) => {
     question?: string
     history?: { role: 'user' | 'assistant'; content: string }[]
     stream?: boolean
+    conversation_id?: string
   } = {}
   try {
     body = await req.json()
@@ -577,8 +580,35 @@ Deno.serve(async (req) => {
   }
   const isDataTool = (name: string) => DATA_TOOLS.has(name) || !!corenav?.byApiName.has(name)
 
+  // Conversation history: this turn is saved, and a continued conversation's
+  // earlier turns come from the database (the page's copy is the fallback). A
+  // storage failure never blocks the answer.
+  let convo: Convo | null = null
+  try {
+    convo = await openConversation(svc, uid, profile.account_id, body.conversation_id, question)
+  } catch (e) {
+    console.error('conversation history:', e instanceof Error ? e.message : e)
+  }
+  const historyNote = await recentNote(svc, uid, convo?.id ?? null).catch(() => '')
+  tools.push(RECALL_TOOL)
+  // Actions (pickers, reports) shown with the answer, kept so history can show them again.
+  const shownActions: unknown[] = []
+  const capture = (emit: Emit): Emit => (ev) => {
+    if (ev.t === 'action') {
+      const p = ev.payload as Record<string, unknown> | undefined
+      if (ev.kind === 'choices') shownActions.push({ kind: 'choices', options: p?.options ?? [], allow_custom: p?.allow_custom !== false })
+      else if (ev.kind === 'report' && p?.title) shownActions.push({ kind: 'report', spec: p })
+    }
+    emit(ev)
+  }
+  const keep = async (content: string, error = false) => {
+    if (!convo) return
+    await saveAnswer(svc, uid, convo.id, { content, steps, actions: shownActions, error })
+      .catch((e) => console.error('conversation save:', e instanceof Error ? e.message : e))
+  }
+
   const messages: Anthropic.MessageParam[] = []
-  for (const h of (body.history ?? []).slice(-8)) {
+  for (const h of convo && !convo.created ? convo.prior : (body.history ?? []).slice(-8)) {
     if (h?.content && (h.role === 'user' || h.role === 'assistant')) {
       messages.push({ role: h.role, content: h.content })
     }
@@ -625,6 +655,7 @@ Deno.serve(async (req) => {
               `Today is ${today}. Answer for this user's data only. ${perfNote}${restrictedNote}` +
               (flex ? ` ${flexUserNote(flexAccess, flex.ownLogin)}` : '') +
               (connectNotes.length ? ` ${connectNotes.join(' ')}` : '') +
+              historyNote +
               (finalRound
                 ? ' You have gathered enough. Give your best final answer now using the data already returned; do not ask for more.'
                 : ''),
@@ -749,6 +780,22 @@ Deno.serve(async (req) => {
           steps.push(step)
           emit({ t: 'step', step })
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
+          continue
+        }
+
+        if (block.name === 'recall_conversations') {
+          const step: Step = { tool: 'recall_conversations' }
+          let content: string
+          try {
+            content = await recall(userClient, (block.input ?? {}) as { query?: string; conversation_id?: string }, convo?.id ?? null)
+            try { const d = JSON.parse(content); step.rowCount = (d.matches ?? d.messages ?? d.conversations ?? []).length } catch { /* not counted */ }
+          } catch (e) {
+            step.error = e instanceof Error ? e.message : String(e)
+            content = `ERROR: ${step.error}`
+          }
+          steps.push(step)
+          emit({ t: 'step', step })
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content, ...(step.error ? { is_error: true } : {}) })
           continue
         }
 
@@ -900,11 +947,13 @@ Deno.serve(async (req) => {
   // Single-shot JSON, for callers that predate the streaming client.
   if (body.stream !== true) {
     try {
-      const { answer } = await run(NO_EMIT)
-      return json({ answer, steps }, 200, origin)
+      const { answer } = await run(capture(NO_EMIT))
+      await keep(answer)
+      return json({ answer, steps, conversation_id: convo?.id ?? null }, 200, origin)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
-      return json({ error: 'internal', message, steps }, 500, origin)
+      await keep(message, true)
+      return json({ error: 'internal', message, steps, conversation_id: convo?.id ?? null }, 500, origin)
     } finally {
       await closeSessions()
     }
@@ -925,16 +974,16 @@ Deno.serve(async (req) => {
           open = false // client hung up mid-answer
         }
       }
+      // Which conversation this turn belongs to, so the page can list and link it.
+      if (convo) send({ t: 'conversation', id: convo.id, title: convo.title, created: convo.created })
       try {
-        const { answer } = await run(send)
+        const { answer } = await run(capture(send))
+        await keep(answer)
         send({ t: 'done', answer, steps })
       } catch (e) {
-        send({
-          t: 'error',
-          error: 'internal',
-          message: e instanceof Error ? e.message : String(e),
-          steps,
-        })
+        const message = e instanceof Error ? e.message : String(e)
+        await keep(message, true)
+        send({ t: 'error', error: 'internal', message, steps })
       } finally {
         open = false
         await closeSessions()
