@@ -11917,17 +11917,17 @@ export type Database = {
         Row: {
           created_at: string
           id: number
-          user_id: string
+          ip: string
         }
         Insert: {
           created_at?: string
           id?: never
-          user_id: string
+          ip?: string
         }
         Update: {
           created_at?: string
           id?: never
-          user_id?: string
+          ip?: string
         }
         Relationships: []
       }
@@ -12032,6 +12032,8 @@ export type Database = {
           name: string
           phone: string | null
           pin_hash: string
+          self_signup: boolean
+          signup_ip: string | null
           updated_at: string
         }
         Insert: {
@@ -12045,6 +12047,8 @@ export type Database = {
           name: string
           phone?: string | null
           pin_hash: string
+          self_signup?: boolean
+          signup_ip?: string | null
           updated_at?: string
         }
         Update: {
@@ -12058,6 +12062,8 @@ export type Database = {
           name?: string
           phone?: string | null
           pin_hash?: string
+          self_signup?: boolean
+          signup_ip?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -12502,6 +12508,47 @@ export type Database = {
             columns: ["submitted_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      site_hourly_cars: {
+        Row: {
+          account_id: string
+          cars: number
+          date: string
+          hour: number
+          site_number: number
+          source: string
+          test_cars: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          cars?: number
+          date: string
+          hour: number
+          site_number: number
+          source: string
+          test_cars?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          cars?: number
+          date?: string
+          hour?: number
+          site_number?: number
+          source?: string
+          test_cars?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_hourly_cars_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -14620,6 +14667,27 @@ export type Database = {
           },
         ]
       }
+      site_hourly_car_counts: {
+        Row: {
+          account_id: string | null
+          cars: number | null
+          date: string | null
+          drb_cars: number | null
+          flex_cars: number | null
+          hour: number | null
+          site_number: number | null
+          test_cars: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_hourly_cars_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       _auth_user_id_by_email: { Args: { p_email: string }; Returns: string }
@@ -16664,13 +16732,10 @@ export type Database = {
         Args: { p_employee_id: string }
         Returns: undefined
       }
+      secret_shopper_find_by_pin: { Args: { p_pin: string }; Returns: string }
       secret_shopper_hash_pin: { Args: { p_pin: string }; Returns: string }
-      secret_shopper_match_pin: {
-        Args: { p_account_id: string; p_pin: string }
-        Returns: string
-      }
-      secret_shopper_pin_taken: {
-        Args: { p_account_id: string; p_except?: string; p_pin: string }
+      secret_shopper_pin_in_use: {
+        Args: { p_except?: string; p_pin: string }
         Returns: boolean
       }
       set_employee_pin: {
@@ -16700,6 +16765,24 @@ export type Database = {
           recharge: number
           sales: number
           site_number: number
+        }[]
+      }
+      site_hourly_summary: {
+        Args: {
+          p_combine?: boolean
+          p_end: string
+          p_sites?: number[]
+          p_start: string
+          p_view?: string
+        }
+        Returns: {
+          avg_cars: number
+          cars: number
+          date: string
+          days: number
+          hour: number
+          site_number: number
+          weekday: number
         }[]
       }
       start_break: { Args: { p_break_id: string }; Returns: undefined }

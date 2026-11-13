@@ -30,6 +30,7 @@ import Anthropic from 'npm:@anthropic-ai/sdk'
 import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexCatalog, flexPrompt, flexUserNote, type FlexAccess } from './flexwash.ts'
 import { CONNECT_ACCOUNT, PROVIDERS, ReconnectNeeded, openSession, type ProviderKey } from '../_shared/connect.ts'
 import type { McpSession } from '../_shared/mcp.ts'
+import { HOURLY_TOOL, hourlyCars } from './hourly.ts'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
 // Safety cap on tool-use rounds per question. A real diagnosis ("why were cars
@@ -105,6 +106,7 @@ calendar_events(id, location_id, title, start_at, end_at, all_day)
 documents(id, location_id, name, category, archived, created_at)
 weather_days(id, account_id, location_id, date, weather_code, conditions, temp_max, temp_min, precip_in): archived daily weather per site. conditions is a label (Clear, Partly cloudy, Overcast, Fog, Drizzle, Rain, Snow, Showers, Snow showers, Storm). temp in fahrenheit, precip_in in inches. Use this to explain a day's results (rain/snow suppress car counts).
 site_performance_days(id, account_id, site, site_number, date, cars, hours, cars_per_hour, sales, labor_cost, labor_pct, recharge): archived DAILY per-site performance. This is the historical store behind Site Performance and covers ALL sites including the FlexWash sites (17, 18). site_number ties to a site (e.g. 17 = Mighty Wash #17); sales and recharge are dollars. Use this for historical car counts, sales, recharge, cars per hour, and labor % by date range. FlexWash sites have cars/sales/recharge but no hours/labor. This is separate from the live get_site_performance tool (which is today/recent only).
+site_hourly_car_counts(date, site_number, hour, cars, drb_cars, flex_cars, test_cars): cars washed per site per HOUR of the day (hour 0-23, the site's local time) from 2026-01-01, DRB + FlexWash, test cars already left out of cars (matches Site Performance). Updated hourly. Prefer the hourly_cars tool (it also refreshes today live); use this for custom hourly SQL such as ranking sites by their peak hour.
 notes: joins are by the *_id columns. Use locations.name to label sites; join via location_id. Employee names are first_name + last_name. work_orders.status values include 'open','in_progress','on_hold','done'. Dates are timestamptz unless typed date.`
 
 const SYSTEM = `You are the data assistant inside Operator (a.k.a. WashLyfe), operations software for car wash companies. You answer questions about the user's own business data.
@@ -132,6 +134,7 @@ You have two tools:
 Choosing a tool:
 - Use get_site_performance for anything about cars washed, car counts, cars per hour/manpower, labor %, membership conversion, recharge revenue, or churn (today / recent daily detail).
 - Use query_dashboard to compare ONE tracked metric across ALL sites totaled over a specific date range (e.g. "cars washed per site last month", "plans sold - Mighty by site this quarter", "revenue by site 6/1 to 6/30"). It returns one row per site. Pick the closest metric key.
+- Use hourly_cars (when offered) for anything by HOUR of the day: hourly car counts, busiest or slowest hours, traffic by hour, a typical week by weekday and hour, or staffing by hour. It covers DRB and FlexWash sites alike, so don't use FlexWash's hourly endpoints for this. Never say hourly car counts are unavailable when hourly_cars is offered.
 - Use run_sql for everything else (work orders, equipment, inventory, checklists, staff, invoices, audits, violations, tips, bonuses, weather, etc.).
 - Combine both when a question spans them.
 
@@ -294,8 +297,9 @@ const TOOL_DETAIL: Record<string, string> = {
   build_report: 'Building your report',
   flexwash_describe: 'Checking a FlexWash report',
   flexwash_call: 'Pulling FlexWash data',
+  hourly_cars: 'Counting cars by hour',
 }
-const DATA_TOOLS = new Set(['run_sql', 'get_site_performance', 'query_dashboard', 'flexwash_describe', 'flexwash_call'])
+const DATA_TOOLS = new Set(['run_sql', 'get_site_performance', 'query_dashboard', 'flexwash_describe', 'flexwash_call', 'hourly_cars'])
 
 // Rows in a CoreNav answer, when it's JSON with a list in it.
 function countRows(text: string): number {
@@ -563,6 +567,9 @@ Deno.serve(async (req) => {
   const flexLogin = sessions.flexwash?.tools.length ? sessions.flexwash : null
   const flex = flexAccess || flexLogin ? new FlexWash(svc, flexAccess, undefined, flexLogin) : null
   if (flex) tools.push(FLEX_DESCRIBE_TOOL, FLEX_CALL_TOOL)
+  // Hourly cars are counted from Mighty Wash's own DRB and FlexWash.
+  const hourlyAvailable = perfAvailable && profile.account_id === CONNECT_ACCOUNT
+  if (hourlyAvailable) tools.push(HOURLY_TOOL)
   if (corenav) {
     for (const t of corenav.tools) {
       tools.push({ name: t.apiName, description: t.description, input_schema: t.inputSchema as Anthropic.Tool['input_schema'] })
@@ -742,6 +749,30 @@ Deno.serve(async (req) => {
           steps.push(step)
           emit({ t: 'step', step })
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content })
+          continue
+        }
+
+        if (block.name === 'hourly_cars' && hourlyAvailable) {
+          const input = (block.input ?? {}) as { start?: string; end?: string; view?: string; sites?: unknown[]; combine?: boolean }
+          const step: Step = { tool: 'hourly_cars' }
+          let content: string
+          try {
+            // Sites by name or number, kept to the ones this user may see.
+            let sites: number[] | null = allowedNumbers ? [...allowedNumbers] : null
+            if (Array.isArray(input.sites) && input.sites.length) {
+              const asked = input.sites.map(siteNum).filter((n): n is number => n != null)
+              sites = asked.filter((n) => !allowedNumbers || allowedNumbers.has(n))
+              if (!sites.length) throw new Error('None of those sites are ones this user can see.')
+            }
+            content = await hourlyCars(input, sites, { svc, userClient })
+            try { step.rowCount = (JSON.parse(content).rows ?? []).length } catch { /* not counted */ }
+          } catch (e) {
+            step.error = e instanceof Error ? e.message : String(e)
+            content = `ERROR: ${step.error}`
+          }
+          steps.push(step)
+          emit({ t: 'step', step })
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content, ...(step.error ? { is_error: true } : {}) })
           continue
         }
 
