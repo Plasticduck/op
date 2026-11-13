@@ -83,9 +83,12 @@ isn't digitally sealed.
 
 ## Not done, or worth deciding
 
-- **Seal certificate.** Must be added as the two secrets above before PDFs are
-  digitally sealed. A certificate from a CA on Adobe's Approved Trust List (AATL)
-  would make Adobe show the seal as fully trusted. Not required by law.
+- **Seal certificate.** Installed 2026-11-13: `CN=Operator Document Seal,
+  O=WashLyfe, C=US`, RSA 3072, valid to 2036-11-10, SHA-256 fingerprint
+  `1E:71:83:F9:BE:9B:70:85:4C:1F:8F:5A:BF:53:4E:11:FB:AD:2F:85:56:32:50:5D:CA:7A:41:0C:EB:C1:A8:28`.
+  The private key exists only in the Supabase secrets. A certificate from a CA on
+  Adobe's Approved Trust List (AATL) would make Adobe show the seal as fully
+  trusted. Not required by law.
 - **Trusted timestamps.** Times come from Operator's servers. An RFC 3161
   timestamp from an outside authority could be added to the seal.
 - **Stronger sign-in at signing.** Today a signature rests on the person's
