@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <title>3D tunnel widget (dev only)</title>
+  </head>
+  <body>
+    <!-- Dev only: the 3D tunnel as the Tunnel page mounts it (Tunnel3DHost and its
+         overlays) on a plain page with sample data, no sign-in. Not part of the
+         production build (vite.config.ts lists the build's pages). Query parameters are
+         listed at the top of the harness. -->
+    <div id="root"></div>
+    <script type="module" src="/src/features/maintenance/inventory/tunnel/three/dev/widgetHarness.tsx"></script>
+  </body>
+</html>

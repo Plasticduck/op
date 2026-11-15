@@ -1,16 +1,19 @@
-import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type Ref } from 'react'
+import { useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type PointerEvent, type Ref } from 'react'
 import type { TunnelAsset, TunnelItem, TunnelLayout } from '@/lib/queries/miTunnel'
 import { cn } from '@/lib/utils'
 import { cars, shortName, STATUS } from '../equipment/format'
 import { groupTransform, labelVertical, layoutBox, toScreen, viewBox, type Orientation } from './geometry'
 import { shapeFor } from './shapes'
+import { heatStep, maxCarsOf, toneFor, type ColorBy, type HeatTone, type Tone } from './tones'
 
 // The top-down tunnel. Hovering (or tabbing to) a machine lights up every shape linked
 // to it and dims the rest; clicking or Enter opens it. Shapes are drawn in layout feet
 // inside one transformed group, so the editor can turn pointer positions back into feet;
 // names are drawn on top, upright, in screen units.
 
-export type ColorBy = 'status' | 'usage' | 'wos' | 'sticker'
+// Which tone a machine gets is decided in tones.ts, shared with the 3D view. Here a tone
+// only becomes classes.
+export type { ColorBy }
 
 const TONE = {
   ok: 'fill-ok-soft stroke-ok',
@@ -23,6 +26,24 @@ const TONE = {
   scenery: 'fill-content stroke-border-strong',
 } as const
 const HEAT = ['fill-accent/10', 'fill-accent/25', 'fill-accent/45', 'fill-accent/65', 'fill-accent/85']
+const TONE_CLASS: Record<Exclude<Tone, HeatTone>, string> = {
+  ok: TONE.ok, warn: TONE.warn, danger: TONE.danger, neutral: TONE.quiet, unlinked: TONE.placeholder, retired: TONE.retired,
+}
+const classesOf = (tone: Tone) => {
+  const heat = heatStep(tone)
+  return heat >= 0 ? `${HEAT[heat]} stroke-accent` : TONE_CLASS[tone as Exclude<Tone, HeatTone>]
+}
+
+// A tone as a small square painted the way the drawing paints a shape, for a list beside
+// it (the List view). It says nothing by itself: the caller names it if it should.
+export function ToneSquare({ tone, className, children, ...svg }: { tone: Tone } & ComponentProps<'svg'>) {
+  return (
+    <svg viewBox="0 0 10 10" className={cn('size-3.5 shrink-0', className)} {...svg}>
+      {children}
+      <rect x={1} y={1} width={8} height={8} rx={2} strokeWidth={1.2} className={classesOf(tone)} />
+    </svg>
+  )
+}
 
 const FONT = 1.25
 
@@ -58,24 +79,16 @@ export function TunnelDiagram({ layout, items, assets, orientation: o, colorBy, 
   const focusOrder = useMemo(() => ordered.filter((i) => !shapeFor(i.kind).scenery).sort((a, b) => Number(a.x_ft) - Number(b.x_ft) || Number(a.y_ft) - Number(b.y_ft)), [ordered])
 
   // Use-count shading is relative to the busiest machine on this drawing.
-  const maxCars = useMemo(() => Math.max(0, ...items.map((i) => (i.asset_id ? assets[i.asset_id]?.cars_since ?? 0 : 0))), [items, assets])
+  const maxCars = useMemo(() => maxCarsOf(items, assets), [items, assets])
 
   const hovered = hover ? items.find((i) => i.id === hover.id) : undefined
   const hoverKey = hovered ? hovered.asset_id ?? hovered.id : null
   const selected = selectedId ? items.find((i) => i.id === selectedId) : undefined
   const selectedKey = selected ? selected.asset_id ?? selected.id : null
 
-  const toneFor = (i: TunnelItem): string => {
-    const s = shapeFor(i.kind)
-    if (s.scenery) return TONE.scenery
-    const a = i.asset_id ? assets[i.asset_id] : undefined
-    if (!a) return TONE.placeholder
-    if (a.status === 'retired') return TONE.retired
-    if (colorBy === 'status') return a.status === 'offline_unplanned' ? TONE.danger : a.status === 'offline_planned' ? TONE.warn : TONE.ok
-    if (colorBy === 'wos') return a.open_wos >= 2 ? TONE.danger : a.open_wos === 1 ? TONE.warn : TONE.quiet
-    if (colorBy === 'sticker') return a.tag_printed ? TONE.ok : a.tag ? TONE.warn : TONE.danger
-    if (a.cars_since == null || !maxCars) return TONE.quiet
-    return `${HEAT[Math.min(HEAT.length - 1, Math.floor((a.cars_since / maxCars) * HEAT.length))]} stroke-accent`
+  const toneClass = (i: TunnelItem): string => {
+    if (shapeFor(i.kind).scenery) return TONE.scenery
+    return classesOf(toneFor(i.asset_id ? assets[i.asset_id] : undefined, colorBy, maxCars))
   }
 
   const showTip = (i: TunnelItem, clientX: number, clientY: number) => {
@@ -116,7 +129,7 @@ export function TunnelDiagram({ layout, items, assets, orientation: o, colorBy, 
               <g key={i.id}
                 ref={(el) => { if (el) nodes.current.set(i.id, el); else nodes.current.delete(i.id) }}
                 transform={`translate(${Number(i.x_ft)} ${Number(i.y_ft)}) rotate(${i.rotation})`}
-                className={cn(toneFor(i), 'outline-none transition-opacity duration-150', dim && 'opacity-35')}
+                className={cn(toneClass(i), 'outline-none transition-opacity duration-150', dim && 'opacity-35')}
                 role={interactive ? 'button' : undefined}
                 tabIndex={interactive ? 0 : undefined}
                 aria-label={interactive ? `${name}${a ? `, ${STATUS[a.status]?.label ?? a.status}` : ', not linked to a machine'}` : undefined}

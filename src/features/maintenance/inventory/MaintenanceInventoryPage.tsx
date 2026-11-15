@@ -55,7 +55,7 @@ const HOME = { to: BASE, label: 'Maintenance Inventory' }
 
 const SUBTITLE: Record<Exclude<Section, 'overview'>, string> = {
   equipment: 'Every machine at your sites, its sticker, its use count and its history.',
-  tunnel: "Each site's tunnel from above. Point at a machine to find it, click it to open it.",
+  tunnel: "Walk each site's tunnel in 3D and pick a machine to see how it's doing. Switch to the flat diagram or the list any time.",
   audits: "Walk a site with your phone and scan every machine's sticker, to find what's missing or in the wrong zone.",
   parts: "Every part, where it's stocked, and what's running low.",
   tools: "Who has each tool, where it lives, and when it's due back.",

@@ -147,8 +147,8 @@ src/
                             has totals only, no names or punch times); region scoping in hr/regions.ts
     it/                     Issuetrak, IT Field Checklist
     maintenance/            Chemicals, Maintenance Orders, inventory/ (Maintenance Inventory) and log/ (Maintenance Log), see docs/maintenance-inventory
+                            (its Tunnel tab's 3D view, plain three.js: docs/maintenance-inventory/TUNNEL.md)
     facilities/             Service Board
-    secretshoppers/         Secret Shoppers: ShopperApp is a separate phone app (ss.html ->
     purchasing/             Finance > Purchase Request (/app/purchase-requests): drafts, approvers
                             (in order or any order, owner approval rules by amount/category), e-signed
                             by the requester then each approver, sealed PDF with a certificate of
@@ -156,6 +156,7 @@ src/
                             esign_* tables are append-only (triggers) so other documents can reuse
                             them (source_type). Legal map: docs/purchase-requests/ESIGN.md.
                             Pre-launch list: PURCHASE_REQUEST_EMAILS in purchasing/access.ts
+    secretshoppers/         Secret Shoppers: ShopperApp is a separate phone app (ss.html ->
                             src/ss.tsx, served at /ss, own manifest + home-screen icon, no
                             Operator login): PIN sign-in or self-made PIN, sites picked by address
                             (locations.address, grouped by city), 1-5 star visit report with

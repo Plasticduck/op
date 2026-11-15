@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Archive, ArchiveRestore, ArrowLeft, CopyPlus, EllipsisVertical, Layers, Loader2, MapPin, PackageMinus, Pencil, Plus, Printer, RefreshCw, ShieldAlert, Wrench, X } from 'lucide-react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Archive, ArchiveRestore, ArrowLeft, Box, CopyPlus, EllipsisVertical, Layers, Loader2, MapPin, PackageMinus, Pencil, Plus, Printer, RefreshCw, ShieldAlert, Wrench, X } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { QrCodeImage } from '@/components/data/QrCodeImage'
@@ -30,8 +30,15 @@ export function EquipmentDetailPage({ id }: { id: string }) {
   const [params, setParams] = useSearchParams()
   const { notify, openScan } = useMi()
   const { d, error, reload } = useEquipmentDetail(id)
-  const routeState = routerLocation.state as { back?: string; flash?: string } | null
-  const backTo = EQUIPMENT_BASE + (routeState?.back ?? '')
+  const routeState = routerLocation.state as { back?: string; flash?: string; from?: { to?: unknown; label?: unknown } } | null
+  // Opened from another screen (the tunnel): Back goes there, not to the equipment list.
+  // Only a path inside the app counts ('//host' would leave it).
+  const fromTo = routeState?.from?.to
+  const from = typeof fromTo === 'string' && fromTo.startsWith('/') && !fromTo.startsWith('//')
+    ? { to: fromTo, label: typeof routeState?.from?.label === 'string' ? routeState.from.label : 'Back' }
+    : null
+  const backTo = from?.to ?? EQUIPMENT_BASE + (routeState?.back ?? '')
+  const backLabel = from?.label ?? 'Back to equipment'
   const [flash, setFlash] = useState<string | null>(routeState?.flash ?? null)
   const [menu, setMenu] = useState(false)
   const [form, setForm] = useState<FormMode | null>(null)
@@ -52,7 +59,7 @@ export function EquipmentDetailPage({ id }: { id: string }) {
   if (error && !d) {
     return (
       <div className="grid h-full place-items-center px-4 text-center text-sm text-ink-muted">
-        <div><p>{error}</p><Button variant="link" className="mt-2" onClick={() => navigate(backTo)}>Back to equipment</Button></div>
+        <div><p>{error}</p><Button variant="link" className="mt-2" onClick={() => navigate(backTo)}>{backLabel}</Button></div>
       </div>
     )
   }
@@ -60,7 +67,7 @@ export function EquipmentDetailPage({ id }: { id: string }) {
   if (d.hidden) {
     return (
       <div className="grid h-full place-items-center px-4 text-center text-sm text-ink-muted">
-        <div><p>{d.message}</p><Button variant="link" className="mt-2" onClick={() => navigate(backTo)}>Back to equipment</Button></div>
+        <div><p>{d.message}</p><Button variant="link" className="mt-2" onClick={() => navigate(backTo)}>{backLabel}</Button></div>
       </div>
     )
   }
@@ -69,6 +76,11 @@ export function EquipmentDetailPage({ id }: { id: string }) {
   const retired = a.status === 'retired'
   const canEdit = a.can_manage
   const s = STATUS[a.status]
+  // Its site's tunnel with this machine picked. A component has no shape of its own: it
+  // shows through its machine's, so the link names that shape as well.
+  const hasSite = !!a.location_id
+  const spot = d.diagram.length > 0 ? d.diagram[0] : null
+  const tunnelLink = `/app/maintenance-inventory/tunnel?site=${a.location_id}${spot && spot.tunnel_no > 1 ? `&tunnel=${spot.tunnel_no}` : ''}&asset=${a.id}${spot?.via_parent ? `&item=${spot.item_id}` : ''}`
 
   const setTab = (t: Tab) => setParams((p) => {
     const next = new URLSearchParams(p)
@@ -103,7 +115,7 @@ export function EquipmentDetailPage({ id }: { id: string }) {
     <div className="flex h-full min-h-0 flex-col lg:mx-auto lg:w-full lg:max-w-4xl lg:px-8 lg:py-4">
       <div className="flex min-h-0 flex-1 flex-col bg-card lg:rounded-md lg:border lg:border-border">
         <div className="flex items-start gap-2 border-b border-border px-2 py-2.5 sm:px-3">
-          <button type="button" onClick={() => navigate(backTo)} aria-label="Back to equipment" className="grid size-9 shrink-0 place-items-center rounded-full text-ink-muted hover:bg-content">
+          <button type="button" onClick={() => navigate(backTo)} aria-label={backLabel} title={from ? backLabel : undefined} className="grid size-9 shrink-0 place-items-center rounded-full text-ink-muted hover:bg-content">
             <ArrowLeft className="size-5" />
           </button>
           <div className="min-w-0 flex-1">
@@ -149,12 +161,21 @@ export function EquipmentDetailPage({ id }: { id: string }) {
           )}
         </div>
 
-        {!retired && (
+        {(!retired || hasSite) && (
           <div className="flex flex-wrap gap-2 border-b border-border px-3 py-2">
-            <Button size="sm" onClick={() => { primeScanSound(); openScan({ asset: { id: a.id, name: a.name, site_id: a.location_id } }) }}><PackageMinus className="size-3.5" /> Consume a part</Button>
-            {canEdit && <Button size="sm" variant="secondary" onClick={() => setBulk('status')}><RefreshCw className="size-3.5" /> Status</Button>}
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void openWo()}><Wrench className="size-3.5" /> Open a work order</Button>
-            <Button size="sm" variant="secondary" onClick={() => setLabels([{ type: 'asset', id: a.id, name: shortName(a.name), site: a.site_name }])}><Printer className="size-3.5" /> Sticker</Button>
+            {!retired && (
+              <>
+                <Button size="sm" onClick={() => { primeScanSound(); openScan({ asset: { id: a.id, name: a.name, site_id: a.location_id } }) }}><PackageMinus className="size-3.5" /> Consume a part</Button>
+                {canEdit && <Button size="sm" variant="secondary" onClick={() => setBulk('status')}><RefreshCw className="size-3.5" /> Status</Button>}
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => void openWo()}><Wrench className="size-3.5" /> Open a work order</Button>
+                <Button size="sm" variant="secondary" onClick={() => setLabels([{ type: 'asset', id: a.id, name: shortName(a.name), site: a.site_name }])}><Printer className="size-3.5" /> Sticker</Button>
+              </>
+            )}
+            {hasSite && (
+              <Link to={tunnelLink} className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium text-ink transition hover:bg-content">
+                <Box className="size-3.5" /> View in tunnel
+              </Link>
+            )}
           </div>
         )}
 

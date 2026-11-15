@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { ExternalLink, Link2, Link2Off, Loader2, NotebookPen, Pencil, Plus, RefreshCw, Wrench, X } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -49,6 +49,7 @@ function Header({ title, sub, onClose, children }: { title: string; sub?: string
 
 function LinkedPanel({ item, assetId, siteId, canEdit, onClose, onChanged }: Props & { assetId: string }) {
   const { notify } = useMi()
+  const here = useLocation()
   const { d, error, reload } = useEquipmentDetail(assetId)
   const [form, setForm] = useState<FormMode | null>(null)
   const [bulk, setBulk] = useState<BulkKind | null>(null)
@@ -94,7 +95,9 @@ function LinkedPanel({ item, assetId, siteId, canEdit, onClose, onChanged }: Pro
         </div>
       </Header>
       <div className="flex flex-wrap gap-1.5 border-b border-border px-3 py-2">
-        <Link to={`${EQUIPMENT_BASE}/${a.id}`} className="inline-flex h-8 items-center gap-1 rounded-md bg-accent px-3 text-sm font-medium text-white hover:bg-accent-hover"><ExternalLink className="size-3.5" /> Full page</Link>
+        {/* The machine's page gets the way back here, with this shape still picked. */}
+        <Link to={`${EQUIPMENT_BASE}/${a.id}`} state={{ from: { to: here.pathname + here.search, label: 'Back to tunnel' } }}
+          className="inline-flex h-8 items-center gap-1 rounded-md bg-accent px-3 text-sm font-medium text-white hover:bg-accent-hover"><ExternalLink className="size-3.5" /> Full page</Link>
         {a.can_manage && a.status !== 'retired' && <Button size="sm" variant="secondary" onClick={() => setBulk('status')}><RefreshCw className="size-3.5" /> Status</Button>}
         {a.can_manage && a.status !== 'retired' && <Button size="sm" variant="secondary" onClick={() => setForm({ mode: 'edit', detail: d })}><Pencil className="size-3.5" /> Edit</Button>}
         <Link to={`/app/maintenance-log?new=1&asset=${a.id}`} className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-3 text-sm text-ink hover:bg-content"><NotebookPen className="size-3.5" /> Log work</Link>
