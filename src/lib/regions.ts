@@ -19,7 +19,7 @@ export const DEFAULT_REGIONS: NamedRegion[] = [
   { name: 'Permian Basin - Odessa', sites: ['Site 2', 'Site 8', 'Site 15', 'Site 22', 'Site 25'] },
   {
     name: 'Permian Basin - Midland',
-    sites: ['Site 3', 'Site 6', 'Site 12', 'Site 13', 'Site 14', 'Site 24', 'Site 31'],
+    sites: ['Site 3', 'Site 4', 'Site 6', 'Site 12', 'Site 13', 'Site 14', 'Site 24', 'Site 31'],
   },
   {
     name: 'New Mexico Region',
