@@ -421,7 +421,6 @@ export const NAV_GROUPS: NavGroup[] = [
           'mcanales@mighty-wash.com',
           'isabel@mighty-wash.com',
           'rbreed@mighty-wash.com',
-          'lester@mighty-wash.com',
           'djones@mighty-wash.com',
         ],
       },

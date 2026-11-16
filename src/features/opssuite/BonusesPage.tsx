@@ -28,8 +28,10 @@ const ALL = '__all__'
 // Region names must match the account's saved regions (Company settings).
 const REGION_BONUS: { name: string; pct: number }[] = [
   { name: 'Lubbock Region', pct: 0.24 },
-  { name: 'Permian Basin Region (A)', pct: 0.19 },
-  { name: 'Permian Basin Region (B)', pct: 0.56 },
+  // Renamed 2026-11-16 (migration 0239): (A) became Odessa, (B) became Midland,
+  // each keeping its percentage.
+  { name: 'Permian Basin - Odessa', pct: 0.19 },
+  { name: 'Permian Basin - Midland', pct: 0.56 },
   { name: 'New Mexico Region', pct: 0.28 },
   { name: 'Central Region', pct: 0.42 },
 ]
@@ -133,7 +135,9 @@ function effectiveGmAmount(
 }
 
 // Regional manager names, effective-dated by quarter. Legacy flat `region ->
-// name` is coerced to apply to all quarters via an early sentinel key.
+// name` is coerced to apply to all quarters via an early sentinel key. An empty
+// name is kept: it marks the region vacant from that quarter, so an earlier
+// manager doesn't carry forward (the clock-in alert texts read it the same way).
 type QuarterManagers = Record<string, Record<string, string>>
 const LEGACY_Q = '1900-01-01'
 function normalizeManagers(raw: unknown): QuarterManagers {
@@ -145,9 +149,9 @@ function normalizeManagers(raw: unknown): QuarterManagers {
     } else if (val && typeof val === 'object') {
       const inner: Record<string, string> = {}
       for (const [q, name] of Object.entries(val as Record<string, unknown>)) {
-        if (typeof name === 'string' && name.trim()) inner[q] = name
+        if (typeof name === 'string') inner[q] = name.trim() ? name : ''
       }
-      if (Object.keys(inner).length) out[region] = inner
+      if (Object.values(inner).some(Boolean)) out[region] = inner
     }
   }
   return out
@@ -1113,7 +1117,9 @@ function RegionalBonuses({ allMonths, allBaselines, regions, siteManagers, rawMa
       if (!next[region]) next[region] = {}
       if (val === '') {
         delete next[region][qStart]
-        if (Object.keys(next[region]).length === 0) delete next[region]
+        // Clearing the name means vacant from this quarter, not "use last quarter's".
+        if (effectiveManager(next[region], qStart)) next[region][qStart] = ''
+        if (!Object.values(next[region]).some(Boolean)) delete next[region]
       } else {
         next[region][qStart] = val
       }

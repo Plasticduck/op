@@ -27,7 +27,6 @@ const LABOR_DATA_EMAILS = new Set([
   'mcanales@mighty-wash.com',
   'isabel@mighty-wash.com',
   'rbreed@mighty-wash.com',
-  'lester@mighty-wash.com',
   'djones@mighty-wash.com',
 ])
 const OPEN_ACCRUAL_CAP_H = 16 // cap in-progress time added to week totals (guards forgotten punches)

@@ -8,20 +8,24 @@ import { fetchMsaReport, siteNumber, type MsaReport, type MsaRow } from '@/lib/q
 // The dashboard refreshes its live MSA tab every 60s; mirror that here.
 const REFRESH_MS = 60_000
 
-// Dashboard's own region mapping (SITE_REGIONS on ops.mwdashboards.com), keyed
-// by site number. Dalhart (#34) is its own single-site region there but is
-// intentionally excluded here. Sites in none of these regions fall into "Other".
+// Region mapping keyed by site number. Started from the dashboard's SITE_REGIONS
+// (ops.mwdashboards.com); since 2026-11-16 Permian Basin follows Operator's
+// Odessa / Midland regions (migration 0239). Dalhart (#34) is its own
+// single-site region on the dashboard but is intentionally excluded here. Sites
+// in none of these regions fall into "Other".
 const REGION_BY_SITE: Record<number, string> = {
-  1: 'Lubbock', 5: 'Lubbock', 7: 'Lubbock', 9: 'Lubbock', 10: 'Lubbock', 11: 'Lubbock', 14: 'Lubbock',
-  2: 'Permian Basin', 8: 'Permian Basin', 15: 'Permian Basin', 22: 'Permian Basin', 25: 'Permian Basin',
-  3: 'Permian Basin', 12: 'Permian Basin', 13: 'Permian Basin', 24: 'Permian Basin', 31: 'Permian Basin',
-  6: 'Permian Basin', 4: 'Permian Basin',
+  1: 'Lubbock', 5: 'Lubbock', 7: 'Lubbock', 9: 'Lubbock', 10: 'Lubbock', 11: 'Lubbock', 32: 'Lubbock',
+  2: 'Permian Basin - Odessa', 8: 'Permian Basin - Odessa', 15: 'Permian Basin - Odessa',
+  22: 'Permian Basin - Odessa', 25: 'Permian Basin - Odessa',
+  3: 'Permian Basin - Midland', 6: 'Permian Basin - Midland', 12: 'Permian Basin - Midland',
+  13: 'Permian Basin - Midland', 14: 'Permian Basin - Midland', 24: 'Permian Basin - Midland',
+  31: 'Permian Basin - Midland',
   27: 'Central Texas', 28: 'Central Texas', 29: 'Central Texas', 30: 'Central Texas',
   16: 'New Mexico', 23: 'New Mexico', 26: 'New Mexico', 21: 'New Mexico', 17: 'New Mexico', 18: 'New Mexico',
 }
 // Sites deliberately left out of the region breakdown (Dalhart, per request).
 const EXCLUDED_SITES = new Set<number>([34])
-const REGION_ORDER = ['Lubbock', 'Permian Basin', 'Central Texas', 'New Mexico', 'Other']
+const REGION_ORDER = ['Lubbock', 'Permian Basin - Odessa', 'Permian Basin - Midland', 'Central Texas', 'New Mexico', 'Other']
 
 function regionForSite(name: string): string | null {
   const n = siteNumber(name)

@@ -306,7 +306,7 @@ export const router = createBrowserRouter([
           { path: 'fleet-management', element: <RequireRole allow={['owner']}><RequireSitePerformance>{s(<FleetManagementPage />)}</RequireSitePerformance></RequireRole> },
           { path: 'site-visits', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<SiteVisitsPage />)}</RequireEmails> },
           { path: 'hr/payroll-labor', element: <RequireEmailsOrRoles allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com']} roles={['regional_manager']}>{s(<LaborDataPage />)}</RequireEmailsOrRoles> },
-          { path: 'hr/on-the-clock', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com', 'kellyspiller@mighty-wash.com', 'kspiller@mighty-wash.com', 'zachary@mighty-wash.com', 'mcanales@mighty-wash.com', 'isabel@mighty-wash.com', 'rbreed@mighty-wash.com', 'lester@mighty-wash.com', 'djones@mighty-wash.com']}>{s(<OnTheClockPage />)}</RequireEmails> },
+          { path: 'hr/on-the-clock', element: <RequireEmails allow={['kevan@washlyfe.com', 'lkeith@mighty-wash.com', 'kellyspiller@mighty-wash.com', 'kspiller@mighty-wash.com', 'zachary@mighty-wash.com', 'mcanales@mighty-wash.com', 'isabel@mighty-wash.com', 'rbreed@mighty-wash.com', 'djones@mighty-wash.com']}>{s(<OnTheClockPage />)}</RequireEmails> },
           { path: 'hr/salaried-labor', element: <RequireSuperAdmin>{s(<SalariedLaborPage />)}</RequireSuperAdmin> },
           { path: 'facilities', element: s(<ServiceBoardPage />) },
           { path: 'details', element: mgr(<InteriorDetailsPage />) },

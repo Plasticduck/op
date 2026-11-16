@@ -14,23 +14,13 @@ export const DEFAULT_REGIONS: NamedRegion[] = [
   { name: 'Corporate', sites: ['Corporate'] },
   {
     name: 'Lubbock Region',
-    sites: ['Site 1', 'Site 5', 'Site 7', 'Site 9', 'Site 10', 'Site 11', 'Site 14'],
+    sites: ['Site 1', 'Site 5', 'Site 7', 'Site 9', 'Site 10', 'Site 11', 'Site 32', 'Site 33', 'Site 34'],
   },
+  { name: 'Permian Basin - Odessa', sites: ['Site 2', 'Site 8', 'Site 15', 'Site 22', 'Site 25'] },
   {
-    name: 'Permian Basin Region (A)',
-    sites: [
-      'Site 2',
-      'Site 4',
-      'Site 6',
-      'Site 8',
-      'Site 13',
-      'Site 15',
-      'Site 22',
-      'Site 24',
-      'Site 25',
-    ],
+    name: 'Permian Basin - Midland',
+    sites: ['Site 3', 'Site 6', 'Site 12', 'Site 13', 'Site 14', 'Site 24', 'Site 31'],
   },
-  { name: 'Permian Basin Region (B)', sites: ['Site 3', 'Site 12', 'Site 31'] },
   {
     name: 'New Mexico Region',
     sites: ['Site 16', 'Site 17', 'Site 18', 'Site 19', 'Site 20', 'Site 21', 'Site 23', 'Site 26'],
@@ -45,8 +35,8 @@ export const DEFAULT_REGIONS: NamedRegion[] = [
 // as-is.
 export function shortRegionLabel(name: string): string {
   const map: Record<string, string> = {
-    'Permian Basin Region (A)': 'PB Region A',
-    'Permian Basin Region (B)': 'PB Region B',
+    'Permian Basin - Odessa': 'PB Odessa',
+    'Permian Basin - Midland': 'PB Midland',
     'New Mexico Region': 'NM Region',
   }
   return map[name] ?? name

@@ -32,7 +32,6 @@ const ON_THE_CLOCK_EMAILS = new Set([
   'mcanales@mighty-wash.com',
   'isabel@mighty-wash.com',
   'rbreed@mighty-wash.com',
-  'lester@mighty-wash.com',
   'djones@mighty-wash.com',
 ])
 
