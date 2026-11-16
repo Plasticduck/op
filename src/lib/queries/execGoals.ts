@@ -17,7 +17,6 @@ export const GOAL_EXECS = [
   'Kelly Spiller',
   'Kevan Jowers',
   'Laramie Keith',
-  'Justin Gamboa',
   'Jay Wyatt',
   'Al Rodriguez',
 ] as const

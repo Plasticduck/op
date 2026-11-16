@@ -224,7 +224,7 @@ function Scoreboard({ goals, paces, active, onPick }: {
   onPick: (name: string) => void
 }) {
   return (
-    <section className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+    <section className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       {GOAL_EXECS.map((name) => {
         const mine = goals.filter((g) => g.owner_name === name && g.status_override !== 'dropped')
         const ps = mine.map((g) => paces.get(g.id)!)
