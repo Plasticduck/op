@@ -18,6 +18,7 @@
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { centralToday, ranges, siteOf } from './util.ts'
+import { pageGranted } from '../_shared/page_access.ts'
 
 // deno-lint-ignore no-explicit-any
 type Json = any
@@ -150,7 +151,8 @@ Deno.serve(async (req) => {
     const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
     const { data: u } = await userClient.auth.getUser()
     if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
-    if (!ON_THE_CLOCK_EMAILS.has((u.user.email ?? '').toLowerCase())) {
+    // The listed people, or anyone the super admin granted On the Clock.
+    if (!ON_THE_CLOCK_EMAILS.has((u.user.email ?? '').toLowerCase()) && !(await pageGranted(svc, u.user.id, '/app/hr/on-the-clock'))) {
       return json({ error: 'forbidden', message: 'Labor data is restricted to approved users.' }, 403, origin)
     }
   }

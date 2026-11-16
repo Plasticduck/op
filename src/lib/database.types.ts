@@ -11448,6 +11448,61 @@ export type Database = {
           },
         ]
       }
+      page_access: {
+        Row: {
+          account_id: string
+          allowed: boolean
+          id: string
+          page: string
+          perm_role: string | null
+          updated_at: string
+          updated_by: string | null
+          user_id: string | null
+        }
+        Insert: {
+          account_id: string
+          allowed: boolean
+          id?: string
+          page: string
+          perm_role?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          allowed?: boolean
+          id?: string
+          page?: string
+          perm_role?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_access_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_access_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_assets: {
         Row: {
           asset_id: string
@@ -15618,11 +15673,14 @@ export type Database = {
       auth_has_location: { Args: { loc: string }; Returns: boolean }
       auth_in_conversation: { Args: { conv: string }; Returns: boolean }
       auth_is_manager_plus: { Args: never; Returns: boolean }
+      auth_is_super_admin: { Args: never; Returns: boolean }
       auth_is_wo_reviewer: {
         Args: { dept: string; loc: string }
         Returns: boolean
       }
       auth_location_ids: { Args: never; Returns: string[] }
+      auth_page_granted: { Args: { p_page: string }; Returns: boolean }
+      auth_perm_role: { Args: never; Returns: string }
       auth_role: { Args: never; Returns: string }
       auth_role_category: { Args: never; Returns: string }
       auth_site_ids: { Args: never; Returns: string[] }
@@ -17515,6 +17573,11 @@ export type Database = {
         Returns: undefined
       }
       operator_ask_sql: { Args: { query: string }; Returns: Json }
+      page_access_save: { Args: { p_changes: Json }; Returns: number }
+      page_granted_for: {
+        Args: { p_page: string; p_user: string }
+        Returns: boolean
+      }
       pm_generate_for_plan: {
         Args: { p_advance?: boolean; p_plan_id: string }
         Returns: string

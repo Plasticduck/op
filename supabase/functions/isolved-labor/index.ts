@@ -18,6 +18,7 @@
 // lkeith@mighty-wash.com); the salaried-only view stays limited to kevan.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { pageGranted } from '../_shared/page_access.ts'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
@@ -134,7 +135,9 @@ function effectiveManager(val: unknown, quarter: string): string | null {
   const name = keys.length ? (val as Record<string, string>)[keys[keys.length - 1]] : null
   return name?.trim() || null
 }
-type LaborAccess = { admin: boolean; rmRegions: string[]; regions: Map<string, Set<string>> }
+// admin: every site and the admin views. salaried: the salaried-only view (the
+// super admin, or anyone granted Salaried Labor on the Team page).
+type LaborAccess = { admin: boolean; salaried: boolean; rmRegions: string[]; regions: Map<string, Set<string>> }
 async function laborAccess(svc: Any, email: string): Promise<LaborAccess> {
   const { data: acct } = await svc.from('accounts').select('company_settings').eq('id', MW_ACCOUNT).single()
   const settings = (acct?.company_settings ?? {}) as Any
@@ -145,14 +148,17 @@ async function laborAccess(svc: Any, email: string): Promise<LaborAccess> {
     const sites = new Set((r.siteIds ?? []).map((id) => nameById.get(id)).filter((n): n is string => !!n))
     if (r.name && sites.size) regions.set(r.name, sites)
   }
-  if (LABOR_DATA_EMAILS.has(email)) return { admin: true, rmRegions: [], regions }
-  const { data: u } = await svc.from('users').select('name, role_category').eq('account_id', MW_ACCOUNT).ilike('email', email).maybeSingle()
-  if (!u || u.role_category !== 'regional_manager') return { admin: false, rmRegions: [], regions }
+  if (LABOR_DATA_EMAILS.has(email)) return { admin: true, salaried: email === SUPER_ADMIN, rmRegions: [], regions }
+  const { data: u } = await svc.from('users').select('id, name, role_category').eq('account_id', MW_ACCOUNT).ilike('email', email).maybeSingle()
+  // A grant from the super admin opens the page like the listed admins have it.
+  const salaried = await pageGranted(svc, u?.id, '/app/hr/salaried-labor')
+  if (salaried || (await pageGranted(svc, u?.id, '/app/hr/payroll-labor'))) return { admin: true, salaried, rmRegions: [], regions }
+  if (!u || u.role_category !== 'regional_manager') return { admin: false, salaried: false, rmRegions: [], regions }
   const quarter = quarterStart(centralNowIso().slice(0, 10))
   const me = String(u.name ?? '').trim().toLowerCase()
   const managers = (settings.regionalManagers ?? {}) as Record<string, unknown>
   const rmRegions = [...regions.keys()].filter((r) => (effectiveManager(managers[r], quarter) ?? '').toLowerCase() === me)
-  return { admin: false, rmRegions, regions }
+  return { admin: false, salaried: false, rmRegions, regions }
 }
 
 Deno.serve(async (req) => {
@@ -216,7 +222,7 @@ Deno.serve(async (req) => {
     : body.salariedScope === 'none' || body.salariedScope === 'only' ? body.salariedScope : 'exclude-corporate'
   // The salaried-only view (Salaried Labor page) stays limited to the super-admin;
   // other allowed emails only get the operational Labor Data views.
-  if (scope === 'only' && email !== SUPER_ADMIN) {
+  if (scope === 'only' && !access.salaried) {
     return json({ error: 'forbidden', message: 'Salaried labor is restricted.' }, 403, origin)
   }
   if (!startDate || !endDate || !re.test(startDate) || !re.test(endDate)) {

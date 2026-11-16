@@ -182,7 +182,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0240.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0242.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
@@ -243,10 +243,27 @@ Three layers, from coarse to authoritative:
 3. **Postgres RLS** is the real floor. It only knows the base `Role`, never
    `role_category`, so a regional manager is a manager at the database level.
 
+**Super admin page access** sits above all of that. kevan@washlyfe.com (`isSuperAdmin`
+in `lib/pageAccessLogic.ts`, `auth_is_super_admin()` in SQL) can grant or block any
+page for any person or permission role, Admins included, from the Team page
+(`features/settings/team/AccessEditor.tsx`). Rows live in `page_access` (migrations
+0241-0242), written only through `page_access_save()`; a person's row beats their
+role's row, and both beat everything else. The super admin is never blocked and the
+Dashboard can't be. Every page is in `ALL_PAGES` (Sidebar.tsx: the menu plus
+`EXTRA_PAGES` for pages reached by link); `pageForPath` maps a URL to its page. The
+menus use `usePageVisible` / `useVisibleNavGroups`, and every route guard in
+`routes/guards.tsx` lets a granted person through. A grant only opens the page: where
+a page's data is kept to roles or emails on the server, that check must also accept
+the grant (`auth_page_granted(page)` in RLS, `pageGranted()` from
+`_shared/page_access.ts` in edge functions). Pages whose server checks don't yet are
+listed in `features/settings/team/accessNotes.ts` (shown in the editor); take a page
+off that list once its checks honor grants. New page: add it to the nav or
+`EXTRA_PAGES` so it can be granted.
+
 **Pre-launch pages** are limited to named people by email: `RequireEmails` /
 `RequireEmailsOrRoles` on the route **and** an `emails:` list on the Sidebar
 item. To open a page up, change both, or it will show in the nav but bounce,
-or work by URL but stay hidden.
+or work by URL but stay hidden. A super admin grant opens one for a single person.
 
 ## Database & migrations
 

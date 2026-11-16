@@ -20,6 +20,7 @@
 // Secrets: REVEAL_USERNAME, REVEAL_PASSWORD, REVEAL_APP_ID.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { pageGranted } from '../_shared/page_access.ts'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
@@ -190,7 +191,11 @@ Deno.serve(async (req) => {
     const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
     const { data: u } = await userClient.auth.getUser()
     if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
-    if ((u.user.email ?? '').toLowerCase() !== ADMIN_EMAIL) return json({ error: 'forbidden' }, 403, origin)
+    // Kevan, or anyone he granted Site Visits on the Team page.
+    const admin = createClient(url, serviceKey, { auth: { persistSession: false } })
+    if ((u.user.email ?? '').toLowerCase() !== ADMIN_EMAIL && !(await pageGranted(admin, u.user.id, '/app/site-visits'))) {
+      return json({ error: 'forbidden' }, 403, origin)
+    }
   }
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
 

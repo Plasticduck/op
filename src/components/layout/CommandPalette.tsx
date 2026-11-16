@@ -2,10 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CornerDownLeft, Search } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
-import { useCompany } from '@/lib/company'
-import { pageAllowed, permRoleInList } from '@/lib/permissions'
 import { permRole } from '@/lib/rbac'
-import { NAV_GROUPS, navEmailOk, navFlagOn, navItemLabel } from '@/components/layout/Sidebar'
+import { navItemLabel, useVisibleNavGroups } from '@/components/layout/Sidebar'
 import { itInventory, type SearchHit } from '@/lib/queries/itInventory'
 import { cn } from '@/lib/utils'
 
@@ -16,7 +14,6 @@ type Row = { to: string; label: string; group: string; sub?: string }
 // the highlight; Esc closes; clicking outside also closes.
 export function CommandPalette() {
   const { profile } = useAuth()
-  const { settings } = useCompany()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -24,29 +21,11 @@ export function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
+  const groups = useVisibleNavGroups(profile ? permRole(profile.role, profile.role_category) : 'employee')
   const items = useMemo(() => {
     if (!profile) return []
-    const role = permRole(profile.role, profile.role_category)
-    const flat: Row[] = []
-    for (const g of NAV_GROUPS) {
-      if (!permRoleInList(role, g.roles)) continue
-      for (const i of g.items) {
-        if (
-          !pageAllowed(role, i.to, i.roles, {
-            rolePerms: settings.pagePermissions,
-            userId: profile.id,
-            userPerms: settings.userPermissions,
-            optInRoles: i.optIn,
-          })
-        )
-          continue
-        if (!navFlagOn(i.flag, profile)) continue
-        if (!navEmailOk(i, profile.email, role)) continue
-        flat.push({ to: i.to, label: navItemLabel(i, profile.account_id), group: g.label })
-      }
-    }
-    return flat
-  }, [profile, settings.pagePermissions, settings.userPermissions])
+    return groups.flatMap((g) => g.items.map((i): Row => ({ to: i.to, label: navItemLabel(i, profile.account_id), group: g.label })))
+  }, [profile, groups])
 
   // IT Inventory equipment, for people who can open it: searched on the server
   // (tag, name, serial, model, IP, MAC...). An exact tag or serial, which is

@@ -13,6 +13,7 @@
 // Body: { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', carWashIds?: string[] }
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { pageGranted } from '../_shared/page_access.ts'
 // deno-lint-ignore no-explicit-any
 type Any = any
 
@@ -67,7 +68,11 @@ Deno.serve(async (req) => {
     const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
     const { data: u } = await userClient.auth.getUser()
     if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
-    if ((u.user.email ?? '').toLowerCase() !== KEVAN) return json({ error: 'forbidden', message: 'Commissions is restricted.' }, 403, origin)
+    // Kevan, or anyone he granted Commissions on the Team page.
+    const admin = createClient(url, svcKey, { auth: { persistSession: false } })
+    if ((u.user.email ?? '').toLowerCase() !== KEVAN && !(await pageGranted(admin, u.user.id, '/app/commissions'))) {
+      return json({ error: 'forbidden', message: 'Commissions is restricted.' }, 403, origin)
+    }
   }
 
   let body: { start?: string; end?: string; carWashIds?: string[] } = {}

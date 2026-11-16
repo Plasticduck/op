@@ -1,9 +1,10 @@
 import { type ReactNode } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { Sidebar, NAV_GROUPS } from '@/components/layout/Sidebar'
+import { Sidebar, pageForPath } from '@/components/layout/Sidebar'
 import { useCompany } from '@/lib/company'
 import { pageAllowed } from '@/lib/permissions'
-import { permRole, type PermRole } from '@/lib/rbac'
+import { permRole } from '@/lib/rbac'
+import { PageAccessProvider, usePageAccess } from '@/lib/pageAccess'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { CommandPalette } from '@/components/layout/CommandPalette'
 import PresentationMode from '@/components/layout/PresentationMode'
@@ -43,35 +44,33 @@ const FULL_BLEED_PATTERNS = [
   /^\/app\/maintenance-inventory\/equipment\/[0-9a-f]{8}-/,
 ]
 
-// Enforce per-role page permissions on direct navigation. Maps the current path
-// to its nav page and redirects to the dashboard if that page is turned off for
-// the role. Dashboard is never restricted, so this can't loop.
+// Enforce page permissions on direct navigation. Maps the current path to its
+// page and redirects to the dashboard if that page is turned off for this person:
+// a super admin's block (page_access) first, then the role and Team page rules.
+// A super admin's grant lets the page through here; the route's own guard checks
+// the same grant. Named-people lists are left to the route guards. Dashboard is
+// never restricted, so this can't loop.
 function PagePermissionGate({ children }: { children: ReactNode }) {
   const { profile } = useAuth()
   const { settings } = useCompany()
+  const { mine, loading } = usePageAccess()
   const location = useLocation()
   if (!profile) return <>{children}</>
-  let match: { to: string; roles: PermRole[]; optIn?: PermRole[] } | null = null
-  for (const g of NAV_GROUPS) {
-    for (const i of g.items) {
-      if (location.pathname === i.to || location.pathname.startsWith(i.to + '/')) {
-        if (!match || i.to.length > match.to.length) match = { to: i.to, roles: i.roles, optIn: i.optIn }
-      }
-    }
-  }
-  if (
-    match &&
-    match.to !== '/app/dashboard' &&
-    !pageAllowed(permRole(profile.role, profile.role_category), match.to, match.roles, {
-      rolePerms: settings.pagePermissions,
-      userId: profile.id,
-      userPerms: settings.userPermissions,
-      optInRoles: match.optIn,
-    })
-  ) {
-    return <Navigate to="/app/dashboard" replace />
-  }
-  return <>{children}</>
+  const match = pageForPath(location.pathname)
+  if (!match || match.to === '/app/dashboard') return <>{children}</>
+  const over = mine(match.to)
+  if (over === true) return <>{children}</>
+  if (over === false) return <Navigate to="/app/dashboard" replace />
+  const allowed = pageAllowed(permRole(profile.role, profile.role_category), match.to, match.roles, {
+    rolePerms: settings.pagePermissions,
+    userId: profile.id,
+    userPerms: settings.userPermissions,
+    optInRoles: match.optIn,
+  })
+  if (allowed) return <>{children}</>
+  // A grant may still be loading; wait for it before turning the person away.
+  if (loading) return null
+  return <Navigate to="/app/dashboard" replace />
 }
 
 export function AppShell() {
@@ -88,6 +87,7 @@ export function AppShell() {
     // providers means a locked account never spins up realtime subscriptions.
     <BillingGate>
       <CompanyProvider>
+      <PageAccessProvider>
       <LocationProvider>
         <NotificationsProvider>
           <div className="flex h-dvh w-full bg-content text-ink">
@@ -121,6 +121,7 @@ export function AppShell() {
           </div>
         </NotificationsProvider>
       </LocationProvider>
+      </PageAccessProvider>
       </CompanyProvider>
     </BillingGate>
   )

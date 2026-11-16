@@ -18,6 +18,7 @@ import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { supabase } from '@/lib/supabase'
 import { pageAllowed } from '@/lib/permissions'
+import { usePageAccess } from '@/lib/pageAccess'
 import type { PermRole, Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
@@ -56,11 +57,14 @@ export function BottomNav({ role }: { role: PermRole }) {
 
   const available = useVisibleNavItems(role)
   const byTo = useMemo(() => new Map(available.map((i) => [i.to, i])), [available])
+  const { mine } = usePageAccess()
 
-  // The default bar: curated TABS the role can see.
+  // The default bar: curated TABS the role can see (a super admin's grant or
+  // block for the person wins).
   const defaultItems = useMemo<BarItem[]>(
     () =>
       DEFAULT_TABS.filter((t) =>
+        mine(t.to) ??
         pageAllowed(role, t.to, t.roles, {
           rolePerms: settings.pagePermissions,
           userId: profile?.id,
@@ -69,7 +73,7 @@ export function BottomNav({ role }: { role: PermRole }) {
       )
         .slice(0, MAX_FAVORITES)
         .map((t) => ({ to: t.to, label: t.label, icon: t.icon })),
-    [role, settings.pagePermissions, settings.userPermissions, profile?.id],
+    [role, settings.pagePermissions, settings.userPermissions, profile?.id, mine],
   )
 
   // The user's saved shortcuts, dropping any they can no longer see.

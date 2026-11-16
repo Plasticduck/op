@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components -- NAV_GROUPS is shared with CommandPalette as the single source of truth for nav */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -80,7 +80,9 @@ import { useAuth } from '@/lib/auth'
 import { useCompany } from '@/lib/company'
 import { isBillingHidden } from '@/lib/accountFlags'
 import { pageAllowed, permRoleInList } from '@/lib/permissions'
-import type { PermRole } from '@/lib/rbac'
+import { permRole, type PermRole } from '@/lib/rbac'
+import { usePageAccess } from '@/lib/pageAccess'
+import { SECRET_SHOPPER_EMAILS } from '@/features/secretshoppers/access'
 import { cn } from '@/lib/utils'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
 import { PURCHASE_REQUEST_EMAILS } from '@/features/purchasing/access'
@@ -754,6 +756,77 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
+// A page that can be granted or blocked on the Team page.
+export type PageDef = Pick<NavItem, 'to' | 'label' | 'roles' | 'optIn' | 'emails' | 'orRoles' | 'flag'> & { group: string }
+
+// Pages that aren't in the menu (reached by link or from inside another page) but
+// can still be granted or blocked. `roles` / `emails` mirror their route guards.
+const EXTRA_PAGES: PageDef[] = [
+  { to: '/app/secret-shoppers', label: 'Secret Shoppers', group: 'Operations - Admin', roles: ['owner'], emails: SECRET_SHOPPER_EMAILS },
+  { to: '/app/checklists/templates', label: 'Checklist Templates', group: 'Operations', roles: ['owner', 'manager'] },
+  { to: '/app/timeclock/kiosk', label: 'Time Clock Kiosk', group: 'People', roles: ['owner', 'manager'] },
+]
+
+// Every page in Operator that can be granted or blocked: the menu, then EXTRA_PAGES.
+// The Dashboard is always open (blocked pages send people there).
+export const ALL_PAGES: PageDef[] = [
+  ...NAV_GROUPS.flatMap((g) =>
+    g.items.map((i) => ({ to: i.to, label: i.label, roles: i.roles, optIn: i.optIn, emails: i.emails, orRoles: i.orRoles, flag: i.flag, group: g.label })),
+  ),
+  ...EXTRA_PAGES,
+]
+export const NAV_GROUP_LABELS = NAV_GROUPS.map((g) => g.label)
+
+// The page a path belongs to: the longest page path it starts with, so
+// /app/settings/company is Settings and /app/timeclock/kiosk is the kiosk.
+export function pageForPath(pathname: string): PageDef | null {
+  let best: PageDef | null = null
+  for (const p of ALL_PAGES) {
+    if ((pathname === p.to || pathname.startsWith(p.to + '/')) && (!best || p.to.length > best.to.length)) best = p
+  }
+  return best
+}
+
+// Whether the signed-in person can open a page (and see it in the menus). The
+// super admin's grant or block (page_access) decides first; otherwise the role's
+// pages, the Team page permissions, and any named-people list.
+export function usePageVisible() {
+  const { profile } = useAuth()
+  const { settings } = useCompany()
+  const { mine } = usePageAccess()
+  return useCallback(
+    (p: Pick<PageDef, 'to' | 'roles' | 'optIn' | 'emails' | 'orRoles' | 'flag'>, opts?: { inMenu?: boolean }): boolean => {
+      if (!profile) return false
+      if (p.to === '/app/dashboard') return true
+      if (!navFlagOn(p.flag, profile)) return false
+      if (opts?.inMenu && p.to === '/app/settings/billing' && isBillingHidden(profile.account_id)) return false
+      const over = mine(p.to)
+      if (over !== undefined) return over
+      const role = permRole(profile.role, profile.role_category)
+      return (
+        pageAllowed(role, p.to, p.roles, {
+          rolePerms: settings.pagePermissions,
+          userId: profile.id,
+          userPerms: settings.userPermissions,
+          optInRoles: p.optIn,
+        }) && navEmailOk(p, profile.email, role)
+      )
+    },
+    [profile, settings.pagePermissions, settings.userPermissions, mine],
+  )
+}
+
+// The menu groups and items the signed-in person sees. A group kept from a role
+// (e.g. Finance for employees) still shows the items granted to that person.
+export function useVisibleNavGroups(role: PermRole): NavGroup[] {
+  const visible = usePageVisible()
+  const { mine } = usePageAccess()
+  return NAV_GROUPS.map((g) => {
+    const groupOpen = permRoleInList(role, g.roles)
+    return { ...g, items: g.items.filter((i) => visible(i, { inMenu: true }) && (groupOpen || mine(i.to) === true)) }
+  }).filter((g) => g.items.length > 0)
+}
+
 const STORAGE_KEY = 'tunnelsync.navGroups'
 
 // The grouped, collapsible nav body — shared by the desktop sidebar and the
@@ -769,25 +842,10 @@ export function SidebarNav({
 }) {
   const location = useLocation()
   const { profile } = useAuth()
-  const { settings } = useCompany()
   const [query, setQuery] = useState('')
 
-  const canSee = (i: NavItem) =>
-    pageAllowed(role, i.to, i.roles, {
-      rolePerms: settings.pagePermissions,
-      userId: profile?.id,
-      userPerms: settings.userPermissions,
-      optInRoles: i.optIn,
-    }) &&
-    navFlagOn(i.flag, profile) &&
-    !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)) &&
-    navEmailOk(i, profile?.email, role)
-
-  // Only the groups + items this role (and account) can see.
-  const baseGroups = NAV_GROUPS
-    .filter((g) => permRoleInList(role, g.roles))
-    .map((g) => ({ ...g, items: g.items.filter(canSee) }))
-    .filter((g) => g.items.length > 0)
+  // Only the groups + items this person (and account) can see.
+  const baseGroups = useVisibleNavGroups(role)
 
   // Apply search filter. Match against group label OR item label. A group
   // matching its own label keeps all its items.
@@ -983,24 +1041,13 @@ export function SidebarNav({
 export type VisibleNavItem = { to: string; label: string; icon: LucideIcon; group: string }
 
 // Flat list of every nav destination the given role/account/user can see — used
-// by the mobile bottom bar (its shortcuts + the "customize" picker). Mirrors the
-// `canSee` logic in SidebarNav; keep the two in sync.
+// by the mobile bottom bar (its shortcuts + the "customize" picker). Same
+// groups and items as SidebarNav (useVisibleNavGroups).
 export function useVisibleNavItems(role: PermRole): VisibleNavItem[] {
   const { profile } = useAuth()
-  const { settings } = useCompany()
-  const visible = (i: NavItem) =>
-    pageAllowed(role, i.to, i.roles, {
-      rolePerms: settings.pagePermissions,
-      userId: profile?.id,
-      userPerms: settings.userPermissions,
-      optInRoles: i.optIn,
-    }) &&
-    navFlagOn(i.flag, profile) &&
-    !(i.to === '/app/settings/billing' && isBillingHidden(profile?.account_id)) &&
-    navEmailOk(i, profile?.email, role)
-  return NAV_GROUPS
-    .filter((g) => permRoleInList(role, g.roles))
-    .flatMap((g) => g.items.filter(visible).map((i) => ({ to: i.to, label: navItemLabel(i, profile?.account_id), icon: i.icon, group: g.label })))
+  return useVisibleNavGroups(role).flatMap((g) =>
+    g.items.map((i) => ({ to: i.to, label: navItemLabel(i, profile?.account_id), icon: i.icon, group: g.label })),
+  )
 }
 
 const COLLAPSE_KEY = 'tunnelsync.sidebarCollapsed'

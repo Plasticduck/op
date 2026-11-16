@@ -33,6 +33,8 @@ import {
   type LocationFull,
 } from '@/lib/queries/account'
 import { employees, type Employee } from '@/lib/queries/people'
+import { isSuperAdmin } from '@/lib/pageAccessLogic'
+import { RoleAccessEditor, UserAccessModal } from '@/features/settings/team/AccessEditor'
 
 // Invitations carry a fixed 72h window (DB default and resendInvitation both use
 // now() + 72h), so an invite's last-sent time is expires_at minus this TTL. Keep
@@ -73,6 +75,7 @@ export function TeamPage() {
   const [removeTarget, setRemoveTarget] = useState<AccountUser | null>(null)
   const [removeError, setRemoveError] = useState<string | null>(null)
   const [permTarget, setPermTarget] = useState<AccountUser | null>(null)
+  const superAdmin = isSuperAdmin(profile?.email)
   const [busy, setBusy] = useState(false)
 
   const locNameById = useMemo(
@@ -196,7 +199,8 @@ export function TeamPage() {
                       <span className="text-xs text-ink-subtle">You</span>
                     ) : (
                       <div className="flex justify-end gap-1">
-                        {profile?.role === 'owner' && u.role !== 'owner' && (
+                        {/* The super admin edits anyone's pages, Admins included. */}
+                        {profile?.role === 'owner' && (u.role !== 'owner' || superAdmin) && (
                           <Button variant="ghost" size="sm" onClick={() => setPermTarget(u)}>
                             Permissions
                           </Button>
@@ -357,7 +361,7 @@ export function TeamPage() {
         </section>
       )}
 
-      {profile?.role === 'owner' && <PermissionsEditor />}
+      {superAdmin ? <RoleAccessEditor /> : profile?.role === 'owner' && <PermissionsEditor />}
 
       <InviteModal
         open={inviteOpen}
@@ -392,7 +396,9 @@ export function TeamPage() {
       )}
 
       {permTarget && (
-        <UserPermissionsModal user={permTarget} onClose={() => setPermTarget(null)} onSaved={() => setPermTarget(null)} />
+        superAdmin
+          ? <UserAccessModal user={permTarget} onClose={() => setPermTarget(null)} />
+          : <UserPermissionsModal user={permTarget} onClose={() => setPermTarget(null)} onSaved={() => setPermTarget(null)} />
       )}
 
       <ConfirmDialog

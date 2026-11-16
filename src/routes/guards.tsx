@@ -4,6 +4,8 @@ import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/Button'
 import { permRole, type Role, type PermRole } from '@/lib/rbac'
+import { usePageAccess } from '@/lib/pageAccess'
+import { pageForPath } from '@/components/layout/Sidebar'
 
 function FullScreenLoader() {
   return (
@@ -56,12 +58,30 @@ export function RequireAuth() {
   return <Outlet />
 }
 
+// The super admin's grant or block for the page at the current path (page_access):
+// 'loading' while it loads, else true, false, or undefined when there's none.
+function useRouteGrant(): boolean | 'loading' | undefined {
+  const location = useLocation()
+  const { mine, loading } = usePageAccess()
+  const page = pageForPath(location.pathname)
+  if (!page) return undefined
+  const v = mine(page.to)
+  return v === undefined && loading ? 'loading' : v
+}
+
+// What a guard renders when its own rule says no: the page anyway if the super
+// admin granted it to this person, otherwise the dashboard.
+function Denied({ grant, children }: { grant: boolean | 'loading' | undefined; children: ReactNode }) {
+  if (grant === true) return <>{children}</>
+  if (grant === 'loading') return null
+  return <Navigate to="/app/dashboard" replace />
+}
+
 export function RequireRole({ allow, children }: { allow: Role[]; children: ReactNode }) {
   const { profile } = useAuth()
+  const grant = useRouteGrant()
   if (!profile) return null
-  if (!allow.includes(profile.role)) {
-    return <Navigate to="/app/dashboard" replace />
-  }
+  if (!allow.includes(profile.role)) return <Denied grant={grant}>{children}</Denied>
   return <>{children}</>
 }
 
@@ -71,10 +91,9 @@ export function RequireRole({ allow, children }: { allow: Role[]; children: Reac
 // already hides, closing the direct-URL gap.
 export function RequirePermRole({ allow, children }: { allow: PermRole[]; children: ReactNode }) {
   const { profile } = useAuth()
+  const grant = useRouteGrant()
   if (!profile) return null
-  if (!allow.includes(permRole(profile.role, profile.role_category))) {
-    return <Navigate to="/app/dashboard" replace />
-  }
+  if (!allow.includes(permRole(profile.role, profile.role_category))) return <Denied grant={grant}>{children}</Denied>
   return <>{children}</>
 }
 
@@ -99,8 +118,9 @@ export function RequireSitePerformance({ children }: { children: ReactNode }) {
 // Payroll labor is limited to a single admin (kevan@washlyfe.com) for now.
 export function RequireSuperAdmin({ children }: { children: ReactNode }) {
   const { profile } = useAuth()
+  const grant = useRouteGrant()
   if (!profile) return null
-  if ((profile.email ?? '').toLowerCase() !== 'kevan@washlyfe.com') return <Navigate to="/app/dashboard" replace />
+  if ((profile.email ?? '').toLowerCase() !== 'kevan@washlyfe.com') return <Denied grant={grant}>{children}</Denied>
   return <>{children}</>
 }
 
@@ -108,8 +128,9 @@ export function RequireSuperAdmin({ children }: { children: ReactNode }) {
 // outside the role system, since owners can't be restricted by role). Lowercase.
 export function RequireEmails({ allow, children }: { allow: string[]; children: ReactNode }) {
   const { profile } = useAuth()
+  const grant = useRouteGrant()
   if (!profile) return null
-  if (!allow.includes((profile.email ?? '').toLowerCase())) return <Navigate to="/app/dashboard" replace />
+  if (!allow.includes((profile.email ?? '').toLowerCase())) return <Denied grant={grant}>{children}</Denied>
   return <>{children}</>
 }
 
@@ -117,9 +138,10 @@ export function RequireEmails({ allow, children }: { allow: string[]; children: 
 // Manager). The page itself narrows what each one sees.
 export function RequireEmailsOrRoles({ allow, roles, children }: { allow: string[]; roles: PermRole[]; children: ReactNode }) {
   const { profile } = useAuth()
+  const grant = useRouteGrant()
   if (!profile) return null
   const ok = allow.includes((profile.email ?? '').toLowerCase()) || roles.includes(permRole(profile.role, profile.role_category))
-  if (!ok) return <Navigate to="/app/dashboard" replace />
+  if (!ok) return <Denied grant={grant}>{children}</Denied>
   return <>{children}</>
 }
 

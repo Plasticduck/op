@@ -18,6 +18,7 @@
 // Secrets: REVEAL_USERNAME, REVEAL_PASSWORD, REVEAL_APP_ID.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { pageGranted } from '../_shared/page_access.ts'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
@@ -91,7 +92,9 @@ Deno.serve(async (req) => {
   const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
   const { data: u } = await userClient.auth.getUser()
   if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
-  if (!ALLOWED_EMAILS.includes((u.user.email ?? '').toLowerCase())) {
+  // The listed people, or anyone the super admin granted Fleet Map.
+  const svc = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } })
+  if (!ALLOWED_EMAILS.includes((u.user.email ?? '').toLowerCase()) && !(await pageGranted(svc, u.user.id, '/app/fleet-map'))) {
     return json({ error: 'forbidden', message: 'The fleet map is restricted.' }, 403, origin)
   }
 
