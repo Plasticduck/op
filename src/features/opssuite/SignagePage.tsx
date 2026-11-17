@@ -211,9 +211,16 @@ function Inner({ locationId }: { locationId: string }) {
   const statusOf = (r: Row) => (r.status ?? 'ordered').toLowerCase()
   // Anything not in a terminal/known bucket counts as a new (just-placed) order.
   const isNewStatus = (s: string) => s !== 'shipped' && s !== 'completed' && s !== 'in_production' && s !== 'cancelled'
+  // The admin tracks open All Sites orders in Fulfillment only, so they stay out
+  // of New Orders and In Production. Once shipped or completed they show in those
+  // tabs as the record. The person who ordered still sees their own order.
+  const listedRows = useMemo(() => rows.filter((r) => {
+    const s = statusOf(r)
+    return !(isAdmin && r.location_id === null && s !== 'shipped' && s !== 'completed' && s !== 'cancelled')
+  }), [rows, isAdmin])
   const orderCounts = useMemo(() => {
     let neworders = 0, production = 0, shipped = 0, completed = 0, cancelled = 0
-    for (const r of rows) {
+    for (const r of listedRows) {
       const s = statusOf(r)
       if (s === 'shipped') shipped++
       else if (s === 'completed') completed++
@@ -222,15 +229,15 @@ function Inner({ locationId }: { locationId: string }) {
       else neworders++
     }
     return { new: neworders, production, shipped, completed, cancelled }
-  }, [rows])
+  }, [listedRows])
   const orderRows = useMemo(() => {
-    if (tab === 'shipped') return rows.filter((r) => statusOf(r) === 'shipped')
-    if (tab === 'completed') return rows.filter((r) => statusOf(r) === 'completed')
-    if (tab === 'production') return rows.filter((r) => statusOf(r) === 'in_production')
-    if (tab === 'cancelled') return rows.filter((r) => statusOf(r) === 'cancelled')
-    if (tab === 'new') return rows.filter((r) => isNewStatus(statusOf(r)))
+    if (tab === 'shipped') return listedRows.filter((r) => statusOf(r) === 'shipped')
+    if (tab === 'completed') return listedRows.filter((r) => statusOf(r) === 'completed')
+    if (tab === 'production') return listedRows.filter((r) => statusOf(r) === 'in_production')
+    if (tab === 'cancelled') return listedRows.filter((r) => statusOf(r) === 'cancelled')
+    if (tab === 'new') return listedRows.filter((r) => isNewStatus(statusOf(r)))
     return []
-  }, [rows, tab])
+  }, [listedRows, tab])
   const onOrdersTab = tab === 'new' || tab === 'production' || tab === 'shipped' || tab === 'completed' || tab === 'cancelled'
 
   // Grouping for the order tabs, matching the Fulfillment report's options: by
@@ -319,7 +326,7 @@ function Inner({ locationId }: { locationId: string }) {
     ['shipped', `Shipped${orderCounts.shipped ? ` (${orderCounts.shipped})` : ''}`],
     ['completed', `Completed${orderCounts.completed ? ` (${orderCounts.completed})` : ''}`],
     ...(isAdmin ? [
-      ['fulfillment', `Fulfillment${orderCounts.new ? ` (${orderCounts.new})` : ''}`],
+      ['fulfillment', `Fulfillment${prodCounts.needs ? ` (${prodCounts.needs})` : ''}`],
       ['cancelled', `Cancelled${orderCounts.cancelled ? ` (${orderCounts.cancelled})` : ''}`],
     ] as [typeof tab, string][] : []),
   ]
@@ -650,7 +657,7 @@ function Inner({ locationId }: { locationId: string }) {
                 {unfulfilled.length} order{unfulfilled.length === 1 ? '' : 's'} · {totalQty} item{totalQty === 1 ? '' : 's'} left · {groups.length} {groupWord}{groups.length === 1 ? '' : 's'} · <span className="font-medium text-ink">{prodFilterLabel}</span>
               </p>
               {groups.map((g) => (
-                <FulfillmentGroup key={g.key} group={g} groupBy={groupBy} isAdmin={isAdmin} onChangeStatus={changeStatus} onMarkCompleted={markCompleted} />
+                <FulfillmentGroup key={g.key} group={g} groupBy={groupBy} isAdmin={isAdmin} onChangeStatus={changeStatus} onMarkCompleted={markCompleted} onCancel={cancelOrder} />
               ))}
             </>
           )}
@@ -702,13 +709,15 @@ function Inner({ locationId }: { locationId: string }) {
 // active grouping is dropped (redundant), and admins can mark an order shipped or
 // completed right here — which removes it from the report on the next refresh.
 function FulfillmentGroup({
-  group, groupBy, isAdmin, onChangeStatus, onMarkCompleted,
+  group, groupBy, isAdmin, onChangeStatus, onMarkCompleted, onCancel,
 }: {
   group: { key: string; label: string; rows: Row[]; qty: number }
   groupBy: 'site' | 'item' | 'date'
   isAdmin: boolean
   onChangeStatus: (r: Row, status: string) => void
   onMarkCompleted: (r: Row, count: number) => void
+  // Same soft cancel (no email) as New Orders, since All Sites orders only show here.
+  onCancel: (r: Row) => void
 }) {
   const [open, setOpen] = useState(true)
   const showItem = groupBy !== 'item'
@@ -782,13 +791,18 @@ function FulfillmentGroup({
                       <div className="flex flex-col gap-1.5">
                         <select
                           value={(r.status ?? 'ordered').toLowerCase()}
-                          onChange={(e) => onChangeStatus(r, e.target.value)}
+                          onChange={(e) => {
+                            if (e.target.value !== 'cancelled') return onChangeStatus(r, e.target.value)
+                            if (window.confirm(`Cancel this order${r.title ? ` (${r.title})` : ''}? It moves to the Cancelled tab.`)) onCancel(r)
+                            else e.target.value = (r.status ?? 'ordered').toLowerCase()
+                          }}
                           className="w-fit rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-ink"
                         >
                           <option value="ordered">Ordered</option>
                           <option value="in_production">In Production</option>
                           <option value="shipped">Shipped</option>
                           <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
                         </select>
                         {Number(r.quantity) > 1 && <DoneCount key={`${r.id}-${doneOf(r)}`} row={r} onSave={onMarkCompleted} />}
                       </div>
