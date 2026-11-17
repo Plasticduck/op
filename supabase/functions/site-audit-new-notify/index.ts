@@ -3,9 +3,10 @@
 // photos) and texts a one-line result. Pre-launch it goes only to Kevan (his
 // request, 2026-11-17), not the old Site Audits list in email-site-audit.
 //
-// Body: { audit_id: string, resend?: boolean }. Sends once per audit: the row's
+// Body: { audit_id, resend?, smsOnly?, check? }. Sends once per audit: the row's
 // notified_at is claimed before sending, so a retry or a second tab doesn't send it
-// again; resend: true sends it again anyway.
+// again; resend: true sends it again anyway (smsOnly: just the text). check: true
+// reads back delivery from Resend and Twilio (accepted is not delivered).
 //
 // Auth: the audit's auditor, an Admin (owner) of its account, or the service role.
 // Secrets: RESEND_API_KEY (optional RESEND_FROM) for email; TWILIO_ACCOUNT_SID,
@@ -175,7 +176,7 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
 
-  let body: { audit_id?: string; resend?: boolean } = {}
+  let body: { audit_id?: string; resend?: boolean; check?: boolean; smsOnly?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
   const auditId = body.audit_id
   if (!auditId || !/^[0-9a-f-]{36}$/i.test(auditId)) return json({ error: 'bad_request' }, 400, origin)
@@ -201,6 +202,39 @@ Deno.serve(async (req) => {
   }
   if (a.status !== 'submitted') return json({ error: 'not_submitted' }, 409, origin)
 
+  // check: true reads back what happened to the last send (accepted is not delivered).
+  if (body.check) {
+    const r = a.notify_result ?? {}
+    const out: Any = { notified_at: a.notified_at }
+    const emailId = r.email?.id
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    if (emailId && resendKey) {
+      const er = await fetch(`https://api.resend.com/emails/${emailId}`, { headers: { Authorization: `Bearer ${resendKey}` } })
+      const ed = await er.json().catch(() => null)
+      out.email = { to: ed?.to, from: ed?.from, subject: ed?.subject, last_event: ed?.last_event, created_at: ed?.created_at, http: er.status, error: er.ok ? undefined : ed }
+    }
+    const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
+    const keySid = Deno.env.get('TWILIO_API_KEY_SID')
+    const keySecret = Deno.env.get('TWILIO_API_KEY_SECRET')
+    out.sms = []
+    for (const s of (r.sms ?? []) as Any[]) {
+      if (!s?.sid || !accountSid || !keySid || !keySecret) continue
+      const tr = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${s.sid}.json`, { headers: { Authorization: 'Basic ' + btoa(`${keySid}:${keySecret}`) } })
+      const td = await tr.json().catch(() => null)
+      out.sms.push({ to: td?.to, from: td?.from, status: td?.status, error_code: td?.error_code, error_message: td?.error_message, date_sent: td?.date_sent, http: tr.status })
+    }
+    // The account's recent texts (no bodies), to tell a filtered message from a blocked sender.
+    if (accountSid && keySid && keySecret) {
+      const lr = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?PageSize=15`, { headers: { Authorization: 'Basic ' + btoa(`${keySid}:${keySecret}`) } })
+      const ld = await lr.json().catch(() => null)
+      out.recent = ((ld?.messages ?? []) as Any[]).map((m) => ({
+        to: String(m.to ?? '').slice(-4), from: m.from, status: m.status, error_code: m.error_code, date: m.date_created,
+        has_link: /https?:\/\//.test(String(m.body ?? '')), chars: String(m.body ?? '').length,
+      }))
+    }
+    return json(out, 200, origin)
+  }
+
   // Claim the send, so two calls can't both send it.
   if (!body.resend) {
     const { data: claimed } = await svc.from('site_audits_v2').update({ notified_at: new Date().toISOString() }).eq('id', auditId).is('notified_at', null).select('id')
@@ -212,10 +246,10 @@ Deno.serve(async (req) => {
   const o = outcome(a, answers)
   const link = `${APP}/app/site-audits-new/${a.id}`
 
-  // ---- Email ----
-  let email: Any = { ok: false, error: 'no_key' }
+  // ---- Email ---- (smsOnly with resend keeps the earlier email result)
+  let email: Any = body.smsOnly ? (a.notify_result?.email ?? { ok: false, skipped: true }) : { ok: false, error: 'no_key' }
   const resendKey = Deno.env.get('RESEND_API_KEY')
-  if (resendKey) {
+  if (resendKey && !body.smsOnly) {
     let pdf: string | null = null
     let pdfError: string | null = null
     try { pdf = await buildPdf(svc, a, answers, site, o) } catch (e) { pdfError = e instanceof Error ? e.message : String(e) }
@@ -257,8 +291,10 @@ Deno.serve(async (req) => {
   }
 
   // ---- Text ----
+  // No link: carriers filtered the first one that had a link (Twilio 30007), while
+  // this sender's link-free texts all deliver. The email has the link.
   const reds = o.failedItems.length ? ` Red: ${o.failedItems.join(', ')}.` : ''
-  const text = `Site Audit: ${site || 'site'}. ${o.short}.${reds} By ${a.auditor_name ?? 'unknown'}. ${link}`
+  const text = `Site Audit: ${site || 'site'}. ${o.short}.${reds} By ${a.auditor_name ?? 'unknown'}. Full PDF report emailed.`
   const sms = await Promise.all(SMS_TO.map((to) => sendSms(to, text)))
 
   const anySent = email.ok || sms.some((s) => s.ok)
