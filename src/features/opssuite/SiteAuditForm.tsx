@@ -174,11 +174,14 @@ function PassFailRow({
   )
 }
 
-// The green / yellow / red buttons. Tapping the selected one clears it.
-export function StatusButtons({ value, onChange, className }: {
+// The green / yellow / red buttons. Tapping the selected one clears it. `tinted`
+// outlines each unselected button and its icon in its own colour (Site Audit NEW);
+// otherwise unselected buttons are grey.
+export function StatusButtons({ value, onChange, className, tinted }: {
   value: string | null
   onChange: (v: string | null) => void
   className?: string
+  tinted?: boolean
 }) {
   return (
     <div className={cn('flex shrink-0 gap-2', className)}>
@@ -198,9 +201,15 @@ export function StatusButtons({ value, onChange, className }: {
               // as active (picking a new one visibly clears the old).
               selected
                 ? 'text-white shadow-sm'
-                : 'border-border bg-card text-ink-subtle hover:text-ink-muted',
+                : tinted
+                  ? 'bg-card hover:bg-content'
+                  : 'border-border bg-card text-ink-subtle hover:text-ink-muted',
             )}
-            style={selected ? { backgroundColor: s.color, borderColor: s.color } : undefined}
+            style={
+              selected ? { backgroundColor: s.color, borderColor: s.color }
+              : tinted ? { borderColor: s.color, color: s.color }
+              : undefined
+            }
           >
             {s.icon}
           </button>
