@@ -25,6 +25,28 @@ export type SiteReviewPdfInput = {
   // Prints each item's help text (the prompts under it on the form, e.g. "Clean?
   // Organized?") in small grey type beneath its label.
   showHelpText?: boolean
+  // A coloured result box under the meta line (e.g. an audit's grade).
+  banner?: { title: string; detail?: string; tone: PdfTone } | null
+  // A coloured note at the right end of a section's title, by section id.
+  sectionNotes?: Record<string, { text: string; tone: PdfTone }>
+  // Prints the Pass / Warn / Fail column in green / amber / red, with this word
+  // for Warn (default "Warn").
+  colorStatus?: boolean
+  warnLabel?: string
+}
+
+export type PdfTone = 'ok' | 'warn' | 'danger' | 'muted'
+const TONE_INK: Record<PdfTone, [number, number, number]> = {
+  ok: [21, 128, 61],
+  warn: [161, 98, 7],
+  danger: [185, 28, 28],
+  muted: [110, 116, 124],
+}
+const TONE_FILL: Record<PdfTone, [number, number, number]> = {
+  ok: [220, 252, 231],
+  warn: [254, 249, 195],
+  danger: [254, 226, 226],
+  muted: [241, 243, 245],
 }
 
 function drawPhotoPlaceholder(
@@ -103,6 +125,29 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
 
   let y = topMargin + 14
 
+  if (input.banner) {
+    const { title: bTitle, detail, tone } = input.banner
+    doc.setFontSize(9.5)
+    doc.setFont('helvetica', 'normal')
+    const detailLines = detail ? (doc.splitTextToSize(detail, contentWidth - 10) as string[]) : []
+    const h = 11 + detailLines.length * 4.6
+    doc.setFillColor(...TONE_FILL[tone])
+    doc.setDrawColor(...TONE_INK[tone])
+    doc.setLineWidth(0.4)
+    doc.roundedRect(marginX, y - 2, contentWidth, h, 2, 2, 'FD')
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...TONE_INK[tone])
+    doc.text(bTitle, marginX + 5, y + 5)
+    if (detailLines.length) {
+      doc.setFontSize(9.5)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(40, 44, 52)
+      doc.text(detailLines, marginX + 5, y + 10.5)
+    }
+    y += h + 6
+  }
+
   const ensureSpace = (needed: number) => {
     if (y + needed > pageHeight - 20) {
       doc.addPage()
@@ -166,7 +211,7 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
       const ans = input.answers[item.id] as { value?: unknown; comments?: unknown; photos?: string[] } | undefined
       if (item.type === 'pass_fail') {
         const v = ans?.value
-        const pf = v === 'pass' ? 'Pass' : v === 'warn' ? 'Warn' : v === 'fail' ? 'Fail' : '-'
+        const pf = v === 'pass' ? 'Pass' : v === 'warn' ? (input.warnLabel ?? 'Warn') : v === 'fail' ? 'Fail' : '-'
         const commentsRaw = (ans?.comments as string | undefined) ?? ''
         const comments = commentsRaw.toString().trim() || '-'
         rows.push([item.label, pf, comments])
@@ -187,7 +232,17 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(11, 15, 20)
     doc.text(section.title, marginX, y)
+    const note = input.sectionNotes?.[section.id]
+    if (note) {
+      doc.setFontSize(10)
+      doc.setTextColor(...TONE_INK[note.tone])
+      doc.text(note.text, pageWidth - marginX, y, { align: 'right' })
+    }
     y += 3
+    // Status of each body row, for colouring the Pass/Fail column.
+    const rowStatus = section.items
+      .filter((it) => it.type !== 'attachment')
+      .map((it) => (it.type === 'pass_fail' ? (input.answers[it.id] as { value?: unknown } | undefined)?.value : null))
 
     autoTable(doc, {
       startY: y + 2,
@@ -208,6 +263,14 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
       // cell for its help text)...
       didParseCell: (data) => {
         if (data.section !== 'body') return
+        if (input.colorStatus && data.column.index === 1) {
+          const v = rowStatus[data.row.index]
+          const tone: PdfTone | null = v === 'pass' ? 'ok' : v === 'warn' ? 'warn' : v === 'fail' ? 'danger' : null
+          if (tone) {
+            data.cell.styles.textColor = TONE_INK[tone]
+            data.cell.styles.fontStyle = 'bold'
+          }
+        }
         const photosH = rowPhotos[data.row.index]?.blockH ?? 0
         const helpH = data.column.index === 0 ? rowHelp[data.row.index]?.h ?? 0 : 0
         if (!photosH && !helpH) return

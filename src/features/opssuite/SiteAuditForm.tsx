@@ -169,32 +169,43 @@ function PassFailRow({
         </div>
       </div>
 
-      <div className="flex shrink-0 gap-2">
-        {STATUS.map((s) => {
-          const selected = current === s.value
-          return (
-            <button
-              key={s.value}
-              type="button"
-              aria-label={s.label}
-              aria-pressed={selected}
-              onClick={() => onStatus(selected ? null : s.value)}
-              className={cn(
-                'grid size-11 place-items-center rounded-md border-2 transition',
-                // Selected: solid fill in the status color with a white icon.
-                // Unselected: clearly muted/neutral so only one choice ever reads
-                // as active (picking a new one visibly clears the old).
-                selected
-                  ? 'text-white shadow-sm'
-                  : 'border-border bg-card text-ink-subtle hover:text-ink-muted',
-              )}
-              style={selected ? { backgroundColor: s.color, borderColor: s.color } : undefined}
-            >
-              {s.icon}
-            </button>
-          )
-        })}
-      </div>
+      <StatusButtons value={current} onChange={onStatus} />
+    </div>
+  )
+}
+
+// The green / yellow / red buttons. Tapping the selected one clears it.
+export function StatusButtons({ value, onChange, className }: {
+  value: string | null
+  onChange: (v: string | null) => void
+  className?: string
+}) {
+  return (
+    <div className={cn('flex shrink-0 gap-2', className)}>
+      {STATUS.map((s) => {
+        const selected = value === s.value
+        return (
+          <button
+            key={s.value}
+            type="button"
+            aria-label={s.label}
+            aria-pressed={selected}
+            onClick={() => onChange(selected ? null : s.value)}
+            className={cn(
+              'grid size-11 place-items-center rounded-md border-2 transition',
+              // Selected: solid fill in the status color with a white icon.
+              // Unselected: clearly muted/neutral so only one choice ever reads
+              // as active (picking a new one visibly clears the old).
+              selected
+                ? 'text-white shadow-sm'
+                : 'border-border bg-card text-ink-subtle hover:text-ink-muted',
+            )}
+            style={selected ? { backgroundColor: s.color, borderColor: s.color } : undefined}
+          >
+            {s.icon}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -202,7 +213,7 @@ function PassFailRow({
 // Photo attach + thumbnail strip for one item. Uploads immediately to the
 // site-audit-photos bucket and keeps the storage paths on the answer, so large
 // phone photos never hit the old base64-in-DB size ceiling.
-function ItemPhotos({
+export function ItemPhotos({
   accountId, draftId, itemId, photos, keepPhotoFiles, onChange,
 }: {
   accountId: string

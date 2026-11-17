@@ -117,6 +117,7 @@ const CalendarPage = lz(() => import('@/features/people/calendar/CalendarPage'))
 const BreaksPage = lz(() => import('@/features/people/breaks/BreaksPage'))
 const SiteReviewsPage = lz(() => import('@/features/opssuite/SiteReviewsPage'))
 const SiteAuditsPage = lz(() => import('@/features/opssuite/SiteAuditsPage'))
+const SiteAuditsNewPage = lz(() => import('@/features/opssuite/siteauditnew/SiteAuditsNewPage'))
 const InvoicesPage = lz(() => import('@/features/opssuite/InvoicesPage'))
 const PerDiemPage = lz(() => import('@/features/opssuite/PerDiemPage'))
 const PurchaseRequestsPage = lz(() => import('@/features/purchasing/PurchaseRequestsPage'))
@@ -289,6 +290,9 @@ export const router = createBrowserRouter([
 
           { path: 'site-reviews', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive']}>{s(<SiteReviewsPage />)}</RequirePermRole> },
           { path: 'site-audits', element: mgr(<SiteAuditsPage />) },
+          // Pre-launch: Kevan only (and anyone he grants the page).
+          { path: 'site-audits-new', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<SiteAuditsNewPage />)}</RequireEmails> },
+          { path: 'site-audits-new/:id', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<SiteAuditsNewPage />)}</RequireEmails> },
           { path: 'invoices', element: tech(<InvoicesPage />) },
           { path: 'purchase-requests', element: PURCHASE_REQUEST_EMAILS ? <RequireEmails allow={PURCHASE_REQUEST_EMAILS}>{tech(<PurchaseRequestsPage />)}</RequireEmails> : tech(<PurchaseRequestsPage />) },
           { path: 'per-diem', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive', 'finance']}>{s(<PerDiemPage />)}</RequirePermRole> },

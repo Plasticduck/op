@@ -13237,6 +13237,82 @@ export type Database = {
           },
         ]
       }
+      site_audits_v2: {
+        Row: {
+          account_id: string
+          answers: Json
+          auditor_id: string | null
+          auditor_name: string | null
+          created_at: string
+          failed_sections: string[]
+          form_version: number
+          grade: string | null
+          id: string
+          location_id: string
+          safety_failed: boolean | null
+          score: number | null
+          status: string
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          answers?: Json
+          auditor_id?: string | null
+          auditor_name?: string | null
+          created_at?: string
+          failed_sections?: string[]
+          form_version?: number
+          grade?: string | null
+          id?: string
+          location_id: string
+          safety_failed?: boolean | null
+          score?: number | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          answers?: Json
+          auditor_id?: string | null
+          auditor_name?: string | null
+          created_at?: string
+          failed_sections?: string[]
+          form_version?: number
+          grade?: string | null
+          id?: string
+          location_id?: string
+          safety_failed?: boolean | null
+          score?: number | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_audits_v2_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_audits_v2_auditor_id_fkey"
+            columns: ["auditor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_audits_v2_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_daily_metrics: {
         Row: {
           account_id: string

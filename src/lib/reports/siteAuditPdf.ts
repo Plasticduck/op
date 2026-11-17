@@ -50,7 +50,7 @@ async function imageToThumb(src: string): Promise<PhotoImg | null> {
 
 // New audits keep photo storage paths on each item's answer. Resolve them to
 // embeddable thumbnails, keyed by the path (so the answers already reference them).
-async function resolveStoragePhotos(paths: string[]): Promise<Record<string, PhotoImg>> {
+export async function resolveStoragePhotos(paths: string[]): Promise<Record<string, PhotoImg>> {
   const out: Record<string, PhotoImg> = {}
   await Promise.all(
     [...new Set(paths)].map(async (p) => {
