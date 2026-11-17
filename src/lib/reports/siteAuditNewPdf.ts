@@ -11,7 +11,8 @@ import {
   itemKey,
   normalizeAnswers,
 } from '@/features/opssuite/siteauditnew/form'
-import { buildSiteReviewPdf, type PdfTone } from './siteReviewPdf'
+import { buildSiteReviewPdf, type PdfAppendix, type PdfTone } from './siteReviewPdf'
+import { dueDay, savedWorkOrders } from '@/lib/queries/siteWorkOrders'
 import { resolveStoragePhotos } from './siteAuditPdf'
 
 // One Site Audit NEW as a PDF: the grade up top, then each section with its
@@ -73,5 +74,53 @@ export async function buildSiteAuditNewPdf(audit: SiteAuditV2, logo: PdfLogo | n
     sectionNotes,
     colorStatus: true,
     warnLabel: 'Needs attention',
+    appendix: workOrdersAppendix(audit),
   })
+}
+
+const WO_PRIORITY: Record<string, { label: string; tone: PdfTone }> = {
+  HIGH: { label: 'High', tone: 'danger' },
+  MEDIUM: { label: 'Medium', tone: 'warn' },
+  LOW: { label: 'Low', tone: 'muted' },
+  NONE: { label: '-', tone: 'muted' },
+}
+const WO_STATUS: Record<string, string> = { OPEN: 'Open', IN_PROGRESS: 'In progress', ON_HOLD: 'On hold' }
+
+// The open MaintainX work orders saved when the audit was sent, as a table after
+// the sections. Same layout as the emailed PDF (site-audit-new-notify/report.ts).
+function workOrdersAppendix(audit: SiteAuditV2): PdfAppendix[] {
+  const wo = savedWorkOrders(audit.work_orders)
+  if (!wo) return []
+  const title = 'Open work orders in MaintainX'
+  const asOf = wo.fetchedAt ? `as of ${format(new Date(wo.fetchedAt), 'MMM d, yyyy, h:mm a')}` : ''
+  if ('error' in wo) return [{ title, note: { text: asOf, tone: 'muted' }, message: 'MaintainX could not be reached when this audit was sent.' }]
+  if (!wo.matched) return [{ title, note: { text: asOf, tone: 'muted' }, message: `${wo.site || 'This site'} isn't set up in MaintainX.` }]
+  const list = wo.workOrders
+  if (!list.length) return [{ title, note: { text: asOf, tone: 'muted' }, message: 'No open work orders.' }]
+  const high = list.filter((w) => w.priority === 'HIGH').length
+  const now = Date.now()
+  const contentWidth = 215.9 - 28
+  return [{
+    title,
+    note: { text: `${list.length} open${high ? ` (${high} high)` : ''}, ${asOf}`, tone: high ? 'danger' : 'muted' },
+    head: ['#', 'Priority', 'Status', 'Work order', 'Assigned to', 'Opened'],
+    widths: [15, 18, 21, contentWidth - 15 - 18 - 21 - 44 - 30, 44, 30],
+    body: list.map((w) => {
+      const days = w.createdAt ? Math.max(0, Math.floor((now - new Date(w.createdAt).getTime()) / 86_400_000)) : null
+      const due = w.dueDate ? dueDay(w.dueDate) : null
+      return [
+        w.number != null ? `#${w.number}` : '-',
+        (WO_PRIORITY[w.priority] ?? WO_PRIORITY.NONE).label,
+        WO_STATUS[w.status] ?? String(w.status),
+        `${w.title}${w.asset ? `\n${w.asset}` : ''}`,
+        w.assignees.join(', ') || 'Unassigned',
+        (w.createdAt ? `${format(new Date(w.createdAt), 'MMM d, yyyy')}\n${days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'}`}` : '-')
+          + (due ? `\n${due.getTime() < now ? 'Overdue' : 'Due'} ${format(due, 'MMM d, yyyy')}` : ''),
+      ]
+    }),
+    tones: list.map((w) => ({
+      1: (WO_PRIORITY[w.priority] ?? WO_PRIORITY.NONE).tone,
+      5: w.dueDate && dueDay(w.dueDate).getTime() < now ? 'danger' : null,
+    })),
+  }]
 }

@@ -19,6 +19,7 @@ import { Resend } from 'npm:resend@4'
 import { jsPDF } from 'npm:jspdf@4.2.1'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
 import { SECTIONS, fmtPoints, gradeTone, normalizeAnswers, renderAuditNew, sectionStatus, type Answer } from './report.ts'
+import { openWorkOrdersForSite } from '../_shared/maintainx_site.ts'
 
 // deno-lint-ignore no-explicit-any
 type Any = any
@@ -48,6 +49,8 @@ const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g,
 // spaced out the whole line), so it becomes a plain space.
 const central = (d: string | Date) =>
   new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(d)).replace(/[\u202f\u00a0]/g, ' ')
+const centralDate = (d: string | Date) =>
+  new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(d))
 
 function pngSize(b: Uint8Array) {
   return { w: (b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19], h: (b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23] }
@@ -199,11 +202,26 @@ async function buildPdf(svc: Any, audit: Any, answers: Record<string, Answer>, s
     answers,
     photoImages,
     footer: `Audited by ${audit.auditor_name ?? '-'}  -  generated ${central(new Date())}`,
+    workOrders: audit.work_orders ?? null,
+    fmtDate: centralDate,
+    fmtDateTime: (iso) => central(iso),
   })
   return {
     pdf: encodeBase64(new Uint8Array(doc.output('arraybuffer'))),
     photos: paths.map((p) => ({ path: p.split('/').slice(-2).join('/'), how: photoImages[p]?.how ?? 'missing' })),
   }
+}
+
+// One line in the email about the open work orders (the PDF has the list).
+function woLine(wo: Any, site: string): string {
+  if (!wo) return ''
+  const p = (t: string) => `<p style="margin:16px 0 0;font-size:14px;">${esc(t)}</p>`
+  if (wo.error) return p('Open work orders: MaintainX could not be reached when this was sent.')
+  if (!wo.matched) return p(`Open work orders: ${site || 'this site'} isn't set up in MaintainX.`)
+  const list: Any[] = wo.workOrders ?? []
+  if (!list.length) return p(`No open work orders at ${site || 'this site'} in MaintainX.`)
+  const high = list.filter((w) => w.priority === 'HIGH').length
+  return p(`${list.length} open work order${list.length === 1 ? '' : 's'} at ${site || 'this site'} in MaintainX${high ? ` (${high} high priority)` : ''}, listed at the end of the PDF.`)
 }
 
 async function sendSms(to: string, text: string): Promise<Any> {
@@ -260,7 +278,7 @@ Deno.serve(async (req) => {
     caller = p as Any
   }
 
-  const { data: audit } = await svc.from('site_audits_v2').select('*, location:locations(name)').eq('id', auditId).maybeSingle()
+  const { data: audit } = await svc.from('site_audits_v2').select('*, location:locations(name, maintainx_id)').eq('id', auditId).maybeSingle()
   const a = audit as Any
   if (!a || (caller && !(caller.account_id === a.account_id && (caller.id === a.auditor_id || caller.role === 'owner')))) {
     return json({ error: 'not_found' }, 404, origin)
@@ -305,8 +323,22 @@ Deno.serve(async (req) => {
   const o = outcome(a, answers)
   const link = `${APP}/app/site-audits-new/${a.id}`
 
-  // preview: true builds the emailed PDF and returns it, sending nothing.
+  // The site's open MaintainX work orders, saved on the audit the first time it's
+  // sent (right after submit), so its PDF and report keep the list as it was then.
+  // A failed try is saved too ({ error }) and tried again on the next send.
+  const needWorkOrders = a.account_id === MIGHTY_WASH && (!a.work_orders || a.work_orders.error)
+  const takeWorkOrders = async (): Promise<Any> => {
+    try {
+      return await openWorkOrdersForSite({ name: site, maintainx_id: a.location?.maintainx_id ?? null })
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e), site, fetchedAt: new Date().toISOString() }
+    }
+  }
+
+  // preview: true builds the emailed PDF and returns it, sending nothing (and
+  // saving nothing).
   if (body.preview) {
+    if (needWorkOrders) a.work_orders = await takeWorkOrders()
     const built = await buildPdf(svc, a, answers, site, o)
     return json(built, 200, origin)
   }
@@ -315,6 +347,11 @@ Deno.serve(async (req) => {
   if (!body.resend) {
     const { data: claimed } = await svc.from('site_audits_v2').update({ notified_at: new Date().toISOString() }).eq('id', auditId).is('notified_at', null).select('id')
     if (!claimed?.length) return json({ ok: true, already: true, notified_at: a.notified_at }, 200, origin)
+  }
+
+  if (needWorkOrders) {
+    a.work_orders = await takeWorkOrders()
+    await svc.from('site_audits_v2').update({ work_orders: a.work_orders }).eq('id', auditId)
   }
 
   // ---- Email ---- (smsOnly with resend keeps the earlier email result)
@@ -343,6 +380,7 @@ Deno.serve(async (req) => {
         </table>
         ${list('Failed (red)', o.failedItems, '#b91c1c')}
         ${list('Needs attention (yellow)', o.warnItems, '#a16207')}
+        ${woLine(a.work_orders, site)}
         <p style="margin:20px 0 0;font-size:14px;">${pdf ? 'The full audit is attached as a PDF, with comments and photos under each item.' : 'The PDF could not be built this time (' + esc(pdfError) + '); open the audit in Operator instead.'}</p>
         <p style="margin:16px 0 0;"><a href="${link}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-size:14px;font-weight:600;">Open in Operator</a></p>
         <p style="margin:20px 0 0;color:#888;font-size:12px;">Submitted from WashLyfe Operator.</p>

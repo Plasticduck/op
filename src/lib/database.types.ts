@@ -13256,6 +13256,7 @@ export type Database = {
           status: string
           submitted_at: string | null
           updated_at: string
+          work_orders: Json | null
         }
         Insert: {
           account_id: string
@@ -13275,6 +13276,7 @@ export type Database = {
           status?: string
           submitted_at?: string | null
           updated_at?: string
+          work_orders?: Json | null
         }
         Update: {
           account_id?: string
@@ -13294,6 +13296,7 @@ export type Database = {
           status?: string
           submitted_at?: string | null
           updated_at?: string
+          work_orders?: Json | null
         }
         Relationships: [
           {

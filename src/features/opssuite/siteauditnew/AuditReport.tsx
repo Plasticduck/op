@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, ShieldAlert, Trash2 } from 'lucide-react'
+import { ArrowLeft, FileText, ShieldAlert, Trash2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { dateTime } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
@@ -10,6 +10,8 @@ import { openPdfInNewTab } from '@/lib/reports/siteReviewPdf'
 import { loadPdfLogo } from '@/lib/pdfLogo'
 import { AUDIT_SECTIONS, gradeAudit, itemKey, normalizeAnswers, type AuditResult } from './form'
 import { RatingPill, ResultBox, SectionChip } from './parts'
+import { WorkOrderCard } from './WorkOrdersPanel'
+import { savedWorkOrders } from '@/lib/queries/siteWorkOrders'
 import { useBrandLogoUrl } from '@/lib/brandLogo'
 
 const LIST = '/app/site-audits-new'
@@ -115,7 +117,36 @@ export function AuditReport({ audit }: { audit: SiteAuditV2 }) {
           </ul>
         </section>
       ))}
+
+      <SavedWorkOrdersSection raw={audit.work_orders} />
     </div>
+  )
+}
+
+// The open MaintainX work orders saved when the audit was sent.
+function SavedWorkOrdersSection({ raw }: { raw: unknown }) {
+  const wo = savedWorkOrders(raw)
+  if (!wo) return null
+  const asOf = wo.fetchedAt ? `as of ${dateTime(wo.fetchedAt)}` : ''
+  const message = 'error' in wo ? 'MaintainX could not be reached when this audit was sent.'
+    : !wo.matched ? `${wo.site || 'This site'} isn't set up in MaintainX.`
+    : !wo.workOrders.length ? 'No open work orders.'
+    : null
+  const list = 'error' in wo ? [] : wo.workOrders
+  const high = list.filter((w) => w.priority === 'HIGH').length
+  return (
+    <section className="rounded-md border border-border bg-card px-4 pb-3 pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border pb-2">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-ink"><Wrench className="size-4 text-accent" /> Open work orders in MaintainX</h2>
+        <p className="text-xs text-ink-muted">
+          {list.length > 0 && <span className={high ? 'font-semibold text-danger' : ''}>{list.length} open{high ? ` (${high} high)` : ''} · </span>}
+          {asOf}
+        </p>
+      </div>
+      {message
+        ? <p className="mt-3 text-sm text-ink-muted">{message}</p>
+        : <ul className="mt-3 flex flex-col gap-2">{list.map((w) => <WorkOrderCard key={w.id} w={w} />)}</ul>}
+    </section>
   )
 }
 

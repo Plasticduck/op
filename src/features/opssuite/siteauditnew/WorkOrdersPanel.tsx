@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, CircleCheck, RefreshCw, TriangleAlert, Wrench, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { shortDate, timeAgo } from '@/lib/format'
-import type { MxPriority, MxStatus, MxWorkOrder } from '@/lib/queries/siteWorkOrders'
+import { dueDay, type MxPriority, type MxStatus, type MxWorkOrder } from '@/lib/queries/siteWorkOrders'
 import type { WorkOrdersState } from './useSiteWorkOrders'
 
 // The site's open MaintainX work orders, for reference while auditing: a summary
@@ -186,14 +186,7 @@ export function WorkOrdersDrawer({ open, onClose, state, siteName, onRefresh }: 
   )
 }
 
-// A due date at exactly midnight UTC is a whole day, so it's read as that calendar
-// date (in Central it would show the day before); any other time is a moment.
-function dueDay(iso: string): Date {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.0+)?Z)?$/)
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59) : new Date(iso)
-}
-
-function WorkOrderCard({ w }: { w: MxWorkOrder }) {
+export function WorkOrderCard({ w }: { w: MxWorkOrder }) {
   const p = PRIORITY[w.priority] ?? PRIORITY.NONE
   const due = w.dueDate ? dueDay(w.dueDate) : null
   const overdue = !!due && due.getTime() < Date.now()

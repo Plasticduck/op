@@ -118,6 +118,26 @@ export type RenderInput = {
   answers: Record<string, Answer>
   photoImages: Record<string, { url: string; dataUrl: string | null; fmt?: 'JPEG' | 'PNG' | 'WEBP'; w: number; h: number }>
   footer: string
+  // The site's open MaintainX work orders saved when the audit was sent
+  // (site_audits_v2.work_orders); null leaves the section off.
+  workOrders?: Any | null
+  // Date (and time) in Central, from the caller, which owns the time zone.
+  fmtDate: (iso: string) => string
+  fmtDateTime: (iso: string) => string
+}
+
+const WO_PRIORITY: Record<string, { label: string; tone: Tone }> = {
+  HIGH: { label: 'High', tone: 'danger' },
+  MEDIUM: { label: 'Medium', tone: 'warn' },
+  LOW: { label: 'Low', tone: 'muted' },
+  NONE: { label: '-', tone: 'muted' },
+}
+const WO_STATUS: Record<string, string> = { OPEN: 'Open', IN_PROGRESS: 'In progress', ON_HOLD: 'On hold' }
+
+// A due date at exactly midnight UTC is a whole day (the app reads it the same way).
+function dueDay(iso: string): Date {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.0+)?Z)?$/)
+  return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59)) : new Date(iso)
 }
 
 export function renderAuditNew(doc: Any, input: RenderInput): void {
@@ -234,6 +254,74 @@ export function renderAuditNew(doc: Any, input: RenderInput): void {
     })
     y = doc.lastAutoTable.finalY + 8
   })
+
+  // ---- Open work orders in MaintainX when the audit was sent ----
+  const wo = input.workOrders
+  if (wo) {
+    ensureSpace(24)
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(11, 15, 20)
+    doc.text('Open work orders in MaintainX', marginX, y)
+    const list: Any[] = Array.isArray(wo.workOrders) ? wo.workOrders : []
+    const high = list.filter((w) => w.priority === 'HIGH').length
+    const asOf = wo.fetchedAt ? `as of ${input.fmtDateTime(wo.fetchedAt)}` : ''
+    const noteText = wo.error || !wo.matched ? asOf : `${list.length} open${high ? ` (${high} high)` : ''}, ${asOf}`
+    doc.setFontSize(10); doc.setTextColor(...INK[high ? 'danger' : 'muted'])
+    doc.text(noteText, pageWidth - marginX, y, { align: 'right' })
+    y += 3
+    const message = wo.error ? 'MaintainX could not be reached when this audit was sent.'
+      : !wo.matched ? `${wo.site ?? 'This site'} isn't set up in MaintainX.`
+      : !list.length ? 'No open work orders.'
+      : null
+    if (message) {
+      doc.setFontSize(9.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(60, 64, 72)
+      doc.text(message, marginX, y + 5)
+      y += 12
+    } else {
+      const now = Date.now()
+      const body = list.map((w) => {
+        const days = w.createdAt ? Math.max(0, Math.floor((now - new Date(w.createdAt).getTime()) / 86_400_000)) : null
+        const opened = w.createdAt ? `${input.fmtDate(w.createdAt)}\n${days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'}`}` : '-'
+        const due = w.dueDate ? dueDay(w.dueDate) : null
+        const dueLine = due ? `\n${due.getTime() < now ? 'Overdue' : 'Due'} ${input.fmtDate(due.toISOString())}` : ''
+        return [
+          w.number != null ? `#${w.number}` : '-',
+          (WO_PRIORITY[w.priority] ?? WO_PRIORITY.NONE).label,
+          WO_STATUS[w.status] ?? String(w.status ?? '-'),
+          `${w.title}${w.asset ? `\n${w.asset}` : ''}`,
+          (w.assignees ?? []).join(', ') || 'Unassigned',
+          opened + dueLine,
+        ]
+      })
+      ;(autoTable as Any)(doc, {
+        startY: y + 2,
+        head: [['#', 'Priority', 'Status', 'Work order', 'Assigned to', 'Opened']],
+        body,
+        margin: { left: marginX, right: marginX },
+        rowPageBreak: 'avoid',
+        styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2.5, valign: 'top' },
+        headStyles: { fillColor: [11, 15, 20], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [247, 248, 250] },
+        columnStyles: {
+          0: { cellWidth: 15 },
+          1: { cellWidth: 18 },
+          2: { cellWidth: 21 },
+          3: { cellWidth: contentWidth - 15 - 18 - 21 - 44 - 30 },
+          4: { cellWidth: 44 },
+          5: { cellWidth: 30 },
+        },
+        didParseCell: (data: Any) => {
+          if (data.section !== 'body') return
+          const w = list[data.row.index]
+          if (data.column.index === 1) {
+            data.cell.styles.textColor = INK[(WO_PRIORITY[w.priority] ?? WO_PRIORITY.NONE).tone]
+            data.cell.styles.fontStyle = 'bold'
+          }
+          if (data.column.index === 5 && w.dueDate && dueDay(w.dueDate).getTime() < now) data.cell.styles.textColor = INK.danger
+        },
+      })
+      y = doc.lastAutoTable.finalY + 8
+    }
+  }
 
   doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(140, 146, 154)
   doc.text(input.footer, marginX, pageHeight - 8)

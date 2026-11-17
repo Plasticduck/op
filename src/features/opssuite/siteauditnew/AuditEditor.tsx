@@ -184,8 +184,11 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
       return
     }
     // Best effort: the audit is saved either way, but say so if nothing went out.
+    // Sending also saves the site's open work orders on the audit, so reload the
+    // report once it's done to show them.
     void siteAuditsV2.notify(audit.id).then(({ error: sendErr }) => {
       if (sendErr) window.alert('The audit was submitted, but the email and text did not go out.')
+      else onSubmitted()
     })
     onSubmitted()
   }

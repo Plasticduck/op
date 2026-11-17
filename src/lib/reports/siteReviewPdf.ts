@@ -33,6 +33,19 @@ export type SiteReviewPdfInput = {
   // for Warn (default "Warn").
   colorStatus?: boolean
   warnLabel?: string
+  // Extra tables after the sections (e.g. an audit's open work orders). `message`
+  // prints instead of a table; `tones` colours cells, per row by column index.
+  appendix?: PdfAppendix[]
+}
+
+export type PdfAppendix = {
+  title: string
+  note?: { text: string; tone: PdfTone }
+  message?: string
+  head?: string[]
+  body?: string[][]
+  widths?: number[]
+  tones?: Record<number, PdfTone | null>[]
 }
 
 export type PdfTone = 'ok' | 'warn' | 'danger' | 'muted'
@@ -309,6 +322,48 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
       },
     })
 
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
+  }
+
+  for (const ap of input.appendix ?? []) {
+    ensureSpace(24)
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(11, 15, 20)
+    doc.text(ap.title, marginX, y)
+    if (ap.note) {
+      doc.setFontSize(10)
+      doc.setTextColor(...TONE_INK[ap.note.tone])
+      doc.text(ap.note.text, pageWidth - marginX, y, { align: 'right' })
+    }
+    y += 3
+    if (ap.message || !ap.body?.length) {
+      doc.setFontSize(9.5)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(60, 64, 72)
+      doc.text(ap.message ?? '-', marginX, y + 5)
+      y += 12
+      continue
+    }
+    const widths = ap.widths ?? []
+    autoTable(doc, {
+      startY: y + 2,
+      head: ap.head ? [ap.head] : undefined,
+      body: ap.body,
+      margin: { left: marginX, right: marginX },
+      rowPageBreak: 'avoid',
+      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2.5, valign: 'top' },
+      headStyles: { fillColor: [11, 15, 20], textColor: [255, 255, 255] },
+      alternateRowStyles: { fillColor: [247, 248, 250] },
+      columnStyles: Object.fromEntries(widths.map((w, i) => [i, { cellWidth: w }])),
+      didParseCell: (data) => {
+        if (data.section !== 'body') return
+        const tone = ap.tones?.[data.row.index]?.[data.column.index]
+        if (!tone) return
+        data.cell.styles.textColor = TONE_INK[tone]
+        if (data.column.index !== ap.body![0].length - 1) data.cell.styles.fontStyle = 'bold'
+      },
+    })
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
   }
 
