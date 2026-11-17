@@ -266,7 +266,7 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
                         <p className="font-semibold text-ink">{item.label}</p>
                         {missing && <p className="text-xs font-medium text-danger">Rate this item</p>}
                       </div>
-                      <StatusButtons value={a.value} onChange={(v) => setItem(key, { value: v as Rating | null })} />
+                      <StatusButtons tinted value={a.value} onChange={(v) => setItem(key, { value: v as Rating | null })} />
                     </div>
                     <div className="mt-2 flex items-start gap-2">
                       <Comments
