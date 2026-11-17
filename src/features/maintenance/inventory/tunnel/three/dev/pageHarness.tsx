@@ -29,6 +29,9 @@ import { installFakeBackend, type FakeBackend } from './fakeBackend'
 //   unplaced=<n>   each site also has n machines that are on no drawing
 //   theme=dark
 //   lag=<ms>       how long the pretend server takes to answer (default 80)
+//   photos=fail|no_key|refused   the photo reader (From photos, Build from photos) answers
+//                  with that error instead of a drawing. Otherwise it answers after 1.5 s
+//                  (plus lag) with a made-up drawing: see fakeBackend.ts
 //
 // window.__page = { ready, backend, host(), notes, path(), go(to, state?) }: ready turns
 // true once the first drawing has been answered and drawn; backend is the pretend server
@@ -55,6 +58,7 @@ const backend = installFakeBackend({
   rank,
   lag: q.get('lag') == null ? 80 : Number(q.get('lag')) || 0,
   unplaced: Number(q.get('unplaced')) || 0,
+  photos: (['fail', 'no_key', 'refused'] as const).find((v) => v === q.get('photos')) ?? null,
 })
 document.documentElement.classList.toggle('dark', q.get('theme') === 'dark')
 

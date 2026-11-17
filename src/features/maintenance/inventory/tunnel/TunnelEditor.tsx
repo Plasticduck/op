@@ -31,6 +31,9 @@ type Props = {
   unplaced?: TunnelData['unplaced']
   siteId?: string
   siteName?: string
+  // Open on this instead of the drawing as given, as changes not saved yet (what photos of
+  // the tunnel found): Save saves it, Cancel drops it.
+  proposed?: Draft
   onClose: (saved: boolean) => void
 }
 
@@ -43,9 +46,13 @@ const SIDES: Array<{ value: TunnelSide; label: string }> = [
 ]
 const GROUPS: ShapeDef['group'][] = ['Tunnel', 'Brushes', 'Arches and applicators', 'Beside the tunnel', 'Other']
 
-export function TunnelEditor({ layout, items, assets, unplaced = [], siteId, siteName, onClose }: Props) {
+export function TunnelEditor({ layout, items, assets, unplaced = [], siteId, siteName, proposed, onClose }: Props) {
   const template = layout.is_template
-  const ed = useEditorState({ length_ft: Number(layout.length_ft), width_ft: Number(layout.width_ft), zones: layout.zones ?? [], items: tidyBelts(items) }, tidyBelts)
+  const ed = useEditorState(
+    proposed
+      ? { ...proposed, items: tidyBelts(proposed.items) }
+      : { length_ft: Number(layout.length_ft), width_ft: Number(layout.width_ft), zones: layout.zones ?? [], items: tidyBelts(items) },
+    tidyBelts, !!proposed)
   const { draft, patchItem, update, checkpoint } = ed
   const [name, setName] = useState(layout.name)
   const [sel, setSel] = useState<string | null>(null)
@@ -212,6 +219,7 @@ export function TunnelEditor({ layout, items, assets, unplaced = [], siteId, sit
         <Button variant="secondary" onClick={() => (dirty ? setConfirmLeave(true) : leave(false))} disabled={saving}><X className="size-4" /> Cancel</Button>
         <Button onClick={() => void save()} disabled={saving || !dirty}>{saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button>
       </div>
+      {proposed && <p className="rounded-md bg-accent-soft px-3 py-2 text-sm text-accent">The drawing with what your photos found, not saved yet. Change anything that's off, then save. Cancel leaves the drawing as it was.</p>}
       {error && (
         <div className="flex flex-wrap items-center gap-2">
           <ErrorNote>{error}</ErrorNote>

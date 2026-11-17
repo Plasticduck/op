@@ -24,6 +24,8 @@ the 3D view 2026-11-12 (no migration). Machines themselves are in
   whole drawing; if someone else saved first, the save is turned away.
 - **Settings > Tunnel diagrams** (directors): templates, "Set up sites" from a
   template (with a check first), edit or remove a template.
+- **From photos** (site manager and up, phones too): a few photos of the real
+  tunnel make the drawing, or correct it. See [From photos](#from-photos-tunnel-from-photos).
 
 ## 3D view
 
@@ -133,7 +135,7 @@ All under `src/features/maintenance/inventory/tunnel/`:
 
 - `TunnelPage.tsx`: the three views, the selection, the unsaved moves bar, the
   fallback to the Diagram, the showroom. `useTunnelMoves.ts`: the moves.
-  `TunnelPanel.tsx`: the side panel.
+  `TunnelPanel.tsx`: the side panel. `photos/`: From photos.
 - `view3d.ts`: the contract between the page and the 3D view (`Tunnel3DProps`):
   types and the WebGL2 probe only, so the page never pulls three.js in.
 - `Tunnel3DHost.tsx`: checks for WebGL2, loads the view's chunk lazily, reports
@@ -167,8 +169,10 @@ Start `npx vite --port 5199 --strictPort`, then:
   diagram, list, side panel, a machine's page) on a pretend server with sample
   data in memory (`three/dev/fakeBackend.ts`, which stands in for the mi_*
   database functions; no sign-in, no `.env.local`). Saving, conflicts, linking and
-  "start from a template" all work. Options (`empty=1`, `templates=0`,
-  `canEdit=0`, `rank=`, `user=`, `conflict=1`, `theme=dark`, `lag=`) and the
+  "start from a template" all work, and so does From photos: the pretend
+  `tunnel-from-photos` answers after 1.5 s with a made-up proposal
+  (`photos=fail|no_key|refused` for its errors). Options (`empty=1`, `templates=0`,
+  `canEdit=0`, `rank=`, `user=`, `conflict=1`, `theme=dark`, `lag=`, `photos=`) and the
   `window.__page` probe for scripts are in the header of
   `three/dev/pageHarness.tsx`. Opening a machine moves it to the app's own
   addresses (`/app/maintenance-inventory/...`); a reload there loads the real app,
@@ -233,6 +237,91 @@ Zones become the site's zones, and machines with no zone get the zone of the sha
 they landed on, with their components. A check (`p_commit false`) runs everything
 and rolls it back, so the report is exact. One site is a site manager's job; several
 at once needs a director.
+
+## From photos (`tunnel-from-photos`)
+
+**Using it.** On the Tunnel page, someone who can edit the site's drawing picks
+**Build from photos** (no drawing yet, beside the template buttons) or **From
+photos** (in the toolbar once there is one). They add up to 12 photos (4 to 8 is
+right: from the entrance looking in, from the exit looking back, along each side,
+the equipment room if it's on the drawing), may say where each was taken from,
+and may give the tunnel's or the conveyor's length for a truer scale. **Analyze**
+takes a minute or two. What comes back is drawn in the dialog to accept:
+
+- No drawing yet: the whole drawing, every machine where it stands, most linked to
+  the site's machine of its type. **Save drawing** saves it.
+- A drawing already: only corrections. A shape the photos place somewhere else
+  (more than half a foot off) moves and takes the zone band it lands in; one they
+  show bigger or smaller is resized; a shape with no machine can be linked (a link
+  someone made is never changed); a machine missing from the drawing is added; a
+  shape the photos show is gone is listed with the reason, ticked, and removed only
+  if left ticked. Every shape the answer doesn't change stays exactly as it was,
+  and so do the zones; the tunnel's length or width changes only when more than a
+  foot off. A conveyor the photos show as the other type changes the way the
+  editor's Conveyor type does. **Save changes** saves it; **Review in the editor**
+  (wide screens) opens the editor on it as unsaved changes, where Save keeps it and
+  Cancel drops it.
+
+Shapes it wasn't sure of are named, and the model's notes (the scale it used, what
+it couldn't see) are listed. Unsaved moves are part of what is saved (the dialog
+says how many), and are cleared after it, as after the editor.
+
+The function only reads the saved drawing, and its answer repeats most of it. So
+the dialog keeps the saved drawing as it was when **Analyze** was pressed, and a
+reading that repeats that (within half a foot, for each of x, y, the sizes, the
+conveyor type and the tunnel's length and width) changes nothing: whatever has
+happened to the shape since stands. That covers this person's unsaved moves, and
+someone else's save brought in by **Reload** after a clash (their moves and
+deletions are kept; a shape the photos placed that they deleted stays deleted and
+is named). With nothing changed since, the plan is the same as without it.
+
+The drawing can also appear or go while the dialog is open. A new drawing can't be
+saved over one someone else made first: the page loads theirs and the dialog offers
+**Analyze again** with the same photos, as corrections. When the answer itself is
+already for the drawing as it now is (the drawing was made or deleted while the
+photos were read), the page loads it and the answer is used as it is. `no_key` and
+`forbidden` errors offer Close, not Try again.
+
+**Data flow.** The page turns each photo into a JPEG no more than 1568 px on its
+long side (`photos/preparePhoto.ts`, EXIF turn applied; HEIC a desktop browser
+can't open is turned away with a note) and sends them, with the shape kinds
+(`SHAPES`) and, with no drawing yet, the standard template as a starting point, to
+the `tunnel-from-photos` edge function (`miTunnel.fromPhotos`). The function checks
+the person can edit the site's drawing, reads the drawing and the site's machines
+itself, asks Claude, and answers with a proposal in the drawing's own feet: each
+item names the existing shape it is (`ref`) or none, and its machine (checked to be
+the site's). **Photos are never stored**: they go to the function and on to Claude
+and are dropped. Nothing is written until the person saves, which goes through
+`mi_tunnel_save` like the editor (the drawing's version is checked, so a save
+someone else beat says so and offers Reload, see above). The contract types are in
+`lib/queries/miTunnel.ts` and the function's `plan.ts`, kept the same; the merge
+from proposal to saved drawing is `photos/mergeProposal.ts` (no React), the dialog
+`photos/PhotosDialog.tsx`. Limits, both sides: 1 to 12 photos, each at most
+1,600,000 base64 characters, the whole request at most 14 MB, known lengths 20 to
+400 ft.
+
+**The function** (`supabase/functions/tunnel-from-photos/`: `index.ts` is the HTTP
+side, `plan.ts` the prompt, schema, request checks and the tidy-up of the answer,
+all of which also run under Node). It runs as the caller (JWT verification on,
+`mi_tunnel_get` must say `can_edit`), and its only secret is `ANTHROPIC_API_KEY`
+(503 `no_key` without it). Model `claude-opus-5-5`, effort `medium`, structured
+JSON output, streamed, `max_tokens` 32000, with the server-side fallback beta and
+one retry without it if the API turns that down. With no drawing yet it starts
+Claude from the account's first template that has shapes, else the standard
+template the page sent. Once the checks pass it answers 200 at once and sends a
+space every 10 s, then the JSON, because Supabase drops a request that is silent
+for 150 s. Claude gets about 370 s from the start of the request, which needs a
+paid plan's 400 s limit; past it the answer is `too_long`. A request the platform
+cuts off shows "The answer was cut off" on the page. Claude names shapes and
+machines by short handles (`S1`, `M1`) that the function maps back to real ids,
+so a proposal only ever holds ids from the site. The tidy-up links each machine to
+at most one shape (never to a room or label), keeps a corrected conveyor's type
+unless the photos clearly show the other, gives a shape read with less than high
+confidence its drawn numbers back when within a foot, applies a known tunnel or
+conveyor length outright, and clamps every number. Each request logs one line
+(mode, photo count, time, result, token counts, how long thinking took), never
+the photos. Deploy: `npx supabase functions deploy tunnel-from-photos
+--project-ref ppwjqifyyihesuoubixk --use-api`.
 
 ## The standard template
 

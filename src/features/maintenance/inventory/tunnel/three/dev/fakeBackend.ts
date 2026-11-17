@@ -1,7 +1,8 @@
 import type { AssetRow, LabelSetup, MiMe, MiRefs } from '@/lib/queries/maintenanceInventory'
 import type { EquipmentDetail, EquipmentInput, EquipmentStatus } from '@/lib/queries/miEquipment'
-import type { ApplyReport, TemplateList, TunnelAsset, TunnelData, TunnelItem, TunnelLayout, TunnelSave } from '@/lib/queries/miTunnel'
+import { PHOTO_LIMITS, type ApplyReport, type PhotoProposal, type PhotoProposalItem, type PhotosRequest, type TemplateList, type TunnelAsset, type TunnelData, type TunnelItem, type TunnelLayout, type TunnelSave, type TunnelSide } from '@/lib/queries/miTunnel'
 import { supabase } from '@/lib/supabase'
+import { conveyorType } from '../../conveyorType'
 import { EXPRESS_TEMPLATE_NAME, expressTemplate } from '../../expressTemplate'
 import { sampleTunnel } from './fixtures'
 
@@ -27,6 +28,8 @@ export type FakeOptions = {
   // How many machines each site has that are on no drawing (the page's unplaced list).
   // None by default: the sample draws every machine it has.
   unplaced?: number
+  // The photo reader (tunnel-from-photos) answers with this error instead of a drawing.
+  photos?: 'fail' | 'no_key' | 'refused' | null
 }
 
 // The machines unplaced adds, in turn.
@@ -458,7 +461,146 @@ export function installFakeBackend(opts: FakeOptions) {
     return q
   }
 
+  // ---- The photo reader (edge function tunnel-from-photos) ------------------------------
+  // What Claude might make of the photos, made up from what this pretend server holds (the
+  // photos themselves are only counted). With no drawing: the typical tunnel the page sent,
+  // a few machines a little off where it has them, most linked to the site's machine of
+  // their type, the rooms not seen. With one: the drawing with four shapes moved 2 to 4 ft,
+  // a foam arch added (the one it isn't sure of), the Van High said to be gone. It checks
+  // the request as the real one does. photos=fail|no_key|refused answers with that error.
+  type FnAnswer = { data: unknown; error: unknown }
+  // As supabase-js hands back a non-2xx answer: the Response on the error's context.
+  const fnError = (status: number, error: string, message: string): FnAnswer => ({
+    data: null,
+    error: Object.assign(new Error('Edge Function returned a non-2xx status code'), {
+      name: 'FunctionsHttpError', context: new Response(JSON.stringify({ error, message }), { status, headers: { 'Content-Type': 'application/json' } }),
+    }),
+  })
+
+  function createProposal(site: string, body: PhotosRequest, seen: (k: number) => number[]): PhotoProposal {
+    const t = expressTemplate()
+    const start = body.prior ?? { length_ft: t.length_ft ?? 134, width_ft: t.width_ft ?? 16, zones: t.zones ?? [], items: t.items ?? [] }
+    const here = [...machines.values()].filter((m) => m.site === site && m.status !== 'retired')
+    const backroom = (zone: string | null) => zone === 'Equipment room' || zone === 'Vacuums'
+    return {
+      mode: 'create',
+      length_ft: body.known?.length_ft ?? 138,
+      width_ft: start.width_ft,
+      zones: start.zones,
+      items: start.items.map((i, k): PhotoProposalItem => {
+        // The Van High stays unlinked: "most", not all.
+        const m = i.match_type && i.match_type !== 'Van High' ? here.find((x) => x.type === i.match_type) : undefined
+        return {
+          ref: null, kind: i.kind, label: i.label, x_ft: i.x_ft + (k % 4 === 1 ? 1.5 : k % 4 === 3 ? -1 : 0), y_ft: i.y_ft, w_ft: i.w_ft, h_ft: i.h_ft,
+          side: i.side as TunnelSide, zone: i.zone, asset_id: m?.id ?? null, match_type: i.match_type, conveyor_type: i.kind === 'conveyor' ? 'chain' : null,
+          confidence: i.label === 'Tire Shine PS' ? 'low' : backroom(i.zone) ? 'medium' : 'high', photos: backroom(i.zone) ? [] : seen(k),
+        }
+      }),
+      removed: [],
+      notes: [
+        body.known?.length_ft ? `Scaled to the ${body.known.length_ft} ft tunnel length you gave.` : 'Scaled from the conveyor and the arch spacing: about 138 ft from entrance to exit.',
+        "The equipment room and the vacuums weren't in any photo, so they're where a typical tunnel has them.",
+      ],
+    }
+  }
+
+  function updateProposal(d: Drawing, seen: (k: number) => number[], photos: number): PhotoProposal {
+    const moved: Record<string, [number, number]> = { 'Wrap DS1': [3, 0], 'Top Brush 1': [-2, 0], 'Short Brush': [2.5, 0], 'Gloss Boss PS': [3.5, -0.8] }
+    const gone = d.items.find((i) => i.label === 'Van High')
+    const items: PhotoProposalItem[] = d.items.filter((i) => i.side !== 'outside' && i.id !== gone?.id).map((i, k) => {
+      const [dx, dy] = moved[i.label] ?? [0, 0]
+      return {
+        ref: i.id, kind: i.kind, label: i.label, x_ft: Number(i.x_ft) + dx, y_ft: Number(i.y_ft) + dy, w_ft: Number(i.w_ft), h_ft: Number(i.h_ft), side: i.side,
+        zone: i.zone, asset_id: i.asset_id, match_type: i.match_type, conveyor_type: i.kind === 'conveyor' ? conveyorType(i.props) : null, confidence: 'high', photos: seen(k),
+      }
+    })
+    items.push({
+      ref: null, kind: 'arch', label: 'Triple Foam', x_ft: 83, y_ft: 0, w_ft: 1.5, h_ft: 16, side: 'both', zone: 'Rinse and protect',
+      asset_id: null, match_type: null, conveyor_type: null, confidence: 'low', photos: [Math.min(2, photos)],
+    })
+    // A machine at the site on no drawing (unplaced=n) is found in the equipment room.
+    const linked = new Set(d.items.map((i) => i.asset_id))
+    const spare = [...machines.values()].find((m) => m.site === d.layout.location_id && !m.parent_id && !linked.has(m.id))
+    if (spare) {
+      items.push({
+        ref: null, kind: 'equipment', label: spare.type ?? 'Equipment', x_ft: 71, y_ft: 35, w_ft: 8, h_ft: 6, side: 'outside', zone: 'Equipment room',
+        asset_id: spare.id, match_type: spare.type ?? null, conveyor_type: null, confidence: 'medium', photos: [photos],
+      })
+    }
+    return {
+      mode: 'update', length_ft: Number(d.layout.length_ft), width_ft: Number(d.layout.width_ft), zones: d.layout.zones, items,
+      removed: gone ? [{ ref: gone.id, reason: "Neither side's photos show a tall brush between the short brush and the second wraps." }] : [],
+      notes: [
+        'Scaled from the conveyor, about 140 ft from the roller up to the roller down.',
+        "The vacuums weren't in the photos, so they're left as they are.",
+        'The second top brush is partly hidden behind the first in the exit photo, so its place is a best guess.',
+      ],
+    }
+  }
+
+  function photosAnswer(body: PhotosRequest): FnAnswer {
+    if (opts.photos === 'no_key') return fnError(503, 'no_key', 'ANTHROPIC_API_KEY is not set.')
+    if (opts.photos === 'fail') return fnError(502, 'ai_failed', 'Claude answered 529 (overloaded).')
+    // The real one sends spaces while it waits, so a later error comes in a 200, as text.
+    if (opts.photos === 'refused') return { data: `  \n ${JSON.stringify({ error: 'refused', message: 'The model declined to read these photos.' })}`, error: null }
+    const bad = (message: string) => fnError(400, 'bad_request', message)
+    const photos = Array.isArray(body.photos) ? body.photos : []
+    if (photos.length < 1 || photos.length > PHOTO_LIMITS.photos) return bad(`Send 1 to ${PHOTO_LIMITS.photos} photos.`)
+    const big = photos.findIndex((p) => p.media_type !== 'image/jpeg' || typeof p.data !== 'string' || !p.data || p.data.length > PHOTO_LIMITS.chars || p.data.startsWith('data:'))
+    if (big >= 0) return bad(`Photo ${big + 1} is too large, or isn't a JPEG.`)
+    if (JSON.stringify(body).length > PHOTO_LIMITS.body) return bad('The photos are too large together. Send fewer.')
+    for (const v of [body.known?.length_ft, body.known?.conveyor_ft]) {
+      if (v != null && (v < PHOTO_LIMITS.minFt || v > PHOTO_LIMITS.maxFt)) return bad(`A length must be between ${PHOTO_LIMITS.minFt} and ${PHOTO_LIMITS.maxFt} ft.`)
+    }
+    if (!Array.isArray(body.catalog) || body.catalog.length === 0) return bad('The list of shapes is missing.')
+    const site = SITES.find((s) => s.id === body.site_id)
+    if (!site || opts.rank < 2) return fnError(403, 'forbidden', "You can't change this site's drawing.")
+    const d = drawingFor(site.id, num(body.tunnel_no, 1))
+    const seen = (k: number) => [1 + (k % photos.length)]
+    return {
+      data: { proposal: d ? updateProposal(d, seen, photos.length) : createProposal(site.id, body, seen), model: 'claude-dev-fake', usage: { input_tokens: 1600 * photos.length, output_tokens: 2400 } },
+      error: null,
+    }
+  }
+
   // ---- Wrapping the client ------------------------------------------------------------
+  // supabase.functions makes a new client each time it is read: the fake one is set on the
+  // instance, over that getter. Any other function goes to the real one.
+  const fns = supabase.functions
+  type Invoke = typeof fns.invoke
+  const invoke = (name: string, o?: Parameters<Invoke>[1]): Promise<FnAnswer> => {
+    if (name !== 'tunnel-from-photos') return fns.invoke(name, o)
+    const body = wire(o?.body) as unknown as PhotosRequest
+    const signal = o?.signal ?? null
+    // What was sent, without the photos themselves: their view, size and whether they are
+    // bare base64 JPEG (it starts /9j/).
+    const sent = {
+      site_id: body.site_id, tunnel_no: body.tunnel_no, known: body.known ?? null, catalog: body.catalog?.length ?? 0, prior: !!body.prior,
+      photos: (body.photos ?? []).map((p) => ({ view: p.view, chars: p.data?.length ?? 0, jpeg: typeof p.data === 'string' && p.data.startsWith('/9j/') })),
+    }
+    return new Promise<FnAnswer>((resolve) => {
+      // An abort after the answer is in does nothing, as with a real fetch: the page aborts
+      // the last request each time it asks again, or closes.
+      let answered = false
+      const timer = window.setTimeout(() => {
+        answered = true
+        const out = photosAnswer(body)
+        const err = out.error as { context?: Response } | null
+        calls.push({ name: 'fn:tunnel-from-photos', args: sent, error: err ? `HTTP ${err.context?.status ?? '?'}` : typeof out.data === 'string' ? 'error in the body' : null })
+        resolve(out)
+        onAnswer(name)
+      }, 1500 + opts.lag)
+      // As supabase-js does when the fetch is aborted.
+      signal?.addEventListener('abort', () => {
+        if (answered) return
+        window.clearTimeout(timer)
+        calls.push({ name: 'fn:tunnel-from-photos', args: sent, error: 'cancelled' })
+        resolve({ data: null, error: Object.assign(new Error('Failed to send a request to the Edge Function'), { name: 'FunctionsFetchError', context: new DOMException('Aborted', 'AbortError') }) })
+      })
+    })
+  }
+  Object.defineProperty(supabase, 'functions', { configurable: true, value: new Proxy(fns, { get: (t, k) => (k === 'invoke' ? invoke : Reflect.get(t, k)) }) })
+
   const client = supabase as unknown as { rpc: Rpc; from: (name: string) => unknown }
   client.from = table
   const real = client.rpc.bind(supabase)

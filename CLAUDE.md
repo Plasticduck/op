@@ -32,7 +32,8 @@ but not what RLS allows. See **Access control** below.
 - **AI:** Claude via edge functions: `ask-operator` (Operator AI), `generate-insights`,
   `suggest-schedule`, `suggest-social-post`, `analyze-market-deals`,
   `verify-checklist-photo`, `extract-drb-gsr`, `invoice-inbound`,
-  `fetch-competitor-data`, `classify-work-order`. Model id lives in each
+  `fetch-competitor-data`, `classify-work-order`, `tunnel-from-photos` (a tunnel
+  drawing from photos, on `claude-opus-5-5`). Model id lives in each
   function; default `claude-sonnet-4-6` (`ask-operator` also honors an
   `ANTHROPIC_MODEL` secret; `classify-work-order` uses `claude-opus-5-5`).
   Operator AI also reads FlexWash: `flexwash_call` / `flexwash_describe` over every

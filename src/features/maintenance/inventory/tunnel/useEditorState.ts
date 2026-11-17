@@ -42,9 +42,11 @@ function reduce(s: State, a: Action): State {
 }
 
 // tidy, for rules the drawing must always keep, runs over the items after every change and
-// in the same step, so one undo takes back both. It must be a stable function.
-export function useEditorState(initial: Draft, tidy?: (items: TunnelItem[]) => TunnelItem[]) {
-  const [s, dispatch] = useReducer(reduce, { draft: initial, past: [], future: [], dirty: false })
+// in the same step, so one undo takes back both. It must be a stable function. dirty starts
+// the draft as unsaved changes (one the photos proposed, say): it can be saved as it is,
+// and undo can't step back past it.
+export function useEditorState(initial: Draft, tidy?: (items: TunnelItem[]) => TunnelItem[], dirty = false) {
+  const [s, dispatch] = useReducer(reduce, { draft: initial, past: [], future: [], dirty })
   const update = useCallback((fn: (d: Draft) => Draft, record = true) => dispatch({
     t: 'apply', record,
     fn: (d) => {

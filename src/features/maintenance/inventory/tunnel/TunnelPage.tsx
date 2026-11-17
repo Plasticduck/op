@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useBlocker, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { Box, ChevronDown, ChevronRight, LayoutList, Loader2, Map as MapIcon, Pencil, RotateCw, Save, Sparkles, Undo2, type LucideIcon } from 'lucide-react'
+import { Box, Camera, ChevronDown, ChevronRight, LayoutList, Loader2, Map as MapIcon, Pencil, RotateCw, Save, Sparkles, Undo2, type LucideIcon } from 'lucide-react'
 import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -16,12 +16,14 @@ import { ApplyTemplateDialog } from './ApplyTemplateDialog'
 import { expressTemplate } from './expressTemplate'
 import type { Orientation } from './geometry'
 import { NotLinked } from './NotLinked'
+import { PhotosDialog } from './photos/PhotosDialog'
 import { shapeFor } from './shapes'
 import { Tunnel3DHost } from './Tunnel3DHost'
 import { DiagramLegend, ToneSquare, TunnelDiagram } from './TunnelDiagram'
 import { TunnelEditor } from './TunnelEditor'
 import { TunnelPanel } from './TunnelPanel'
 import { HEAT_TONES, heatStep, maxCarsOf, toneFor, type ColorBy, type Tone } from './tones'
+import type { Draft } from './useEditorState'
 import { useTunnelMoves, type TunnelMoves } from './useTunnelMoves'
 import type { Tunnel3DFail } from './view3d'
 
@@ -95,7 +97,12 @@ export default function TunnelPage() {
   // In 3D the machine's card sits in the canvas; the side panel opens only when asked for.
   const [detailsFor, setDetailsFor] = useState<string | null>(null)
   const [switching, setSwitching] = useState<{ site?: string; tunnel?: string } | null>(null)
+  const [photos, setPhotos] = useState(false)
+  // What the photos found, opened in the editor to look over before it is saved.
+  const [proposed, setProposed] = useState<Draft | null>(null)
   const editing = params.get('edit') === '1'
+  // It belongs to that one visit to the editor, however the editor is left.
+  useEffect(() => { if (!editing) setProposed(null) }, [editing])
   // What isn't linked, listed under the status line. In the address so a link (the
   // template report's, say) can open it, and so it is open again coming back from a machine.
   const listOpen = params.get('unlinked') === '1'
@@ -229,6 +236,7 @@ export default function TunnelPage() {
     select(downShapes[(k + 1) % downShapes.length].id)
   }
   const editDrawing = () => { setMoveMode(false); setParam({ edit: '1', item: null }) }
+  const openPhotos = () => { setMoveMode(false); setPhotos(true) }
   // A shape picked from the list opens where it can be linked: in 3D that is the side
   // panel, which otherwise waits to be asked for. The 3D view flies to it either way.
   const pickUnlinked = (id: string) => (view === '3d' ? showDetails(id) : select(id))
@@ -259,9 +267,10 @@ export default function TunnelPage() {
     // there saves them too.
     return (
       <TunnelEditor
-        layout={data.layout} items={items} assets={data.assets} unplaced={data.unplaced} siteId={site} siteName={data.site.name}
+        layout={data.layout} items={items} assets={data.assets} unplaced={data.unplaced} siteId={site} siteName={data.site.name} proposed={proposed ?? undefined}
         onClose={(saved) => {
           setParam({ edit: null })
+          setProposed(null)
           if (saved) { moves.clear(); void load() }
         }} />
     )
@@ -307,6 +316,10 @@ export default function TunnelPage() {
             {data.can_edit && !narrow && (
               <Button variant="secondary" size="sm" onClick={editDrawing}><Pencil className="size-4" /> Edit drawing</Button>
             )}
+            {/* Phones too: they are where the photos are taken. */}
+            {data.can_edit && (
+              <Button variant="secondary" size="sm" onClick={openPhotos}><Camera className="size-4" /> From photos</Button>
+            )}
           </>
         )}
       </div>
@@ -318,11 +331,11 @@ export default function TunnelPage() {
         <>
           <Showroom key={data.templates[0]?.id ?? 'standard'} templateId={data.templates[0]?.id ?? null} />
           <EmptyState icon={MapIcon} title={`No tunnel diagram for ${data.site.name} yet`}
-            description={data.templates.length > 0
+            description={`${data.templates.length > 0
               ? 'Start from a template. Each shape links to this site\'s machine of the same type, and you can move things to match the real tunnel afterwards.'
               : data.can_edit_templates
                 ? 'There are no templates yet. Create the standard express tunnel (built from the machines MaintainX lists at every Mighty Wash site), then set this site up from it.'
-                : 'There are no templates yet. A corporate maintenance director or admin can create one.'}
+                : 'There are no templates yet. A corporate maintenance director or admin can create one.'}${data.can_edit ? ' Or build it from a few photos of the tunnel.' : ''}`}
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 {data.can_edit && data.templates.map((t) => (
@@ -330,6 +343,11 @@ export default function TunnelPage() {
                 ))}
                 {data.can_edit_templates && data.templates.length === 0 && (
                   <Button disabled={creating} onClick={() => void createStandard()}>{creating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />} Create the standard template</Button>
+                )}
+                {data.can_edit && (
+                  <Button variant={data.templates.length > 0 || data.can_edit_templates ? 'secondary' : 'primary'} onClick={openPhotos}>
+                    <Camera className="size-4" /> Build from photos
+                  </Button>
                 )}
               </div>
             } />
@@ -409,6 +427,27 @@ export default function TunnelPage() {
       {applying && data && (
         <ApplyTemplateDialog source={applying} sites={[{ id: site, name: data.site.name, has: !!data.layout }]} preselect={[site]}
           onClose={() => setApplying(null)} onDone={() => void load()} />
+      )}
+
+      {/* Given the drawing as it looks now, unsaved moves included: a save from here saves
+          them too, so they are cleared after it, as after the editor's. */}
+      {photos && data && (
+        <PhotosDialog siteId={site} siteName={data.site.name} tunnelNo={tunnelNo} tunnelName={data.tunnels.find((t) => t.tunnel_no === tunnelNo)?.name}
+          layout={data.layout} items={items} saved={moves.saved} assets={data.assets} unplaced={data.unplaced} canReview={!narrow}
+          onClose={() => setPhotos(false)}
+          onSaved={() => {
+            notify(data.layout ? 'Saved the changes from your photos.' : 'Saved the drawing from your photos.')
+            setPhotos(false)
+            moves.clear()
+            void load()
+          }}
+          onReload={load}
+          onReview={(draft) => {
+            setPhotos(false)
+            setProposed(draft)
+            setMoveMode(false)
+            setParam({ edit: '1', item: null })
+          }} />
       )}
 
       {moves.count > 0 && <LeaveGuard count={moves.count} />}
