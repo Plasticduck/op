@@ -24,8 +24,8 @@ the 3D view 2026-11-12 (no migration). Machines themselves are in
   whole drawing; if someone else saved first, the save is turned away.
 - **Settings > Tunnel diagrams** (directors): templates, "Set up sites" from a
   template (with a check first), edit or remove a template.
-- **From photos** (site manager and up, phones too): a few photos of the real
-  tunnel make the drawing, or correct it. See [From photos](#from-photos-tunnel-from-photos).
+- **From photos** (site manager and up, phones too): photos of the real tunnel,
+  up to 600, make the drawing, or correct it. See [From photos](#from-photos-tunnel-from-photos).
 
 ## 3D view
 
@@ -171,7 +171,8 @@ Start `npx vite --port 5199 --strictPort`, then:
   database functions; no sign-in, no `.env.local`). Saving, conflicts, linking and
   "start from a template" all work, and so does From photos: the pretend
   `tunnel-from-photos` answers after 1.5 s with a made-up proposal
-  (`photos=fail|no_key|refused` for its errors). Options (`empty=1`, `templates=0`,
+  (`photos=fail|no_key|refused` for its errors), and its entry in `backend.calls`
+  records each photo's length, JPEG size and visual tokens. Options (`empty=1`, `templates=0`,
   `canEdit=0`, `rank=`, `user=`, `conflict=1`, `theme=dark`, `lag=`, `photos=`) and the
   `window.__page` probe for scripts are in the header of
   `three/dev/pageHarness.tsx`. Opening a machine moves it to the app's own
@@ -242,11 +243,22 @@ at once needs a director.
 
 **Using it.** On the Tunnel page, someone who can edit the site's drawing picks
 **Build from photos** (no drawing yet, beside the template buttons) or **From
-photos** (in the toolbar once there is one). They add up to 12 photos (4 to 8 is
-right: from the entrance looking in, from the exit looking back, along each side,
-the equipment room if it's on the drawing), may say where each was taken from,
-and may give the tunnel's or the conveyor's length for a truer scale. **Analyze**
-takes a minute or two. What comes back is drawn in the dialog to accept:
+photos** (in the toolbar once there is one). They add photos (from the entrance
+looking in, from the exit looking back, along each side, the equipment room if it's
+on the drawing), may say where each was taken from, and may give the tunnel's or the
+conveyor's length. More photos and a known length give a truer scale. One reading
+takes up to 600 photos, the most Claude takes in one request; picking more keeps the
+first 600 and says how many were left out. With many photos some or all are sent
+smaller, and once one is, the dialog says so. Adding a photo makes it ready to send
+as well, so adding many takes a while: "Adding photos: 37 of 150" counts them, and
+hundreds of camera photos on a phone take minutes (see Data flow for times), with the
+screen kept on. **Analyze** then sends them; only photos whose share changed since
+(more added, or many removed) are made again first ("Getting photos ready: 37 of
+150"). The reading takes a minute or two, longer with many photos. Cancel while it
+gets them ready or reads them stops it and goes back to the photos, nothing sent.
+Once photos are added, Escape, a tap outside the dialog and its X ask first ("Close
+and lose the 150 photos you added?", or on a result "Close without saving?"); Cancel
+on the photos closes at once. What comes back is drawn in the dialog to accept:
 
 - No drawing yet: the whole drawing, every machine where it stands, most linked to
   the site's machine of its type. **Save drawing** saves it.
@@ -282,13 +294,58 @@ already for the drawing as it now is (the drawing was made or deleted while the
 photos were read), the page loads it and the answer is used as it is. `no_key` and
 `forbidden` errors offer Close, not Try again.
 
-**Data flow.** The page turns each photo into a JPEG no more than 1568 px on its
-long side (`photos/preparePhoto.ts`, EXIF turn applied; HEIC a desktop browser
-can't open is turned away with a note) and sends them, with the shape kinds
-(`SHAPES`) and, with no drawing yet, the standard template as a starting point, to
-the `tunnel-from-photos` edge function (`miTunnel.fromPhotos`). The function checks
-the person can edit the site's drawing, reads the drawing and the site's machines
-itself, asks Claude, and answers with a proposal in the drawing's own feet: each
+**Data flow.** A pick opens each photo once, two at a time (`photos/preparePhoto.ts`
+`readPhoto`): a HEIC a desktop browser can't open, or a file that isn't a photo, is
+turned away on its tile with a note. From that one opening the rest get a 400 px copy
+for the tile (an object URL, revoked when the photo is removed or the dialog closes)
+and the JPEG that is sent (EXIF turn applied, on white), made for the photo's share
+with every photo picked so far. The full-size photo isn't kept, so hundreds of photos
+fit in a phone's memory, and it isn't opened a second time to send it: that second
+opening was most of the wait (below). The tiles are drawn again only when their own
+photo changes. A JPEG is no more than 1568 px on the long side, and within the
+photo's even share of two budgets. One is the request's length: 30,000,000
+characters, less the rest of the request counted at its longest (catalog, the
+starting drawing even when it isn't sent, both lengths, every photo's JSON with the
+longest view, in UTF-8), split evenly, at most 1,600,000 per photo. Counted that way,
+setting views, typing lengths or the drawing appearing changes no photo's share. The
+other is 300,000 visual tokens in all, a photo costing ceil(w / 28) × ceil(h / 28)
+(1568 by 1176 is 2,352). A photo over its share of tokens is made smaller; one whose
+JPEG is still too long is saved at a lower quality (down to 0.6), then smaller. By
+tokens, 127 photos of 1568 by 1176 go at full size. By length, a detailed phone photo
+(about 400,000 characters at 1568 px) starts to give way from about 76. The dialog
+says photos are sent smaller once one of them had to give something up while their
+share is under the 1,600,000 one photo may have (from 19 photos), so one very
+detailed photo among a few doesn't bring it up. At 600 each is about 709 by 532 and
+under 50,000 characters, about 296,000 tokens and at most 30 MB in all.
+
+The JPEGs are kept in the dialog from the pick, with the share each was made for,
+until it closes (at most about 30 MB, the same as was held after Analyze for Try
+again when they were made there). One that no longer fits (photos were added after it was
+made) is made again from its file (`encodePhoto`): in the background, one at a time,
+once the photos are in, or at **Analyze** for any not done yet. So is one that had
+to give something up when its share has since grown by more than a tenth (photos
+removed), for a better copy; a smaller change keeps it. Try again, Analyze again and
+a reading turned into corrections (the drawing appeared) send the same JPEGs. When a
+photo can't be made again (its file was moved or deleted after the pick, or a cloud
+drive no longer has it on the device), the copy it has is sent if it still fits (a
+better one was only wanted). If it doesn't fit, the photo keeps its faded picture
+with "couldn't be opened again" on its tile and is left out; at **Analyze** the
+dialog names it.
+
+Times, measured in headless Chrome on the dev page with 12 MP (4032 by 3024) camera
+JPEGs: adding takes about 0.13 s a photo on a desktop, and about 0.8 s with Chrome's
+CPU slowed 4x as a stand-in for a phone (no real phone has been timed), so 600 camera
+photos on a phone take about 8 minutes to add. **Analyze** then took about 2 s for 50
+and for 100 photos, with nothing to make again. When the JPEGs were made at Analyze
+instead, every photo was opened a second time there: 15 s for 100 on the desktop and
+65 s for 50 slowed 4x, which for 600 on a phone would have been about 13 more
+minutes.
+
+The page sends them, with the shape kinds (`SHAPES`) and, with no drawing
+yet, the standard template as a starting point, to the `tunnel-from-photos` edge
+function (`miTunnel.fromPhotos`). The function checks the person can edit the site's
+drawing, reads the drawing and the site's machines itself, asks Claude, and answers
+with a proposal in the drawing's own feet: each
 item names the existing shape it is (`ref`) or none, and its machine (checked to be
 the site's). **Photos are never stored**: they go to the function and on to Claude
 and are dropped. Nothing is written until the person saves, which goes through
@@ -296,16 +353,26 @@ and are dropped. Nothing is written until the person saves, which goes through
 someone else beat says so and offers Reload, see above). The contract types are in
 `lib/queries/miTunnel.ts` and the function's `plan.ts`, kept the same; the merge
 from proposal to saved drawing is `photos/mergeProposal.ts` (no React), the dialog
-`photos/PhotosDialog.tsx`. Limits, both sides: 1 to 12 photos, each at most
-1,600,000 base64 characters, the whole request at most 14 MB, known lengths 20 to
-400 ft.
+`photos/PhotosDialog.tsx`. Limits (`PHOTO_LIMITS`, and `LIMITS` in `plan.ts`): 1 to
+600 photos (Claude's limit for one request on a model with a 1M context; a 200k
+model takes 100), each at most 1,600,000 base64 characters, the whole request at most
+30,000,000 characters from the page and 32 MiB at the function (the looser of the
+two, so the page is never turned away for its own budget), known lengths 20 to 400
+ft. The 300,000 visual tokens are the page's alone (the function doesn't open the
+photos); they bound how long Claude takes and what it costs, about $1.20 of input
+at the cap on `claude-opus-5-5` ($4 per million input tokens).
 
 **The function** (`supabase/functions/tunnel-from-photos/`: `index.ts` is the HTTP
 side, `plan.ts` the prompt, schema, request checks and the tidy-up of the answer,
 all of which also run under Node). It runs as the caller (JWT verification on,
 `mi_tunnel_get` must say `can_edit`), and its only secret is `ANTHROPIC_API_KEY`
-(503 `no_key` without it). Model `claude-opus-5-5`, effort `medium`, structured
-JSON output, streamed, `max_tokens` 32000, with the server-side fallback beta and
+(503 `no_key` without it). It reads the rest of a request before turning it away
+(no key, sign in again, over 32 MiB, the wrong method): Supabase holds back an
+answer sent while the request is still coming in until its 150 s idle limit, so
+before this a page sending megabytes of photos waited two and a half minutes for
+"Sign in again" (seen on production with 1, 4 and 8 MB). Model `claude-opus-5-5`,
+effort `medium`, structured JSON output, streamed, `max_tokens` 32000, with the
+server-side fallback beta and
 one retry without it if the API turns that down. With no drawing yet it starts
 Claude from the account's first template that has shapes, else the standard
 template the page sent. Once the checks pass it answers 200 at once and sends a

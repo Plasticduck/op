@@ -31,7 +31,10 @@ import { installFakeBackend, type FakeBackend } from './fakeBackend'
 //   lag=<ms>       how long the pretend server takes to answer (default 80)
 //   photos=fail|no_key|refused   the photo reader (From photos, Build from photos) answers
 //                  with that error instead of a drawing. Otherwise it answers after 1.5 s
-//                  (plus lag) with a made-up drawing: see fakeBackend.ts
+//                  (plus lag) with a made-up drawing: see fakeBackend.ts. Either way its
+//                  entry in backend.calls ('fn:tunnel-from-photos') has what was sent: each
+//                  photo's view, length, JPEG width and height and visual tokens, and the
+//                  request's length (body.chars, body.bytes) and visual tokens
 //
 // window.__page = { ready, backend, host(), notes, path(), go(to, state?) }: ready turns
 // true once the first drawing has been answered and drawn; backend is the pretend server

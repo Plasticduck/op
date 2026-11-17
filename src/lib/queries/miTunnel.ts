@@ -140,8 +140,19 @@ export type PhotosResponse =
   | { proposal: PhotoProposal; model: string; usage?: { input_tokens: number; output_tokens: number } }
   | { error: PhotoErrorCode; message: string }
 
-// What the function accepts. It checks these too and has the last word.
-export const PHOTO_LIMITS = { photos: 12, chars: 1_600_000, body: 14_000_000, minFt: 20, maxFt: 400 } as const
+// What one request may carry. The function checks the count, each photo and the lengths too,
+// and has the last word.
+// - photos: the most images Claude takes in one request on a model with a 1M context, as
+//   claude-opus-5-5 has (a 200k model takes 100).
+// - chars: one photo's base64.
+// - body: the whole request as the page sends it, kept under the 32 MiB the function takes.
+//   With many photos each gets an even share of it, and one over its share is sent smaller.
+// - visualTokens: all the photos together, each costing ceil(w / 28) * ceil(h / 28). This
+//   bounds how long Claude takes and what it costs (about $1.20 of input at the cap): about
+//   127 photos of 1568 by 1176 fit at full size, and past that each is sent smaller (by
+//   length, detailed photos give way sooner, from about 76). Only the page holds to it; the
+//   function doesn't open the photos.
+export const PHOTO_LIMITS = { photos: 600, chars: 1_600_000, body: 30_000_000, visualTokens: 300_000, minFt: 20, maxFt: 400 } as const
 
 const PHOTO_ERRORS: Record<PhotoErrorCode, string> = {
   no_key: "Photo reading isn't set up yet.",

@@ -76,15 +76,43 @@ export type PhotosResponse =
   | { proposal: Proposal; model: string; usage?: { input_tokens: number; output_tokens: number } }
   | { error: PhotosErrorCode; message: string }
 
-// Both sides enforce these; this side is the authority. The body limit is in MiB, the
-// larger reading of "14 MB", so an app that counts in either unit is never turned away.
+// Both sides enforce these; this side is the authority, and always the looser of the two.
+// 600 photos is the most Claude takes in one request. With more than 20, each has to be at
+// most 3000 px a side, and the app sends 1568 at most. The app keeps the whole request
+// under 30,000,000 characters and the photos together under 300,000 of Claude's image
+// tokens, sending each one smaller past about 127 photos. That budget is the app's alone,
+// because this side doesn't decode the images. The body cap here, 32 MiB, leaves room over
+// the app's budget and keeps what this function holds at once inside its memory (see
+// index.ts).
 export const LIMITS = {
-  photos: 12,
+  photos: 600,
   photoChars: 1_600_000,
-  bodyBytes: 14 * 1024 * 1024,
+  bodyBytes: 32 * 1024 * 1024,
   knownMinFt: 20,
   knownMaxFt: 400,
 } as const
+
+// Said when the body is over the cap, by validateRequest and by index.ts when the request
+// says so up front.
+export const BODY_TOO_BIG = `The photos add up to more than ${LIMITS.bodyBytes / (1024 * 1024)} MB. Use fewer photos or smaller ones.`
+
+// JSON.parse makes far more of many tiny values than of the photos: a body at the cap made
+// of empty objects parses to 680 MiB, and one of zeros reaches 590 MiB on the way, more
+// than the function has. Every value after the first in an object or a list follows a comma, so
+// commas and brackets together bound how many values a body holds. Base64 has none of
+// them, so the page's request has a few thousand at 600 photos; this allows several times
+// that, notes and all. Checked on the text, before it's parsed.
+const MAX_VALUES = 20_000
+export const TOO_MANY_VALUES = 'This request holds more than photos. Reload the page and try again.'
+export function fewEnoughValues(text: string): boolean {
+  let n = 0
+  for (const ch of [',', '{', '[']) {
+    for (let i = text.indexOf(ch); i !== -1; i = text.indexOf(ch, i + 1)) {
+      if (++n > MAX_VALUES) return false
+    }
+  }
+  return true
+}
 
 export const PHOTO_VIEWS: readonly PhotoView[] = ['entrance', 'exit', 'driver_side', 'passenger_side', 'middle', 'equipment_room', 'other']
 export const SIDES: readonly Side[] = ['ds', 'ps', 'center', 'both', 'outside']
@@ -93,6 +121,10 @@ const CONFIDENCE: readonly Confidence[] = ['high', 'medium', 'low']
 // mi_tunnel_save refuses a drawing of more than 400 shapes, and mi_tunnel_items holds a
 // kind to this pattern, h_ft to 200 and w_ft to 400.
 const MAX_SHAPES = 400
+// The most photo numbers one item keeps, the ones that show it best. With hundreds of
+// photos a machine can be in dozens of them, and listing every one for every machine would
+// spend the answer's tokens on numbers. The app only asks whether the list is empty.
+const ITEM_PHOTOS = 8
 const KIND = /^[a-z_]{2,30}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
@@ -105,9 +137,12 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const tenth = (v: number) => Math.round(v * 10) / 10
 
 // One line of text, trimmed and cut to max characters, or null when there's nothing left.
+// Only the start of a long text is cleaned (head): the request sets most of these texts,
+// and cleaning one note the size of the whole body took 1.5 s of the function's 2 s of CPU.
+const head = (v: string, max: number) => v.slice(0, max * 10)
 function line(v: unknown, max: number): string | null {
   if (typeof v !== 'string') return null
-  const t = v.replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim()
+  const t = head(v, max).replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim()
   return t ? t.slice(0, max).trimEnd() : null
 }
 
@@ -123,7 +158,7 @@ export function plain(s: string): string {
 
 // A name the drawing keeps (a zone, which becomes one of the site's zones), plain and on
 // one line.
-const plainLine = (v: unknown, max: number) => (typeof v === 'string' ? line(plain(v), max) : null)
+const plainLine = (v: unknown, max: number) => (typeof v === 'string' ? line(plain(head(v, max)), max) : null)
 
 // ---- Checking the request -------------------------------------------------------------
 
@@ -132,7 +167,7 @@ export type Checked<T> = { ok: true; value: T } | { ok: false; message: string }
 // Everything the request can carry, checked and cleaned. bytes is the raw body's size.
 export function validateRequest(body: unknown, bytes: number): Checked<PhotosRequest> {
   const bad = (message: string): Checked<PhotosRequest> => ({ ok: false, message })
-  if (bytes > LIMITS.bodyBytes) return bad('The photos add up to more than 14 MB. Use fewer photos or smaller ones.')
+  if (bytes > LIMITS.bodyBytes) return bad(BODY_TOO_BIG)
   if (!isObj(body)) return bad('Send the photos as JSON.')
 
   const site_id = typeof body.site_id === 'string' ? body.site_id.trim() : ''
@@ -393,7 +428,7 @@ Measure from things of known size, and name the ones you used in notes.
 Perspective shrinks depth fast: machines that look close together far down the tunnel can be many feet apart. Use an anchor near the machines you are measuring. Make the distances add up: the machines, in order, have to fit between the doorways. Where you can't tell a distance, use the starting or current drawing's spacing, scaled to this tunnel's length when the two differ (a machine 40% of the way along the starting drawing goes 40% of the way along this tunnel), and lower the confidence.
 
 How to work
-First decide, for each photo, where it was taken and which way it looks. Then list the machines in order along the tunnel, each with the photos it shows in. Then fix the scale from your anchors, place each machine, and check that the whole drawing fits the tunnel's length and width.
+With a few photos, first decide for each one where it was taken and which way it looks. With many (more than about 20), don't go through them one by one: group them by the stretch of tunnel they show, work from the clearest few in each group, and turn to the others only for what those leave unclear. Then list the machines in order along the tunnel, each with the photos that show it best. Then fix the scale from your anchors, place each machine, and check that the whole drawing fits the tunnel's length and width.
 
 What to return
 - One item for every machine you see, even one that is partly hidden. Never merge two machines into one item or split one machine into two.
@@ -403,7 +438,7 @@ What to return
 - asset_id: the id of one of the site's machines (like "M4", from machines in the context) only when it is clearly the same machine, by its type or name and its place in the tunnel. Otherwise null. Use only ids from that list. Link each machine to at most one item. room and label items never take an asset_id. Machines marked component are parts of another machine: don't link a shape to one unless the current drawing already does.
 - conveyor_type: for the conveyor, "belt" for a dual flat-belt conveyor with no rollers or pushers, "chain" for a chain conveyor. When correcting a drawing, keep the conveyor's current type unless the photos clearly show the other one. null for every other kind.
 - confidence: "high" when the photos show the machine and where it stands clearly; "medium" when it is seen but its distance is estimated; "low" when it is mostly hidden, or placed from the starting drawing without being seen.
-- photos: the numbers of the photos the machine shows in (numbered from 1 in the order given). Empty if it is in none.
+- photos: the numbers of the photos the machine shows in (numbered from 1 in the order given), best view first, at most ${ITEM_PHOTOS}. Empty if it is in none.
 - length_ft: the tunnel from the entrance doorway to the exit doorway. width_ft: inside, wall to wall.
 - notes: short plain sentences for the site manager: which scale anchors you used, what you could not see or had to assume, and anything worth checking on site. At most 8. Do not use em dashes.
 
@@ -744,7 +779,10 @@ export function normalizeProposal(text: string, ctx: NormalizeCtx): { proposal: 
       // until the photos say otherwise.
       conveyor_type: kind === 'conveyor' ? (it.conveyor_type === 'belt' || it.conveyor_type === 'chain' ? it.conveyor_type : was?.conveyor_type ?? 'chain') : null,
       confidence: CONFIDENCE.includes(it.confidence as Confidence) ? (it.confidence as Confidence) : 'low',
-      photos: [...new Set(Array.isArray(it.photos) ? it.photos.filter((p): p is number => Number.isInteger(p) && p >= 1 && p <= ctx.photos) : [])].sort((a, b) => a - b),
+      // Claude names the best views first. The first few are kept, listed in photo order.
+      photos: [...new Set(Array.isArray(it.photos) ? it.photos.filter((p): p is number => Number.isInteger(p) && p >= 1 && p <= ctx.photos) : [])]
+        .slice(0, ITEM_PHOTOS)
+        .sort((a, b) => a - b),
     }
 
     // A distance read off a photo is seldom good to a foot, and the app lists every move

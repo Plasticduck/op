@@ -62,6 +62,37 @@ const refuse = (message: string): never => { throw new Refused(message) }
 // What crosses the wire is JSON: no shared objects, no undefined.
 const wire = <T,>(v: T): T => (v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T))
 
+// The most the real tunnel-from-photos takes in one request (plan.ts LIMITS.bodyBytes). The
+// page keeps to PHOTO_LIMITS.body, a little under it.
+const FN_BODY_BYTES = 32 * 1024 * 1024
+
+// A JPEG's size from its frame header (an SOF marker), read from the bytes before the image
+// data without opening the image, so a check can see what size each photo was sent at.
+// null: not a JPEG, or no frame header before the image data.
+function jpegSize(b64: string): { width: number; height: number } | null {
+  // The headers are in the first few KB; a JPEG with a big EXIF block needs the rest.
+  for (const chars of [65536, b64.length]) {
+    let bin: string
+    try { bin = atob(b64.slice(0, chars - (chars % 4))) } catch { return null }
+    if (bin.charCodeAt(0) !== 0xff || bin.charCodeAt(1) !== 0xd8) return null
+    const at = (k: number) => bin.charCodeAt(k)
+    let i = 2
+    while (i + 9 < bin.length) {
+      if (at(i) !== 0xff) return null
+      const m = at(i + 1)
+      // Fill bytes, and the markers that carry no length.
+      if (m === 0xff) { i++; continue }
+      if (m === 0x01 || (m >= 0xd0 && m <= 0xd8)) { i += 2; continue }
+      // SOF0 to SOF15, which share their numbers with DHT (C4), JPG (C8) and DAC (CC).
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { height: (at(i + 5) << 8) | at(i + 6), width: (at(i + 7) << 8) | at(i + 8) }
+      if (m === 0xda || m === 0xd9) return null
+      i += 2 + ((at(i + 2) << 8) | at(i + 3))
+    }
+    if (chars >= b64.length) return null
+  }
+  return null
+}
+
 export function installFakeBackend(opts: FakeOptions) {
   const machines = new Map<string, Machine>()
   const drawings = new Map<string, Drawing>()
@@ -467,7 +498,9 @@ export function installFakeBackend(opts: FakeOptions) {
   // a few machines a little off where it has them, most linked to the site's machine of
   // their type, the rooms not seen. With one: the drawing with four shapes moved 2 to 4 ft,
   // a foam arch added (the one it isn't sure of), the Van High said to be gone. It checks
-  // the request as the real one does. photos=fail|no_key|refused answers with that error.
+  // the request against the real one's limits (PHOTO_LIMITS, and FN_BODY_BYTES for the
+  // whole), and its calls entry records each photo's length and JPEG size and the request's,
+  // never the photos. photos=fail|no_key|refused answers with that error.
   type FnAnswer = { data: unknown; error: unknown }
   // As supabase-js hands back a non-2xx answer: the Response on the error's context.
   const fnError = (status: number, error: string, message: string): FnAnswer => ({
@@ -538,17 +571,17 @@ export function installFakeBackend(opts: FakeOptions) {
     }
   }
 
-  function photosAnswer(body: PhotosRequest): FnAnswer {
+  function photosAnswer(body: PhotosRequest, bytes: number): FnAnswer {
     if (opts.photos === 'no_key') return fnError(503, 'no_key', 'ANTHROPIC_API_KEY is not set.')
     if (opts.photos === 'fail') return fnError(502, 'ai_failed', 'Claude answered 529 (overloaded).')
     // The real one sends spaces while it waits, so a later error comes in a 200, as text.
     if (opts.photos === 'refused') return { data: `  \n ${JSON.stringify({ error: 'refused', message: 'The model declined to read these photos.' })}`, error: null }
     const bad = (message: string) => fnError(400, 'bad_request', message)
+    if (bytes > FN_BODY_BYTES) return bad('The photos add up to more than 32 MB. Use fewer photos or smaller ones.')
     const photos = Array.isArray(body.photos) ? body.photos : []
     if (photos.length < 1 || photos.length > PHOTO_LIMITS.photos) return bad(`Send 1 to ${PHOTO_LIMITS.photos} photos.`)
-    const big = photos.findIndex((p) => p.media_type !== 'image/jpeg' || typeof p.data !== 'string' || !p.data || p.data.length > PHOTO_LIMITS.chars || p.data.startsWith('data:'))
+    const big = photos.findIndex((p) => p.media_type !== 'image/jpeg' || typeof p.data !== 'string' || !p.data || p.data.length > PHOTO_LIMITS.chars || !p.data.startsWith('/9j/'))
     if (big >= 0) return bad(`Photo ${big + 1} is too large, or isn't a JPEG.`)
-    if (JSON.stringify(body).length > PHOTO_LIMITS.body) return bad('The photos are too large together. Send fewer.')
     for (const v of [body.known?.length_ft, body.known?.conveyor_ft]) {
       if (v != null && (v < PHOTO_LIMITS.minFt || v > PHOTO_LIMITS.maxFt)) return bad(`A length must be between ${PHOTO_LIMITS.minFt} and ${PHOTO_LIMITS.maxFt} ft.`)
     }
@@ -570,13 +603,25 @@ export function installFakeBackend(opts: FakeOptions) {
   type Invoke = typeof fns.invoke
   const invoke = (name: string, o?: Parameters<Invoke>[1]): Promise<FnAnswer> => {
     if (name !== 'tunnel-from-photos') return fns.invoke(name, o)
-    const body = wire(o?.body) as unknown as PhotosRequest
+    // As supabase-js sends it: the body as JSON, its size counted in UTF-8 as the function does.
+    const json = JSON.stringify(o?.body ?? null)
+    const body = JSON.parse(json) as PhotosRequest
+    const bytes = new TextEncoder().encode(json).length
     const signal = o?.signal ?? null
-    // What was sent, without the photos themselves: their view, size and whether they are
-    // bare base64 JPEG (it starts /9j/).
+    // What was sent, without the photos themselves: their view, length, whether they are bare
+    // base64 JPEG (it starts /9j/), the size each JPEG says it is and what Claude would count
+    // it as (ceil(w / 28) * ceil(h / 28)); and the whole request's length and visual tokens.
+    const photos = (body.photos ?? []).map((p) => {
+      const data = typeof p.data === 'string' ? p.data : ''
+      const size = jpegSize(data)
+      return {
+        view: p.view, chars: data.length, jpeg: data.startsWith('/9j/'),
+        width: size?.width ?? null, height: size?.height ?? null, tokens: size ? Math.ceil(size.width / 28) * Math.ceil(size.height / 28) : null,
+      }
+    })
     const sent = {
       site_id: body.site_id, tunnel_no: body.tunnel_no, known: body.known ?? null, catalog: body.catalog?.length ?? 0, prior: !!body.prior,
-      photos: (body.photos ?? []).map((p) => ({ view: p.view, chars: p.data?.length ?? 0, jpeg: typeof p.data === 'string' && p.data.startsWith('/9j/') })),
+      photos, body: { chars: json.length, bytes }, tokens: photos.reduce((a, p) => a + (p.tokens ?? 0), 0),
     }
     return new Promise<FnAnswer>((resolve) => {
       // An abort after the answer is in does nothing, as with a real fetch: the page aborts
@@ -584,7 +629,7 @@ export function installFakeBackend(opts: FakeOptions) {
       let answered = false
       const timer = window.setTimeout(() => {
         answered = true
-        const out = photosAnswer(body)
+        const out = photosAnswer(body, bytes)
         const err = out.error as { context?: Response } | null
         calls.push({ name: 'fn:tunnel-from-photos', args: sent, error: err ? `HTTP ${err.context?.status ?? '?'}` : typeof out.data === 'string' ? 'error in the body' : null })
         resolve(out)
