@@ -52,20 +52,25 @@ async function imageToThumb(src: string): Promise<PhotoImg | null> {
 // embeddable thumbnails, keyed by the path (so the answers already reference them).
 export async function resolveStoragePhotos(paths: string[]): Promise<Record<string, PhotoImg>> {
   const out: Record<string, PhotoImg> = {}
+  // The original first; a format this browser can't decode (HEIC outside Safari,
+  // TIFF) falls back to a copy from Storage's resizer, which reads them all.
+  const load = async (url: string | null): Promise<PhotoImg | null> => {
+    if (!url) return null
+    const resp = await fetch(url)
+    if (!resp.ok) return null
+    const objUrl = URL.createObjectURL(await resp.blob())
+    try {
+      return await imageToThumb(objUrl)
+    } finally {
+      URL.revokeObjectURL(objUrl)
+    }
+  }
   await Promise.all(
     [...new Set(paths)].map(async (p) => {
       try {
-        const url = await siteAuditPhotos.signedUrl(p, 3600)
-        if (!url) return
-        const resp = await fetch(url)
-        if (!resp.ok) return
-        const objUrl = URL.createObjectURL(await resp.blob())
-        try {
-          const thumb = await imageToThumb(objUrl)
-          if (thumb) out[p] = thumb
-        } finally {
-          URL.revokeObjectURL(objUrl)
-        }
+        const thumb = (await load(await siteAuditPhotos.signedUrl(p, 3600)))
+          ?? (await load(await siteAuditPhotos.signedUrl(p, 3600, 1200)))
+        if (thumb) out[p] = thumb
       } catch {
         // Skip a single unreadable photo.
       }

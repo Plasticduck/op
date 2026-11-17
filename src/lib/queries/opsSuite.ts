@@ -96,8 +96,14 @@ export const siteAuditPhotos = {
     return { error, path: error ? null : path }
   },
   remove: (path: string) => supabase.storage.from('site-audit-photos').remove([path]),
-  signedUrl: async (path: string, expiresIn = 3600): Promise<string | null> => {
-    const { data } = await supabase.storage.from('site-audit-photos').createSignedUrl(path, expiresIn)
+  // With `resizeTo`, a copy from Storage's resizer, which reads every common format
+  // (HEIC, TIFF, AVIF...) and answers in one the browser can show.
+  signedUrl: async (path: string, expiresIn = 3600, resizeTo?: number): Promise<string | null> => {
+    const { data } = await supabase.storage.from('site-audit-photos').createSignedUrl(
+      path,
+      expiresIn,
+      resizeTo ? { transform: { width: resizeTo, height: resizeTo, resize: 'contain' } } : undefined,
+    )
     return data?.signedUrl ?? null
   },
 }

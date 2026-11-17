@@ -22,6 +22,9 @@ import {
   type Rating,
 } from './form'
 import { ResultBox, SectionChip } from './parts'
+import { MAINTAINX_ACCOUNT_ID } from '@/lib/queries/workOrders'
+import { useSiteWorkOrders } from './useSiteWorkOrders'
+import { WorkOrdersChip, WorkOrdersDrawer, WorkOrdersSummary } from './WorkOrdersPanel'
 
 const LIST = '/app/site-audits-new'
 
@@ -39,6 +42,12 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
   const [answers, setAnswers] = useState<AuditAnswers>(() => normalizeAnswers(audit.answers))
   const [locationId, setLocationId] = useState(audit.location_id)
   const result = useMemo(() => gradeAudit(answers), [answers])
+
+  // The site's open MaintainX work orders, for reference (MaintainX is Mighty Wash's).
+  const hasMaintainX = audit.account_id === MAINTAINX_ACCOUNT_ID
+  const wo = useSiteWorkOrders(hasMaintainX ? locationId : null)
+  const [woOpen, setWoOpen] = useState(false)
+  const closeWo = useCallback(() => setWoOpen(false), [])
 
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [showMissing, setShowMissing] = useState(false)
@@ -190,18 +199,21 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
         <ArrowLeft className="size-4" /> Site Audit NEW
       </button>
 
-      <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border border-border bg-card p-4">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Site audit: {siteName}</h1>
-          <p className="mt-0.5 text-sm text-ink-muted">Started {dateTime(audit.created_at)} · {audit.auditor_name ?? profile?.name}</p>
+      <div className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight text-ink">Site audit: {siteName}</h1>
+            <p className="mt-0.5 text-sm text-ink-muted">Started {dateTime(audit.created_at)} · {audit.auditor_name ?? profile?.name}</p>
+          </div>
+          <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
+            Site
+            <Select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="h-9 w-56" aria-label="Site">
+              {!sortedLocations.some((l) => l.id === locationId) && <option value={locationId}>{siteName}</option>}
+              {sortedLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+          </label>
         </div>
-        <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
-          Site
-          <Select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="h-9 w-56" aria-label="Site">
-            {!sortedLocations.some((l) => l.id === locationId) && <option value={locationId}>{siteName}</option>}
-            {sortedLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </Select>
-        </label>
+        {hasMaintainX && <WorkOrdersSummary state={wo.state} siteName={siteName} onOpen={() => setWoOpen(true)} onRetry={wo.refresh} />}
       </div>
 
       {/* Stays at the top while scrolling: the result so far and how much is left. */}
@@ -216,6 +228,8 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
               <>Score so far {fmtPoints(result.points)} / 100</>
             )}
           </p>
+          <div className="flex shrink-0 items-center gap-2">
+          {hasMaintainX && <WorkOrdersChip state={wo.state} onOpen={() => setWoOpen(true)} />}
           <p className={cn('shrink-0 text-xs', saveState === 'error' || saveState === 'gone' ? 'text-danger' : 'text-ink-muted')}>
             {result.rated} of {result.total} rated
             <span className="hidden sm:inline">
@@ -227,6 +241,7 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
                 : 'Saves as you go'}
             </span>
           </p>
+          </div>
         </div>
         <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-border">
           <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${(result.rated / result.total) * 100}%` }} />
@@ -285,6 +300,7 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
                           itemId={key.replace('.', '-')}
                           photos={a.photos}
                           onChange={(next) => setItem(key, { photos: next }, true)}
+                          alwaysJpeg
                         />
                       </div>
                     </div>
@@ -305,6 +321,10 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
           <Button onClick={trySubmit}>Submit audit</Button>
         </div>
       </div>
+
+      {hasMaintainX && woOpen && (
+        <WorkOrdersDrawer open={woOpen} onClose={closeWo} state={wo.state} siteName={siteName} onRefresh={wo.refresh} />
+      )}
 
       {confirming && (
         <Modal open onClose={() => { if (!busy) setConfirming(false) }} title="Submit this audit?" size="sm">

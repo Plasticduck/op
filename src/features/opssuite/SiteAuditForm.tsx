@@ -223,7 +223,7 @@ export function StatusButtons({ value, onChange, className, tinted }: {
 // site-audit-photos bucket and keeps the storage paths on the answer, so large
 // phone photos never hit the old base64-in-DB size ceiling.
 export function ItemPhotos({
-  accountId, draftId, itemId, photos, keepPhotoFiles, onChange,
+  accountId, draftId, itemId, photos, keepPhotoFiles, onChange, alwaysJpeg,
 }: {
   accountId: string
   draftId: string
@@ -231,6 +231,8 @@ export function ItemPhotos({
   photos: string[]
   keepPhotoFiles?: string[]
   onChange: (photos: string[]) => void
+  // Save every picture the browser can open as a JPEG (Site Audit NEW).
+  alwaysJpeg?: boolean
 }) {
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -252,7 +254,7 @@ export function ItemPhotos({
     setError(null)
     const added: string[] = []
     for (const f of Array.from(files)) {
-      const { path, error: upErr } = await siteAuditPhotos.upload(accountId, draftId, itemId, await shrinkPhoto(f))
+      const { path, error: upErr } = await siteAuditPhotos.upload(accountId, draftId, itemId, await shrinkPhoto(f, 2000, { alwaysJpeg }))
       if (upErr) { setError(upErr.message); break }
       if (path) added.push(path)
     }
@@ -271,7 +273,18 @@ export function ItemPhotos({
         {photos.map((p) => (
           <div key={p} className="relative size-16 overflow-hidden rounded-md border border-border bg-content">
             {urls[p]
-              ? <img src={urls[p]} alt="Audit photo" className="size-full object-cover" />
+              ? (
+                <img
+                  src={urls[p]}
+                  alt="Audit photo"
+                  className="size-full object-cover"
+                  // A format this browser can't show (HEIC outside Safari): use a resized copy.
+                  onError={() => {
+                    if (urls[p].includes('/render/image/')) return
+                    void siteAuditPhotos.signedUrl(p, 3600, 300).then((u) => { if (u) setUrls((prev) => ({ ...prev, [p]: u })) })
+                  }}
+                />
+              )
               : <div className="size-full animate-pulse bg-content" />}
             <button
               type="button"

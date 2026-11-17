@@ -43,9 +43,11 @@ function jwtRole(auth: string): string | null {
 }
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-// Times in Central, where the audits are reviewed (the worker runs in UTC).
+// Times in Central, where the audits are reviewed (the worker runs in UTC). Intl
+// puts a narrow no-break space before AM/PM, which the PDF font can't draw (it
+// spaced out the whole line), so it becomes a plain space.
 const central = (d: string | Date) =>
-  new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(d))
+  new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(d)).replace(/[\u202f\u00a0]/g, ' ')
 
 function pngSize(b: Uint8Array) {
   return { w: (b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19], h: (b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23] }
