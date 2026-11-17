@@ -17,7 +17,11 @@ const fmtStamp = (iso: string) =>
 
 type Doc = import('jspdf').jsPDF & { lastAutoTable?: { finalY: number } }
 
-async function buildEventPayPdf(r: EventPayRow): Promise<Doc> {
+// resentAfter: when payroll first got this request (emailed_at). Marks the PDF as
+// a resend so it isn't paid twice.
+type PdfOptions = { resentAfter?: string | null }
+
+async function buildEventPayPdf(r: EventPayRow, opts: PdfOptions = {}): Promise<Doc> {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
   // ~400px is plenty for a 26mm-tall logo, and keeps the emailed PDF small.
@@ -40,9 +44,21 @@ async function buildEventPayPdf(r: EventPayRow): Promise<Doc> {
   doc.setLineWidth(0.6)
   doc.line(14, 39, pageW - 14, 39)
 
+  let top = 43
+  if (opts.resentAfter) {
+    doc.setFillColor(254, 226, 226)
+    doc.rect(14, 42, pageW - 28, 9, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(185, 28, 28)
+    doc.text(`RESEND: first sent to payroll ${fmtStamp(opts.resentAfter)}. It may already have been paid.`, 17, 47.8)
+    doc.setFont('helvetica', 'normal')
+    top = 55
+  }
+
   // Event details.
   autoTable(doc, {
-    startY: 43,
+    startY: top,
     theme: 'plain',
     styles: { fontSize: 10, cellPadding: { top: 1.6, bottom: 1.6, left: 0, right: 4 } },
     columnStyles: { 0: { cellWidth: 34, textColor: GRAY }, 1: { fontStyle: 'bold', textColor: 20 } },
@@ -119,7 +135,7 @@ export async function downloadEventPayPdf(r: EventPayRow): Promise<void> {
 }
 
 // The PDF as base64 (no data: prefix), for attaching to the request email.
-export async function eventPayPdfBase64(r: EventPayRow): Promise<string> {
-  const doc = await buildEventPayPdf(r)
+export async function eventPayPdfBase64(r: EventPayRow, opts: PdfOptions = {}): Promise<string> {
+  const doc = await buildEventPayPdf(r, opts)
   return String(doc.output('datauristring')).split(',')[1] ?? ''
 }

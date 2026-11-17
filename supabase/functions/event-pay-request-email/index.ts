@@ -11,8 +11,11 @@
 // action 'approve' / 'reject' (the approver only, while pending): records the
 //   decision, then approve emails payroll and tells the submitter; reject (with a
 //   reason in `note`) tells the submitter and nothing goes to payroll.
+// resend: true (with 'send'; the admin or the service role only): emails payroll
+//   again a request it already got, marked as a resend. No copy to the submitter,
+//   and emailed_at keeps the first send.
 //
-// Body: { request_id: uuid, action?: 'send' | 'approve' | 'reject', pdf_base64?: string, note?: string }
+// Body: { request_id: uuid, action?: 'send' | 'approve' | 'reject', pdf_base64?: string, note?: string, resend?: boolean }
 // Required secret: RESEND_API_KEY. Optional: RESEND_FROM.
 // Auto-provided: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 
@@ -41,6 +44,12 @@ function corsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   }
+}
+// Role claim of a JWT; the gateway has already checked its signature.
+function jwtRole(token: string): string | null {
+  const t = token.split('.')
+  if (t.length !== 3) return null
+  try { return JSON.parse(atob(t[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? null } catch { return null }
 }
 const json = (body: unknown, status: number, origin: string | null) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } })
@@ -122,21 +131,35 @@ Deno.serve(async (req) => {
 
   const auth = req.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) return json({ error: 'unauthorized' }, 401, origin)
-  const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
-  const { data: u } = await userClient.auth.getUser()
-  const callerId = u.user?.id
-  const callerEmail = (u.user?.email ?? '').trim()
-  if (!callerId) return json({ error: 'unauthorized' }, 401, origin)
+  const token = auth.slice(7).trim()
+  const isService = token === serviceKey || jwtRole(token) === 'service_role'
 
-  let body: { request_id?: string; pdf_base64?: string | null; action?: string; note?: string | null } = {}
+  let body: { request_id?: string; pdf_base64?: string | null; action?: string; note?: string | null; resend?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
   if (!body.request_id) return json({ error: 'bad_request' }, 400, origin)
   const action = body.action === 'approve' || body.action === 'reject' ? body.action : 'send'
   const note = String(body.note ?? '').trim()
+  const isResend = body.resend === true && action === 'send'
+  // The service role may only resend.
+  if (isService && !isResend) return json({ error: 'forbidden' }, 403, origin)
+
+  let callerId = ''
+  let callerEmail = ''
+  if (!isService) {
+    const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
+    const { data: u } = await userClient.auth.getUser()
+    callerId = u.user?.id ?? ''
+    callerEmail = (u.user?.email ?? '').trim()
+    if (!callerId) return json({ error: 'unauthorized' }, 401, origin)
+  }
 
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
-  const { data: caller } = await svc.from('users').select('account_id, name').eq('id', callerId).maybeSingle()
-  if (!caller) return json({ error: 'forbidden' }, 403, origin)
+  let caller: { account_id: string; name: string | null } | null = null
+  if (!isService) {
+    const { data } = await svc.from('users').select('account_id, name').eq('id', callerId).maybeSingle()
+    caller = data
+    if (!caller) return json({ error: 'forbidden' }, 403, origin)
+  }
 
   const { data: r } = await svc
     .from('event_pay_requests')
@@ -145,12 +168,15 @@ Deno.serve(async (req) => {
     .maybeSingle()
   // deno-lint-ignore no-explicit-any
   const o = r as any
-  if (!o || o.account_id !== caller.account_id) return json({ error: 'not_found' }, 404, origin)
+  if (!o || (caller && o.account_id !== caller.account_id)) return json({ error: 'not_found' }, 404, origin)
 
   const me = callerEmail.toLowerCase()
-  const isSubmitter = o.submitted_by === callerId
+  const isSubmitter = !!callerId && o.submitted_by === callerId
   const isApprover = me === APPROVER_EMAIL
-  if (action === 'send') {
+  if (isResend) {
+    if (!isService && me !== ADMIN_EMAIL) return json({ error: 'forbidden' }, 403, origin)
+    if (!o.emailed_at) return json({ error: 'not_sent', message: 'This request has not been sent to payroll yet.' }, 409, origin)
+  } else if (action === 'send') {
     // The submitter, the admin, or (for a request that needs approval) the approver.
     if (!isSubmitter && me !== ADMIN_EMAIL && !(isApprover && o.needs_approval)) return json({ error: 'forbidden' }, 403, origin)
     if (o.approval_status === 'rejected') return json({ error: 'rejected', message: 'This request was not approved.' }, 409, origin)
@@ -166,7 +192,7 @@ Deno.serve(async (req) => {
     const decision = {
       approval_status: action === 'approve' ? 'approved' : 'rejected',
       decided_by: callerId,
-      decided_by_name: (caller.name ?? '').trim() || callerEmail,
+      decided_by_name: (caller?.name ?? '').trim() || callerEmail,
       decided_at: new Date().toISOString(),
       decision_note: note || null,
     }
@@ -204,7 +230,7 @@ Deno.serve(async (req) => {
   const payNote = 'Mighty Maxx is paid the flat amount shown. Every other team member is paid their hourly rate for the hours shown.'
   const pdf = typeof body.pdf_base64 === 'string' && body.pdf_base64.length > 100 ? body.pdf_base64 : null
   const fileSlug = String(o.event_name ?? 'event').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'event'
-  const attachments = pdf ? [{ filename: `event-pay-${fileSlug}-${o.event_date}.pdf`, content: pdf }] : undefined
+  const attachments = pdf ? [{ filename: `event-pay-${fileSlug}-${o.event_date}${isResend ? '-resend' : ''}.pdf`, content: pdf }] : undefined
   const count = `${people.length} team member${people.length === 1 ? '' : 's'}`
   const subjectTail = `${o.event_name} (${site}, ${fmtDate(o.event_date)})`
 
@@ -252,6 +278,21 @@ Deno.serve(async (req) => {
       false,
     )
     return json({ ok: true, status: 'rejected', notified }, 200, origin)
+  }
+
+  // A resend of a request payroll already got: to payroll only, marked as such.
+  if (isResend) {
+    const approvedBy = o.approval_status === 'approved' ? ` Approved by ${o.decided_by_name}.` : ''
+    const err = await send(
+      PAYROLL,
+      `RESEND: Event Pay Request: ${subjectTail}`,
+      page(
+        `Resend: Event Pay Request: ${o.event_name}`,
+        `This is a resend. This request was first emailed to payroll on ${fmtStamp(o.emailed_at)}, so it may already have been paid. Please check before paying it again. ${o.requester_name} requested event pay for ${count}.${approvedBy}`,
+      ),
+    )
+    if (err) return json({ ok: false, error: err, status: 'resend' }, 502, origin)
+    return json({ ok: true, status: 'resend', sent_to: PAYROLL }, 200, origin)
   }
 
   // From a Regional Manager and still pending: to the approver.
