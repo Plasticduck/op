@@ -13249,6 +13249,8 @@ export type Database = {
           grade: string | null
           id: string
           location_id: string
+          notified_at: string | null
+          notify_result: Json | null
           safety_failed: boolean | null
           score: number | null
           status: string
@@ -13266,6 +13268,8 @@ export type Database = {
           grade?: string | null
           id?: string
           location_id: string
+          notified_at?: string | null
+          notify_result?: Json | null
           safety_failed?: boolean | null
           score?: number | null
           status?: string
@@ -13283,6 +13287,8 @@ export type Database = {
           grade?: string | null
           id?: string
           location_id?: string
+          notified_at?: string | null
+          notify_result?: Json | null
           safety_failed?: boolean | null
           score?: number | null
           status?: string

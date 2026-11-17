@@ -174,6 +174,10 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
       setError(err ? 'Could not submit the audit: ' + err.message : 'This audit was already submitted or deleted. Reload to see it.')
       return
     }
+    // Best effort: the audit is saved either way, but say so if nothing went out.
+    void siteAuditsV2.notify(audit.id).then(({ error: sendErr }) => {
+      if (sendErr) window.alert('The audit was submitted, but the email and text did not go out.')
+    })
     onSubmitted()
   }
 

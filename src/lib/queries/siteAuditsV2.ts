@@ -26,6 +26,8 @@ export const siteAuditsV2 = {
     tbl().update(patch).eq('id', id).eq('status', 'draft').select('id').maybeSingle(),
   submit: (id: string, payload: SubmitAudit) =>
     tbl().update({ ...payload, status: 'submitted' }).eq('id', id).eq('status', 'draft').select('id').maybeSingle(),
+  // Emails the PDF and texts the result (site-audit-new-notify). Sends once per audit.
+  notify: (id: string) => supabase.functions.invoke('site-audit-new-notify', { body: { audit_id: id } }),
   remove: (id: string) => tbl().delete().eq('id', id).select('id'),
   // Called after a draft is discarded or an audit deleted, so its photos don't linger.
   removePhotos: (paths: string[]) =>
