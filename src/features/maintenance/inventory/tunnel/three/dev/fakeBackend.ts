@@ -24,7 +24,17 @@ export type FakeOptions = {
   templates: boolean
   // Milliseconds each answer takes.
   lag: number
+  // How many machines each site has that are on no drawing (the page's unplaced list).
+  // None by default: the sample draws every machine it has.
+  unplaced?: number
 }
+
+// The machines unplaced adds, in turn.
+const EXTRA: Array<{ type: string; status: EquipmentStatus; area: string }> = [
+  { type: 'Water Reclaim', status: 'online', area: 'Equipment room' },
+  { type: 'Chemical Pump Station', status: 'offline_planned', area: 'Equipment room' },
+  { type: 'Vacuum Arch', status: 'online', area: 'Vacuums' },
+]
 
 type Answer = { data: unknown; error: { message: string } | null }
 type Rpc = (name: string, args?: Record<string, unknown>) => PromiseLike<Answer>
@@ -73,6 +83,12 @@ export function installFakeBackend(opts: FakeOptions) {
         ...down, id, name: a.name.replace('#07', `#${String(site.site_number).padStart(2, '0')}`), site: site.id,
         wos: Array.from({ length: down.open_wos }, (_, k) => ({ id: fresh(), number: ++woNumber, title: `${k ? 'Follow up on' : 'Check'} ${a.type ?? 'it'}`, status: 'open', priority: k ? 'medium' : 'high' })),
       })
+    }
+    for (let k = 0; k < (opts.unplaced ?? 0); k++) {
+      const e = EXTRA[k % EXTRA.length]
+      const type = k < EXTRA.length ? e.type : `${e.type} ${Math.floor(k / EXTRA.length) + 1}`
+      const id = uid(s === 0 ? 'a1' : 'b1', k)
+      machines.set(id, { id, name: `#${String(site.site_number).padStart(2, '0')} - ${type}`, type, status: e.status, area_name: e.area, open_wos: 0, children: 0, site: site.id, wos: [] })
     }
     if (s === 0 && !opts.empty) {
       const layout: TunnelLayout = {

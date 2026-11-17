@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useBlocker, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Box, ChevronDown, ChevronRight, LayoutList, Loader2, Map as MapIcon, Pencil, RotateCw, Save, Sparkles, Undo2, type LucideIcon } from 'lucide-react'
 import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
@@ -15,6 +15,7 @@ import { cars, EQUIPMENT_BASE, shortName, STATUS } from '../equipment/format'
 import { ApplyTemplateDialog } from './ApplyTemplateDialog'
 import { expressTemplate } from './expressTemplate'
 import type { Orientation } from './geometry'
+import { NotLinked } from './NotLinked'
 import { shapeFor } from './shapes'
 import { Tunnel3DHost } from './Tunnel3DHost'
 import { DiagramLegend, ToneSquare, TunnelDiagram } from './TunnelDiagram'
@@ -95,6 +96,12 @@ export default function TunnelPage() {
   const [detailsFor, setDetailsFor] = useState<string | null>(null)
   const [switching, setSwitching] = useState<{ site?: string; tunnel?: string } | null>(null)
   const editing = params.get('edit') === '1'
+  // What isn't linked, listed under the status line. In the address so a link (the
+  // template report's, say) can open it, and so it is open again coming back from a machine.
+  const listOpen = params.get('unlinked') === '1'
+  const listId = useId()
+  const listToggle = useRef<HTMLButtonElement>(null)
+  const linkedLine = useRef<HTMLSpanElement>(null)
 
   const setParam = useCallback((patch: Record<string, string | null>) => setParams((p) => {
     const next = new URLSearchParams(p)
@@ -186,6 +193,7 @@ export default function TunnelPage() {
     }
     return out
   }, [items, data])
+  const unlinkedShapes = useMemo(() => items.filter((i) => !i.asset_id && !shapeFor(i.kind).scenery).sort(tunnelOrder), [items])
 
   const openMachine = useCallback((item: TunnelItem) => {
     if (!item.asset_id) return
@@ -219,6 +227,17 @@ export default function TunnelPage() {
   const nextDown = () => {
     const k = downShapes.findIndex((i) => i.id === selectedId)
     select(downShapes[(k + 1) % downShapes.length].id)
+  }
+  const editDrawing = () => { setMoveMode(false); setParam({ edit: '1', item: null }) }
+  // A shape picked from the list opens where it can be linked: in 3D that is the side
+  // panel, which otherwise waits to be asked for. The 3D view flies to it either way.
+  const pickUnlinked = (id: string) => (view === '3d' ? showDetails(id) : select(id))
+  const closeList = () => {
+    setParam({ unlinked: null })
+    // With nothing left the toggle goes away with the list, and focus would fall to the
+    // page: it waits on the count beside it instead.
+    if (unlinkedShapes.length > 0 || data?.unplaced.length) listToggle.current?.focus()
+    else linkedLine.current?.focus()
   }
 
   const createStandard = async () => {
@@ -286,7 +305,7 @@ export default function TunnelPage() {
               </Button>
             )}
             {data.can_edit && !narrow && (
-              <Button variant="secondary" size="sm" onClick={() => { setMoveMode(false); setParam({ edit: '1', item: null }) }}><Pencil className="size-4" /> Edit drawing</Button>
+              <Button variant="secondary" size="sm" onClick={editDrawing}><Pencil className="size-4" /> Edit drawing</Button>
             )}
           </>
         )}
@@ -320,7 +339,18 @@ export default function TunnelPage() {
       {data?.layout && (
         <>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
-            <span>{linked} of {linkable} shapes linked to machines</span>
+            <span className="inline-flex flex-wrap items-baseline gap-x-2">
+              <span ref={linkedLine} tabIndex={-1} className="focus:outline-none">{linked} of {linkable} shapes linked to machines</span>
+              {/* Also while the list is open with nothing left in it, so it can still be closed from here.
+                  The padding is for a finger on a phone; the margin keeps the line its height. */}
+              {(listOpen || unlinkedShapes.length > 0 || data.unplaced.length > 0) && (
+                <button ref={listToggle} type="button" onClick={() => (listOpen ? closeList() : setParam({ unlinked: '1' }))}
+                  aria-expanded={listOpen} aria-controls={listOpen ? listId : undefined}
+                  className="-my-1 rounded-sm py-1 font-medium text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                  {listOpen ? "Hide what's not linked" : "See what's not linked"}
+                </button>
+              )}
+            </span>
             {data.unplaced.length > 0 && <span>{data.unplaced.length} machine{data.unplaced.length === 1 ? '' : 's'} at this site not on the drawing</span>}
             {data.site.cars_30d != null
               ? <span>{cars(data.site.cars_today)} cars today, {cars(data.site.cars_30d)} in 30 days (through {day(data.site.data_through)})</span>
@@ -332,6 +362,11 @@ export default function TunnelPage() {
               </button>
             )}
           </div>
+
+          {listOpen && (
+            <NotLinked id={listId} shapes={unlinkedShapes} unplaced={data.unplaced} assets={data.assets} selectedId={selectedId} canEdit={data.can_edit}
+              onPick={pickUnlinked} onPlace={data.can_edit && !narrow ? editDrawing : undefined} onClose={closeList} />
+          )}
 
           <div className={cn('grid grid-cols-1 gap-4', showPanel && 'lg:grid-cols-[minmax(0,1fr)_400px]')}>
             {view === '3d' ? (

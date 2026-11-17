@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, typ
 import type { TunnelAsset, TunnelItem, TunnelLayout } from '@/lib/queries/miTunnel'
 import { cn } from '@/lib/utils'
 import { cars, shortName, STATUS } from '../equipment/format'
+import { conveyorType } from './conveyorType'
 import { groupTransform, labelVertical, layoutBox, toScreen, viewBox, type Orientation } from './geometry'
 import { shapeFor } from './shapes'
 import { heatStep, maxCarsOf, toneFor, type ColorBy, type HeatTone, type Tone } from './tones'
@@ -47,6 +48,9 @@ export function ToneSquare({ tone, className, children, ...svg }: { tone: Tone }
 
 const FONT = 1.25
 
+// How far down a shape is drawn: scenery lowest, then a belt conveyor, then machines.
+const under = (i: TunnelItem) => (shapeFor(i.kind).scenery ? 2 : i.kind === 'conveyor' && conveyorType(i.props) === 'belt' ? 1 : 0)
+
 type Props = {
   layout: Pick<TunnelLayout, 'length_ft' | 'width_ft' | 'zones'>
   items: TunnelItem[]
@@ -74,8 +78,10 @@ export function TunnelDiagram({ layout, items, assets, orientation: o, colorBy, 
   }, [layout, items, half])
   const vb = viewBox(o, box)
 
-  // Draw scenery under machines, then in the saved order.
-  const ordered = useMemo(() => [...items].sort((a, b) => Number(!!shapeFor(b.kind).scenery) - Number(!!shapeFor(a.kind).scenery) || a.sort_order - b.sort_order), [items])
+  // Draw scenery under machines, then a belt conveyor (it covers the middle of the
+  // tunnel, so drawn later it would hide the machines over it and take their clicks),
+  // then the rest in the saved order.
+  const ordered = useMemo(() => [...items].sort((a, b) => under(b) - under(a) || a.sort_order - b.sort_order), [items])
   const focusOrder = useMemo(() => ordered.filter((i) => !shapeFor(i.kind).scenery).sort((a, b) => Number(a.x_ft) - Number(b.x_ft) || Number(a.y_ft) - Number(b.y_ft)), [ordered])
 
   // Use-count shading is relative to the busiest machine on this drawing.

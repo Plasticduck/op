@@ -194,6 +194,31 @@ Start `npx vite --port 5199 --strictPort`, then:
   drawing (`tunnel/shapes.tsx`). `match_type` is the machine type a template shape
   stands for; `asset_id` the linked machine (set null if it's deleted, cleared if it
   moves to another site).
+- A conveyor's type is `props.conveyor_type` on its shape: `'chain'` or `'belt'`.
+  Missing or anything else is a chain, so every drawing and template made before the
+  choice stays a chain; `props` is saved and copied to sites with the rest of the shape,
+  so there is no migration. Read it with `conveyorType()` in
+  `tunnel/conveyorType.ts`, which also has the belt's cross section and the footprint
+  each type gets. The editor's **Conveyor type** (site drawings and templates) changes
+  it and fits the shape in one undoable step: a belt is centered on the car's line and
+  8.5 ft wide; a chain goes back where it stood before it was a belt (kept on the belt
+  as `props.chain_at`, so this survives a save), or to 1.6 ft under the driver's side
+  wheels when there is no earlier place to go back to. A spare beside the tunnel only
+  changes width. In the tunnel a belt's shape stays on the car's line (Across is
+  locked; drags and arrow keys only move it along), because the 3D belts always run
+  under the car's wheels and its status pad and 2D drawing must sit on them
+  (`tidyBelts`). The 2D drawing draws a belt under every machine whatever its saved
+  order, so it never covers the brushes or takes their clicks. With a belt, the editor points out any roller up or roller down left on the drawing
+  (a belt has neither) and offers to remove them; it never does on its own. A site
+  machine added from "Not on the drawing" whose type or name says belt starts as one
+  (a type that only says Belt counts as a conveyor too). In 3D the kind
+  stays `conveyor` (the car and the ride still find it) and
+  `three/models/conveyorBelt.ts` draws a dual 30 inch modular belt (Tommy's, Sonny's
+  WB30, AVW): two flush belts under the car's wheels whatever the shape's width, a
+  grating between them, combed diamond plates at the ends that the lugs dive through,
+  and a low drive cover at the exit. The belt carries the car, so its wheels stand
+  still while it is on the belt (`CarState.carried`) and turn only up the prep lane
+  and off the far end. Preview it with `belt=1` on `dev/tunnel3d.html`.
 - Writes go through `mi_tunnel_save`, `mi_tunnel_link_item`, `mi_tunnel_apply`,
   `mi_tunnel_delete`. Reads: `mi_tunnel_get(site, tunnel)`, `mi_tunnel_templates()`,
   `mi_tunnel_template(id)`.

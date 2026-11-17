@@ -35,10 +35,20 @@ export type CarTrip = {
 // The trip: up the prep lane, onto the conveyor, through the tunnel and off the far end.
 // conveyorFrom and conveyorTo are the ends of the conveyor's shape; the slab limits keep
 // the car on the concrete.
+// A pass is made a whole number of half wheelbases long where the slab has the room. The
+// conveyor moves with the car, so when the next pass starts it jumps back by the pass's
+// length: by half wheelbases (the chain's pusher pitch, two rows of a belt's lugs) it
+// lands where it already was, and nothing on it hops.
 export function carTrip(conveyorFrom: number, conveyorTo: number, slabMin: number, slabMax: number): CarTrip {
   const half = CAR.length / 2
-  const from = Math.max(slabMin + half + 1.5, conveyorFrom - 22)
-  const to = Math.max(from + 1, Math.min(slabMax - half - 1, conveyorTo + half + 4))
+  const fromMin = slabMin + half + 1.5
+  const toMax = slabMax - half - 1
+  let from = Math.max(fromMin, conveyorFrom - 22)
+  let to = Math.max(from + 1, Math.min(toMax, conveyorTo + half + 4))
+  const step = CAR.wheelbase / 2
+  const whole = Math.ceil((to - from) / step - 1e-6) * step
+  if (from + whole <= toMax) to = from + whole
+  else if (to - whole >= fromMin) from = to - whole
   return { from, to, period: (to - from) / CAR.speed }
 }
 

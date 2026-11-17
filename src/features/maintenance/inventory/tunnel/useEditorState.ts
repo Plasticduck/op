@@ -41,11 +41,19 @@ function reduce(s: State, a: Action): State {
   }
 }
 
-export function useEditorState(initial: Draft) {
+// tidy, for rules the drawing must always keep, runs over the items after every change and
+// in the same step, so one undo takes back both. It must be a stable function.
+export function useEditorState(initial: Draft, tidy?: (items: TunnelItem[]) => TunnelItem[]) {
   const [s, dispatch] = useReducer(reduce, { draft: initial, past: [], future: [], dirty: false })
-  const update = useCallback((fn: (d: Draft) => Draft, record = true) => dispatch({ t: 'apply', fn, record }), [])
+  const update = useCallback((fn: (d: Draft) => Draft, record = true) => dispatch({
+    t: 'apply', record,
+    fn: (d) => {
+      const next = fn(d)
+      return next === d || !tidy ? next : { ...next, items: tidy(next.items) }
+    },
+  }), [tidy])
   const patchItem = useCallback((id: string, patch: Partial<TunnelItem> | ((i: TunnelItem) => Partial<TunnelItem>), record = true) =>
-    dispatch({ t: 'apply', record, fn: (d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, ...(typeof patch === 'function' ? patch(i) : patch) } : i)) }) }), [])
+    update((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, ...(typeof patch === 'function' ? patch(i) : patch) } : i)) }), record), [update])
   return {
     draft: s.draft,
     dirty: s.dirty,
@@ -81,7 +89,7 @@ export function kindForType(type: string | null | undefined): string {
   if (/rinse|arch|foam|wax|presoak|sealant|ceramic/.test(s)) return 'arch'
   if (/roller up/.test(s)) return 'roller_up'
   if (/roller down/.test(s)) return 'roller_down'
-  if (/chain|conveyor/.test(s)) return 'conveyor'
+  if (/chain|conveyor|belt/.test(s)) return 'conveyor'
   if (/eye/.test(s)) return 'photo_eye'
   if (/sensor/.test(s)) return 'sensor'
   if (/vac/.test(s)) return 'vacuum'

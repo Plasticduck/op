@@ -1,6 +1,7 @@
 import { Box3, MeshBasicMaterial } from 'three'
 import type { Mesh, Object3D } from 'three'
 import type { TunnelSide } from '@/lib/queries/miTunnel'
+import { conveyorPatch } from '../../conveyorType'
 import { expressTemplate } from '../../expressTemplate'
 import { shapeFor } from '../../shapes'
 import { CAR } from '../car'
@@ -36,6 +37,8 @@ import { kitSampler } from './sampler'
 //   move=1                move mode on
 //   detail=low            the phone quality tier
 //   linked=0              no machines linked (every shape a ghost)
+//   belt=1                the conveyor is a belt (props.conveyor_type), with the footprint
+//                         the editor gives it, and the roller up and roller down are gone
 //   strict=1              mount, dispose, mount again, as React StrictMode does in dev
 //
 // ONE MODEL (kind=<kind>): the model alone on a bare slab.
@@ -52,6 +55,8 @@ import { kitSampler } from './sampler'
 //   rot=0|90|180|270      the shape's rotation, handled as the scene does: in the tunnel
 //                         w and h swap and the model isn't turned; outside it is turned
 //   tall=1                props.tall
+//   belt=1                props.conveyor_type = 'belt' (kind=conveyor), and the belt's
+//                         footprint for any of w, h, side, y left out
 //   run=0|1               RunState.running (default 1)
 //   activity=0..1         RunState.activity (default: 1, or what the scene would work out
 //                         from the car when carDx or pass is given)
@@ -196,7 +201,7 @@ function showPicks(scene: Object3D, camera: { layers: { enable(n: number): void 
 }
 
 function wholeTunnel() {
-  const fixture = sampleTunnel({ linked: q.get('linked') !== '0' })
+  const fixture = sampleTunnel({ linked: q.get('linked') !== '0', belt: q.get('belt') === '1' })
   const byLabel = (label: string | null) => fixture.items.find((i) => i.label.toLowerCase() === (label ?? '').toLowerCase())?.id ?? null
   let scene: TunnelSceneApi
   const log = (type: string, detail: unknown) => {
@@ -260,7 +265,9 @@ function wholeTunnel() {
 function oneModel(kind: string) {
   const sampler = kind === '_kit'
   const def = shapeFor(kind)
-  const row = (expressTemplate().items ?? []).find((i) => i.kind === kind)
+  const belt = kind === 'conveyor' && q.get('belt') === '1'
+  const template = (expressTemplate().items ?? []).find((i) => i.kind === kind)
+  const row = template && belt ? { ...template, ...conveyorPatch(template, 'belt') } : template
   const side = sampler ? 'outside' : (q.get('side') as TunnelSide) ?? row?.side ?? def.side
   const w = num('w') ?? (sampler ? 48 : Number(row?.w_ft ?? def.w))
   const h = num('h') ?? (sampler ? 30 : Number(row?.h_ft ?? def.h))
@@ -307,7 +314,8 @@ function oneModel(kind: string) {
   stage.controls.update()
 
   const st: RunState = { t: 0, dt: 0, running, activity: 0, carDx: null }
-  const car: CarState = { x: 0, t: 0, dt: 0, speed: 0, presence: 1 }
+  // A belt carries the car over its whole length, as the scene works it out.
+  const car: CarState = { x: 0, t: 0, dt: 0, speed: 0, presence: 1, carried: belt ? { from: -(lies ? h : w) / 2, to: (lies ? h : w) / 2 } : null }
   const advance = (t: number, dt: number) => {
     st.t = t
     st.dt = dt

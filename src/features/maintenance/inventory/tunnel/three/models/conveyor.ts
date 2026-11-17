@@ -1,9 +1,11 @@
 import { Group, Mesh, MeshStandardMaterial, PlaneGeometry } from 'three'
 import type { BufferAttribute } from 'three'
+import { conveyorType } from '../../conveyorType'
 import { CAR } from '../car'
 import { COLORS } from '../kit'
 import type { Paint } from '../kit'
 import type { ModelBuilder } from '../types'
+import { conveyorBelt } from './conveyorBelt'
 import { BEHIND, block, boltHead, chainTexture, chip, clamp, clearOfCar, doorInset, DOOR, flatSteel, outboard, peg, pilotLamp, pitCovers, pusher, PUSHER, PUSHER_PITCH, PUSHERS, pipe, put, ram, smooth, TRACK, trapDoor } from './conveyorParts'
 
 // The conveyor and the two roller assemblies at its ends (MacNeil XR1000 style): an
@@ -31,8 +33,12 @@ const COVER: Paint = '#aab0b8'
 const DOOR_STEEL: Paint = '#c6cbd1'
 const GEARBOX: Paint = '#4b6a99'
 
-// kind 'conveyor': the track, the chain in it and the pushers on it.
+// kind 'conveyor': the track, the chain in it and the pushers on it. A shape set to Belt
+// (props.conveyor_type) is a different machine with its own model, conveyorBelt.ts; it
+// keeps the kind, so the car, the ride and everything else that looks for the conveyor
+// still finds it.
 export const conveyor: ModelBuilder = (input) => {
+  if (conveyorType(input.item.props) === 'belt') return conveyorBelt(input)
   const { kit } = input
   const m = kit.mat
   const high = input.detail === 'high'

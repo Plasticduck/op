@@ -1,6 +1,7 @@
 import { Box3, MathUtils, Spherical, Vector3 } from 'three'
 import type { Object3D } from 'three'
 import type { TunnelItem } from '@/lib/queries/miTunnel'
+import { conveyorType } from '../conveyorType'
 import { shapeFor } from '../shapes'
 import { CAR } from './car'
 import type { Bounds } from './floor'
@@ -265,6 +266,8 @@ export function createTunnelScene(container: HTMLElement, events: SceneEvents, o
 
   let tallest = 11
   let trip: CarTrip | null = null
+  // Where a belt conveyor carries the car (its wheels stand still there), or null.
+  let carried: CarState['carried'] = null
   let conveyorItem: LiveItem | null = null
   let vehicle: Vehicle | null = null
 
@@ -288,6 +291,7 @@ export function createTunnelScene(container: HTMLElement, events: SceneEvents, o
     }
     trip = conveyor ? carTrip(conveyor.x - conveyor.w / 2, conveyor.x + conveyor.w / 2, tunnelSlab.minX, tunnelSlab.maxX) : null
     conveyorItem = conveyor
+    carried = conveyor && conveyorType(conveyor.item.props) === 'belt' ? { from: conveyor.x - conveyor.w / 2, to: conveyor.x + conveyor.w / 2 } : null
     if (trip && !vehicle) {
       vehicle = createVehicle(kit)
       stage.world.add(vehicle.root)
@@ -377,7 +381,7 @@ export function createTunnelScene(container: HTMLElement, events: SceneEvents, o
 
   // ---- Life: the car and what it wakes up ----
   const car: CarAt = { x: 0, scale: 1, progress: 0 }
-  const carState: CarState = { x: 0, t: 0, dt: 0, speed: 0, presence: 1 }
+  const carState: CarState = { x: 0, t: 0, dt: 0, speed: 0, presence: 1, carried: null }
   let carOn = false
   const run: RunState = { t: 0, dt: 0, running: false, activity: 0, carDx: null }
 
@@ -437,6 +441,7 @@ export function createTunnelScene(container: HTMLElement, events: SceneEvents, o
       carState.dt = dt
       carState.speed = moving ? CAR.speed : 0
       carState.presence = car.scale
+      carState.carried = carried
       vehicle.update(carState)
     }
     run.t = t

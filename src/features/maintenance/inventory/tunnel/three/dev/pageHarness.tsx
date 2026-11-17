@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { MiContext, type MiCtx } from '../../../context'
 import { EquipmentDetailPage } from '../../../equipment/EquipmentDetail'
 import { SectionNav } from '../../../SectionNav'
+import { TemplatesCard } from '../../TemplatesCard'
 import TunnelPage from '../../TunnelPage'
 import type { Tunnel3DProps } from '../../view3d'
 import { installFakeBackend, type FakeBackend } from './fakeBackend'
@@ -25,6 +26,7 @@ import { installFakeBackend, type FakeBackend } from './fakeBackend'
 //   user=<id>      who is signed in (default dev-user): unsaved moves are kept per person,
 //                  so another id on the same tab stands for the next person to sign in
 //   conflict=1     someone else changes the drawing just before the next save, once
+//   unplaced=<n>   each site also has n machines that are on no drawing
 //   theme=dark
 //   lag=<ms>       how long the pretend server takes to answer (default 80)
 //
@@ -36,8 +38,8 @@ import { installFakeBackend, type FakeBackend } from './fakeBackend'
 // said through notify(); go() navigates inside the app, with router state if given (a
 // machine's page opened from the equipment list, say). The tunnel lives at this page's
 // own address and at /app/maintenance-inventory/tunnel; a machine's page at
-// .../equipment/<id>. Vite answers a reload at one of those app addresses with the real
-// app, so reload from this page's own.
+// .../equipment/<id>; Settings' tunnel templates card at .../settings. Vite answers a
+// reload at one of those app addresses with the real app, so reload from this page's own.
 
 // Every import above has run by now, the supabase client's among them: the page's HTML
 // can stop hiding its warning about the missing .env.local.
@@ -52,6 +54,7 @@ const backend = installFakeBackend({
   conflict: q.get('conflict') === '1',
   rank,
   lag: q.get('lag') == null ? 80 : Number(q.get('lag')) || 0,
+  unplaced: Number(q.get('unplaced')) || 0,
 })
 document.documentElement.classList.toggle('dark', q.get('theme') === 'dark')
 
@@ -122,6 +125,11 @@ function TunnelSection() {
   )
 }
 
+// Settings > Tunnel diagrams: the other place sites are set up from a template.
+function Settings() {
+  return <div className={PAGE}><TemplatesCard /></div>
+}
+
 function Machine() {
   const { id } = useParams()
   return id ? <div className="h-dvh"><EquipmentDetailPage key={id} id={id} /></div> : null
@@ -147,6 +155,7 @@ const router = createBrowserRouter([{
     { path: location.pathname, element: <TunnelSection /> },
     { path: `${BASE}/tunnel`, element: <TunnelSection /> },
     { path: `${BASE}/equipment/:id`, element: <Machine /> },
+    { path: `${BASE}/settings`, element: <Settings /> },
     { path: '*', element: <Elsewhere /> },
   ],
 }])

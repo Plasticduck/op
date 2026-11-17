@@ -1,9 +1,12 @@
 import type { TunnelAsset, TunnelItem, TunnelLayout } from '@/lib/queries/miTunnel'
+import { conveyorPatch } from '../../conveyorType'
 import { expressTemplate } from '../../expressTemplate'
 
 // Sample data for the dev preview: the standard express tunnel as if it had been set up
 // at a site. Shapes with a machine type are linked to a made-up machine; presoak,
-// protectant and tire shine stay unlinked, as they do on a real site today.
+// protectant and tire shine stay unlinked, as they do on a real site today. belt makes
+// the conveyor a belt as the editor would, and drops the roller up and roller down, which
+// a belt conveyor doesn't have.
 
 const DOWN: Record<string, TunnelAsset['status']> = {
   'Top Brush 2': 'offline_unplanned',
@@ -20,7 +23,7 @@ export type Fixture = {
   assets: Record<string, TunnelAsset>
 }
 
-export function sampleTunnel(opts: { linked?: boolean } = {}): Fixture {
+export function sampleTunnel(opts: { linked?: boolean; belt?: boolean } = {}): Fixture {
   const linked = opts.linked ?? true
   const t = expressTemplate()
   const assets: Record<string, TunnelAsset> = {}
@@ -47,7 +50,8 @@ export function sampleTunnel(opts: { linked?: boolean } = {}): Fixture {
         usage_basis: 'all_cars',
       }
     }
-    return { ...row, id, asset_id, rotation: 0, props: row.props ?? {} }
-  })
+    const item: TunnelItem = { ...row, id, asset_id, rotation: 0, props: row.props ?? {} }
+    return opts.belt && row.kind === 'conveyor' ? { ...item, ...conveyorPatch(item, 'belt') } : item
+  }).filter((i) => !opts.belt || (i.kind !== 'roller_up' && i.kind !== 'roller_down'))
   return { layout: { length_ft: t.length_ft ?? 134, width_ft: t.width_ft ?? 16, zones: t.zones ?? [] }, items, assets }
 }

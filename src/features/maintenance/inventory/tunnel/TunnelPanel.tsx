@@ -149,6 +149,10 @@ function UnlinkedPanel({ item, siteId, canEdit, onClose, onChanged, relink }: Pr
       .slice(0, 60)
   }, [rows, q, item.match_type, item.label])
 
+  // Say the site has none of its type only once its machines are loaded and none is: one
+  // that's there and simply not linked yet is offered below as Likely.
+  const none = !!item.match_type && !!rows && !rows.some((r) => (r.type ?? '').toLowerCase() === item.match_type!.toLowerCase())
+
   const link = async (assetId: string) => {
     setBusy(assetId)
     try {
@@ -167,7 +171,7 @@ function UnlinkedPanel({ item, siteId, canEdit, onClose, onChanged, relink }: Pr
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         {!relink && (
           <p className="mb-3 text-sm text-ink-muted">
-            This shape isn't linked to a machine{item.match_type ? <>, and this site has no <b>{item.match_type}</b></> : ''}.
+            This shape isn't linked to a machine{none ? <>, and this site has no <b>{item.match_type}</b></> : ''}.
             {canEdit ? ' Pick the machine it is, or add it.' : ' A manager can link it.'}
           </p>
         )}

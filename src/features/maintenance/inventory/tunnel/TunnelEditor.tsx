@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { errText } from '../format'
 import { ErrorNote } from '../ui'
 import { shortName } from '../equipment/format'
+import { acrossLocked, CONVEYOR_TYPES, conveyorFootprint, conveyorPatch, conveyorType, tidyBelts, type ConveyorType } from './conveyorType'
 import { snap } from './geometry'
 import { SHAPES, shapeFor, type ShapeDef } from './shapes'
 import { TunnelDiagram } from './TunnelDiagram'
@@ -44,7 +45,7 @@ const GROUPS: ShapeDef['group'][] = ['Tunnel', 'Brushes', 'Arches and applicator
 
 export function TunnelEditor({ layout, items, assets, unplaced = [], siteId, siteName, onClose }: Props) {
   const template = layout.is_template
-  const ed = useEditorState({ length_ft: Number(layout.length_ft), width_ft: Number(layout.width_ft), zones: layout.zones ?? [], items })
+  const ed = useEditorState({ length_ft: Number(layout.length_ft), width_ft: Number(layout.width_ft), zones: layout.zones ?? [], items: tidyBelts(items) }, tidyBelts)
   const { draft, patchItem, update, checkpoint } = ed
   const [name, setName] = useState(layout.name)
   const [sel, setSel] = useState<string | null>(null)
@@ -108,9 +109,12 @@ export function TunnelEditor({ layout, items, assets, unplaced = [], siteId, sit
   }
   const addMachine = (m: { id: string; name: string; type: string | null }) => {
     const kind = kindForType(m.type ?? m.name)
-    add(kind, { asset_id: template ? null : m.id, match_type: m.type, label: shortName(m.type ?? m.name) })
+    // A conveyor the site calls a belt starts as one, where the belts go.
+    const belt = kind === 'conveyor' && /belt/i.test(`${m.type ?? ''} ${m.name}`)
+    add(kind, { asset_id: template ? null : m.id, match_type: m.type, label: shortName(m.type ?? m.name), ...(belt ? { ...conveyorFootprint('belt'), props: { conveyor_type: 'belt' } } : {}) })
   }
   const remove = (id: string) => { update((d) => ({ ...d, items: d.items.filter((i) => i.id !== id) })); setSel(null) }
+  const rollers = draft.items.filter((i) => i.kind === 'roller_up' || i.kind === 'roller_down')
   const duplicate = (i: TunnelItem) => {
     const copy = { ...i, id: tempId(), x_ft: snap(Number(i.x_ft) + 4), asset_id: null, sort_order: draft.items.length }
     update((d) => ({ ...d, items: [...d.items, copy] }))
@@ -170,6 +174,8 @@ export function TunnelEditor({ layout, items, assets, unplaced = [], siteId, sit
       const d = e.key === 'ArrowLeft' ? [-step, 0] : e.key === 'ArrowRight' ? [step, 0] : e.key === 'ArrowUp' ? [0, -step] : e.key === 'ArrowDown' ? [0, step] : null
       if (!d) return
       e.preventDefault()
+      // A belt in the tunnel doesn't move across it: don't record a step that changes nothing.
+      if (!d[0] && acrossLocked(selected)) return
       patchItem(selected.id, (i) => ({ x_ft: snap(Number(i.x_ft) + d[0]), y_ft: snap(Number(i.y_ft) + d[1]) }))
     }
     window.addEventListener('keydown', onKey)
@@ -253,8 +259,9 @@ export function TunnelEditor({ layout, items, assets, unplaced = [], siteId, sit
 
         <aside className="max-h-[70vh] overflow-y-auto rounded-md border border-border bg-card p-3">
           {selected ? (
-            <Inspector key={selected.id} item={selected} template={template} zoneNames={zoneNames} siteRows={siteRows}
-              onPatch={(p) => patchItem(selected.id, p)} onDelete={() => remove(selected.id)} onDuplicate={() => duplicate(selected)} />
+            <Inspector key={selected.id} item={selected} template={template} zoneNames={zoneNames} siteRows={siteRows} rollers={rollers}
+              onPatch={(p) => patchItem(selected.id, p)} onDelete={() => remove(selected.id)} onDuplicate={() => duplicate(selected)}
+              onRemoveRollers={() => { const gone = new Set(rollers.map((r) => r.id)); update((d) => ({ ...d, items: d.items.filter((i) => !gone.has(i.id)) })) }} />
           ) : (
             <DrawingSettings draft={draft} onChange={(fn) => update(fn)} />
           )}
@@ -272,14 +279,16 @@ export function TunnelEditor({ layout, items, assets, unplaced = [], siteId, sit
   )
 }
 
-function Inspector({ item, template, zoneNames, siteRows, onPatch, onDelete, onDuplicate }: {
-  item: TunnelItem; template: boolean; zoneNames: string[]; siteRows: AssetRow[]
-  onPatch: (p: Partial<TunnelItem>) => void; onDelete: () => void; onDuplicate: () => void
+function Inspector({ item, template, zoneNames, siteRows, rollers, onPatch, onDelete, onDuplicate, onRemoveRollers }: {
+  item: TunnelItem; template: boolean; zoneNames: string[]; siteRows: AssetRow[]; rollers: TunnelItem[]
+  onPatch: (p: Partial<TunnelItem>) => void; onDelete: () => void; onDuplicate: () => void; onRemoveRollers: () => void
 }) {
   const s = shapeFor(item.kind)
-  const num = (k: 'x_ft' | 'y_ft' | 'w_ft' | 'h_ft', label: string, min?: number) => (
-    <Field label={label}>
-      {(id) => <Input id={id} type="number" step={0.5} min={min} value={Number(item[k])} onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && (min == null || v >= min)) onPatch({ [k]: v }) }} />}
+  const conveyor = item.kind === 'conveyor' ? conveyorType(item.props) : null
+  const rollerNames = rollers.map((r) => r.label || shapeFor(r.kind).label)
+  const num = (k: 'x_ft' | 'y_ft' | 'w_ft' | 'h_ft', label: string, min?: number, locked?: string) => (
+    <Field label={label} hint={locked}>
+      {(id) => <Input id={id} type="number" step={0.5} min={min} value={Number(item[k])} disabled={!!locked} onChange={(e) => { const v = Number(e.target.value); if (!Number.isNaN(v) && (min == null || v >= min)) onPatch({ [k]: v }) }} />}
     </Field>
   )
   return (
@@ -297,6 +306,25 @@ function Inspector({ item, template, zoneNames, siteRows, onPatch, onDelete, onD
           </Select>
         )}
       </Field>
+      {/* The type and the footprint that goes with it change together: one step to undo. */}
+      {conveyor && (
+        <Field label="Conveyor type" hint={CONVEYOR_TYPES[conveyor].hint}>
+          {(id) => (
+            <Select id={id} value={conveyor} onChange={(e) => onPatch(conveyorPatch(item, e.target.value as ConveyorType))}>
+              {(Object.keys(CONVEYOR_TYPES) as ConveyorType[]).map((t) => <option key={t} value={t}>{CONVEYOR_TYPES[t].label}</option>)}
+            </Select>
+          )}
+        </Field>
+      )}
+      {conveyor === 'belt' && rollers.length > 0 && (
+        <div className="flex flex-col items-start gap-2 rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
+          <p>
+            A belt conveyor has no roller up or roller down: they lift and drop a chain conveyor's pushers.
+            This drawing still has {rollerNames.length > 1 ? `${rollerNames.slice(0, -1).join(', ')} and ${rollerNames[rollerNames.length - 1]}` : rollerNames[0]}.
+          </p>
+          <Button size="sm" variant="secondary" onClick={onRemoveRollers}><Trash2 className="size-3.5" /> {rollers.length > 1 ? 'Remove them' : 'Remove it'}</Button>
+        </div>
+      )}
       {!s.scenery && (template ? (
         <Field label="Machine type" hint="At each site this links to the machine of this type.">
           {(id) => <Input id={id} value={item.match_type ?? ''} onChange={(e) => onPatch({ match_type: e.target.value || null })} placeholder="Top Brush 1" />}
@@ -329,7 +357,7 @@ function Inspector({ item, template, zoneNames, siteRows, onPatch, onDelete, onD
           )}
         </Field>
         {num('x_ft', 'Along (ft)')}
-        {num('y_ft', 'Across (ft)')}
+        {num('y_ft', 'Across (ft)', undefined, acrossLocked(item) ? 'A belt always runs under the car.' : undefined)}
         {num('w_ft', 'Length (ft)', 0.5)}
         {num('h_ft', 'Width (ft)', 0.5)}
         <Field label="Turn">

@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- a registry of drawings, not a component module */
 import type { ReactNode } from 'react'
 import type { TunnelSide } from '@/lib/queries/miTunnel'
+import { BELT, BELT_HALF, BELT_MID, BELT_PITCH, conveyorType } from './conveyorType'
 
 // How each kind of equipment is drawn, top-down, in feet around its own center (w along
 // the tunnel, h across it). Color comes from the group it's drawn in (fill and stroke
@@ -32,10 +33,30 @@ const rect = (w: number, h: number, r = 0.4, dash?: string) => (
   <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={r} strokeWidth={SW} strokeDasharray={dash} />
 )
 
+// A belt conveyor: its two belts where the 3D model lays them (squeezed into a narrower
+// footprint), each crossed by its rows of lugs. One dashed line draws a belt's lugs: a
+// stroke as wide as the belt, dashed at their pitch.
+const belts = (w: number, h: number) => {
+  const k = Math.min(1, h / (2 * BELT_HALF))
+  const from = -w / 2 + 1.3
+  const len = Math.max(0, w - 2.6)
+  return (
+    <>
+      {rect(w, h, 0.3)}
+      {[-1, 1].map((s) => (
+        <g key={s}>
+          <rect x={from} y={s * BELT_MID * k - (BELT.wide * k) / 2} width={len} height={BELT.wide * k} rx={0.15} strokeWidth={SW * 0.7} />
+          <line x1={from + 0.6} x2={from + len - 0.6} y1={s * BELT_MID * k} y2={s * BELT_MID * k} strokeWidth={BELT.wide * k * 0.7} strokeDasharray={`0.25 ${BELT_PITCH - 0.25}`} fill="none" />
+        </g>
+      ))}
+    </>
+  )
+}
+
 export const SHAPES: Record<string, ShapeDef> = {
   conveyor: {
     label: 'Conveyor', group: 'Tunnel', w: 140, h: 1.6, side: 'ds', label_at: 'none',
-    draw: (w, h) => (
+    draw: (w, h, props) => conveyorType(props) === 'belt' ? belts(w, h) : (
       <>
         {rect(w, h, 0.3)}
         <line x1={-w / 2 + 0.6} x2={w / 2 - 0.6} y1={0} y2={0} strokeWidth={SW} strokeDasharray="0.5 0.5" fill="none" />

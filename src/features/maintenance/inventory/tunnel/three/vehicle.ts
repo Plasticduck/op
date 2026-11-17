@@ -36,6 +36,10 @@ export type CarState = {
   // How much of the car is there: it grows in from 0 at the start of each pass (a touch
   // over 1 as it lands) and shrinks away at the end, since there is no road beyond the slab.
   presence: number
+  // A belt conveyor carries the car while its center is between these (feet along the
+  // tunnel), so its wheels don't turn there. null on a chain, which pushes the car along
+  // on its own tires.
+  carried: { from: number; to: number } | null
 }
 
 export type Vehicle = {
@@ -544,8 +548,11 @@ export function createVehicle(kit: Kit): Vehicle {
       const settle = Math.sin(Math.PI * clamp((k - 0.82) / 0.18, 0, 1))
       root.position.set(car.x, up * up * 2.4, CAR.z)
       root.scale.set(Math.max(0.001, size) * (1 + 0.012 * settle), Math.max(0.001, size) * (1 - 0.035 * settle), Math.max(0.001, size) * (1 + 0.012 * settle))
-      // The wheels turn exactly as far as the car has come.
-      const turn = -car.x / CAR.wheelRadius
+      // The wheels turn exactly as far as the car has come on them: not the stretch a belt
+      // carried it.
+      const c = car.carried
+      const rolled = c ? car.x - (clamp(car.x, c.from, c.to) - c.from) : car.x
+      const turn = -rolled / CAR.wheelRadius
       for (let i = 0; i < wheels.length; i++) wheels[i].rotation.z = turn
     },
     dispose() {

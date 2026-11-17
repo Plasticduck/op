@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { CheckCircle2, Loader2, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -7,10 +8,14 @@ import { cn } from '@/lib/utils'
 import { useMi } from '../context'
 import { errText } from '../format'
 import { ErrorNote } from '../ui'
+import { shapeFor } from './shapes'
 
 // Copy a drawing (a template, or another site's) to sites. "Check" runs it and undoes it,
 // so the report shows what each site would get, which shapes found their machine and
 // which didn't, before anything is saved.
+
+const TUNNEL = '/app/maintenance-inventory/tunnel'
+type SiteReport = ApplyReport['sites'][number]
 
 type Props = {
   source: { id: string; name: string }
@@ -30,6 +35,21 @@ export function ApplyTemplateDialog({ source, sites, preselect, onClose, onDone 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const many = me.rank >= 4
+  // How many of the source's shapes stand for a machine. The report alone can't tell what a
+  // site is left to link: its item count takes in rooms and labels, and a shape with no
+  // machine type (presoak and tire shine in the standard template) is neither linked nor
+  // unmatched. Every site gets every shape, so what's left is this less what was linked,
+  // the same count the site's Tunnel page shows.
+  const [linkable, setLinkable] = useState<number | null>(null)
+  useEffect(() => {
+    let alive = true
+    miTunnel.template(source.id)
+      .then((t) => { if (alive) setLinkable(t.items.filter((i) => !shapeFor(i.kind).scenery).length) })
+      // Not a template (another site's drawing): the unmatched shapes are the best guess.
+      .catch(() => {})
+    return () => { alive = false }
+  }, [source.id])
+  const left = (s: SiteReport) => (s.result === 'skipped' ? 0 : linkable != null ? Math.max(0, linkable - (s.linked ?? 0)) : s.unmatched?.length ?? 0)
 
   const run = async (commit: boolean) => {
     setBusy(true)
@@ -98,15 +118,24 @@ export function ApplyTemplateDialog({ source, sites, preselect, onClose, onDone 
               {report.sites.map((s) => (
                 <li key={s.site_id} className="px-3 py-2 text-sm">
                   <div className="flex items-center gap-2">
-                    {s.result === 'skipped' ? <span className="size-4" /> : (s.unmatched?.length ?? 0) > 0 ? <TriangleAlert className="size-4 text-warn" /> : <CheckCircle2 className="size-4 text-ok" />}
+                    {s.result === 'skipped' ? <span className="size-4" /> : left(s) > 0 ? <TriangleAlert className="size-4 text-warn" /> : <CheckCircle2 className="size-4 text-ok" />}
                     <span className="font-medium text-ink">{s.site_name}</span>
                     <span className={cn('text-xs', s.result === 'skipped' ? 'text-ink-subtle' : 'text-ink-muted')}>
-                      {s.result === 'skipped' ? 'already has a diagram, left alone' : `${s.result === 'replaced' ? 'replaced' : 'new'}: ${s.linked} of ${s.items} shapes linked`}
+                      {s.result === 'skipped' ? 'already has a diagram, left alone' : `${s.result === 'replaced' ? 'replaced' : 'new'}: ${s.linked} of ${linkable ?? s.items} shapes linked`}
                       {s.zones_created ? `, ${s.zones_created} zones added` : ''}{s.areas_set ? `, ${s.areas_set} machines given a zone` : ''}
                     </span>
                   </div>
                   {(s.unmatched?.length ?? 0) > 0 && <p className="ml-6 text-xs text-ink-muted">No machine for: {s.unmatched!.join(', ')}. They're drawn dashed until someone links them.</p>}
                   {(s.ambiguous?.length ?? 0) > 0 && <p className="ml-6 text-xs text-warn">More than one match, picked the first: {s.ambiguous!.join(', ')}.</p>}
+                  {/* Only once it's saved: before that there's no drawing to go to. Opened from
+                      that site's own Tunnel page this changes only the address, and the page
+                      opens its list from it. */}
+                  {report.committed && left(s) > 0 && (
+                    <Link to={`${TUNNEL}?site=${encodeURIComponent(s.site_id)}&unlinked=1`} onClick={onClose}
+                      className="ml-6 inline-block rounded-sm text-xs font-medium text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                      See what's not linked
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
