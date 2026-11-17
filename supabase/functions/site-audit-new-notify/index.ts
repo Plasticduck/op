@@ -3,10 +3,11 @@
 // photos) and texts a one-line result. Pre-launch it goes only to Kevan (his
 // request, 2026-11-17), not the old Site Audits list in email-site-audit.
 //
-// Body: { audit_id, resend?, smsOnly?, check? }. Sends once per audit: the row's
+// Body: { audit_id, resend?, smsOnly?, emailOnly?, check?, preview? }. Sends once per audit: the row's
 // notified_at is claimed before sending, so a retry or a second tab doesn't send it
-// again; resend: true sends it again anyway (smsOnly: just the text). check: true
-// reads back delivery from Resend and Twilio (accepted is not delivered).
+// again; resend: true sends it again anyway (smsOnly / emailOnly: just one). check: true
+// reads back delivery from Resend and Twilio (accepted is not delivered); preview:
+// true returns the PDF (base64) and how each photo was read, sending nothing.
 //
 // Auth: the audit's auditor, an Admin (owner) of its account, or the service role.
 // Secrets: RESEND_API_KEY (optional RESEND_FROM) for email; TWILIO_ACCOUNT_SID,
@@ -63,23 +64,75 @@ function jpegSize(b: Uint8Array): { w: number; h: number } | null {
 
 // A small JPEG thumbnail from Storage's resizer (the worker never downloads the
 // full photo) plus a long-lived link to the full image.
-async function resolvePhoto(svc: Any, path: string) {
+// What a picture's bytes are, whatever its name or stated type says.
+function sniff(b: Uint8Array): 'JPEG' | 'PNG' | 'WEBP' | 'GIF' | 'HEIC' | 'AVIF' | 'other' {
+  if (b[0] === 0xff && b[1] === 0xd8) return 'JPEG'
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'PNG'
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45) return 'WEBP'
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'GIF'
+  const brand = String.fromCharCode(...b.slice(8, 12))
+  if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return /avi/.test(brand) ? 'AVIF' : 'HEIC'
+  return 'other'
+}
+
+type Fmt = 'JPEG' | 'PNG' | 'WEBP'
+type Photo = { url: string; dataUrl: string | null; fmt: Fmt; w: number; h: number; how: string }
+
+function webpSize(b: Uint8Array): { w: number; h: number } | null {
+  const chunk = String.fromCharCode(b[12], b[13], b[14], b[15])
+  if (chunk === 'VP8 ') return { w: (b[26] | (b[27] << 8)) & 0x3fff, h: (b[28] | (b[29] << 8)) & 0x3fff }
+  if (chunk === 'VP8L') return { w: 1 + (((b[22] & 0x3f) << 8) | b[21]), h: 1 + (((b[24] & 0xf) << 10) | (b[23] << 2) | ((b[22] & 0xc0) >> 6)) }
+  if (chunk === 'VP8X') return { w: 1 + (b[24] | (b[25] << 8) | (b[26] << 16)), h: 1 + (b[27] | (b[28] << 8) | (b[29] << 16)) }
+  return null
+}
+
+// jsPDF reads JPEG, PNG and WebP. JPEG goes in as is; PNG and WebP are decoded,
+// which costs CPU, so only small ones (the 400px thumbnails) are allowed.
+function embeddable(bytes: Uint8Array, maxDecodeBytes = 600_000): { dataUrl: string; fmt: Fmt; w: number; h: number } | null {
+  const kind = sniff(bytes)
+  const d = kind === 'JPEG' ? jpegSize(bytes) : kind === 'PNG' ? pngSize(bytes) : kind === 'WEBP' ? webpSize(bytes) : null
+  if (!d || d.w <= 0 || d.h <= 0) return null
+  if (kind !== 'JPEG' && (bytes.length > maxDecodeBytes || d.w * d.h > 700_000)) return null
+  const mime = kind === 'JPEG' ? 'image/jpeg' : kind === 'PNG' ? 'image/png' : 'image/webp'
+  return { dataUrl: `data:${mime};base64,` + encodeBase64(bytes), fmt: kind as Fmt, ...d }
+}
+
+// A photo for the PDF, whatever format it was taken in. Storage's resizer makes a
+// 400px thumbnail (plenty for the 28 mm the PDF draws) from any common format
+// (JPEG, PNG, HEIC, WebP, GIF, AVIF, TIFF, BMP). It answers in the photo's own
+// format unless the request says it takes WebP, so a PNG came back as PNG and the
+// first version, which only took JPEG, dropped it (2026-11-17). So: ask for JPEG,
+// take JPEG, PNG or WebP; if it's anything else, ask again for WebP. If the
+// resizer fails, the original when it's a JPEG. Otherwise a placeholder that
+// links to the photo. `how` records which way worked.
+async function resolvePhoto(svc: Any, path: string): Promise<Photo | null> {
   const { data: full } = await svc.storage.from(BUCKET).createSignedUrl(path, 60 * 60 * 24 * 365 * 5)
   const url = full?.signedUrl ?? ''
-  let dataUrl: string | null = null
-  let w = 3, h = 4
+  const notes: string[] = []
   try {
-    const { data: thumb } = await svc.storage.from(BUCKET).createSignedUrl(path, 3600, { transform: { width: 512, height: 512, resize: 'contain', quality: 55 } })
+    const { data: thumb } = await svc.storage.from(BUCKET).createSignedUrl(path, 3600, { transform: { width: 400, height: 400, resize: 'contain', quality: 70 } })
     if (thumb?.signedUrl) {
-      const r = await fetch(thumb.signedUrl, { headers: { Accept: 'image/jpeg' } })
-      if (r.ok) {
+      for (const accept of ['image/jpeg', 'image/webp']) {
+        const r = await fetch(thumb.signedUrl, { headers: { Accept: accept } })
+        if (!r.ok) { notes.push(`resize ${r.status}`); break }
         const bytes = new Uint8Array(await r.arrayBuffer())
-        const dim = jpegSize(bytes)
-        if (dim && dim.w > 0 && dim.h > 0) { w = dim.w; h = dim.h; dataUrl = 'data:image/jpeg;base64,' + encodeBase64(bytes) }
+        const e = embeddable(bytes)
+        if (e) return { url, ...e, how: `resized (${e.fmt})` }
+        notes.push(`resize gave ${sniff(bytes)} ${bytes.length}b`)
       }
     }
-  } catch (_) { /* link only */ }
-  return url || dataUrl ? { url, dataUrl, w, h } : null
+  } catch (e) { notes.push('resize error ' + (e instanceof Error ? e.message : String(e))) }
+  try {
+    const { data: blob, error } = await svc.storage.from(BUCKET).download(path)
+    if (error) notes.push('download ' + error.message)
+    else {
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      const e = embeddable(bytes, 250_000)
+      if (e) return { url, ...e, how: `original (${e.fmt}); ${notes.join('; ')}` }
+      notes.push(`original is ${sniff(bytes)} ${bytes.length}b`)
+    }
+  } catch (e) { notes.push('download error ' + (e instanceof Error ? e.message : String(e))) }
+  return url ? { url, dataUrl: null, fmt: 'JPEG', w: 4, h: 3, how: 'link only: ' + notes.join('; ') } : null
 }
 
 type Outcome = { title: string; detail: string; tone: 'ok' | 'warn' | 'danger'; failedItems: string[]; warnItems: string[]; short: string }
@@ -115,17 +168,24 @@ function outcome(audit: Any, answers: Record<string, Answer>): Outcome {
   }
 }
 
-async function buildPdf(svc: Any, audit: Any, answers: Record<string, Answer>, site: string, o: Outcome): Promise<string> {
+async function buildPdf(svc: Any, audit: Any, answers: Record<string, Answer>, site: string, o: Outcome): Promise<{ pdf: string; photos: { path: string; how: string }[] }> {
   const photoImages: Record<string, Any> = {}
-  for (const p of Object.values(answers).flatMap((a) => a.photos)) {
-    const r = await resolvePhoto(svc, p)
-    if (r) photoImages[p] = r
+  const paths = Object.values(answers).flatMap((a) => a.photos)
+  // Two at a time, to keep memory down on the worker.
+  for (let i = 0; i < paths.length; i += 2) {
+    const batch = paths.slice(i, i + 2)
+    const got = await Promise.all(batch.map((p) => resolvePhoto(svc, p)))
+    batch.forEach((p, j) => { if (got[j]) photoImages[p] = got[j] })
   }
+  // The small logo: the full one is 1191x1842 and decoding it costs as much CPU
+  // as several photos. A missing file on Vercel answers with the app's HTML, so
+  // check it's really a PNG.
   let logo: Any = null
   if (audit.account_id === MIGHTY_WASH) {
     try {
-      const lr = await fetch(APP + '/mw-logo.png')
-      if (lr.ok) { const lb = new Uint8Array(await lr.arrayBuffer()); const d = pngSize(lb); logo = { dataUrl: 'data:image/png;base64,' + encodeBase64(lb), w: d.w, h: d.h } }
+      const lr = await fetch(APP + '/mw-logo-pdf.png')
+      const lb = lr.ok ? new Uint8Array(await lr.arrayBuffer()) : null
+      if (lb && sniff(lb) === 'PNG') { const d = pngSize(lb); logo = { dataUrl: 'data:image/png;base64,' + encodeBase64(lb), w: d.w, h: d.h } }
     } catch (_) { /* no logo */ }
   }
   // compress: the logo PNG is stored raw otherwise, about 9 MB.
@@ -138,7 +198,10 @@ async function buildPdf(svc: Any, audit: Any, answers: Record<string, Answer>, s
     photoImages,
     footer: `Audited by ${audit.auditor_name ?? '-'}  -  generated ${central(new Date())}`,
   })
-  return encodeBase64(new Uint8Array(doc.output('arraybuffer')))
+  return {
+    pdf: encodeBase64(new Uint8Array(doc.output('arraybuffer'))),
+    photos: paths.map((p) => ({ path: p.split('/').slice(-2).join('/'), how: photoImages[p]?.how ?? 'missing' })),
+  }
 }
 
 async function sendSms(to: string, text: string): Promise<Any> {
@@ -176,7 +239,7 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
 
-  let body: { audit_id?: string; resend?: boolean; check?: boolean; smsOnly?: boolean } = {}
+  let body: { audit_id?: string; resend?: boolean; check?: boolean; smsOnly?: boolean; emailOnly?: boolean; preview?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
   const auditId = body.audit_id
   if (!auditId || !/^[0-9a-f-]{36}$/i.test(auditId)) return json({ error: 'bad_request' }, 400, origin)
@@ -235,16 +298,22 @@ Deno.serve(async (req) => {
     return json(out, 200, origin)
   }
 
+  const answers = normalizeAnswers(a.answers)
+  const site = String(a.location?.name ?? '').trim()
+  const o = outcome(a, answers)
+  const link = `${APP}/app/site-audits-new/${a.id}`
+
+  // preview: true builds the emailed PDF and returns it, sending nothing.
+  if (body.preview) {
+    const built = await buildPdf(svc, a, answers, site, o)
+    return json(built, 200, origin)
+  }
+
   // Claim the send, so two calls can't both send it.
   if (!body.resend) {
     const { data: claimed } = await svc.from('site_audits_v2').update({ notified_at: new Date().toISOString() }).eq('id', auditId).is('notified_at', null).select('id')
     if (!claimed?.length) return json({ ok: true, already: true, notified_at: a.notified_at }, 200, origin)
   }
-
-  const answers = normalizeAnswers(a.answers)
-  const site = String(a.location?.name ?? '').trim()
-  const o = outcome(a, answers)
-  const link = `${APP}/app/site-audits-new/${a.id}`
 
   // ---- Email ---- (smsOnly with resend keeps the earlier email result)
   let email: Any = body.smsOnly ? (a.notify_result?.email ?? { ok: false, skipped: true }) : { ok: false, error: 'no_key' }
@@ -252,7 +321,8 @@ Deno.serve(async (req) => {
   if (resendKey && !body.smsOnly) {
     let pdf: string | null = null
     let pdfError: string | null = null
-    try { pdf = await buildPdf(svc, a, answers, site, o) } catch (e) { pdfError = e instanceof Error ? e.message : String(e) }
+    let photoNotes: { path: string; how: string }[] = []
+    try { const built = await buildPdf(svc, a, answers, site, o); pdf = built.pdf; photoNotes = built.photos } catch (e) { pdfError = e instanceof Error ? e.message : String(e) }
     const color = o.tone === 'ok' ? '#15803d' : o.tone === 'warn' ? '#a16207' : '#b91c1c'
     const bg = o.tone === 'ok' ? '#dcfce7' : o.tone === 'warn' ? '#fef9c3' : '#fee2e2'
     const list = (title: string, items: string[], c: string) => items.length
@@ -284,7 +354,7 @@ Deno.serve(async (req) => {
         html,
         ...(pdf ? { attachments: [{ filename: `site-audit-${(site || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`, content: pdf }] } : {}),
       })
-      email = error ? { ok: false, to: EMAIL_TO, error: (error as Any).message ?? 'send_failed' } : { ok: true, to: EMAIL_TO, id: (data as Any)?.id, pdf: !!pdf, pdfError }
+      email = error ? { ok: false, to: EMAIL_TO, error: (error as Any).message ?? 'send_failed' } : { ok: true, to: EMAIL_TO, id: (data as Any)?.id, pdf: !!pdf, pdfError, photos: photoNotes }
     } catch (e) {
       email = { ok: false, to: EMAIL_TO, error: e instanceof Error ? e.message : 'send_failed' }
     }
@@ -295,7 +365,8 @@ Deno.serve(async (req) => {
   // this sender's link-free texts all deliver. The email has the link.
   const reds = o.failedItems.length ? ` Red: ${o.failedItems.join(', ')}.` : ''
   const text = `Site Audit: ${site || 'site'}. ${o.short}.${reds} By ${a.auditor_name ?? 'unknown'}. Full PDF report emailed.`
-  const sms = await Promise.all(SMS_TO.map((to) => sendSms(to, text)))
+  // emailOnly with resend keeps the earlier text result.
+  const sms = body.emailOnly ? ((a.notify_result?.sms ?? []) as Any[]) : await Promise.all(SMS_TO.map((to) => sendSms(to, text)))
 
   const anySent = email.ok || sms.some((s) => s.ok)
   const result = { email, sms, at: new Date().toISOString() }

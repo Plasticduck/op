@@ -116,7 +116,7 @@ export type RenderInput = {
   logo: { dataUrl: string; w: number; h: number } | null
   banner: { title: string; detail: string; tone: Tone }
   answers: Record<string, Answer>
-  photoImages: Record<string, { url: string; dataUrl: string | null; w: number; h: number }>
+  photoImages: Record<string, { url: string; dataUrl: string | null; fmt?: 'JPEG' | 'PNG' | 'WEBP'; w: number; h: number }>
   footer: string
 }
 
@@ -226,7 +226,7 @@ export function renderAuditNew(doc: Any, input: RenderInput): void {
           const xx = marginX + pos.x
           const yy = blockTop + pos.row * (imgH + gap)
           if (pos.img.dataUrl) {
-            try { doc.addImage(pos.img.dataUrl, 'JPEG', xx, yy, pos.w, imgH) } catch { drawPhotoPlaceholder(doc, xx, yy, pos.w, imgH) }
+            try { doc.addImage(pos.img.dataUrl, pos.img.fmt ?? 'JPEG', xx, yy, pos.w, imgH) } catch { drawPhotoPlaceholder(doc, xx, yy, pos.w, imgH) }
           } else { drawPhotoPlaceholder(doc, xx, yy, pos.w, imgH) }
           if (pos.img.url) doc.link(xx, yy, pos.w, imgH, { url: pos.img.url })
         }
