@@ -247,6 +247,24 @@ export async function fetchSiteDailyTotals(start: string, end: string): Promise<
   return out
 }
 
+// TTAF (Total To Account For) for the year to date per site, DRB and FlexWash
+// apart, plus the same dates last year, keyed by site number. From
+// site_daily_ttaf (site_ttaf_ytd, migration 0243), stored hourly by
+// sync-site-daily. Runs through yesterday (Central), or the last day stored if
+// the sync is behind; `through` is that day.
+export type TtafYtdSite = { drb: number; flex: number; drbLy: number; flexLy: number }
+export type TtafYtd = { through: string | null; sites: Map<number, TtafYtdSite> }
+export async function fetchTtafYtd(): Promise<TtafYtd> {
+  const { data, error } = await supabase.rpc('site_ttaf_ytd', {})
+  if (error) throw new Error(error.message)
+  const out: TtafYtd = { through: null, sites: new Map() }
+  for (const r of data ?? []) {
+    out.through = r.through
+    out.sites.set(r.site_number, { drb: Number(r.drb) || 0, flex: Number(r.flex) || 0, drbLy: Number(r.drb_ly) || 0, flexLy: Number(r.flex_ly) || 0 })
+  }
+  return out
+}
+
 // First and last day stored in site_daily_metrics (null when empty).
 export async function fetchSiteDailyBounds(): Promise<{ min: string; max: string } | null> {
   const { data, error } = await supabase.rpc('site_daily_bounds')

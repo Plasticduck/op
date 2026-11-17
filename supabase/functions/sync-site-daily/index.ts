@@ -14,7 +14,13 @@
 //
 // DRB runs also store each site's "Test Car" washes (SiteWatch ledger), which
 // Site Performance subtracts from the official car count.
-// Body: { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', maxDays?: number, parts?: 'drb' | 'flex' | 'tests' | 'both' }
+//
+// Each run also stores TTAF (Total To Account For) per site per day in
+// site_daily_ttaf (migration 0243), for presentation mode's year-to-date tile:
+// DRB from the SiteWatch ledger (tenders + deposits, as on the General Sales
+// Report), FlexWash from get-accounting (cash + card + gift card + fleet unpaid).
+// parts 'ttaf' stores only that (backfill).
+// Body: { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', maxDays?: number, parts?: 'drb' | 'flex' | 'tests' | 'ttaf' | 'both' }
 // Auth: service-role JWT (cron/backfill driver) or a signed-in owner.
 // Secrets: MW_DASHBOARD_URL (optional), MW_DASHBOARD_PASSWORD,
 //          FLEXWASH_CLIENT_ID, FLEXWASH_CLIENT_SECRET.
@@ -107,6 +113,14 @@ type Row = {
   flex_sales?: number
   flex_recharge?: number
 }
+type TtafRow = {
+  account_id: string
+  site_number: number
+  date: string
+  updated_at: string
+  drb_ttaf?: number
+  flex_ttaf?: number
+}
 
 // ---- DRB (dashboard guided_query, one day) --------------------------------
 
@@ -163,6 +177,41 @@ async function testCarDays(base: string, cookie: string, start: string, end: str
     const byDay = out.get(day) ?? new Map<number, number>()
     byDay.set(Number(m[1]), num(qty))
     out.set(day, byDay)
+  }
+  return out
+}
+
+// TTAF per site per day over [start, end] from the SiteWatch ledger: the General
+// Sales Report's "Total To Account For" = minus the tender (001008) and deposit
+// (001005) lines, matching the daily summary email's ledger to the cent. Asked
+// 20 days at a time to stay under custom_query's 1,000-row cap. Keyed
+// date -> site number; null when a query failed or came back cut off.
+async function ttafDays(base: string, cookie: string, start: string, end: string): Promise<Map<string, Map<number, number>> | null> {
+  const out = new Map<string, Map<number, number>>()
+  for (let from = start; from <= end; from = addDays(from, 20)) {
+    const to = [addDays(from, 19), end].sort()[0]
+    const sql =
+      'SELECT TRIM(sl.SITENAME), CAST(s.LOGDATE AS DATE), -SUM(si.AMT) FROM SALEITEMS si ' +
+      'JOIN SALE s ON s.SITE=si.SITE AND s.OBJID=si.SALEID JOIN ITEM it ON it.OBJID=si.ITEM ' +
+      'JOIN ITEMRPTCATEGORY rc ON rc.OBJID=it.REPORTCATEGORY JOIN SITELIST sl ON sl.ID=s.SITE ' +
+      `WHERE s.LOGDATE>='${from}' AND s.LOGDATE<='${to}' ` +
+      "AND (rc.BRANCH STARTING WITH '001008' OR rc.BRANCH STARTING WITH '001005') GROUP BY 1, 2"
+    const res = await fetch(`${base}/api/custom_query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, 'User-Agent': BROWSER_UA },
+      body: JSON.stringify({ sql }),
+      signal: AbortSignal.timeout(90000),
+    })
+    const j = await res.json().catch(() => null) as { rows?: [string, string, number][]; truncated?: boolean; error?: unknown } | null
+    if (!res.ok || !j?.rows || j.error || j.truncated) return null
+    for (const d of daysBetween(from, to)) if (!out.has(d)) out.set(d, new Map())
+    for (const [name, date, amt] of j.rows) {
+      // Stores only. Headquarters (central billing) isn't a site, and "OLD MW.."
+      // rows would land on the wrong one.
+      const m = String(name).match(/^MightyWash (\d+)$/)
+      if (!m) continue
+      out.get(String(date).slice(0, 10))?.set(Number(m[1]), round2(num(amt)))
+    }
   }
   return out
 }
@@ -227,6 +276,44 @@ async function flexDays(token: string, cw: string, start: string, end: string): 
   return failed ? null : out
 }
 
+// Daily TTAF for one car wash over [start, end]: cash + card + gift card + fleet
+// unpaid net payments, as the FlexWash Sales Reports page totals them. FlexWash
+// fails the whole range when one day is bad (MW05 2026-10-28: "Multiple Adyen
+// payouts"), so a failed range is asked again a day at a time and the good days
+// kept; `failed` lists the days that still didn't come back.
+async function flexTtafDays(token: string, cw: string, start: string, end: string): Promise<{ days: Map<string, number>; failed: string[] }> {
+  const whole = await flexTtafRange(token, cw, start, end)
+  if (whole) return { days: whole, failed: [] }
+  const days = new Map<string, number>()
+  const failed: string[] = []
+  await pool(daysBetween(start, end), 3, async (day) => {
+    const one = start === end ? null : await flexTtafRange(token, cw, day, day)
+    if (one?.has(day)) days.set(day, one.get(day)!)
+    else failed.push(day)
+  })
+  return { days, failed: failed.sort() }
+}
+
+async function flexTtafRange(token: string, cw: string, start: string, end: string): Promise<Map<string, number> | null> {
+  const data = await flexPost(token, '/external/accounting/get-accounting', { carWashIds: [cw], dateRange: { start, end } })
+  if (!data) return null
+  const out = new Map<string, number>()
+  for (const d of daysBetween(start, end)) out.set(d, 0)
+  for (const c of data.accounting ?? []) {
+    for (const pg of c.payoutGroups ?? []) {
+      for (const dt of pg.dates ?? []) {
+        const day = String(dt.date ?? '').slice(0, 10)
+        if (!out.has(day)) continue
+        const a = dt.accounting ?? {}
+        const cents = num(a.cashNetPayments) + num(a.cardNetPayments) + num(a.giftCardNetPayments) + num(a.fleetUnpaidNetPayments)
+        out.set(day, out.get(day)! + cents)
+      }
+    }
+  }
+  for (const [d, cents] of out) out.set(d, round2(cents / 100))
+  return out
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) })
@@ -261,10 +348,14 @@ Deno.serve(async (req) => {
   const start = body.start as string
   const maxDays = Math.max(1, Math.min(60, Math.round(body.maxDays ?? 10)))
   const end = [body.end as string, addDays(start, maxDays - 1)].sort()[0]
-  // parts: 'drb' | 'flex' | 'tests' (Test Car counts only) | both (default).
-  const doDrb = body.parts !== 'flex' && body.parts !== 'tests'
-  const doTests = body.parts !== 'flex'
-  const doFlex = body.parts !== 'drb' && body.parts !== 'tests'
+  // parts: 'drb' | 'flex' | 'tests' (Test Car counts only) | 'ttaf' (TTAF only)
+  // | both (default). 'drb' and 'flex' store their side's TTAF too.
+  const ttafOnly = body.parts === 'ttaf'
+  const doDrb = !ttafOnly && body.parts !== 'flex' && body.parts !== 'tests'
+  const doTests = !ttafOnly && body.parts !== 'flex'
+  const doFlex = !ttafOnly && body.parts !== 'drb' && body.parts !== 'tests'
+  const doDrbTtaf = ttafOnly || doDrb
+  const doFlexTtaf = ttafOnly || doFlex
   const days = daysBetween(start, end)
   const now = new Date().toISOString()
   const errors: string[] = []
@@ -284,15 +375,40 @@ Deno.serve(async (req) => {
       else upserted += Math.min(500, rows.length - i)
     }
   }
+  // Each batch carries one side only (drb_ttaf or flex_ttaf), so the other
+  // side's stored value is left alone.
+  let ttafUpserted = 0
+  const saveTtaf = async (rows: TtafRow[]) => {
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await svc.from('site_daily_ttaf').upsert(rows.slice(i, i + 500), { onConflict: 'account_id,date,site_number' })
+      if (error) errors.push(`ttaf: ${error.message}`)
+      else ttafUpserted += Math.min(500, rows.length - i)
+    }
+  }
 
-  if (doDrb || doTests) {
+  if (doDrb || doTests || doDrbTtaf) {
     let cookie: string | null = null
     try {
       cookie = await login(base, password)
     } catch (e) {
       errors.push(`dashboard login: ${String(e)}`)
     }
-    if (cookie) {
+    if (cookie && doDrbTtaf) {
+      const ttaf = await ttafDays(base, cookie, start, end).catch(() => null)
+      if (!ttaf) errors.push('ttaf: SiteWatch ledger query failed')
+      else {
+        // A site with no sales on a day gets 0 there, so a later correction to
+        // nothing doesn't leave an old figure behind.
+        const sites = new Set<number>()
+        for (const bySite of ttaf.values()) for (const n of bySite.keys()) sites.add(n)
+        const rows: TtafRow[] = []
+        for (const [day, bySite] of ttaf) {
+          for (const n of sites) rows.push({ account_id: MW_ACCOUNT, site_number: n, date: day, updated_at: now, drb_ttaf: bySite.get(n) ?? 0 })
+        }
+        await saveTtaf(rows)
+      }
+    }
+    if (cookie && (doDrb || doTests)) {
       // Every site the dashboard lists plus every FlexWash site (no longer listed).
       const optRes = await fetch(`${base}/api/guided_query_options`, { headers: { Cookie: cookie, 'User-Agent': BROWSER_UA } })
       const opts = await optRes.json().catch(() => null) as { sites?: { name: string }[] } | null
@@ -332,7 +448,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (doFlex) {
+  if (doFlex || doFlexTtaf) {
     const token = await flexToken(svc)
     if (!token) errors.push('flexwash: no token')
     else {
@@ -340,16 +456,29 @@ Deno.serve(async (req) => {
       const active = flex.filter((f) => f.car_wash_id && f.start_date && f.start_date <= end)
       await pool(active, 3, async (f) => {
         const from = f.start_date! > start ? f.start_date! : start
-        const m = await flexDays(token, f.car_wash_id!, from, end)
-        if (!m) { errors.push(`flexwash MW${f.site_number}: request failed`); return }
-        await save([...m.entries()].map(([date, v]) => ({
-          account_id: MW_ACCOUNT, site_number: f.site_number, date, updated_at: now,
-          flex_cars: v.cars, flex_sales: v.sales, flex_recharge: v.recharge,
-        })))
+        if (doFlex) {
+          const m = await flexDays(token, f.car_wash_id!, from, end)
+          if (!m) errors.push(`flexwash MW${f.site_number}: request failed`)
+          else {
+            await save([...m.entries()].map(([date, v]) => ({
+              account_id: MW_ACCOUNT, site_number: f.site_number, date, updated_at: now,
+              flex_cars: v.cars, flex_sales: v.sales, flex_recharge: v.recharge,
+            })))
+          }
+        }
+        if (doFlexTtaf) {
+          const t = await flexTtafDays(token, f.car_wash_id!, from, end)
+          if (t.failed.length) errors.push(`flexwash MW${f.site_number} ttaf: no answer for ${t.failed.join(', ')}`)
+          if (t.days.size) {
+            await saveTtaf([...t.days.entries()].map(([date, v]) => ({
+              account_id: MW_ACCOUNT, site_number: f.site_number, date, updated_at: now, flex_ttaf: v,
+            })))
+          }
+        }
       })
     }
   }
 
   const done = end >= (body.end as string)
-  return json({ start, end, days: days.length, upserted, nextStart: done ? null : addDays(end, 1), done, errors: errors.slice(0, 10) }, 200, origin)
+  return json({ start, end, days: days.length, upserted, ttafUpserted, nextStart: done ? null : addDays(end, 1), done, errors: errors.slice(0, 10) }, 200, origin)
 })

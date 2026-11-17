@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ChevronDown, X, Building2, Layers, Dot, Check, Sun, Moon, Pause, Play } from 'lucide-react'
+import { ChevronDown, X, Building2, Layers, Dot, Check, Sun, Moon, Pause, Play, ArrowUp, ArrowDown } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
 import { Logo } from '@/components/ui/Logo'
 import { useTheme } from '@/lib/theme'
 import { usePresentationMode } from '@/lib/presentation'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
 import { useSitePerformanceFeed } from '@/lib/useSitePerformanceFeed'
-import { siteMetrics, siteNumber, type SiteMetrics, type SitePerformanceFeed } from '@/lib/queries/sitePerformance'
+import { fetchTtafYtd, siteMetrics, siteNumber, type SiteMetrics, type SitePerformanceFeed, type TtafYtd } from '@/lib/queries/sitePerformance'
 import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
-import { computeScorecards, letterFor, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { assets } from '@/lib/queries/assets'
 import { fetchLubeStats, type LubeTotals } from '@/lib/queries/lube'
@@ -16,6 +16,10 @@ import { currency } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 type LocationRow = ReturnType<typeof useLocations>['locations'][number]
+// A small line under a tile's number (a comparison, a breakdown). `roomy` lines
+// only show where the tiles have height to spare (not on phones or short laptop
+// screens), so the number never gets squeezed.
+type TileSub = { text: ReactNode; tone?: string; roomy?: boolean }
 type Selection =
   | { kind: 'all' }
   | { kind: 'region'; name: string }
@@ -48,7 +52,26 @@ function rotIndex(s: Selection, rotation: Selection[]): number {
 // ---- formatters (null-safe, big-and-legible) ----
 const num = (n: number | null | undefined) => (n == null ? '—' : Math.round(n).toLocaleString('en-US'))
 const money = (n: number | null | undefined) => (n == null ? '—' : currency(n))
+const dollars = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+// Short form for phone-width tiles: $43.5M, $1.88M, $829K.
+function shortDollars(n: number): string {
+  const a = Math.abs(n)
+  const s = a >= 1e6 ? `$${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M` : a >= 1e3 ? `$${Math.round(a / 1e3)}K` : `$${Math.round(a)}`
+  return n < 0 ? `-${s}` : s
+}
+// Whole dollars, shortened on a phone where a tile is too narrow for them.
+function Dollars({ n }: { n: number }) {
+  return (
+    <>
+      <span className="sm:hidden">{shortDollars(n)}</span>
+      <span className="hidden sm:inline">{dollars(n)}</span>
+    </>
+  )
+}
 const pct = (n: number | null | undefined) => (n == null ? '—' : `${n.toFixed(1)}%`)
+
+// How often the TTAF tile re-reads its stored numbers (the sync runs hourly).
+const TTAF_REFRESH_MS = 15 * 60 * 1000
 
 // Sum a metric across sites (nulls ignored); null when none reported.
 function agg(ms: SiteMetrics[], key: keyof SiteMetrics, mode: 'sum' | 'avg'): number | null {
@@ -99,8 +122,9 @@ export default function PresentationMode() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const [now, setNow] = useState('')
-  // Per-location scorecards, Google ratings, and open work-order counts.
-  const [cards, setCards] = useState<Record<string, Scorecard>>({})
+  // Year-to-date TTAF, Google ratings, and open work-order counts.
+  const [ttaf, setTtaf] = useState<TtafYtd | null>(null)
+  const [ttafFailed, setTtafFailed] = useState(false)
   const [rmap, setRmap] = useState<Record<string, SiteRating>>({})
   const [dmap, setDmap] = useState<Record<string, number>>({})
   // Site 19 (MW19) is the DRB lube shop: its cars/sales/average-ticket come from
@@ -192,34 +216,24 @@ export default function PresentationMode() {
     return () => { cancel = true }
   }, [active, locations])
 
-  // Scorecards: recomputed whenever the feed refreshes (or ratings arrive), so the
-  // grades track the live numbers.
+  // Year-to-date TTAF: one small read of the stored daily numbers, on entering and
+  // then every 15 minutes (the sync behind it runs hourly).
   useEffect(() => {
-    if (!active || !locations.length) return
+    if (!active) return
     let cancel = false
-    void (async () => {
-      const perfByLoc: Record<string, SitePerformanceInput> = {}
-      for (const l of locations) {
-        const sm = siteMetrics(feed, siteNumber(l.name))
-        perfByLoc[l.id] = {
-          // Month-to-date conversion + labor for the scorecard (matches monthly churn).
-          carsPerHour: sm.carsPerHour ?? undefined,
-          laborPct: sm.laborPctMtd ?? undefined,
-          conversion: sm.conversionMtd ?? undefined,
-          churn: sm.churn ?? undefined,
-          googleRating: rmap[l.id]?.rating ?? undefined,
-        }
-      }
-      const sc = await computeScorecards(locations.map((l) => l.id), perfByLoc).catch(() => ({} as Record<string, Scorecard>))
-      if (!cancel) setCards(sc)
-    })()
-    return () => { cancel = true }
-  }, [active, feed, locations, rmap])
+    const load = () => {
+      fetchTtafYtd()
+        .then((t) => { if (!cancel) { setTtaf(t); setTtafFailed(false) } })
+        .catch(() => { if (!cancel) setTtafFailed(true) })
+    }
+    load()
+    const id = setInterval(load, TTAF_REFRESH_MS)
+    return () => { cancel = true; clearInterval(id) }
+  }, [active])
 
   // Whenever a site is selected or rotates back in, pull the latest live numbers:
   // re-pull the feed (TTL-gated, so it refetches at most ~once a minute) and
-  // refresh the cheap open work-order counts. The scorecard effect above then
-  // recomputes as fresh feed data lands.
+  // refresh the cheap open work-order counts.
   useEffect(() => {
     if (!active) return
     refresh()
@@ -259,11 +273,35 @@ export default function PresentationMode() {
   const isRoll = view.count !== 1
   const selLocs = view.locs
 
-  // Score Card: the site's letter grade, or the region/all average grade.
-  const scoreTotals = selLocs.map((l) => cards[l.id]?.total).filter((v): v is number => v != null)
-  const scoreAvg = scoreTotals.length ? scoreTotals.reduce((a, b) => a + b, 0) / scoreTotals.length : null
-  const scoreLetter = selLocs.length === 1 ? (cards[selLocs[0]?.id]?.letter ?? null) : scoreAvg != null ? letterFor(scoreAvg) : null
-  const scoreTone = scoreAvg == null ? '' : scoreAvg >= 90 ? 'text-ok' : scoreAvg >= 75 ? 'text-accent' : scoreAvg >= 60 ? 'text-warn' : 'text-danger'
+  // TTAF year to date: each site's DRB and FlexWash added together (a converted
+  // site has both while DRB still bills legacy members), summed over the
+  // selection, against the same dates last year. Green when ahead, red when behind.
+  const ttafRows = ttaf ? selLocs.map((l) => ttaf.sites.get(siteNumber(l.name) ?? -1)).filter((r) => r != null) : []
+  const ttafDrb = ttafRows.reduce((a, r) => a + r.drb, 0)
+  const ttafFlex = ttafRows.reduce((a, r) => a + r.flex, 0)
+  const ttafNow = ttafDrb + ttafFlex
+  const ttafLy = ttafRows.reduce((a, r) => a + r.drbLy + r.flexLy, 0)
+  const ttafDiff = ttafNow - ttafLy
+  const ttafCompared = ttafLy > 0
+  const ttafTone = !ttafCompared || ttafDiff === 0 ? '' : ttafDiff > 0 ? 'text-ok' : 'text-danger'
+  const ttafThrough = ttaf?.through ? parseISO(ttaf.through) : null
+  const ttafLyYear = ttafThrough ? ttafThrough.getFullYear() - 1 : null
+  const ttafSub: TileSub[] = []
+  if (ttafRows.length && ttafCompared) {
+    const Arrow = ttafDiff >= 0 ? ArrowUp : ArrowDown
+    const sign = ttafDiff >= 0 ? '+' : '-'
+    const p = Math.abs((ttafDiff / ttafLy) * 100)
+    ttafSub.push({
+      tone: ttafTone,
+      text: <><Arrow className="size-[1em] shrink-0" aria-hidden="true" /><span className="truncate">{sign}<Dollars n={Math.abs(ttafDiff)} /> ({sign}{p.toFixed(p < 0.1 ? 2 : 1)}%)<span className="hidden sm:inline"> vs {ttafLyYear}</span></span></>,
+    })
+  } else if (ttafRows.length && ttafNow !== 0) {
+    ttafSub.push({ text: <span className="truncate">No {ttafLyYear} sales to compare</span> })
+  }
+  if (ttafDrb !== 0 && ttafFlex !== 0) {
+    ttafSub.push({ roomy: true, text: <span className="truncate">DRB {dollars(ttafDrb)} + FlexWash {dollars(ttafFlex)}</span> })
+  }
+  const ttafLabel = `TTAF YTD${isRoll ? ' (total)' : ''}${ttafThrough ? ` through ${format(ttafThrough, 'MMM d')}` : ''}`
   // Google Rating: the site's rating, or the average across the selection.
   const rVals = selLocs.map((l) => rmap[l.id]?.rating).filter((v): v is number => v != null)
   const ratingVal = rVals.length ? rVals.reduce((a, b) => a + b, 0) / rVals.length : null
@@ -280,8 +318,15 @@ export default function PresentationMode() {
   const avgTicket = lube && lube.tickets > 0 ? lube.net_sales / lube.tickets : null
   // Metric tiles. For a roll-up, cars/sales/recharge/open-WOs are totals and
   // cars-per-hour/conversion/churn/rating are averages. `dot` is an app status color.
-  const tiles: { label: string; value: string; dot: string; tone?: string; feed?: boolean }[] = [
-    { label: 'Score Card', value: scoreLetter ?? '—', dot: 'bg-accent', tone: scoreTone },
+  const tiles: { label: string; value: ReactNode; dot: string; tone?: string; feed?: boolean; loading?: boolean; sub?: TileSub[] }[] = [
+    {
+      label: ttafLabel,
+      value: ttafRows.length ? <Dollars n={ttafNow} /> : '—',
+      dot: 'bg-ok',
+      tone: ttafTone,
+      loading: !ttaf && !ttafFailed,
+      sub: ttafSub,
+    },
     { label: 'Google Rating', value: ratingVal != null ? `${ratingVal.toFixed(1)} ★` : '—', dot: 'bg-warn' },
     { label: isRoll ? 'Open Work Orders (total)' : 'Open Work Orders', value: String(downVal), dot: 'bg-accent' },
     { label: isRoll ? 'Cars today (total)' : 'Cars today', value: isLubeSite ? num(lube?.tickets ?? null) : num(m.cars), dot: 'bg-accent', feed: !isLubeSite },
@@ -296,6 +341,7 @@ export default function PresentationMode() {
 
   const pickBtn = (label: string, onClick: () => void, activeSel: boolean, icon?: ReactNode) => (
     <button
+      key={label}
       type="button"
       onClick={() => { onClick(); setPickerOpen(false); setAutoplay(false) }}
       className={cn(
@@ -428,10 +474,19 @@ export default function PresentationMode() {
                 <span className={cn('size-2 shrink-0 rounded-full', t.dot)} />
                 <span className="truncate">{t.label}</span>
               </div>
-              {t.feed && feedLoading ? (
+              {(t.feed && feedLoading) || t.loading ? (
                 <div className="mt-2 h-[6vh] w-32 max-w-[60%] animate-pulse rounded-md bg-ink/10" />
               ) : (
-                <div className={cn('mt-1 font-bold tabular-nums leading-none text-[clamp(1rem,4.5vh,2rem)] sm:text-[clamp(1.5rem,7vh,4.5rem)]', t.tone || 'text-ink')}>{t.value}</div>
+                <>
+                  <div className={cn('mt-1 font-bold tabular-nums leading-none text-[clamp(1rem,4.5vh,2rem)] sm:text-[clamp(1.5rem,7vh,4.5rem)]', t.tone || 'text-ink')}>{t.value}</div>
+                  {t.sub?.map((s, i) => (
+                    <div key={i} className={cn('mt-1 min-w-0 items-center gap-1 font-semibold tabular-nums leading-tight text-[clamp(0.65rem,1.8vh,0.85rem)] sm:mt-1.5 sm:text-[clamp(0.75rem,2.1vh,1.25rem)]',
+                      s.roomy ? 'hidden [@media(min-width:640px)_and_(min-height:821px)]:flex' : 'flex',
+                      s.tone || 'text-ink-muted')}>
+                      {s.text}
+                    </div>
+                  ))}
+                </>
               )}
             </div>
           ))}

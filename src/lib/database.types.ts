@@ -13287,6 +13287,41 @@ export type Database = {
           },
         ]
       }
+      site_daily_ttaf: {
+        Row: {
+          account_id: string
+          date: string
+          drb_ttaf: number | null
+          flex_ttaf: number | null
+          site_number: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          date: string
+          drb_ttaf?: number | null
+          flex_ttaf?: number | null
+          site_number: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          date?: string
+          drb_ttaf?: number | null
+          flex_ttaf?: number | null
+          site_number?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_daily_ttaf_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_evaluations: {
         Row: {
           account_id: string
@@ -17669,6 +17704,17 @@ export type Database = {
           hour: number
           site_number: number
           weekday: number
+        }[]
+      }
+      site_ttaf_ytd: {
+        Args: { p_through?: string }
+        Returns: {
+          drb: number
+          drb_ly: number
+          flex: number
+          flex_ly: number
+          site_number: number
+          through: string
         }[]
       }
       start_break: { Args: { p_break_id: string }; Returns: undefined }
