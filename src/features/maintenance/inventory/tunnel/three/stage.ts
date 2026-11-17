@@ -1,4 +1,4 @@
-import { Color, DirectionalLight, Fog, Group, MathUtils, Matrix4, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, PMREMGenerator, Scene, Timer, Vector3, WebGLRenderer } from 'three'
+import { Color, DirectionalLight, Fog, Group, MathUtils, Matrix4, MOUSE, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, PMREMGenerator, Scene, Timer, Vector3, WebGLRenderer } from 'three'
 import type { Mesh, WebGLRenderTarget } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
@@ -258,6 +258,11 @@ export function createStage(container: HTMLElement, opts: StageOptions): Stage {
   controls.maxPolarAngle = MathUtils.degToRad(85)
   controls.minDistance = 12
   controls.screenSpacePanning = false
+  // Holding the middle button slides the view over the floor, as in most 3D programs
+  // (OrbitControls' own default there is a zoom, which the wheel already does). The right
+  // button, and Ctrl, Cmd or Shift with the left, slide it too. interaction.ts keeps the
+  // browser's middle-click autoscroll off the canvas.
+  controls.mouseButtons.MIDDLE = MOUSE.PAN
   controls.rotateSpeed = 0.7
   controls.zoomSpeed = 0.9
 

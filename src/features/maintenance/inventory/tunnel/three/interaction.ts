@@ -64,6 +64,10 @@ import type { Interaction, LiveItem, MoveEvent, SceneContext } from './types'
 // it since. Otherwise the event is left alone for the page, and 't3d:wheel-passed' is
 // sent from the container (at most every few seconds) so the page can say how to zoom.
 //
+// THE MIDDLE BUTTON slides the view (stage.ts sets it), on a machine too and in move mode:
+// it is never a click or a pick-up. Its press is cancelled here so the browser doesn't
+// start autoscrolling the page under it.
+//
 // TOUCH. One finger orbits, two zoom and pan (OrbitControls' own defaults), a tap is a
 // click, there is no hover. Inline, the canvas takes touch-action: pan-y so a vertical
 // swipe scrolls the page and a sideways one orbits; expanded or in move mode it's none.
@@ -652,6 +656,9 @@ export function attachInteraction(ctx: SceneContext): Interaction {
     // A press anywhere in the scene's box means the wheel is meant for it.
     arm()
     if (e.target !== dom) return
+    // The middle button slides the view (stage.ts). Left to the browser, a middle press
+    // also starts its autoscroll (Windows, Linux), and the page would scroll under the drag.
+    if (e.button === 1) e.preventDefault()
     // Any press takes the camera back from a glide or the showroom's slow turn.
     ctx.stopCamera()
     if (e.pointerType === 'touch') {
@@ -798,6 +805,12 @@ export function attachInteraction(ctx: SceneContext): Interaction {
   // someone may have set slower than DOUBLE_MS: a press it counts as a second click is one.
   // Mouse and pen only: a finger's mousedown comes after its tap is over.
   const onMouseDown = (e: MouseEvent) => {
+    // A browser that still sends the middle press's mousedown (onDown cancelled its
+    // pointerdown) decides autoscroll by this one: Firefox.
+    if (e.button === 1) {
+      e.preventDefault()
+      return
+    }
     const p = press
     if (p && p.type !== 'touch' && e.detail >= 2) p.repeat = true
   }

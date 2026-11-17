@@ -35,7 +35,10 @@ its reach. A machine that is down stands still under a light.
   canvas). Click it again, double-click, or press Enter to open its page; the
   page's Back arrow returns to the tunnel where you left it. **Details** on the
   card opens the same side panel the diagram uses. Dragging turns the camera; a
-  click at the end of a drag never opens anything. The mouse wheel scrolls the
+  click at the end of a drag never opens anything. Holding the **middle button**
+  (or the right one, or Shift, Ctrl or Cmd with the left) and dragging slides the
+  view over the floor instead, also on a machine and while moving machines; it
+  stays over the wash. The mouse wheel scrolls the
   page until you click in the canvas; Ctrl or Cmd + wheel, or a pinch, always zooms.
 - **Move machines** (site manager and up; the toggle in the canvas, or M; people
   who can't edit the drawing don't get it): drag a machine along the tunnel, or
