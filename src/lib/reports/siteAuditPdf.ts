@@ -1,5 +1,5 @@
 import { format } from 'date-fns'
-import type { SiteAuditSchema } from '@/features/opssuite/siteAuditSchema'
+import type { SiteAuditItem, SiteAuditSchema, SiteAuditSection } from '@/features/opssuite/siteAuditSchema'
 import { reconstructAuditAnswers, type StoredAudit } from '@/features/opssuite/siteAuditColumns'
 import type { SiteReviewSchema } from '@/features/opssuite/siteReviewSchema'
 import type { SiteReviewPdfInput } from './siteReviewPdf'
@@ -123,6 +123,8 @@ export async function buildAuditPdfInput(
   // Only render sections that have at least one non-attachment item (skips the
   // empty "Attachments" section, since photos hang off their own items).
   const sections = schema.sections.filter((s) => s.items.some((it) => it.type !== 'attachment'))
+  const unlisted = unlistedSection(schema, answers)
+  if (unlisted) sections.push(unlisted)
   const dateStr = audit.created_at
   const dateLabel = dateStr && !Number.isNaN(new Date(dateStr).getTime()) ? format(new Date(dateStr), 'MMM d, yyyy') : '-'
   const meta = ['Site: ' + (audit.location?.name ?? '-'), 'Date: ' + dateLabel, 'Auditor: ' + (audit.submitted_by_name ?? '-')].join('  |  ')
@@ -137,7 +139,35 @@ export async function buildAuditPdfInput(
     submitterName: audit.submitted_by_name,
     photoImages,
     logo,
+    showHelpText: true,
   }
+}
+
+// Answers to questions that aren't on the form (it was customized after the
+// audit was taken), so nothing the auditor answered is left off the PDF. Only ids
+// the form builder makes count: audits from before this form kept answers by
+// position ("0", "1") and old photos as "primary / 4", with no question to show.
+// Same rule as unlistedSection in supabase/functions/email-site-audit/report.ts.
+function unlistedSection(
+  schema: SiteAuditSchema,
+  answers: Record<string, { value?: unknown; photos?: string[] }>,
+): SiteAuditSection | null {
+  const onForm = new Set(schema.sections.flatMap((s) => s.items.map((it) => it.id)))
+  const items: SiteAuditItem[] = []
+  for (const [id, a] of Object.entries(answers)) {
+    if (onForm.has(id) || !/^[a-z0-9_]+$/.test(id) || /^\d+$/.test(id)) continue
+    if (!a || typeof a !== 'object' || Array.isArray(a)) continue
+    const v = a.value
+    const hasPhotos = Array.isArray(a.photos) && a.photos.length > 0
+    if ((v == null || v === '') && !hasPhotos) continue
+    const label = id.replace(/_+/g, ' ').trim()
+    items.push({
+      id,
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+      type: v === 'pass' || v === 'warn' || v === 'fail' ? 'pass_fail' : 'comments',
+    })
+  }
+  return items.length ? { id: '_unlisted', title: 'Other answers (not on the current form)', items } : null
 }
 
 export async function buildSiteAuditPdf(input: SiteReviewPdfInput): Promise<Blob> {

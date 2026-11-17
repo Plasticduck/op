@@ -13,9 +13,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Resend } from 'npm:resend@4'
 import { jsPDF } from 'npm:jspdf@4.2.1'
-import autoTable from 'npm:jspdf-autotable@5.0.8'
 import { format } from 'npm:date-fns@4'
 import { encodeBase64, decodeBase64 } from 'jsr:@std/encoding@1/base64'
+import { DEFAULT_SCHEMA, reconstructAnswers, renderAudit, unlistedSection } from './report.ts'
 
 const BUCKET = 'site-audit-photos'
 // deno-lint-ignore no-explicit-any
@@ -64,77 +64,6 @@ function jwtRole(auth: string): string | null {
   try { return JSON.parse(atob(t[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? null } catch { return null }
 }
 
-// The default Site Audit form (kept in sync with siteAuditSchema.ts); the
-// account's customized schema overrides it when present.
-const DEFAULT_SCHEMA: Any = {
-  version: 1,
-  sections: [
-    { id: 'initial_observations', title: 'Initial Observations (Curb Appeal)', items: [
-      { id: 'observations', label: 'Paint, Signage, Trash, Team Appearance/Hustle', type: 'comments' },
-    ] },
-    { id: 'primary', title: 'Primary (Washing your Car)', items: [
-      { id: 'pay_stations', label: 'Pay Stations', type: 'pass_fail' },
-      { id: 'prep', label: 'Prep', type: 'pass_fail' },
-      { id: 'tunnel', label: 'Tunnel', type: 'pass_fail' },
-      { id: 'equipment', label: 'Equipment', type: 'pass_fail' },
-      { id: 'chemical', label: 'Chemical', type: 'pass_fail' },
-      { id: 'blowers', label: 'Blowers', type: 'pass_fail' },
-      { id: 'qc', label: 'QC', type: 'pass_fail' },
-      { id: 'primary_comments', label: 'Section comments (optional)', type: 'comments' },
-    ] },
-    { id: 'secondary', title: 'Secondary (Behind the Scenes)', items: [
-      { id: 'mechanical_room', label: 'Mechanical Room', type: 'pass_fail' },
-      { id: 'office', label: 'Office', type: 'pass_fail' },
-      { id: 'restrooms', label: 'Restrooms', type: 'pass_fail' },
-      { id: 'vac_shed', label: 'Vac Shed', type: 'pass_fail' },
-      { id: 'vac_area', label: 'Vac Area', type: 'pass_fail' },
-      { id: 'vac_pressure', label: 'Vac Pressure', type: 'pass_fail' },
-      { id: 'secondary_comments', label: 'Section comments (optional)', type: 'comments' },
-    ] },
-    { id: 'priority', title: 'Priority (Safety)', items: [
-      { id: 'fire_extinguishers', label: 'Fire Extinguishers', type: 'pass_fail' },
-      { id: 'safety_supplies', label: 'Safety Supplies', type: 'pass_fail' },
-      { id: 'first_aid_kit', label: 'First Aid Kit', type: 'pass_fail' },
-      { id: 'hazmat_suits', label: 'Hazmat Suits', type: 'pass_fail' },
-      { id: 'safety_signage', label: 'Safety Signage', type: 'pass_fail' },
-      { id: 'housekeeping', label: 'Housekeeping', type: 'pass_fail' },
-      { id: 'storage_tool_room', label: 'Storage/Tool Room', type: 'pass_fail' },
-      { id: 'site_hazards', label: 'Site Hazards', type: 'pass_fail' },
-      { id: 'priority_comments', label: 'Section comments (optional)', type: 'comments' },
-    ] },
-    { id: 'final_thoughts', title: 'Final Thoughts (Customer Takeaways)', items: [
-      { id: 'customer_service', label: 'Customer Service', type: 'pass_fail' },
-      { id: 'fast', label: 'Fast', type: 'pass_fail' },
-      { id: 'friendly', label: 'Friendly', type: 'pass_fail' },
-      { id: 'clean', label: 'Clean', type: 'pass_fail' },
-      { id: 'efficient', label: 'Efficient', type: 'pass_fail' },
-      { id: 'anything_stand_out', label: 'Anything Stand Out: (Good or Bad)', type: 'pass_fail' },
-      { id: 'final_thoughts_comments', label: 'Section comments (optional)', type: 'comments' },
-    ] },
-    { id: 'explanation', title: 'Explanation', items: [
-      { id: 'explanation', label: 'Explanation', type: 'comments' },
-    ] },
-  ],
-}
-
-function reconstructAnswers(schema: Any, audit: Any): Record<string, Any> {
-  const answers: Record<string, Any> = {}
-  const merge = (obj: Any) => {
-    if (obj && typeof obj === 'object' && !Array.isArray(obj)) for (const [k, v] of Object.entries(obj)) answers[k] = v
-  }
-  merge(audit.primary_section); merge(audit.secondary_section); merge(audit.priority_section); merge(audit.final_thoughts)
-  if (audit.section_comments && typeof audit.section_comments === 'object') for (const v of Object.values(audit.section_comments)) merge(v)
-  const setFirst = (sectionId: string, text: string | null) => {
-    if (!text) return
-    const sec = (schema.sections as Any[]).find((s) => s.id === sectionId)
-    const item = sec?.items.find((it: Any) => it.type === 'comments')
-    if (item) answers[item.id] = { value: text }
-  }
-  setFirst('initial_observations', audit.initial_observations)
-  setFirst('explanation', audit.explanation)
-  return answers
-}
-
 function pngSize(b: Uint8Array): { w: number; h: number } {
   return { w: (b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19], h: (b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23] }
 }
@@ -151,116 +80,10 @@ function jpegSize(b: Uint8Array): { w: number; h: number } | null {
   }
   return null
 }
-function drawPhotoPlaceholder(doc: Any, x: number, y: number, w: number, h: number): void {
-  doc.setDrawColor(210, 214, 220); doc.setFillColor(240, 242, 245); doc.rect(x, y, w, h, 'FD')
-  doc.setFontSize(7); doc.setTextColor(140, 146, 154); doc.text('Photo', x + w / 2, y + h / 2, { align: 'center' })
-}
 const fmtDate = (d: string | null | undefined): string => {
   if (!d) return '-'
   const p = new Date(d)
   return Number.isNaN(p.getTime()) ? '-' : format(p, 'MMM d, yyyy')
-}
-const fmtDateTime = (d: Date): string => format(d, 'MMM d, yyyy h:mm a')
-
-// Render the audit: header, per-section tables (Pass/Warn/Fail), photos inline
-// under each item's row, footer. Mirrors src/lib/reports/siteAuditPdf.ts.
-function renderAudit(doc: Any, input: Any): void {
-  doc.setFont('helvetica', 'normal')
-  const marginX = 14, topMargin = 16
-  const pageHeight = doc.internal.pageSize.getHeight()
-  const pageWidth = doc.internal.pageSize.getWidth()
-  const contentWidth = pageWidth - marginX * 2
-
-  doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(11, 15, 20)
-  doc.text('Site Audit', marginX, topMargin)
-  const titleWidth = doc.getTextWidth('Site Audit')
-  doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(110, 116, 124)
-  doc.text(input.metaLine ?? '', marginX, topMargin + 7)
-  if (input.titleNote) doc.text(input.titleNote, marginX + titleWidth + 4, topMargin)
-
-  if (input.logo?.dataUrl) {
-    const logoH = 18
-    const logoW = input.logo.w > 0 && input.logo.h > 0 ? logoH * (input.logo.w / input.logo.h) : logoH
-    try { doc.addImage(input.logo.dataUrl, 'PNG', pageWidth - marginX - logoW, 6, logoW, logoH) } catch { /* skip */ }
-  }
-
-  let y = topMargin + 14
-  const ensureSpace = (needed: number) => { if (y + needed > pageHeight - 20) { doc.addPage(); y = topMargin } }
-
-  const imgH = 28, gap = 3, topPad = 2, botPad = 2
-  const layoutPhotos = (imgs: Any[]) => {
-    const positions: Any[] = []
-    let x = 0, row = 0
-    for (const img of imgs) {
-      const ratio = img.w && img.h ? img.w / img.h : 1
-      const w = Math.max(12, Math.min(imgH * ratio, contentWidth))
-      if (x > 0 && x + w > contentWidth) { x = 0; row += 1 }
-      positions.push({ x, row, w, img })
-      x += w + gap
-    }
-    return { positions, blockH: topPad + (row + 1) * imgH + row * gap + botPad }
-  }
-
-  for (const section of input.schema.sections) {
-    if (!section.items.some((it: Any) => it.type !== 'attachment')) continue
-    const rows: Any[] = []
-    const rowPhotos: Any[] = []
-    for (const item of section.items) {
-      if (item.type === 'attachment') continue
-      const ans = input.answers[item.id]
-      if (item.type === 'pass_fail') {
-        const v = ans?.value
-        const pf = v === 'pass' ? 'Pass' : v === 'warn' ? 'Warn' : v === 'fail' ? 'Fail' : '-'
-        rows.push([item.label, pf, '-'])
-      } else {
-        const raw = ans?.value
-        rows.push([item.label, '-', raw == null || raw === '' ? '-' : String(raw)])
-      }
-      const imgs = ((ans?.photos ?? []) as string[]).map((p) => input.photoImages?.[p]).filter(Boolean)
-      rowPhotos.push(imgs.length ? layoutPhotos(imgs) : null)
-    }
-
-    ensureSpace(14)
-    doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(11, 15, 20)
-    doc.text(section.title, marginX, y); y += 3
-
-    autoTable(doc, {
-      startY: y + 2,
-      head: [['Item', 'Status', 'Notes']],
-      body: rows.length > 0 ? rows : [['-', '-', '-']],
-      margin: { left: marginX, right: marginX },
-      rowPageBreak: 'avoid',
-      styles: { font: 'helvetica', fontSize: 9, cellPadding: 3 },
-      headStyles: { fillColor: [11, 15, 20], textColor: [255, 255, 255] },
-      alternateRowStyles: { fillColor: [247, 248, 250] },
-      columnStyles: { 0: { cellWidth: contentWidth * 0.42 }, 1: { cellWidth: contentWidth * 0.18 }, 2: { cellWidth: contentWidth * 0.4 } },
-      didParseCell: (data: Any) => {
-        if (data.section !== 'body') return
-        const layout = rowPhotos[data.row.index]
-        if (!layout) return
-        data.cell.styles.cellPadding = { top: 3, right: 3, bottom: 3 + layout.blockH, left: 3 }
-      },
-      didDrawCell: (data: Any) => {
-        if (data.section !== 'body' || data.column.index !== 0) return
-        const layout = rowPhotos[data.row.index]
-        if (!layout) return
-        const blockTop = data.cell.y + data.cell.height - layout.blockH + topPad
-        for (const pos of layout.positions) {
-          const xx = marginX + pos.x
-          const yy = blockTop + pos.row * (imgH + gap)
-          if (pos.img.dataUrl) {
-            try { doc.addImage(pos.img.dataUrl, 'JPEG', xx, yy, pos.w, imgH) } catch { drawPhotoPlaceholder(doc, xx, yy, pos.w, imgH) }
-          } else { drawPhotoPlaceholder(doc, xx, yy, pos.w, imgH) }
-          if (pos.img.url) doc.link(xx, yy, pos.w, imgH, { url: pos.img.url })
-        }
-      },
-    })
-    y = doc.lastAutoTable.finalY + 8
-  }
-
-  const footer = (input.submitterName ?? 'Submitted by -') + '  -  generated ' + fmtDateTime(new Date())
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(140, 146, 154)
-  doc.text(footer, marginX, pageHeight - 8)
 }
 
 // Storage photo -> small inline JPEG thumbnail (resized by Storage's transformer
@@ -320,6 +143,9 @@ async function buildPdfBase64(svc: Any, audit: Any, siteName: string): Promise<s
     const cur = (answers[itemId] ?? {}) as Any
     answers[itemId] = { ...cur, photos: [...((cur.photos as string[] | undefined) ?? []), a.id] }
   }
+
+  const unlisted = unlistedSection(schema, answers)
+  if (unlisted) schema = { ...schema, sections: [...schema.sections, unlisted] }
 
   let logo: Any = null
   try {

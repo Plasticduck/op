@@ -21,6 +21,9 @@ export type SiteAuditSchema = {
 
 export type SiteAuditAnswers = Record<string, unknown>
 
+// The emailed audit PDF is built on the server from its own copy of this form
+// (DEFAULT_SCHEMA in supabase/functions/email-site-audit/report.ts). Change both
+// together and redeploy that function, or the email shows the old questions.
 export const DEFAULT_SITE_AUDIT_SCHEMA: SiteAuditSchema = {
   version: 1,
   sections: [

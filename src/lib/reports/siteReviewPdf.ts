@@ -22,6 +22,9 @@ export type SiteReviewPdfInput = {
   photoImages?: Record<string, { url: string; dataUrl?: string; w?: number; h?: number }>
   // Optional brand logo drawn at the top-right (e.g. the account's wash logo).
   logo?: { dataUrl: string; w: number; h: number } | null
+  // Prints each item's help text (the prompts under it on the form, e.g. "Clean?
+  // Organized?") in small grey type beneath its label.
+  showHelpText?: boolean
 }
 
 function drawPhotoPlaceholder(
@@ -137,10 +140,27 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
     return { positions, blockH: topPad + nRows * imgH + (nRows - 1) * gap + botPad }
   }
 
+  // Help text goes under the item's label, in space kept free at the bottom of
+  // the label's cell (above any photos).
+  const k = doc.internal.scaleFactor
+  const helpSize = 7.5
+  const helpGap = 0.8
+  const labelWidth = contentWidth * 0.42
+  type HelpBlock = { lines: string[]; h: number }
+  const layoutHelp = (text: string | undefined): HelpBlock | null => {
+    const t = (text ?? '').trim()
+    if (!input.showHelpText || !t) return null
+    doc.setFont('helvetica', 'normal')
+    const lines = doc.splitTextToSize(t, labelWidth - 6, { fontSize: helpSize }) as string[]
+    return { lines, h: helpGap + lines.length * (helpSize / k) * doc.getLineHeightFactor() }
+  }
+
   for (const section of input.schema.sections) {
     const rows: Array<[string, string, string]> = []
-    // Per body-row photo layout, parallel to `rows`, or null when the item has none.
+    // Per body-row photo layout and help text, parallel to `rows`, or null when
+    // the item has none.
     const rowPhotos: ({ positions: PhotoPos[]; blockH: number } | null)[] = []
+    const rowHelp: (HelpBlock | null)[] = []
     for (const item of section.items) {
       if (item.type === 'attachment') continue
       const ans = input.answers[item.id] as { value?: unknown; comments?: unknown; photos?: string[] } | undefined
@@ -159,6 +179,7 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
         .map((p) => input.photoImages?.[p])
         .filter((im): im is PhotoImg => !!im)
       rowPhotos.push(imgs.length ? layoutPhotos(imgs) : null)
+      rowHelp.push(layoutHelp(item.helpText))
     }
 
     ensureSpace(14)
@@ -179,20 +200,32 @@ function renderReview(doc: JsPdf, autoTable: AutoTableFn, input: SiteReviewPdfIn
       headStyles: { fillColor: [11, 15, 20], textColor: [255, 255, 255] },
       alternateRowStyles: { fillColor: [247, 248, 250] },
       columnStyles: {
-        0: { cellWidth: contentWidth * 0.42 },
+        0: { cellWidth: labelWidth },
         1: { cellWidth: contentWidth * 0.18 },
         2: { cellWidth: contentWidth * 0.40 },
       },
-      // Reserve space at the bottom of a row for its photos...
+      // Reserve space at the bottom of a row for its photos (and of the label's
+      // cell for its help text)...
       didParseCell: (data) => {
         if (data.section !== 'body') return
-        const layout = rowPhotos[data.row.index]
-        if (!layout) return
-        data.cell.styles.cellPadding = { top: 3, right: 3, bottom: 3 + layout.blockH, left: 3 }
+        const photosH = rowPhotos[data.row.index]?.blockH ?? 0
+        const helpH = data.column.index === 0 ? rowHelp[data.row.index]?.h ?? 0 : 0
+        if (!photosH && !helpH) return
+        data.cell.styles.cellPadding = { top: 3, right: 3, bottom: 3 + helpH + photosH, left: 3 }
       },
-      // ...then draw the photos into that reserved band, spanning the table width.
+      // ...then draw them into it: the help text under the label, the photos in a
+      // band spanning the table width.
       didDrawCell: (data) => {
         if (data.section !== 'body' || data.column.index !== 0) return
+        const help = rowHelp[data.row.index]
+        if (help) {
+          const labelH = data.cell.text.length * (data.cell.styles.fontSize / k) * doc.getLineHeightFactor()
+          const top = data.cell.y + 3 + labelH + helpGap
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(helpSize)
+          doc.setTextColor(110, 116, 124)
+          doc.text(help.lines, data.cell.x + 3, top + (helpSize / k) * 0.85)
+        }
         const layout = rowPhotos[data.row.index]
         if (!layout) return
         const blockTop = data.cell.y + data.cell.height - layout.blockH + topPad
