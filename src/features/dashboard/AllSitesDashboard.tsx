@@ -7,7 +7,7 @@ import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
 import { Wos } from '@/components/ui/Wos'
 import { groupByRegions, resolveRegions, shortRegionLabel } from '@/lib/regions'
-import { computeScorecards, letterFor, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
+import { SCORECARD_VISIBLE, computeScorecards, letterFor, type Scorecard, type SitePerformanceInput } from '@/lib/scorecard'
 import { ratings, type SiteRating } from '@/lib/queries/ratings'
 import { supabase } from '@/lib/supabase'
 import { useSitePerformanceFeed } from '@/lib/useSitePerformanceFeed'
@@ -183,12 +183,12 @@ export default function AllSitesDashboard({ regionName }: { regionName?: string 
       </div>
 
       <StatCardRow
-        className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
+        className={SCORECARD_VISIBLE ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 lg:grid-cols-4'}
         items={[
           { label: 'Sites', value: locations.length },
-          { label: 'Average grade', value: loading ? '—' : letterFor(avgTotal) },
+          ...(SCORECARD_VISIBLE ? [{ label: 'Average grade', value: loading ? '—' : letterFor(avgTotal) }] : []),
           { label: 'Avg Google rating', value: avgGoogle != null ? `${avgGoogle.toFixed(1)} ★` : '—' },
-          { label: 'Needs attention', value: loading ? '—' : needsAttention },
+          ...(SCORECARD_VISIBLE ? [{ label: 'Needs attention', value: loading ? '—' : needsAttention }] : []),
           { label: <>High-priority <Wos /></>, value: loading ? '—' : sum((c) => c.signals.highPriority) },
           { label: 'Equipment down', value: loading ? '—' : sum((c) => c.signals.equipmentDown) },
         ]}
@@ -268,7 +268,7 @@ function RegionSection({
       <div className="flex items-center gap-3 border-b border-border pb-1.5">
         <h2 className="text-sm font-bold uppercase tracking-wider text-ink">{title}</h2>
         <span className="text-xs text-ink-muted">{locations.length} sites</span>
-        {!loading && avg && (
+        {SCORECARD_VISIBLE && !loading && avg && (
           <span
             className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
             style={{ backgroundColor: gradeHex(avg) }}
@@ -365,9 +365,11 @@ function SiteCard({ loc, loading }: { loc: ScoredLocation; loading: boolean }) {
         <div className="min-w-0">
           <p className="truncate font-semibold text-ink">{loc.name}</p>
           <div className="mt-0.5 flex items-center gap-2">
-            <p className="text-xs text-ink-muted">
-              {loading || !card ? 'Scoring…' : `${card.total}/100`}
-            </p>
+            {SCORECARD_VISIBLE && (
+              <p className="text-xs text-ink-muted">
+                {loading || !card ? 'Scoring…' : `${card.total}/100`}
+              </p>
+            )}
             <GoogleRatingBadge rating={loc.googleRating} />
             {loc.openWorkOrders > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-content px-2 py-0.5 text-xs font-medium text-ink-muted">
@@ -376,12 +378,14 @@ function SiteCard({ loc, loading }: { loc: ScoredLocation; loading: boolean }) {
             )}
           </div>
         </div>
-        <span
-          className="grid size-11 shrink-0 place-items-center rounded-lg text-lg font-bold text-white"
-          style={{ backgroundColor: loading || !card ? '#9aa3b1' : gradeHex(card.letter) }}
-        >
-          {loading || !card ? '·' : card.letter}
-        </span>
+        {SCORECARD_VISIBLE && (
+          <span
+            className="grid size-11 shrink-0 place-items-center rounded-lg text-lg font-bold text-white"
+            style={{ backgroundColor: loading || !card ? '#9aa3b1' : gradeHex(card.letter) }}
+          >
+            {loading || !card ? '·' : card.letter}
+          </span>
+        )}
       </div>
 
       {card && (

@@ -16,6 +16,13 @@ import { supabase } from '@/lib/supabase'
 // now and will be reintroduced later. Work-order / asset / parts counts are still
 // computed as dashboard `signals`, just not folded into the grade.
 
+// Hidden everywhere in Operator for now (Kevan, 2026-11-18). The code stays and
+// the grading still runs on the All Sites dashboard, whose high-priority and
+// equipment-down counts come from the same signals. Set true to bring back the
+// single-site Score Card, the Average grade and Needs attention tiles, the region
+// grade badges and the letter grade on each site card.
+export const SCORECARD_VISIBLE: boolean = false
+
 export type ScorecardKey =
   | 'workOrders' | 'assets' | 'checklists' | 'parts'
   | 'conversion' | 'churn' | 'throughput' | 'labor' | 'rating'

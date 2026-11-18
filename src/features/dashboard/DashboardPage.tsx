@@ -16,6 +16,7 @@ import { currency, shortDate } from '@/lib/format'
 import EmployeeDashboard from '@/features/dashboard/EmployeeDashboard'
 import AllSitesDashboard from '@/features/dashboard/AllSitesDashboard'
 import { SiteScorecard } from '@/features/dashboard/SiteScorecard'
+import { SCORECARD_VISIBLE } from '@/lib/scorecard'
 import { CarWashFunFact } from '@/features/dashboard/CarWashFunFacts'
 import { AccountBrandLogo } from '@/features/dashboard/AccountBrandLogo'
 import { SitePerformanceCard } from '@/features/dashboard/SitePerformanceCard'
@@ -176,7 +177,7 @@ function ManagerDashboard() {
         longitude={activeLocation.longitude ?? null}
       />
 
-      {isManagerPlus && (
+      {isManagerPlus && SCORECARD_VISIBLE && (
         <SiteScorecard
           locationId={activeLocation.id}
           locationName={activeLocation.name}
