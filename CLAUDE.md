@@ -31,7 +31,7 @@ but not what RLS allows. See **Access control** below.
   Auth, Storage (private buckets + signed URLs), Edge Functions (Deno).
 - **AI:** Claude via edge functions: `ask-operator` (Operator AI), `generate-insights`,
   `suggest-schedule`, `suggest-social-post`, `analyze-market-deals`,
-  `verify-checklist-photo`, `extract-drb-gsr`, `invoice-inbound`,
+  `extract-drb-gsr`, `invoice-inbound`,
   `fetch-competitor-data`, `classify-work-order`, `tunnel-from-photos` (a tunnel
   drawing from photos, on `claude-opus-5-5`). Model id lives in each
   function; default `claude-sonnet-4-6` (`ask-operator` also honors an
@@ -183,7 +183,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0248.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0250.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides

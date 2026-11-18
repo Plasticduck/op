@@ -1646,36 +1646,110 @@ export type Database = {
           },
         ]
       }
+      checklist_daily_emails: {
+        Row: {
+          account_id: string
+          claimed_at: string
+          report_date: string
+          result: Json | null
+          sent_at: string | null
+        }
+        Insert: {
+          account_id: string
+          claimed_at?: string
+          report_date: string
+          result?: Json | null
+          sent_at?: string | null
+        }
+        Update: {
+          account_id?: string
+          claimed_at?: string
+          report_date?: string
+          result?: Json | null
+          sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_daily_emails_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checklist_instances: {
         Row: {
           checklist_id: string
           closes_at: string | null
+          completed_at: string | null
+          completed_by: string | null
+          completed_by_name: string | null
+          completed_role: string | null
           created_at: string
+          flagged_items: string[]
           id: string
           instance_date: string
+          items_done: number | null
+          items_total: number | null
           location_id: string
           opens_at: string
+          review_status: string | null
+          rm_acks: Json
+          rm_note: string | null
+          snapshot: Json | null
           status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          submitted_by_name: string | null
         }
         Insert: {
           checklist_id: string
           closes_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_by_name?: string | null
+          completed_role?: string | null
           created_at?: string
+          flagged_items?: string[]
           id?: string
           instance_date: string
+          items_done?: number | null
+          items_total?: number | null
           location_id: string
           opens_at: string
+          review_status?: string | null
+          rm_acks?: Json
+          rm_note?: string | null
+          snapshot?: Json | null
           status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          submitted_by_name?: string | null
         }
         Update: {
           checklist_id?: string
           closes_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_by_name?: string | null
+          completed_role?: string | null
           created_at?: string
+          flagged_items?: string[]
           id?: string
           instance_date?: string
+          items_done?: number | null
+          items_total?: number | null
           location_id?: string
           opens_at?: string
+          review_status?: string | null
+          rm_acks?: Json
+          rm_note?: string | null
+          snapshot?: Json | null
           status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          submitted_by_name?: string | null
         }
         Relationships: [
           {
@@ -1686,10 +1760,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "checklist_instances_completed_by_fkey"
+            columns: ["completed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "checklist_instances_location_id_fkey"
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_instances_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -1739,6 +1827,64 @@ export type Database = {
           },
           {
             foreignKeyName: "checklist_item_baselines_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checklist_item_comments: {
+        Row: {
+          author_id: string | null
+          author_name: string | null
+          author_role: string
+          body: string
+          created_at: string
+          id: string
+          instance_id: string
+          item_id: string
+          location_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          author_name?: string | null
+          author_role?: string
+          body: string
+          created_at?: string
+          id?: string
+          instance_id: string
+          item_id: string
+          location_id: string
+        }
+        Update: {
+          author_id?: string | null
+          author_name?: string | null
+          author_role?: string
+          body?: string
+          created_at?: string
+          id?: string
+          instance_id?: string
+          item_id?: string
+          location_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_item_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_item_comments_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_item_comments_location_id_fkey"
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
@@ -1797,6 +1943,61 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "checklist_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checklist_item_photos: {
+        Row: {
+          created_at: string
+          id: string
+          instance_id: string
+          item_id: string
+          location_id: string
+          path: string
+          uploaded_by: string | null
+          uploaded_by_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instance_id: string
+          item_id: string
+          location_id: string
+          path: string
+          uploaded_by?: string | null
+          uploaded_by_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instance_id?: string
+          item_id?: string
+          location_id?: string
+          path?: string
+          uploaded_by?: string | null
+          uploaded_by_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_item_photos_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_item_photos_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_item_photos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -15848,6 +16049,59 @@ export type Database = {
           revoked_at: string
         }[]
       }
+      checklist_author_role: {
+        Args: { p_location: string; p_user: string }
+        Returns: string
+      }
+      checklist_day_report: {
+        Args: { p_account: string; p_date: string }
+        Returns: {
+          checklist_id: string
+          checklist_name: string
+          closes_at: string
+          comment_count: number
+          completed_at: string
+          completed_by_name: string
+          flagged_count: number
+          instance_id: string
+          items_done: number
+          items_total: number
+          location_id: string
+          location_name: string
+          opens_at: string
+          photo_count: number
+          region: string
+          review_status: string
+          rm_name: string
+          submitted_at: string
+          submitted_by_name: string
+        }[]
+      }
+      checklist_item_on_instance: {
+        Args: { p_instance: string; p_item: string }
+        Returns: boolean
+      }
+      checklist_photo_path_ok: { Args: { p_name: string }; Returns: boolean }
+      checklist_review: {
+        Args: {
+          p_acks: Json
+          p_complete: boolean
+          p_instance: string
+          p_note: string
+        }
+        Returns: Json
+      }
+      checklist_review_bulk: { Args: { p_ids: string[] }; Returns: number }
+      checklist_site_rms: {
+        Args: never
+        Returns: {
+          location_id: string
+          name: string
+          region: string
+          user_id: string
+        }[]
+      }
+      checklist_submit: { Args: { p_instance: string }; Returns: Json }
       corenav_set_error: {
         Args: { p_error: string; p_user: string }
         Returns: undefined

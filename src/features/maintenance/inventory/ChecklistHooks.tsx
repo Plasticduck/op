@@ -17,8 +17,8 @@ function useCanUse() {
 }
 
 // On a checklist run: open a work order with the asset's parts as suggestions, and record
-// parts used on the asset. Checklists have no pass or fail of their own, only the AI photo
-// check, so a person can open one from any step and a failed photo check makes it stand out.
+// parts used on the asset. Checklists have no pass or fail of their own, so a person can open
+// one from any step, and a step marked not done (with a comment saying why) makes it stand out.
 export function ChecklistItemActions({ instanceId, itemId, hasAsset, failed }: { instanceId: string; itemId: string; hasAsset: boolean; failed: boolean }) {
   const can = useCanUse()
   const navigate = useNavigate()

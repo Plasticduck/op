@@ -98,6 +98,7 @@ const DowntimePage = lz(() => import('@/features/ops/downtime/DowntimePage'))
 const ChecklistsPage = lz(() => import('@/features/ops/checklists/ChecklistsPage'))
 const ChecklistsTemplatesPage = lz(() => import('@/features/ops/checklists/ChecklistsTemplatesPage'))
 const ChecklistDetailPage = lz(() => import('@/features/ops/checklists/ChecklistDetailPage'))
+const ChecklistRunPage = lz(() => import('@/features/ops/checklists/ChecklistRunPage'))
 const DocumentsPage = lz(() => import('@/features/ops/documents/DocumentsPage'))
 const ContactsPage = lz(() => import('@/features/ops/contacts/ContactsPage'))
 const SuppliesPage = lz(() => import('@/features/ops/supplies/SuppliesPage'))
@@ -263,6 +264,7 @@ export const router = createBrowserRouter([
           { path: 'checklists', element: emp(<ChecklistsPage />) },
           { path: 'checklists/templates', element: mgr(<ChecklistsTemplatesPage />) },
           { path: 'checklists/templates/:id', element: mgr(<ChecklistDetailPage />) },
+          { path: 'checklists/review/:id', element: emp(<ChecklistRunPage />) },
           { path: 'work-orders', element: tech(<WorkOrdersPage />) },
           { path: 'work-orders/:id', element: tech(<WorkOrdersPage />) },
           // Open to all staff: anyone can submit and track their own tickets;

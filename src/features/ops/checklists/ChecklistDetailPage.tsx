@@ -406,7 +406,7 @@ export default function ChecklistDetailPage() {
                       <button
                         type="button"
                         onClick={() => void togglePhoto(it.id, !it.requires_photo)}
-                        title="Require a photo + AI verification for this task"
+                        title="Require a photo as proof before this task can be checked off"
                         className={cn(
                           'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs',
                           it.requires_photo
