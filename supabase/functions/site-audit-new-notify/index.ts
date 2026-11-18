@@ -3,13 +3,19 @@
 // photos) and texts a one-line result. Pre-launch it goes only to Kevan (his
 // request, 2026-11-17), not the old Site Audits list in email-site-audit.
 //
-// Body: { audit_id, resend?, smsOnly?, emailOnly?, check?, preview? }. Sends once per audit: the row's
+// Body: { audit_id, event?, resend?, smsOnly?, emailOnly?, check?, preview? }. Sends once per audit: the row's
 // notified_at is claimed before sending, so a retry or a second tab doesn't send it
 // again; resend: true sends it again anyway (smsOnly / emailOnly: just one). check: true
 // reads back delivery from Resend and Twilio (accepted is not delivered); preview:
 // true returns the PDF (base64) and how each photo was read, sending nothing.
 //
-// Auth: the audit's auditor, an Admin (owner) of its account, or the service role.
+// event: 'acknowledged' is the follow-up (migration 0248): once the site's Regional
+// Manager (or an Admin) answers the red items and marks the audit complete, a text
+// says so. Claims ack_notified_at the same way, so it goes once. Pre-launch the
+// text goes only to Kevan too.
+//
+// Auth: the audit's auditor, an Admin (owner) of its account, or the service role;
+// for the acknowledged text, also the person who completed it.
 // Secrets: RESEND_API_KEY (optional RESEND_FROM) for email; TWILIO_ACCOUNT_SID,
 // TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET and TWILIO_MESSAGING_SERVICE_SID or
 // TWILIO_FROM for the text. Either one missing just skips that channel.
@@ -259,7 +265,7 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
 
-  let body: { audit_id?: string; resend?: boolean; check?: boolean; smsOnly?: boolean; emailOnly?: boolean; preview?: boolean } = {}
+  let body: { audit_id?: string; event?: string; resend?: boolean; check?: boolean; smsOnly?: boolean; emailOnly?: boolean; preview?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
   const auditId = body.audit_id
   if (!auditId || !/^[0-9a-f-]{36}$/i.test(auditId)) return json({ error: 'bad_request' }, 400, origin)
@@ -280,7 +286,10 @@ Deno.serve(async (req) => {
 
   const { data: audit } = await svc.from('site_audits_v2').select('*, location:locations(name, maintainx_id)').eq('id', auditId).maybeSingle()
   const a = audit as Any
-  if (!a || (caller && !(caller.account_id === a.account_id && (caller.id === a.auditor_id || caller.role === 'owner')))) {
+  const isAck = body.event === 'acknowledged'
+  if (body.event && !isAck) return json({ error: 'bad_request' }, 400, origin)
+  if (!a || (caller && !(caller.account_id === a.account_id
+    && (caller.id === a.auditor_id || caller.role === 'owner' || (isAck && !!a.completed_by && caller.id === a.completed_by))))) {
     return json({ error: 'not_found' }, 404, origin)
   }
   if (a.status !== 'submitted') return json({ error: 'not_submitted' }, 409, origin)
@@ -299,13 +308,18 @@ Deno.serve(async (req) => {
     const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
     const keySid = Deno.env.get('TWILIO_API_KEY_SID')
     const keySecret = Deno.env.get('TWILIO_API_KEY_SECRET')
-    out.sms = []
-    for (const s of (r.sms ?? []) as Any[]) {
-      if (!s?.sid || !accountSid || !keySid || !keySecret) continue
-      const tr = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${s.sid}.json`, { headers: { Authorization: 'Basic ' + btoa(`${keySid}:${keySecret}`) } })
-      const td = await tr.json().catch(() => null)
-      out.sms.push({ to: td?.to, from: td?.from, status: td?.status, error_code: td?.error_code, error_message: td?.error_message, date_sent: td?.date_sent, http: tr.status })
+    const smsStatus = async (list: Any[]) => {
+      const got: Any[] = []
+      for (const s of list) {
+        if (!s?.sid || !accountSid || !keySid || !keySecret) continue
+        const tr = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${s.sid}.json`, { headers: { Authorization: 'Basic ' + btoa(`${keySid}:${keySecret}`) } })
+        const td = await tr.json().catch(() => null)
+        got.push({ to: td?.to, from: td?.from, status: td?.status, error_code: td?.error_code, error_message: td?.error_message, date_sent: td?.date_sent, http: tr.status })
+      }
+      return got
     }
+    out.sms = await smsStatus((r.sms ?? []) as Any[])
+    if (a.ack_notify_result) out.ack = { ack_notified_at: a.ack_notified_at, sms: await smsStatus((a.ack_notify_result.sms ?? []) as Any[]) }
     // The account's recent texts (no bodies), to tell a filtered message from a blocked sender.
     if (accountSid && keySid && keySecret) {
       const lr = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?PageSize=15`, { headers: { Authorization: 'Basic ' + btoa(`${keySid}:${keySecret}`) } })
@@ -320,8 +334,40 @@ Deno.serve(async (req) => {
 
   const answers = normalizeAnswers(a.answers)
   const site = String(a.location?.name ?? '').trim()
+  const reds = Object.values(answers).filter((x) => x.value === 'fail').length
+
+  // ---- Acknowledged: the RM (or an Admin) marked it complete ----
+  if (isAck) {
+    if (a.review_status !== 'complete' || !a.completed_by) return json({ error: 'not_acknowledged' }, 409, origin)
+    if (!body.resend) {
+      const { data: claimed } = await svc.from('site_audits_v2').update({ ack_notified_at: new Date().toISOString() }).eq('id', auditId).is('ack_notified_at', null).select('id')
+      if (!claimed?.length) return json({ ok: true, already: true, ack_notified_at: a.ack_notified_at }, 200, origin)
+    }
+    const who = `${a.completed_role === 'admin' ? 'Admin' : 'RM'} ${a.completed_by_name ?? 'unknown'}`
+    const text = `Site Audit at ${site || 'site'} has been acknowledged by ${who}. ${reds} red item${reds === 1 ? '' : 's'} answered; marked complete.`
+    const sms = await Promise.all(SMS_TO.map((to) => sendSms(to, text)))
+    const anySent = sms.some((s) => s.ok)
+    const result = { sms, at: new Date().toISOString() }
+    await svc.from('site_audits_v2').update({ ack_notify_result: result, ...(anySent ? {} : { ack_notified_at: null }) }).eq('id', auditId)
+    return json({ ok: anySent, ...result }, anySent ? 200 : 502, origin)
+  }
+
   const o = outcome(a, answers)
   const link = `${APP}/app/site-audits-new/${a.id}`
+
+  // Who the red items wait on: the site's Regional Manager this quarter.
+  let rmName: string | null = null
+  if (a.review_status === 'needs_attention') {
+    const { data: map } = await svc.rpc('site_audit_v2_rm_map', { p_account: a.account_id })
+    const rm = ((map ?? []) as Any[]).find((m) => m.location_id === a.location_id)
+    rmName = rm?.user_id && rm?.name ? String(rm.name) : null
+  }
+  const followUpHtml = a.review_status === 'needs_attention'
+    ? `<p style="margin:16px 0 0;font-size:14px;"><b style="color:#b91c1c;">Needs attention.</b> ${reds} red item${reds === 1 ? '' : 's'} ${rmName ? `go to ${esc(rmName)} (Regional Manager) to answer and mark complete` : "wait on an Admin to answer, since this site has no Regional Manager"}, in Operator's Needs Attention tab.</p>`
+    : `<p style="margin:16px 0 0;font-size:14px;"><b style="color:#15803d;">Complete.</b> No red items, so no Regional Manager follow-up is needed.</p>`
+  const followUpText = a.review_status === 'needs_attention'
+    ? (rmName ? ` Waiting on RM ${rmName}.` : ' Needs an Admin to answer (no RM for this site).')
+    : ''
 
   // The site's open MaintainX work orders, saved on the audit the first time it's
   // sent (right after submit), so its PDF and report keep the list as it was then.
@@ -380,6 +426,7 @@ Deno.serve(async (req) => {
         </table>
         ${list('Failed (red)', o.failedItems, '#b91c1c')}
         ${list('Needs attention (yellow)', o.warnItems, '#a16207')}
+        ${followUpHtml}
         ${woLine(a.work_orders, site)}
         <p style="margin:20px 0 0;font-size:14px;">${pdf ? 'The full audit is attached as a PDF, with comments and photos under each item.' : 'The PDF could not be built this time (' + esc(pdfError) + '); open the audit in Operator instead.'}</p>
         <p style="margin:16px 0 0;"><a href="${link}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-size:14px;font-weight:600;">Open in Operator</a></p>
@@ -403,8 +450,8 @@ Deno.serve(async (req) => {
   // ---- Text ----
   // No link: carriers filtered the first one that had a link (Twilio 30007), while
   // this sender's link-free texts all deliver. The email has the link.
-  const reds = o.failedItems.length ? ` Red: ${o.failedItems.join(', ')}.` : ''
-  const text = `Site Audit: ${site || 'site'}. ${o.short}.${reds} By ${a.auditor_name ?? 'unknown'}. Full PDF report emailed.`
+  const redList = o.failedItems.length ? ` Red: ${o.failedItems.join(', ')}.` : ''
+  const text = `Site Audit: ${site || 'site'}. ${o.short}.${redList}${followUpText} By ${a.auditor_name ?? 'unknown'}. Full PDF report emailed.`
   // emailOnly with resend keeps the earlier text result.
   const sms = body.emailOnly ? ((a.notify_result?.sms ?? []) as Any[]) : await Promise.all(SMS_TO.map((to) => sendSms(to, text)))
 

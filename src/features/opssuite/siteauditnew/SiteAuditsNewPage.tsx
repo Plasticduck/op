@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ClipboardCheck, FileText, MapPin, Plus, Search } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { CheckCircle2, ClipboardCheck, FileText, MapPin, Plus, Search } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Field } from '@/components/forms/Field'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { compareLocationName } from '@/lib/utils'
+import { cn, compareLocationName } from '@/lib/utils'
 import { dateTime, shortDate } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
@@ -19,10 +19,11 @@ import { exportExcel, exportPdf, type ExportColumn } from '@/lib/opsExport'
 import { openPdfInNewTab } from '@/lib/reports/siteReviewPdf'
 import { OpsToolbar } from '../OpsToolbar'
 import { useOpsTable } from '../useOpsTable'
-import { AUDIT_SECTIONS, ITEM_COUNT, SECTION_POINTS, fmtPoints, gradeAudit, normalizeAnswers } from './form'
-import { GradePill } from './parts'
+import { AUDIT_SECTIONS, ITEM_COUNT, SECTION_POINTS, fmtPoints, gradeAudit, normalizeAnswers, redItems, rmShort } from './form'
+import { GradePill, ReviewPill } from './parts'
 import { AuditEditor } from './AuditEditor'
 import { AuditReport } from './AuditReport'
+import { useSiteRms } from './useSiteRms'
 
 const LIST = '/app/site-audits-new'
 
@@ -76,14 +77,39 @@ function AuditDetail({ id }: { id: string }) {
   if (audit.status === 'draft' && audit.auditor_id === profile?.id) {
     return <AuditEditor audit={audit} onSubmitted={() => void load()} />
   }
-  return <AuditReport audit={audit} />
+  return <AuditReport audit={audit} onChanged={() => void load()} />
 }
+
+type TabKey = 'history' | 'needs_attention' | 'complete'
+// `short` keeps the three tabs on one line on a phone.
+const TABS: { key: TabKey; label: string; short?: string }[] = [
+  { key: 'history', label: 'Audit History', short: 'History' },
+  { key: 'needs_attention', label: 'Needs Attention' },
+  { key: 'complete', label: 'Complete' },
+]
+const isTab = (v: string | null): v is TabKey => TABS.some((t) => t.key === v)
+const EMPTY: Record<TabKey, { title: string; description: string }> = {
+  history: { title: 'No audits yet', description: 'Every submitted audit shows here with its score, grade and where it is.' },
+  needs_attention: { title: 'Nothing needs attention', description: "Audits with a red item wait here until the site's Regional Manager answers each one and marks it complete." },
+  complete: { title: 'No completed audits yet', description: 'Audits land here once the Regional Manager marks them complete, or right away when nothing was red.' },
+}
+type Col = { header: string; cell: (a: SiteAuditV2) => ReactNode; className?: string }
+
+const redCount = (a: SiteAuditV2) => redItems(normalizeAnswers(a.answers)).length
+const daysSince = (iso: string | null) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0)
+const daysText = (n: number) => (n === 0 ? 'Today' : `${n} day${n === 1 ? '' : 's'}`)
+const completedText = (a: SiteAuditV2) =>
+  a.completed_by_name ? `${a.completed_by_name} (${a.completed_role === 'admin' ? 'Admin' : 'RM'})` : 'No red items'
 
 function AuditList() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const { locations } = useLocations()
   const logoUrl = useBrandLogoUrl()
+  const rms = useSiteRms()
+  const [params, setParams] = useSearchParams()
+  const tab: TabKey = isTab(params.get('tab')) ? (params.get('tab') as TabKey) : 'history'
+  const setTab = (t: TabKey) => setParams((p) => { p.set('tab', t); return p }, { replace: true })
   const [rows, setRows] = useState<SiteAuditV2[]>([])
   const [drafts, setDrafts] = useState<SiteAuditV2[]>([])
   const [loading, setLoading] = useState(true)
@@ -108,14 +134,66 @@ function AuditList() {
   }, [uid])
   useEffect(() => { void load() }, [load])
 
-  const visible = useMemo(() => {
+  const filtered = useMemo(() => {
     let r = rows
     if (siteFilter !== 'all') r = r.filter((x) => x.location_id === siteFilter)
     const q = search.trim().toLowerCase()
-    if (q) r = r.filter((x) => (x.location?.name ?? '').toLowerCase().includes(q) || (x.auditor_name ?? '').toLowerCase().includes(q))
+    if (q) {
+      r = r.filter((x) =>
+        (x.location?.name ?? '').toLowerCase().includes(q)
+        || (x.auditor_name ?? '').toLowerCase().includes(q)
+        || (rms?.get(x.location_id)?.name ?? '').toLowerCase().includes(q))
+    }
     return r
-  }, [rows, siteFilter, search])
-  const table = useOpsTable(visible, (r) => r.submitted_at)
+  }, [rows, siteFilter, search, rms])
+  const counts: Record<TabKey, number> = useMemo(() => ({
+    history: filtered.length,
+    needs_attention: filtered.filter((a) => a.review_status === 'needs_attention').length,
+    complete: filtered.filter((a) => a.review_status === 'complete').length,
+  }), [filtered])
+  const visible = useMemo(() => (tab === 'history' ? filtered : filtered.filter((a) => a.review_status === tab)), [filtered, tab])
+  const table = useOpsTable(visible, (r) => (tab === 'complete' ? r.completed_at ?? r.submitted_at : r.submitted_at))
+
+  const rmName = (a: SiteAuditV2) => (rms ? rmShort(rms.get(a.location_id)) : '…')
+  const exportColumns: ExportColumn<SiteAuditV2>[] = [
+    ...EXPORT_COLUMNS,
+    { header: 'Status', value: (r) => (r.review_status === 'needs_attention' ? 'Needs attention' : 'Complete') },
+    { header: 'Red items', value: (r) => redCount(r) },
+    { header: tab === 'complete' ? 'Completed by' : 'Regional Manager', value: (r) => (r.review_status === 'complete' ? completedText(r) : rmName(r)) },
+    { header: 'Completed', value: (r) => (r.completed_at ? shortDate(r.completed_at) : '') },
+  ]
+  const tabTitle = TABS.find((t) => t.key === tab)?.label ?? 'Site Audits'
+
+  const site: Col = { header: 'Site', cell: (a) => a.location?.name ?? '—', className: 'font-medium text-ink' }
+  const submitted: Col = { header: 'Submitted', cell: (a) => shortDate(a.submitted_at) }
+  const grade: Col = { header: 'Grade', cell: (a) => <GradePill grade={a.grade} safetyFailed={a.safety_failed} />, className: '' }
+  const columns: Col[] = tab === 'needs_attention'
+    ? [
+        site, submitted, grade,
+        { header: 'Red items', cell: (a) => redCount(a), className: 'font-semibold text-danger' },
+        { header: 'Waiting on', cell: rmName, className: 'text-ink' },
+        { header: 'Open', cell: (a) => daysText(daysSince(a.submitted_at)) },
+      ]
+    : tab === 'complete'
+      ? [
+          site, submitted, grade,
+          { header: 'Completed by', cell: completedText, className: 'text-ink' },
+          { header: 'Completed', cell: (a) => shortDate(a.completed_at ?? a.submitted_at) },
+        ]
+      : [
+          site,
+          { header: 'Date', cell: (a) => shortDate(a.submitted_at) },
+          { header: 'Auditor', cell: (a) => a.auditor_name ?? '—' },
+          { header: 'Score', cell: scoreText, className: 'text-ink' },
+          grade,
+          { header: 'Status', cell: (a) => <ReviewPill status={a.review_status} />, className: '' },
+        ]
+  const mobileLine = (a: SiteAuditV2) =>
+    tab === 'needs_attention'
+      ? `${redCount(a)} red · ${rms?.get(a.location_id)?.name ? 'Waiting on ' : ''}${rmName(a)} · ${daysText(daysSince(a.submitted_at))}`
+      : tab === 'complete'
+        ? `${completedText(a)} · ${shortDate(a.completed_at ?? a.submitted_at)}`
+        : `${scoreText(a)} · ${shortDate(a.submitted_at)} · ${a.auditor_name ?? '—'}`
 
   const discard = async (d: SiteAuditV2) => {
     if (!window.confirm('Discard this audit? Its answers and photos will be deleted.')) return
@@ -184,13 +262,45 @@ function AuditList() {
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-ink-muted">
           <span className="inline-flex items-center gap-1"><Search className="size-3.5" /> Search</span>
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Site or auditor" className="h-9 w-56" aria-label="Search audits" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Site, auditor or RM" className="h-9 w-56" aria-label="Search audits" />
         </label>
       </div>
+
+      <div role="tablist" aria-label="Audit status" className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border sm:gap-x-6">
+        {TABS.map((t) => {
+          const active = t.key === tab
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-label={`${t.label} (${counts[t.key]})`}
+              onClick={() => setTab(t.key)}
+              className={cn(
+                '-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 pb-2 pt-1 text-sm font-medium transition',
+                active ? 'border-accent text-ink' : 'border-transparent text-ink-muted hover:text-ink',
+              )}
+            >
+              {t.short ? <><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span></> : t.label}
+              <span
+                className={cn(
+                  'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold',
+                  t.key === 'needs_attention' && counts[t.key] > 0 ? 'bg-danger text-white'
+                    : active ? 'bg-accent text-white' : 'bg-ink/10 text-ink-muted',
+                )}
+              >
+                {counts[t.key]}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       <OpsToolbar
         range={table.range} onRange={table.setRange} sort={table.sort} onSort={table.setSort} count={table.rows.length}
-        onExportPdf={() => exportPdf('Site Audits', EXPORT_COLUMNS, table.rows, { logoUrl })}
-        onExportExcel={() => exportExcel('site-audits', EXPORT_COLUMNS, table.rows)}
+        onExportPdf={() => exportPdf(`Site Audits: ${tabTitle}`, exportColumns, table.rows, { logoUrl })}
+        onExportExcel={() => exportExcel(`site-audits-${tab.replace('_', '-')}`, exportColumns, table.rows)}
       />
 
       {loadError && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">Could not load audits: {loadError}</p>}
@@ -198,29 +308,21 @@ function AuditList() {
       {loading ? (
         <p className="text-sm text-ink-muted">Loading…</p>
       ) : table.rows.length === 0 ? (
-        <EmptyState icon={ClipboardCheck} title="No audits yet" description="Submitted audits show here with their score and grade." />
+        <EmptyState icon={tab === 'complete' ? CheckCircle2 : ClipboardCheck} title={EMPTY[tab].title} description={EMPTY[tab].description} />
       ) : (
         <>
           <div className="hidden overflow-x-auto rounded-md border border-border bg-card sm:block">
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
-                  <th className="px-3 py-2.5 font-medium">Site</th>
-                  <th className="px-3 py-2.5 font-medium">Date</th>
-                  <th className="px-3 py-2.5 font-medium">Auditor</th>
-                  <th className="px-3 py-2.5 font-medium">Score</th>
-                  <th className="px-3 py-2.5 font-medium">Grade</th>
+                  {columns.map((c) => <th key={c.header} className="px-3 py-2.5 font-medium">{c.header}</th>)}
                   <th className="px-3 py-2.5" />
                 </tr>
               </thead>
               <tbody>
                 {table.rows.map((a) => (
                   <tr key={a.id} className="cursor-pointer border-t border-border hover:bg-content" onClick={() => navigate(`${LIST}/${a.id}`)}>
-                    <td className="px-3 py-2.5 font-medium text-ink">{a.location?.name ?? '—'}</td>
-                    <td className="px-3 py-2.5 text-ink-muted">{shortDate(a.submitted_at)}</td>
-                    <td className="px-3 py-2.5 text-ink-muted">{a.auditor_name ?? '—'}</td>
-                    <td className="px-3 py-2.5 text-ink">{scoreText(a)}</td>
-                    <td className="px-3 py-2.5"><GradePill grade={a.grade} safetyFailed={a.safety_failed} /></td>
+                    {columns.map((c) => <td key={c.header} className={cn('px-3 py-2.5', c.className ?? 'text-ink-muted')}>{c.cell(a)}</td>)}
                     <td className="px-3 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                         <Button variant="ghost" size="sm" onClick={() => navigate(`${LIST}/${a.id}`)}>View</Button>
@@ -241,8 +343,11 @@ function AuditList() {
                 <button type="button" onClick={() => navigate(`${LIST}/${a.id}`)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                   <GradePill grade={a.grade} safetyFailed={a.safety_failed} />
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-ink">{a.location?.name ?? '—'}</span>
-                    <span className="block text-xs text-ink-muted">{scoreText(a)} · {shortDate(a.submitted_at)} · {a.auditor_name ?? '—'}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="truncate font-medium text-ink">{a.location?.name ?? '—'}</span>
+                      {tab === 'history' && <ReviewPill status={a.review_status} />}
+                    </span>
+                    <span className="block text-xs text-ink-muted">{mobileLine(a)}</span>
                   </span>
                 </button>
                 <Button variant="ghost" size="sm" disabled={pdfBusyId === a.id} onClick={() => void openPdf(a)} aria-label="PDF">

@@ -13240,9 +13240,15 @@ export type Database = {
       site_audits_v2: {
         Row: {
           account_id: string
+          ack_notified_at: string | null
+          ack_notify_result: Json | null
           answers: Json
           auditor_id: string | null
           auditor_name: string | null
+          completed_at: string | null
+          completed_by: string | null
+          completed_by_name: string | null
+          completed_role: string | null
           created_at: string
           failed_sections: string[]
           form_version: number
@@ -13251,6 +13257,9 @@ export type Database = {
           location_id: string
           notified_at: string | null
           notify_result: Json | null
+          review_status: string | null
+          rm_note: string | null
+          rm_responses: Json
           safety_failed: boolean | null
           score: number | null
           status: string
@@ -13260,9 +13269,15 @@ export type Database = {
         }
         Insert: {
           account_id: string
+          ack_notified_at?: string | null
+          ack_notify_result?: Json | null
           answers?: Json
           auditor_id?: string | null
           auditor_name?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_by_name?: string | null
+          completed_role?: string | null
           created_at?: string
           failed_sections?: string[]
           form_version?: number
@@ -13271,6 +13286,9 @@ export type Database = {
           location_id: string
           notified_at?: string | null
           notify_result?: Json | null
+          review_status?: string | null
+          rm_note?: string | null
+          rm_responses?: Json
           safety_failed?: boolean | null
           score?: number | null
           status?: string
@@ -13280,9 +13298,15 @@ export type Database = {
         }
         Update: {
           account_id?: string
+          ack_notified_at?: string | null
+          ack_notify_result?: Json | null
           answers?: Json
           auditor_id?: string | null
           auditor_name?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_by_name?: string | null
+          completed_role?: string | null
           created_at?: string
           failed_sections?: string[]
           form_version?: number
@@ -13291,6 +13315,9 @@ export type Database = {
           location_id?: string
           notified_at?: string | null
           notify_result?: Json | null
+          review_status?: string | null
+          rm_note?: string | null
+          rm_responses?: Json
           safety_failed?: boolean | null
           score?: number | null
           status?: string
@@ -13309,6 +13336,13 @@ export type Database = {
           {
             foreignKeyName: "site_audits_v2_auditor_id_fkey"
             columns: ["auditor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_audits_v2_completed_by_fkey"
+            columns: ["completed_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -17756,6 +17790,33 @@ export type Database = {
           p_user_name?: string
         }
         Returns: string
+      }
+      site_audit_v2_respond: {
+        Args: {
+          p_complete: boolean
+          p_id: string
+          p_note: string
+          p_responses: Json
+        }
+        Returns: Json
+      }
+      site_audit_v2_rm_map: {
+        Args: { p_account: string }
+        Returns: {
+          location_id: string
+          name: string
+          region: string
+          user_id: string
+        }[]
+      }
+      site_audit_v2_rms: {
+        Args: never
+        Returns: {
+          location_id: string
+          name: string
+          region: string
+          user_id: string
+        }[]
       }
       site_daily_bounds: {
         Args: never

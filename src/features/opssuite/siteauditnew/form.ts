@@ -8,6 +8,8 @@
 // Answers are stored by `${section.id}.${item.id}`, so renaming a label is safe but
 // changing an id orphans old answers. Bump FORM_VERSION if the questions change.
 
+import type { SiteRm } from '@/lib/queries/siteAuditsV2'
+
 export type Rating = 'pass' | 'warn' | 'fail'
 export type ItemAnswer = { value: Rating | null; comments: string; photos: string[] }
 export type AuditAnswers = Record<string, ItemAnswer>
@@ -205,5 +207,40 @@ export function gradeTone(grade: string | null | undefined, safetyFailed?: boole
 }
 
 export const RATING_LABEL: Record<Rating, string> = { pass: 'Pass', warn: 'Needs attention', fail: 'Fail' }
+
+// The red items: what the Regional Manager answers before the audit is complete.
+export type RedItem = { key: string; section: AuditSection; item: AuditItem; answer: ItemAnswer }
+export function redItems(answers: AuditAnswers): RedItem[] {
+  const out: RedItem[] = []
+  for (const section of AUDIT_SECTIONS) {
+    for (const item of section.items) {
+      const key = itemKey(section, item)
+      if (answers[key]?.value === 'fail') out.push({ key, section, item, answer: answers[key] })
+    }
+  }
+  return out
+}
+
+// Why a site has no Regional Manager to answer its red items (an Admin does).
+export function noRmReason(rm: SiteRm | null | undefined): string {
+  if (rm?.name) return `${rm.name} has no Regional Manager login`
+  if (rm?.region) return `${rm.region} has no Regional Manager`
+  return 'This site is in no region'
+}
+
+// Just the name, for lists: the RM, or why there's none.
+export function rmShort(rm: SiteRm | null | undefined): string {
+  if (rm?.name) return rm.name
+  return rm?.region ? `No RM (${rm.region})` : 'No RM (no region)'
+}
+
+// The RM's saved answers ({ "section.item": text }), whatever was stored.
+export function normalizeResponses(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'string') out[k] = v
+  }
+  return out
+}
 
 export const fmtPoints = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))

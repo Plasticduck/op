@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -21,7 +21,7 @@ import {
   type ItemAnswer,
   type Rating,
 } from './form'
-import { ResultBox, SectionChip } from './parts'
+import { GrowTextarea, ResultBox, SectionChip } from './parts'
 import { MAINTAINX_ACCOUNT_ID } from '@/lib/queries/workOrders'
 import { useSiteWorkOrders } from './useSiteWorkOrders'
 import { WorkOrdersChip, WorkOrdersDrawer, WorkOrdersSummary } from './WorkOrdersPanel'
@@ -291,9 +291,11 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
                       <StatusButtons tinted value={a.value} onChange={(v) => setItem(key, { value: v as Rating | null })} />
                     </div>
                     <div className="mt-2 flex items-start gap-2">
-                      <Comments
+                      <GrowTextarea
                         value={a.comments}
                         label={`Comments on ${item.label}`}
+                        placeholder="Comments"
+                        className="min-w-0 flex-1"
                         onChange={(v) => setItem(key, { comments: v })}
                       />
                       <div className="max-w-[45%] shrink-0">
@@ -342,27 +344,5 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
         </Modal>
       )}
     </div>
-  )
-}
-
-// A comments box that grows with what's typed.
-function Comments({ value, label, onChange }: { value: string; label: string; onChange: (v: string) => void }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.max(64, el.scrollHeight + 2) + 'px'
-  }, [value])
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder="Comments"
-      aria-label={label}
-      rows={2}
-      className="min-h-16 min-w-0 flex-1 resize-none rounded-md border border-border bg-card px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:outline-none focus:ring-2 focus:ring-accent"
-    />
   )
 }

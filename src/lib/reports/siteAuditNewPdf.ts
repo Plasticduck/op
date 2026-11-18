@@ -10,6 +10,8 @@ import {
   gradeTone,
   itemKey,
   normalizeAnswers,
+  normalizeResponses,
+  redItems,
 } from '@/features/opssuite/siteauditnew/form'
 import { buildSiteReviewPdf, type PdfAppendix, type PdfTone } from './siteReviewPdf'
 import { dueDay, savedWorkOrders } from '@/lib/queries/siteWorkOrders'
@@ -74,8 +76,41 @@ export async function buildSiteAuditNewPdf(audit: SiteAuditV2, logo: PdfLogo | n
     sectionNotes,
     colorStatus: true,
     warnLabel: 'Needs attention',
-    appendix: workOrdersAppendix(audit),
+    appendix: [...followUpAppendix(audit), ...workOrdersAppendix(audit)],
   })
+}
+
+// Where the audit's follow-up stands: the RM's answer to each red item once it's
+// complete, or that it's still waiting.
+function followUpAppendix(audit: SiteAuditV2): PdfAppendix[] {
+  const answers = normalizeAnswers(audit.answers)
+  const reds = redItems(answers)
+  if (audit.review_status === 'needs_attention') {
+    return [{
+      title: 'Follow-up',
+      note: { text: 'Needs attention', tone: 'danger' },
+      message: `Waiting on the site's Regional Manager to answer ${reds.length} red item${reds.length === 1 ? '' : 's'} and mark the audit complete.`,
+    }]
+  }
+  if (audit.review_status !== 'complete') return []
+  if (!audit.completed_by_name && !reds.length) {
+    return [{ title: 'Follow-up', note: { text: 'Complete', tone: 'ok' }, message: 'No red items, so no Regional Manager follow-up was needed.' }]
+  }
+  const responses = normalizeResponses(audit.rm_responses)
+  const role = audit.completed_role === 'admin' ? 'Admin' : 'Regional Manager'
+  const when = audit.completed_at ? ` on ${format(new Date(audit.completed_at), 'MMM d, yyyy h:mm a')}` : ''
+  const contentWidth = 215.9 - 28
+  return [{
+    title: role === 'Admin' ? 'Follow-up' : 'Regional Manager response',
+    note: { text: `Complete. Acknowledged by ${audit.completed_by_name ?? 'unknown'} (${role})${when}`, tone: 'ok' },
+    head: ['Red item', 'Auditor comments', 'Response'],
+    widths: [48, 52, contentWidth - 100],
+    body: [
+      ...reds.map((r) => [`${r.section.title}\n${r.item.label}`, r.answer.comments.trim() || '-', responses[r.key] || '-']),
+      ...(audit.rm_note ? [['Note', '', audit.rm_note]] : []),
+    ],
+    tones: reds.map(() => ({ 0: 'danger' as const })),
+  }]
 }
 
 const WO_PRIORITY: Record<string, { label: string; tone: PdfTone }> = {

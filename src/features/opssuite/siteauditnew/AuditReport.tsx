@@ -1,26 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, FileText, ShieldAlert, Trash2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { dateTime } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
-import { siteAuditPhotos } from '@/lib/queries/opsSuite'
 import { siteAuditsV2, type SiteAuditV2 } from '@/lib/queries/siteAuditsV2'
 import { openPdfInNewTab } from '@/lib/reports/siteReviewPdf'
 import { loadPdfLogo } from '@/lib/pdfLogo'
 import { AUDIT_SECTIONS, gradeAudit, itemKey, normalizeAnswers, type AuditResult } from './form'
-import { RatingPill, ResultBox, SectionChip } from './parts'
+import { AuditPhotos, RatingPill, ResultBox, ReviewPill, SectionChip } from './parts'
 import { WorkOrderCard } from './WorkOrdersPanel'
+import { ReviewPanel } from './ReviewPanel'
+import { useSiteRms } from './useSiteRms'
 import { savedWorkOrders } from '@/lib/queries/siteWorkOrders'
 import { useBrandLogoUrl } from '@/lib/brandLogo'
 
 const LIST = '/app/site-audits-new'
 
-// A submitted audit: the grade, then every section and item as it was rated.
-export function AuditReport({ audit }: { audit: SiteAuditV2 }) {
+// A submitted audit: the grade, its follow-up (Needs attention or Complete), then
+// every section and item as it was rated.
+export function AuditReport({ audit, onChanged }: { audit: SiteAuditV2; onChanged: () => void }) {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const logoUrl = useBrandLogoUrl()
+  const rms = useSiteRms()
   const answers = useMemo(() => normalizeAnswers(audit.answers), [audit.answers])
   // The sections' pass / fail come from the answers; the grade is the one stored at submit.
   const result: AuditResult = useMemo(() => {
@@ -67,7 +70,9 @@ export function AuditReport({ audit }: { audit: SiteAuditV2 }) {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Site audit: {audit.location?.name ?? 'Site'}</h1>
+          <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight text-ink">
+            Site audit: {audit.location?.name ?? 'Site'} <ReviewPill status={audit.review_status} />
+          </h1>
           <p className="mt-0.5 text-sm text-ink-muted">
             {dateTime(audit.submitted_at ?? audit.created_at)} · Audited by {audit.auditor_name ?? 'unknown'}
           </p>
@@ -85,6 +90,8 @@ export function AuditReport({ audit }: { audit: SiteAuditV2 }) {
       </div>
 
       <ResultBox result={result} />
+
+      <ReviewPanel key={audit.review_status ?? ''} audit={audit} rms={rms} onChanged={onChanged} />
 
       {AUDIT_SECTIONS.map((section, si) => (
         <section key={section.id} className="rounded-md border border-border bg-card px-4 pb-1 pt-3">
@@ -110,7 +117,7 @@ export function AuditReport({ audit }: { audit: SiteAuditV2 }) {
                     <RatingPill value={a.value} />
                   </div>
                   {a.comments.trim() && <p className="mt-1 whitespace-pre-wrap text-sm text-ink-muted">{a.comments}</p>}
-                  {a.photos.length > 0 && <Photos paths={a.photos} />}
+                  {a.photos.length > 0 && <AuditPhotos paths={a.photos} />}
                 </li>
               )
             })}
@@ -147,29 +154,5 @@ function SavedWorkOrdersSection({ raw }: { raw: unknown }) {
         ? <p className="mt-3 text-sm text-ink-muted">{message}</p>
         : <ul className="mt-3 flex flex-col gap-2">{list.map((w) => <WorkOrderCard key={w.id} w={w} />)}</ul>}
     </section>
-  )
-}
-
-function Photos({ paths }: { paths: string[] }) {
-  const [urls, setUrls] = useState<Record<string, string>>({})
-  const key = paths.join('|')
-  useEffect(() => {
-    let alive = true
-    for (const p of paths) siteAuditPhotos.signedUrl(p).then((u) => { if (alive && u) setUrls((prev) => ({ ...prev, [p]: u })) })
-    return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
-  return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {paths.map((p) =>
-        urls[p] ? (
-          <a key={p} href={urls[p]} target="_blank" rel="noreferrer" className="block size-20 overflow-hidden rounded-md border border-border">
-            <img src={urls[p]} alt="Audit photo" className="size-full object-cover" />
-          </a>
-        ) : (
-          <div key={p} className="size-20 animate-pulse rounded-md border border-border bg-content" />
-        ),
-      )}
-    </div>
   )
 }
