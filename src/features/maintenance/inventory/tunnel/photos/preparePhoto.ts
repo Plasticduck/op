@@ -7,7 +7,10 @@
 // photos added, or many removed) is made again from its file (encodePhoto). The JPEG is
 // base64 without the data: prefix: turned the way the camera held it, no more than 1568 px
 // on its long side, and within its share. Nothing here is uploaded or kept: it all lives in
-// the dialog until it closes.
+// the dialog until it closes. A HEIC the browser can't open is read on the device too
+// (heic.ts), never sent anywhere to be converted.
+
+import { decodeHeic, HeicError, isHeic, type HeicFailure } from './heic'
 
 // Enough to make out the machines. Claude would take more, but every pixel costs time and
 // money, and with more than 20 photos in a request it takes no more than 3000.
@@ -23,6 +26,16 @@ const NO_CANVAS = "This browser couldn't get the photo ready. Try another browse
 // It opened when it was picked, so its file has been moved or deleted since, or (on a cloud
 // drive) isn't on the device any more.
 const GONE = "This photo couldn't be opened again. Remove it and add it again."
+// Why a HEIC this browser couldn't open itself couldn't be read either (heic.ts).
+const HEIC: Record<HeicFailure, string> = {
+  bad: "This HEIC photo couldn't be opened. It may be damaged, or only partly copied.",
+  load: "This browser couldn't load what it needs to open HEIC photos. Check the connection, then remove this photo and add it again.",
+  // Reloading is the only way back, and it loses the photos in the dialog, so it isn't done
+  // for them.
+  stale: 'Operator was updated since this page was opened. Reload the page, then add the HEIC photos again.',
+  slow: 'This HEIC photo took too long to open. Remove it and add it again.',
+  closed: "This HEIC photo couldn't be opened. Remove it and add it again.",
+}
 
 // What a person sees when a photo can't be used.
 export class PhotoError extends Error {}
@@ -61,9 +74,12 @@ type Decoded = { source: CanvasImageSource; width: number; height: number; done:
 
 // The photo drawn upright. createImageBitmap reads the EXIF turn itself when asked
 // ('from-image'); where it can't open the file (or isn't there), an <img> does, since
-// browsers apply EXIF orientation to images by default. A format the browser can't decode
-// (HEIC on a desktop, a RAW file) fails both.
-async function decode(file: File): Promise<Decoded> {
+// browsers apply EXIF orientation to images by default. A HEIC the browser can't open
+// (anywhere but Safari) is read by libheif instead (heic.ts), which turns it upright from the
+// file's own turn (irot), so nothing here turns it again. Anything else that fails both (a
+// RAW file, not a photo) can't be used. closed: the dialog has gone, so no HEIC worker is
+// started for it.
+async function decode(file: File, closed?: AbortSignal): Promise<Decoded> {
   if (typeof createImageBitmap === 'function') {
     try {
       const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' })
@@ -82,10 +98,15 @@ async function decode(file: File): Promise<Decoded> {
     return { source: img, width: img.naturalWidth, height: img.naturalHeight, done: () => URL.revokeObjectURL(url) }
   } catch {
     URL.revokeObjectURL(url)
-    throw new PhotoError(/\.(heic|heif)$/i.test(file.name) || /hei[cf]/i.test(file.type)
-      ? "This browser can't open HEIC photos. Pick it on the phone that took it, or save it as a JPEG first."
-      : UNREADABLE)
   }
+  if (!(await isHeic(file))) throw new PhotoError(UNREADABLE)
+  let bmp: ImageBitmap
+  try {
+    bmp = await decodeHeic(file, closed)
+  } catch (e) {
+    throw new PhotoError(e instanceof HeicError ? HEIC[e.kind] : HEIC.bad)
+  }
+  return { source: bmp, width: bmp.width, height: bmp.height, done: () => bmp.close() }
 }
 
 // The photo on a canvas of this size. A PNG's see-through parts would turn black as a JPEG,
@@ -129,8 +150,8 @@ function base64(blob: Blob): Promise<string> {
 // A photo just picked, opened once: one the browser can't open is turned away now with the
 // reason, and the rest are drawn small for the tile and made into the JPEG for this share.
 // The full-size photo isn't kept.
-export async function readPhoto(file: File, share: Share): Promise<PickedPhoto> {
-  const img = await decode(file)
+export async function readPhoto(file: File, share: Share, closed?: AbortSignal): Promise<PickedPhoto> {
+  const img = await decode(file, closed)
   let thumb: string | null = null
   try {
     if (!img.width || !img.height) throw new PhotoError(UNREADABLE)
@@ -150,11 +171,14 @@ export async function readPhoto(file: File, share: Share): Promise<PickedPhoto> 
 }
 
 // A photo made again for a new share, from its file.
-export async function encodePhoto(file: File, share: Share): Promise<EncodedPhoto> {
+export async function encodePhoto(file: File, share: Share, closed?: AbortSignal): Promise<EncodedPhoto> {
   let img: Decoded
   try {
-    img = await decode(file)
-  } catch {
+    img = await decode(file, closed)
+  } catch (e) {
+    // The HEIC reader not starting (offline, or Operator updated since the page loaded) isn't
+    // about this photo, and removing it wouldn't help, so that reason is passed on.
+    if (e instanceof PhotoError && (e.message === HEIC.stale || e.message === HEIC.load)) throw e
     throw new PhotoError(GONE)
   }
   try {

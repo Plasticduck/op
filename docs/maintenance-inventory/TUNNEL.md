@@ -295,8 +295,10 @@ photos were read), the page loads it and the answer is used as it is. `no_key` a
 `forbidden` errors offer Close, not Try again.
 
 **Data flow.** A pick opens each photo once, two at a time (`photos/preparePhoto.ts`
-`readPhoto`): a HEIC a desktop browser can't open, or a file that isn't a photo, is
-turned away on its tile with a note. From that one opening the rest get a 400 px copy
+`readPhoto`): a file that isn't a photo is turned away on its tile with a note. iPhone
+photos (HEIC/HEIF) work in every browser: Safari opens them itself, and where the
+browser can't (Chrome, Edge and Firefox on Windows and Android) they are read on the
+device by libheif (see HEIC below). From that one opening the rest get a 400 px copy
 for the tile (an object URL, revoked when the photo is removed or the dialog closes)
 and the JPEG that is sent (EXIF turn applied, on white), made for the photo's share
 with every photo picked so far. The full-size photo isn't kept, so hundreds of photos
@@ -340,6 +342,75 @@ and for 100 photos, with nothing to make again. When the JPEGs were made at Anal
 instead, every photo was opened a second time there: 15 s for 100 on the desktop and
 65 s for 50 slowed 4x, which for 600 on a phone would have been about 13 more
 minutes.
+
+**HEIC.** `photos/heic.ts` is only asked once the browser has failed to open a file
+itself (`createImageBitmap`, then an `<img>`), and only for a file that is HEIC or
+HEIF by its name (`.heic`, `.heif`, `.hif`, any case), its type, or its first bytes
+(an `ftyp` box with brand heic, heix, heim, heis, hevc, hevx, mif1, msf1 or heif, or
+one of the HEVC brands among its compatible ones): files copied off a phone through
+Windows or a cloud drive often have no type, and Chrome on Windows gives `.heic` none.
+A JPEG named `.heic` still opens the usual way. The file is read by
+[heic-to](https://github.com/hoppergee/heic-to) (pinned at 1.6.7, libheif 1.23.7 with
+libde265, compiled to plain JavaScript, LGPL-3.0; its `csp` build, which needs no
+eval) in a module worker, `photos/heicWorker.ts`; heic-to runs libheif in a worker of
+its own started from there. The worker is the only importer, so its 3.2 MB (about
+790 kB gzipped, one file, no `.wasm`) is fetched only when a HEIC needs it, never
+preloaded by the app. libheif applies the file's turn and mirror (`irot`, `imir`)
+and crop, so an iPhone portrait (stored on its side as a 4032 by 3024 grid of 512 px
+tiles with `irot`) comes out upright and nothing here turns it again; the primary
+image is decoded, not the thumbnail, depth or gain map; 10-bit photos come out as
+8-bit. The worker sends back an ImageBitmap, which goes through the same drawing as
+any photo, for the tile and the JPEG, and `encodePhoto` reads the HEIC again from its
+file the same way. libheif doesn't fail on damaged picture data: every tile it can't
+read comes out flat green (YCbCr zero, 0,136,0 for iPhone colours) with no error, and
+that green would be sent as part of the tunnel. So a file that stops before its last
+box (a copy that didn't finish) is turned away before decoding, and a decoded photo
+with a flat pure-green patch over 0.5% of it (one iPhone grid tile is 2%) is turned
+away after, which catches copies that are full length but damaged (a cloud file never
+fully downloaded, a broken import off the phone). Across 36 real phone and test HEICs
+no good photo had any such patch; an iPhone photo with half its data zeroed had 42%.
+Messages: a HEIC libheif can't read either says "This HEIC photo couldn't be opened.
+It may be damaged, or only partly copied."; when the worker can't be fetched
+(offline), "This browser couldn't load what it needs to open HEIC photos. Check the
+connection, then remove this photo and add it again." (the next HEIC tries again, with
+a new worker). When the worker's file is answered but isn't a script (online, and a
+HEAD of it gives an error or HTML: after a deploy Vercel answers the old hashed file
+with the app's page), Operator was updated since the page loaded, and it says
+"Operator was updated since this page was opened. Reload the page, then add the HEIC
+photos again." The page isn't reloaded for them, since that loses the photos. No
+answer in 2 minutes says it took too long. Two workers run where `deviceMemory` is 8
+(8 GB or more, or not reported) and there are 4 or more cores, else one: each holds
+about 300 MB once it has opened a 12 MP photo (about 650 MB after a 48 MP one). Once
+no worker has had anything to do for 20 s they are all ended (it is for the pool, not
+each worker: on a slow main thread one of two workers could sit unused for 20 s in the
+middle of a pick and be started again from cold), and a photo goes to the worker with
+the fewest waiting, a tie to the one used least recently. All of them end when the
+dialog closes; a photo still on its way to the reader at that moment (the dialog's
+AbortSignal is passed through `readPhoto` / `encodePhoto`) starts no new worker. The
+picker's `accept` names `.heic,.heif` beside `image/*` so desktop pickers list them.
+Nothing is uploaded to convert them.
+
+A Content Security Policy, if one is ever added, must allow `worker-src 'self' blob:`:
+heic-to starts libheif from a `blob:` URL (no `wasm-unsafe-eval` is needed, there is no
+wasm). Without `blob:` the first HEIC says it couldn't load what it needs, and so does
+each after it, at once (a worker whose libheif didn't start is ended rather than
+reused). heic-to, libheif and libde265 are LGPL-3.0: the worker file carries a kept
+`/*!` notice naming them and the license, but the app has no third-party notices page
+yet with the license texts.
+
+Times in headless Chrome on a desktop (which, like Chrome on Windows, can't open HEIC
+itself), with iPhone 12 MP HEICs: about 0.9 s a photo per worker, so adding 60 took
+28 to 29 s (about 0.48 s each with two workers, 0.84 s with one); the first takes
+about 0.5 s more while the reader starts. A click on the dialog answered within 40 ms
+the whole time (long tasks at most about 90 ms), against 0.11 s a photo for 12 MP
+camera JPEGs. A 48 MP HEIC took 5 s. Making photos again for a new share is as slow
+as adding them: after 120 HEICs had been added, the 10 more that took the count past
+127 meant Analyze took 95 to 100 s to make the 120 again. With the page's CPU slowed
+4x (a 390 px phone view, 50 photos), one worker added them at 1.2 to 1.3 s each and two
+at 1.9 to 2.1 s; at 1x and 2x two were faster (0.55 and 0.65 s against 0.90 and 0.96
+s). That slowdown may reach only the page's thread, not the workers, so it is not a
+real phone.
+No phone has been timed.
 
 The page sends them, with the shape kinds (`SHAPES`) and, with no drawing
 yet, the standard template as a starting point, to the `tunnel-from-photos` edge

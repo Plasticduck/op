@@ -15,6 +15,7 @@ import { SHAPES } from '../shapes'
 import { TunnelDiagram } from '../TunnelDiagram'
 import type { Draft } from '../useEditorState'
 import { planCreate, planUpdate, type Catalog, type Change, type ChangeKind, type CreatePlan, type Seen, type UpdateCounts, type UpdatePlan } from './mergeProposal'
+import { releaseHeic } from './heic'
 import { encodePhoto, PhotoError, readPhoto, type EncodedPhoto, type Share } from './preparePhoto'
 
 // Photos of the real tunnel in, a drawing out. The person picks photos (and says where each
@@ -182,6 +183,10 @@ export function PhotosDialog({ siteId, siteName, tunnelNo, tunnelName, layout, i
   const asked = useRef(0)
   const abort = useRef<AbortController | null>(null)
   const alive = useRef(true)
+  // Aborted when the dialog closes. A photo still on its way to the HEIC reader then (between
+  // the browser's own try and the reader) would otherwise start a worker after releaseHeic,
+  // one nobody waits for that holds its memory until it times out.
+  const life = useRef<AbortController | null>(null)
   // Each photo still in the dialog, with its tile's object URL once it has one.
   const thumbs = useRef(new Map<string, string | null>())
   // Photos picked and not opened yet, and how many are being opened.
@@ -198,19 +203,24 @@ export function PhotosDialog({ siteId, siteName, tunnelNo, tunnelName, layout, i
   const before = useRef<HTMLElement | null>(null)
   const ids = useId()
 
-  // Closing drops the photos and any answer still on its way.
+  // Closing drops the photos and any answer still on its way, and ends the HEIC reader's
+  // workers (and the memory they hold) if any HEIC was opened.
   useEffect(() => {
     alive.current = true
+    const lives = new AbortController()
+    life.current = lives
     const held = thumbs.current
     const waiting = queue.current
     const jpegs = made.current
     return () => {
       alive.current = false
+      lives.abort()
       abort.current?.abort()
       for (const u of held.values()) if (u) URL.revokeObjectURL(u)
       held.clear()
       waiting.length = 0
       jpegs.clear()
+      releaseHeic()
     }
   }, [])
 
@@ -250,7 +260,7 @@ export function PhotosDialog({ siteId, siteName, tunnelNo, tunnelName, layout, i
     if (now) await now.catch(() => {})
     const have = made.current.get(p.key)
     if (have && fits(have, share)) return have.photo
-    const job = encodePhoto(p.file, share)
+    const job = encodePhoto(p.file, share, life.current?.signal)
     making.current.set(p.key, job)
     try {
       const photo = await job
@@ -278,7 +288,7 @@ export function PhotosDialog({ siteId, siteName, tunnelNo, tunnelName, layout, i
             if (!thumbs.current.has(p.key)) continue
             try {
               const share = shareOf(rest, thumbs.current.size)
-              const r = await readPhoto(p.file, share)
+              const r = await readPhoto(p.file, share, life.current?.signal)
               if (!alive.current || !thumbs.current.has(p.key)) { URL.revokeObjectURL(r.thumb); continue }
               thumbs.current.set(p.key, r.thumb)
               keep(p.key, r.photo, share)
@@ -613,12 +623,14 @@ export function PhotosDialog({ siteId, siteName, tunnelNo, tunnelName, layout, i
                       opens the picker. No capture attribute: a phone offers its camera and its library.
                       It covers the tile, unseen, so focus on it scrolls the whole tile into sight
                       (a hidden 1 px input left half the tile under the footer, or, placed outside
-                      the tile, none of it). */}
+                      the tile, none of it). .heic and .heif are named as well as image/*, since a
+                      desktop picker lists only the files it knows as images, and not every
+                      computer counts HEIC among them. */}
                   <label className="relative flex aspect-[4/3] cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border text-center text-xs text-ink-muted hover:bg-content focus-within:ring-2 focus-within:ring-accent">
                     {pics.length ? <ImagePlus className="size-5" /> : <Camera className="size-5" />}
                     <span className="font-medium text-ink">{pics.length ? 'Add more' : 'Add photos'}</span>
                     {!pics.length && <span>Pick several at once</span>}
-                    <input type="file" accept="image/*" multiple className="absolute inset-0 size-full cursor-pointer opacity-0" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
+                    <input type="file" accept="image/*,.heic,.heif" multiple className="absolute inset-0 size-full cursor-pointer opacity-0" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
                   </label>
                 </li>
               )}
