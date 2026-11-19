@@ -37,6 +37,7 @@ import { CONNECT_ACCOUNT, PROVIDERS, ReconnectNeeded, openSession, type Provider
 import type { McpSession } from '../_shared/mcp.ts'
 import { HOURLY_TOOL, hourlyCars } from './hourly.ts'
 import { ISOLVED_LABOR_TOOL, ISOLVED_NOTE, ISOLVED_ON_CLOCK_TOOL, isolvedLabor, isolvedOnTheClock } from './isolved.ts'
+import { fpaPrompt, type FpaVersionInfo } from './fpa.ts'
 import { RECALL_TOOL, openConversation, recall, recentNote, saveAnswer, type Convo } from './history.ts'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
@@ -589,6 +590,16 @@ Deno.serve(async (req) => {
   const isolvedAvailable = isManagerPlus && profile.account_id === CONNECT_ACCOUNT && profile.role_category !== 'corporate_display'
   if (isolvedAvailable) tools.push(ISOLVED_LABOR_TOOL, ISOLVED_ON_CLOCK_TOOL)
   const isolvedCtx = { userClient, svc, uid, accountId: profile.account_id as string, roleCategory: (profile.role_category ?? null) as string | null }
+  // The FP&A model, described only to the people on its reader list (asked as the
+  // user, so it's their access that decides); RLS keeps the rows from everyone else.
+  let fpaNote = ''
+  if (profile.role_category !== 'corporate_display') {
+    const { data: canRead } = await userClient.rpc('fpa_can_read')
+    if (canRead === true) {
+      const { data: fv } = await userClient.from('fpa_current_version').select('label, last_closed_month, info').maybeSingle()
+      if (fv) fpaNote = fpaPrompt(fv as FpaVersionInfo)
+    }
+  }
   if (corenav) {
     for (const t of corenav.tools) {
       tools.push({ name: t.apiName, description: t.description, input_schema: t.inputSchema as Anthropic.Tool['input_schema'] })
@@ -671,6 +682,7 @@ Deno.serve(async (req) => {
               `Today is ${today}. Answer for this user's data only. ${perfNote}${restrictedNote}` +
               (flex ? ` ${flexUserNote(flexAccess, flex.ownLogin)}` : '') +
               (isolvedAvailable ? ` ${ISOLVED_NOTE}` : '') +
+              (fpaNote ? `\n\n${fpaNote}\n` : '') +
               (connectNotes.length ? ` ${connectNotes.join(' ')}` : '') +
               historyNote +
               (finalRound

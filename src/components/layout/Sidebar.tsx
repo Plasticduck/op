@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
+  Landmark,
   Activity,
   FileSignature,
   Armchair,
@@ -395,6 +396,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: BookOpenCheck,
         roles: ['owner'],
         emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
+      },
+      {
+        to: '/app/fpa',
+        label: 'FP&A Model',
+        icon: Landmark,
+        roles: ['owner'],
+        emails: ['kevan@washlyfe.com'], // Kevan's page; the data is read through Operator AI by the fpa_readers list
       },
       // Chargebacks page hidden pending a real Adyen dispute feed (the FlexWash
       // partner API doesn't expose disputes). Route + page kept in the repo.

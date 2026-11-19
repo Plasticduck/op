@@ -4344,6 +4344,473 @@ export type Database = {
           },
         ]
       }
+      fpa_budget_ytd: {
+        Row: {
+          adj_ebitda_actual: number | null
+          adj_ebitda_budget: number | null
+          ebitda_actual: number | null
+          ebitda_budget: number | null
+          in_budget: boolean | null
+          key: string
+          landlord: string | null
+          location: string | null
+          region: string | null
+          revenue_actual: number | null
+          revenue_budget: number | null
+          sort: number
+          version_id: string
+        }
+        Insert: {
+          adj_ebitda_actual?: number | null
+          adj_ebitda_budget?: number | null
+          ebitda_actual?: number | null
+          ebitda_budget?: number | null
+          in_budget?: boolean | null
+          key: string
+          landlord?: string | null
+          location?: string | null
+          region?: string | null
+          revenue_actual?: number | null
+          revenue_budget?: number | null
+          sort?: number
+          version_id: string
+        }
+        Update: {
+          adj_ebitda_actual?: number | null
+          adj_ebitda_budget?: number | null
+          ebitda_actual?: number | null
+          ebitda_budget?: number | null
+          in_budget?: boolean | null
+          key?: string
+          landlord?: string | null
+          location?: string | null
+          region?: string | null
+          revenue_actual?: number | null
+          revenue_budget?: number | null
+          sort?: number
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_budget_ytd_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_current_version"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fpa_budget_ytd_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fpa_coa_map: {
+        Row: {
+          account: string
+          dashboard_row: string | null
+          ebitda_addback: string | null
+          gl: string | null
+          kpi_group: string | null
+          qb_type: string | null
+          version_id: string
+        }
+        Insert: {
+          account: string
+          dashboard_row?: string | null
+          ebitda_addback?: string | null
+          gl?: string | null
+          kpi_group?: string | null
+          qb_type?: string | null
+          version_id: string
+        }
+        Update: {
+          account?: string
+          dashboard_row?: string | null
+          ebitda_addback?: string | null
+          gl?: string | null
+          kpi_group?: string | null
+          qb_type?: string | null
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_coa_map_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_current_version"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fpa_coa_map_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fpa_entities: {
+        Row: {
+          filter_field: string | null
+          filter_value: string | null
+          key: string
+          kind: string
+          label: string
+          sort: number
+          version_id: string
+        }
+        Insert: {
+          filter_field?: string | null
+          filter_value?: string | null
+          key: string
+          kind: string
+          label: string
+          sort?: number
+          version_id: string
+        }
+        Update: {
+          filter_field?: string | null
+          filter_value?: string | null
+          key?: string
+          kind?: string
+          label?: string
+          sort?: number
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_entities_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_current_version"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fpa_entities_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fpa_forecast_values: {
+        Row: {
+          entity_key: string
+          metric: string
+          month: string
+          region: string | null
+          same_store: boolean | null
+          segment: string | null
+          value: number
+          version_id: string
+        }
+        Insert: {
+          entity_key: string
+          metric: string
+          month: string
+          region?: string | null
+          same_store?: boolean | null
+          segment?: string | null
+          value: number
+          version_id: string
+        }
+        Update: {
+          entity_key?: string
+          metric?: string
+          month?: string
+          region?: string | null
+          same_store?: boolean | null
+          segment?: string | null
+          value?: number
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_forecast_values_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_current_version"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fpa_forecast_values_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fpa_metric_values: {
+        Row: {
+          entity_key: string
+          metric: string
+          month: string
+          value: number
+          version_id: string
+        }
+        Insert: {
+          entity_key: string
+          metric: string
+          month: string
+          value: number
+          version_id: string
+        }
+        Update: {
+          entity_key?: string
+          metric?: string
+          month?: string
+          value?: number
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_metric_values_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_current_version"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fpa_metric_values_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fpa_pl_lines: {
+        Row: {
+          account: string | null
+          amount: number
+          dashboard_row: string | null
+          gl: string | null
+          kpi_group: string | null
+          line_no: number
+          month: string
+          qb_class: string | null
+          qb_type: string | null
+          region: string | null
+          same_store: boolean | null
+          segment: string | null
+          site_key: string | null
+          version_id: string
+        }
+        Insert: {
+          account?: string | null
+          amount: number
+          dashboard_row?: string | null
+          gl?: string | null
+          kpi_group?: string | null
+          line_no: number
+          month: string
+          qb_class?: string | null
+          qb_type?: string | null
+          region?: string | null
+          same_store?: boolean | null
+          segment?: string | null
+          site_key?: string | null
+          version_id: string
+        }
+        Update: {
+          account?: string | null
+          amount?: number
+          dashboard_row?: string | null
+          gl?: string | null
+          kpi_group?: string | null
+          line_no?: number
+          month?: string
+          qb_class?: string | null
+          qb_type?: string | null
+          region?: string | null
+          same_store?: boolean | null
+          segment?: string | null
+          site_key?: string | null
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_pl_lines_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_current_version"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fpa_pl_lines_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fpa_readers: {
+        Row: {
+          account_id: string
+          added_at: string
+          email: string
+        }
+        Insert: {
+          account_id: string
+          added_at?: string
+          email: string
+        }
+        Update: {
+          account_id?: string
+          added_at?: string
+          email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_readers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fpa_sites: {
+        Row: {
+          closed_from: string | null
+          format: string | null
+          in_forecast: boolean | null
+          interior_start: string | null
+          key: string
+          name: string | null
+          notes: string | null
+          open_date: string | null
+          price_tier: string | null
+          region: string | null
+          reopen_date: string | null
+          same_store: boolean | null
+          segment: string | null
+          site_number: number | null
+          sort: number
+          status: string | null
+          version_id: string
+        }
+        Insert: {
+          closed_from?: string | null
+          format?: string | null
+          in_forecast?: boolean | null
+          interior_start?: string | null
+          key: string
+          name?: string | null
+          notes?: string | null
+          open_date?: string | null
+          price_tier?: string | null
+          region?: string | null
+          reopen_date?: string | null
+          same_store?: boolean | null
+          segment?: string | null
+          site_number?: number | null
+          sort?: number
+          status?: string | null
+          version_id: string
+        }
+        Update: {
+          closed_from?: string | null
+          format?: string | null
+          in_forecast?: boolean | null
+          interior_start?: string | null
+          key?: string
+          name?: string | null
+          notes?: string | null
+          open_date?: string | null
+          price_tier?: string | null
+          region?: string | null
+          reopen_date?: string | null
+          same_store?: boolean | null
+          segment?: string | null
+          site_number?: number | null
+          sort?: number
+          status?: string | null
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_sites_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_current_version"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fpa_sites_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "fpa_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fpa_versions: {
+        Row: {
+          account_id: string
+          activated_at: string | null
+          file_name: string | null
+          id: string
+          info: Json
+          label: string
+          last_closed_month: string | null
+          loaded_at: string
+          loaded_by: string | null
+          loaded_by_name: string | null
+          row_counts: Json | null
+          status: string
+        }
+        Insert: {
+          account_id: string
+          activated_at?: string | null
+          file_name?: string | null
+          id?: string
+          info?: Json
+          label: string
+          last_closed_month?: string | null
+          loaded_at?: string
+          loaded_by?: string | null
+          loaded_by_name?: string | null
+          row_counts?: Json | null
+          status?: string
+        }
+        Update: {
+          account_id?: string
+          activated_at?: string | null
+          file_name?: string | null
+          id?: string
+          info?: Json
+          label?: string
+          last_closed_month?: string | null
+          loaded_at?: string
+          loaded_by?: string | null
+          loaded_by_name?: string | null
+          row_counts?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fpa_versions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fpa_versions_loaded_by_fkey"
+            columns: ["loaded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gatherup_reviews: {
         Row: {
           account_id: string
@@ -14897,6 +15364,96 @@ export type Database = {
           },
         ]
       }
+      weather_forecast_stations: {
+        Row: {
+          account_id: string
+          assigned_at: string
+          distance_mi: number | null
+          location_id: string
+          station: string
+          station_name: string | null
+        }
+        Insert: {
+          account_id: string
+          assigned_at?: string
+          distance_mi?: number | null
+          location_id: string
+          station: string
+          station_name?: string | null
+        }
+        Update: {
+          account_id?: string
+          assigned_at?: string
+          distance_mi?: number | null
+          location_id?: string
+          station?: string
+          station_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_forecast_stations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_forecast_stations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: true
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weather_forecasts: {
+        Row: {
+          created_at: string
+          forecast_date: string
+          issued_at: string
+          issued_date: string
+          lead_days: number
+          model: string
+          precip_chance: number | null
+          precip_chance_night: number | null
+          precip_in: number | null
+          precip_in_night: number | null
+          station: string
+          temp_max: number | null
+          temp_min: number | null
+        }
+        Insert: {
+          created_at?: string
+          forecast_date: string
+          issued_at: string
+          issued_date: string
+          lead_days: number
+          model: string
+          precip_chance?: number | null
+          precip_chance_night?: number | null
+          precip_in?: number | null
+          precip_in_night?: number | null
+          station: string
+          temp_max?: number | null
+          temp_min?: number | null
+        }
+        Update: {
+          created_at?: string
+          forecast_date?: string
+          issued_at?: string
+          issued_date?: string
+          lead_days?: number
+          model?: string
+          precip_chance?: number | null
+          precip_chance_night?: number | null
+          precip_in?: number | null
+          precip_in_night?: number | null
+          station?: string
+          temp_max?: number | null
+          temp_min?: number | null
+        }
+        Relationships: []
+      }
       work_order_assignees: {
         Row: {
           assigned_at: string
@@ -15800,6 +16357,141 @@ export type Database = {
           },
         ]
       }
+      fpa_current_budget_ytd: {
+        Row: {
+          adj_ebitda_actual: number | null
+          adj_ebitda_budget: number | null
+          ebitda_actual: number | null
+          ebitda_budget: number | null
+          in_budget: boolean | null
+          key: string | null
+          landlord: string | null
+          location: string | null
+          region: string | null
+          revenue_actual: number | null
+          revenue_budget: number | null
+          sort: number | null
+        }
+        Relationships: []
+      }
+      fpa_current_coa_map: {
+        Row: {
+          account: string | null
+          dashboard_row: string | null
+          ebitda_addback: string | null
+          gl: string | null
+          kpi_group: string | null
+          qb_type: string | null
+        }
+        Relationships: []
+      }
+      fpa_current_entities: {
+        Row: {
+          filter_field: string | null
+          filter_value: string | null
+          key: string | null
+          kind: string | null
+          label: string | null
+          sort: number | null
+        }
+        Relationships: []
+      }
+      fpa_current_forecast: {
+        Row: {
+          entity_key: string | null
+          metric: string | null
+          month: string | null
+          region: string | null
+          same_store: boolean | null
+          segment: string | null
+          value: number | null
+        }
+        Relationships: []
+      }
+      fpa_current_metrics: {
+        Row: {
+          entity_key: string | null
+          entity_label: string | null
+          metric: string | null
+          month: string | null
+          value: number | null
+        }
+        Relationships: []
+      }
+      fpa_current_pl_lines: {
+        Row: {
+          account: string | null
+          amount: number | null
+          dashboard_row: string | null
+          gl: string | null
+          kpi_group: string | null
+          month: string | null
+          qb_class: string | null
+          qb_type: string | null
+          region: string | null
+          same_store: boolean | null
+          segment: string | null
+          site_key: string | null
+        }
+        Relationships: []
+      }
+      fpa_current_sites: {
+        Row: {
+          closed_from: string | null
+          format: string | null
+          in_forecast: boolean | null
+          interior_start: string | null
+          key: string | null
+          name: string | null
+          notes: string | null
+          open_date: string | null
+          price_tier: string | null
+          region: string | null
+          reopen_date: string | null
+          same_store: boolean | null
+          segment: string | null
+          site_number: number | null
+          sort: number | null
+          status: string | null
+        }
+        Relationships: []
+      }
+      fpa_current_version: {
+        Row: {
+          activated_at: string | null
+          file_name: string | null
+          id: string | null
+          info: Json | null
+          label: string | null
+          last_closed_month: string | null
+          loaded_at: string | null
+          loaded_by_name: string | null
+          row_counts: Json | null
+        }
+        Insert: {
+          activated_at?: string | null
+          file_name?: string | null
+          id?: string | null
+          info?: Json | null
+          label?: string | null
+          last_closed_month?: string | null
+          loaded_at?: string | null
+          loaded_by_name?: string | null
+          row_counts?: Json | null
+        }
+        Update: {
+          activated_at?: string | null
+          file_name?: string | null
+          id?: string | null
+          info?: Json | null
+          label?: string | null
+          last_closed_month?: string | null
+          loaded_at?: string | null
+          loaded_by_name?: string | null
+          row_counts?: Json | null
+        }
+        Relationships: []
+      }
       it_accessory_stock: {
         Row: {
           account_id: string | null
@@ -15875,6 +16567,43 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weather_forecast_vs_actual: {
+        Row: {
+          account_id: string | null
+          actual_conditions: string | null
+          actual_high: number | null
+          actual_low: number | null
+          actual_precip_in: number | null
+          forecast_date: string | null
+          forecast_high: number | null
+          forecast_low: number | null
+          forecast_precip_in: number | null
+          forecast_precip_in_night: number | null
+          issued_date: string | null
+          lead_days: number | null
+          location_id: string | null
+          location_name: string | null
+          precip_chance: number | null
+          precip_chance_night: number | null
+          station: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_forecast_stations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_forecast_stations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: true
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
         ]
@@ -16145,6 +16874,24 @@ export type Database = {
           version: number
         }[]
       }
+      fpa_activate: { Args: { p_version: string }; Returns: Json }
+      fpa_begin: {
+        Args: {
+          p_account: string
+          p_file_name: string
+          p_info: Json
+          p_label: string
+          p_last_closed: string
+        }
+        Returns: string
+      }
+      fpa_can_read: { Args: never; Returns: boolean }
+      fpa_discard: { Args: { p_version: string }; Returns: undefined }
+      fpa_load: {
+        Args: { p_kind: string; p_rows: Json; p_version: string }
+        Returns: number
+      }
+      fpa_may_load: { Args: never; Returns: boolean }
       gen_invoice_inbox_token: { Args: never; Returns: string }
       generate_due_pm_work_orders: { Args: never; Returns: number }
       generate_pm_plan: { Args: { p_plan_id: string }; Returns: string }

@@ -156,6 +156,10 @@ src/
     maintenance/            Chemicals, Maintenance Orders, inventory/ (Maintenance Inventory) and log/ (Maintenance Log), see docs/maintenance-inventory
                             (its Tunnel tab's 3D view, plain three.js: docs/maintenance-inventory/TUNNEL.md)
     facilities/             Service Board
+    fpa/                    Finance > FP&A Model (/app/fpa, Kevan only): the FP&A workbook loaded into fpa_* tables
+                            (migration 0253) as versions; the page reads the fpa_current_* views and loads a new
+                            .xlsx in the browser (lib/fpa/parse.ts). The data is readable only by the fpa_readers
+                            emails, which is also who Operator AI describes it to (ask-operator/fpa.ts)
     purchasing/             Finance > Purchase Request (/app/purchase-requests): drafts, approvers
                             (in order or any order, owner approval rules by amount/category), e-signed
                             by the requester then each approver, sealed PDF with a certificate of
@@ -189,7 +193,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0252.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0253.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
