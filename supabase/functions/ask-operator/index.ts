@@ -13,6 +13,11 @@
 //                          partner API, through the company key, for owner/manager
 //                          on an account with FlexWash sites. Managers are kept to
 //                          their own FlexWash car washes (see flexwash.ts).
+//   isolved_labor / isolved_on_the_clock — iSolved payroll labor (hours + estimated
+//                          cost for a range) and who's on the clock now, through the
+//                          isolved-labor / isolved-live functions with the caller's
+//                          own login, so their access rules apply (see isolved.ts).
+//                          Mighty Wash owner/manager, never the shared office login.
 //   corenav_*            — the read-only tools of the person's own CoreNav login,
 //                          when they've connected it (Connections > Connect to
 //                          CoreNav; see mcp-oauth and _shared/connect.ts).
@@ -31,6 +36,7 @@ import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexCatalog, flexPrompt, 
 import { CONNECT_ACCOUNT, PROVIDERS, ReconnectNeeded, openSession, type ProviderKey } from '../_shared/connect.ts'
 import type { McpSession } from '../_shared/mcp.ts'
 import { HOURLY_TOOL, hourlyCars } from './hourly.ts'
+import { ISOLVED_LABOR_TOOL, ISOLVED_NOTE, ISOLVED_ON_CLOCK_TOOL, isolvedLabor, isolvedOnTheClock } from './isolved.ts'
 import { RECALL_TOOL, openConversation, recall, recentNote, saveAnswer, type Convo } from './history.ts'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
@@ -303,8 +309,10 @@ const TOOL_DETAIL: Record<string, string> = {
   flexwash_call: 'Pulling FlexWash data',
   hourly_cars: 'Counting cars by hour',
   recall_conversations: 'Looking back through your past conversations',
+  isolved_labor: 'Pulling labor hours from iSolved',
+  isolved_on_the_clock: 'Checking who is on the clock in iSolved',
 }
-const DATA_TOOLS = new Set(['run_sql', 'get_site_performance', 'query_dashboard', 'flexwash_describe', 'flexwash_call', 'hourly_cars', 'recall_conversations'])
+const DATA_TOOLS = new Set(['run_sql', 'get_site_performance', 'query_dashboard', 'flexwash_describe', 'flexwash_call', 'hourly_cars', 'recall_conversations', 'isolved_labor', 'isolved_on_the_clock'])
 
 // Rows in a CoreNav answer, when it's JSON with a list in it.
 function countRows(text: string): number {
@@ -576,6 +584,11 @@ Deno.serve(async (req) => {
   // Hourly cars are counted from Mighty Wash's own DRB and FlexWash.
   const hourlyAvailable = perfAvailable && profile.account_id === CONNECT_ACCOUNT
   if (hourlyAvailable) tools.push(HOURLY_TOOL)
+  // iSolved labor for Mighty Wash Admins and managers; the iSolved functions'
+  // own access rules decide what each one gets. Never on the shared office login.
+  const isolvedAvailable = isManagerPlus && profile.account_id === CONNECT_ACCOUNT && profile.role_category !== 'corporate_display'
+  if (isolvedAvailable) tools.push(ISOLVED_LABOR_TOOL, ISOLVED_ON_CLOCK_TOOL)
+  const isolvedCtx = { userClient, svc, uid, accountId: profile.account_id as string, roleCategory: (profile.role_category ?? null) as string | null }
   if (corenav) {
     for (const t of corenav.tools) {
       tools.push({ name: t.apiName, description: t.description, input_schema: t.inputSchema as Anthropic.Tool['input_schema'] })
@@ -657,6 +670,7 @@ Deno.serve(async (req) => {
             text:
               `Today is ${today}. Answer for this user's data only. ${perfNote}${restrictedNote}` +
               (flex ? ` ${flexUserNote(flexAccess, flex.ownLogin)}` : '') +
+              (isolvedAvailable ? ` ${ISOLVED_NOTE}` : '') +
               (connectNotes.length ? ` ${connectNotes.join(' ')}` : '') +
               historyNote +
               (finalRound
@@ -816,6 +830,25 @@ Deno.serve(async (req) => {
             }
             content = await hourlyCars(input, sites, { svc, userClient })
             try { step.rowCount = (JSON.parse(content).rows ?? []).length } catch { /* not counted */ }
+          } catch (e) {
+            step.error = e instanceof Error ? e.message : String(e)
+            content = `ERROR: ${step.error}`
+          }
+          steps.push(step)
+          emit({ t: 'step', step })
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content, ...(step.error ? { is_error: true } : {}) })
+          continue
+        }
+
+        if ((block.name === 'isolved_labor' || block.name === 'isolved_on_the_clock') && isolvedAvailable) {
+          const step: Step = { tool: block.name }
+          let content: string
+          try {
+            content = block.name === 'isolved_labor'
+              ? await isolvedLabor((block.input ?? {}) as Record<string, string>, isolvedCtx)
+              : await isolvedOnTheClock((block.input ?? {}) as { site?: string }, isolvedCtx)
+            if (content.startsWith('NO_ACCESS')) step.rowCount = 0
+            else try { const d = JSON.parse(content); step.rowCount = (d.employees ?? d.sites ?? []).length } catch { /* not counted */ }
           } catch (e) {
             step.error = e instanceof Error ? e.message : String(e)
             content = `ERROR: ${step.error}`

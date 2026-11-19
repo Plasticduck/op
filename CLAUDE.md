@@ -49,6 +49,12 @@ but not what RLS allows. See **Access control** below.
   `_shared/hourly_cars.ts`: SiteWatch Carwashes lines by the hour on the ticket (equals
   the official daily cars exactly), FlexWash temporal wash stats by hour, moved from the
   zone FlexWash has for the car wash into the site's real one (NM sites Mountain).
+  iSolved: `isolved_labor` (hours + estimated cost for a date range) and
+  `isolved_on_the_clock` (who's clocked in now, this pay week) in `ask-operator/isolved.ts`
+  call `isolved-labor` / `isolved-live` with the person's own login, so those functions'
+  access rules decide what they get (as on Labor Data / On the Clock). `isolved-live`
+  returns every site, so a Regional Manager is narrowed to their region there. Mighty Wash
+  owner/manager only, never the Corporate Display login.
   Conversation history: each person's Operator AI conversations are kept in
   `ai_conversations` / `ai_messages` (migration 0237, RLS: their own only; the app can
   read, rename and delete, ask-operator writes the turns with the service role so an
