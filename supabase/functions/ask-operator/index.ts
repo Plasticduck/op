@@ -32,7 +32,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import Anthropic from 'npm:@anthropic-ai/sdk'
-import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexCatalog, flexPrompt, flexUserNote, type FlexAccess } from './flexwash.ts'
+import { FlexWash, FLEX_CALL_TOOL, FLEX_DESCRIBE_TOOL, flexCatalog, flexPrompt, flexUserNote, loadFlexCatalog, type FlexAccess } from './flexwash.ts'
 import { CONNECT_ACCOUNT, PROVIDERS, ReconnectNeeded, openSession, type ProviderKey } from '../_shared/connect.ts'
 import type { McpSession } from '../_shared/mcp.ts'
 import { HOURLY_TOOL, hourlyCars } from './hourly.ts'
@@ -580,6 +580,7 @@ Deno.serve(async (req) => {
   // FlexWash: their own login (when it has tools) first, the company connection
   // for everyone it covers.
   const flexLogin = sessions.flexwash?.tools.length ? sessions.flexwash : null
+  if (flexAccess || flexLogin) await loadFlexCatalog(svc)
   const flex = flexAccess || flexLogin ? new FlexWash(svc, flexAccess, undefined, flexLogin) : null
   if (flex) tools.push(FLEX_DESCRIBE_TOOL, FLEX_CALL_TOOL)
   // Hourly cars are counted from Mighty Wash's own DRB and FlexWash.

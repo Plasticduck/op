@@ -105,7 +105,7 @@ async function discoverFlexOrgId(svc: Any, token: string, carWashIds: string[]):
   if (!carWashIds.length) { flexOrgDebug = { ...dbg, error: 'no car_wash_ids configured' }; return null }
   const end = new Date().toISOString().slice(0, 10)
   const start = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10)
-  const pay = await flexPost(token, '/external/accounting/get-payments-detail', { carWashIds, dateRange: { start, end } })
+  const pay = await flexPost(token, '/external/accounting/get-payments-detail', { carWashIds, dateRange: { start, end }, limit: 20 })
   dbg.paymentsStatus = pay.status
   const orderId = ((pay.data?.paymentsDetail ?? []) as Any[]).map((p) => String(p.order?.id ?? '')).find(Boolean)
   if (!orderId) { flexOrgDebug = { ...dbg, error: 'no recent orders to derive org from', paymentsError: pay.data?.error ?? null }; return null }

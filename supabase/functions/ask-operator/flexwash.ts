@@ -33,6 +33,21 @@ import Anthropic from 'npm:@anthropic-ai/sdk'
 import type { McpSession } from '../_shared/mcp.ts'
 import { FLEX_ENDPOINTS, type FlexEndpoint } from './flexwash_catalog.ts'
 
+// The live catalog: the newest version flexwash-catalog-sync saved from FlexWash's
+// docs (migration 0255), or the bundled copy until there is one. Rechecked every
+// 10 minutes per worker.
+let CATALOG: Record<string, FlexEndpoint> = FLEX_ENDPOINTS
+let catalogAt = 0
+export async function loadFlexCatalog(svc: SupabaseClient): Promise<void> {
+  if (Date.now() - catalogAt < 10 * 60_000) return
+  catalogAt = Date.now()
+  try {
+    const { data } = await svc.from('flexwash_catalog').select('endpoints').order('fetched_at', { ascending: false }).limit(1).maybeSingle()
+    const e = data?.endpoints as Record<string, FlexEndpoint> | undefined
+    if (e && Object.keys(e).length >= 50 && e.customers_getCustomerDetails) CATALOG = e
+  } catch { /* keep the last one */ }
+}
+
 const FLEX_BASE = 'https://api.flexwash.com'
 const PROVIDER = 'flexwash'
 const MAX_RESULT_CHARS = 20000
@@ -111,13 +126,13 @@ const firstSentence = (s: string) => (s.trim().split(/(?<=\.)\s|\n/)[0] ?? '').s
 export function flexCatalog(access: FlexAccess | null, mcp: McpSession | null): string {
   const lines = new Map<string, string>()
   for (const t of mcp?.tools ?? []) {
-    const api = FLEX_ENDPOINTS[t.name]
+    const api = CATALOG[t.name]
     lines.set(t.name, api
       ? `${t.name}(${api.signature}) - ${api.summary}`
       : `${t.name}(${sigOf(t.inputSchema)}) - ${firstSentence(t.description.replace(/^FlexWash: /, ''))}`)
   }
   if (access) {
-    for (const [n, e] of Object.entries(FLEX_ENDPOINTS)) {
+    for (const [n, e] of Object.entries(CATALOG)) {
       if (lines.has(n) || (e.scope === 'admin' && !access.all)) continue
       lines.set(n, `${n}(${e.signature}) - ${e.summary}`)
     }
@@ -140,6 +155,7 @@ Rules for FlexWash:
 ${ids}
 - FlexWash money is usually integer cents (fields ending in Cents, and the accounting endpoints say so). Convert to dollars in your answer.
 - Paged endpoints take paginationOpts {limit, offset}. Ask for what you need (limit 25 to 100), and read totalCount rather than paging through rows to count them.
+- Some take limit with a cursor instead (the line item and payment detail reports): each answer is one page plus nextCursor; pass it back as cursor, with the same input, for the next page. These are row listings, so use a stats or summary endpoint for totals.
 - For totals, prefer a stats or summary endpoint over listing orders.
 - If an endpoint returns an error, read it, check the input with flexwash_describe, and try again.
 - These tools only read. If asked to change a customer, membership, vehicle or order, say it has to be done in FlexWash itself.
@@ -287,7 +303,7 @@ export class FlexWash {
   }
   // Whether the company connection can answer this for this user.
   private apiCan(name: string): boolean {
-    const e = FLEX_ENDPOINTS[name]
+    const e = CATALOG[name]
     return !!e && !!this.access && (e.scope !== 'admin' || this.access.all) && !(this.access.noPay && PAY_ENDPOINTS.has(name))
   }
 
@@ -312,7 +328,7 @@ export class FlexWash {
   }
 
   private endpoint(name: string): FlexEndpoint {
-    const e = FLEX_ENDPOINTS[name]
+    const e = CATALOG[name]
     if (!e) throw new Error(`There is no FlexWash endpoint named "${name}". Use a name from the FlexWash catalog.`)
     const a = this.api
     if (a.noPay && PAY_ENDPOINTS.has(name)) throw new Error('Commission detail is pay, which this login cannot see.')
@@ -351,7 +367,7 @@ export class FlexWash {
     const id = String(customerId ?? '').trim()
     if (!id) throw new Error('Pass a customerId.')
     if (!this.customerSite.has(id)) {
-      const d = await this.post(FLEX_ENDPOINTS.customers_getCustomerDetails.path, { customerId: id })
+      const d = await this.post(CATALOG.customers_getCustomerDetails.path, { customerId: id })
       const c = d?.customer ?? d
       const site = c?.carWashId ?? c?.carWash?.id
       this.customerSite.set(id, site != null ? String(site) : null)

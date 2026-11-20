@@ -15,6 +15,7 @@
 // Secrets: FLEXWASH_CLIENT_ID, FLEXWASH_CLIENT_SECRET.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { flexAllRows } from '../_shared/flexwash_pages.ts'
 
 const FLEX_BASE = 'https://api.flexwash.com'
 const PROVIDER = 'flexwash'
@@ -151,11 +152,20 @@ Deno.serve(async (req) => {
     return json({ error: 'bad_request', message: 'start and end must be YYYY-MM-DD with start <= end.' }, 400, origin)
   }
 
-  const pay = await flex(token, '/external/accounting/get-payments-detail', {
-    carWashIds: [carWashId], dateRange: { start: body.start, end: body.end },
-  })
-  if (!pay || pay.error) return json({ error: 'flex_error', message: pay?.error ?? 'payments-detail failed' }, 502, origin)
-  const failures = (pay.paymentsDetail ?? []).filter((p: Any) => p.ccFailureReason)
+  // FlexWash pages the payments (1,000 a call); the helper reads every page.
+  let payments: Any[]
+  try {
+    payments = await flexAllRows(async (path, b) => {
+      const res = await fetch(`${FLEX_BASE}${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(b),
+      })
+      return { ok: res.ok, status: res.status, data: await res.json().catch(() => null), retryAfter: Number(res.headers.get('Retry-After')) || undefined }
+    }, '/external/accounting/get-payments-detail', [carWashId], { start: body.start, end: body.end })
+  } catch (e) {
+    return json({ error: 'flex_error', message: e instanceof Error ? e.message : 'payments-detail failed' }, 502, origin)
+  }
+  const failures = payments.filter((p: Any) => p.ccFailureReason)
   // Distinct failed order ids (a retried order can have several failed attempts).
   const orderIds = [...new Set(failures.map((f: Any) => String(f.order?.id ?? '')).filter(Boolean))] as string[]
 

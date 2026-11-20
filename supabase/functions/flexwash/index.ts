@@ -8,6 +8,9 @@
 //   - path is required and must start with /external/.
 //   - body is the JSON payload POSTed to that endpoint (default {}).
 // Response: { status, data }  (data is FlexWash's JSON response).
+// The paged reports (get-line-items-detail, get-payments-detail) sent without a
+// `limit` come back whole: this follows their pages and returns every row, as
+// they did before FlexWash started paging them (see _shared/flexwash_pages.ts).
 //
 // Secrets: FLEXWASH_CLIENT_ID, FLEXWASH_CLIENT_SECRET (both required; 503 no_key otherwise).
 // Auto-provided: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY.
@@ -15,6 +18,7 @@
 // Auth: owner/manager JWT (app), or the service-role JWT (cron/archive jobs).
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { FLEX_PAGED, flexPages } from '../_shared/flexwash_pages.ts'
 
 const FLEX_BASE = 'https://api.flexwash.com'
 const PROVIDER = 'flexwash'
@@ -128,11 +132,27 @@ Deno.serve(async (req) => {
     return json({ error: 'auth_failed', message: e instanceof Error ? e.message : String(e) }, 502, origin)
   }
 
-  const res = await fetch(`${FLEX_BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload.body ?? {}),
-  })
-  const data = await res.json().catch(() => null)
-  return json({ status: res.status, data }, res.ok ? 200 : 502, origin)
+  const post = async (p: string, body: unknown) => {
+    const res = await fetch(`${FLEX_BASE}${p}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body ?? {}),
+    })
+    const data = await res.json().catch(() => null)
+    return { ok: res.ok, status: res.status, data, retryAfter: Number(res.headers.get('Retry-After')) || undefined }
+  }
+
+  const body = (payload.body ?? {}) as Record<string, unknown>
+  const key = FLEX_PAGED[path]
+  if (key && body.limit == null) {
+    try {
+      const rows = await flexPages(post, path, body)
+      return json({ status: 200, data: { [key]: rows, nextCursor: null } }, 200, origin)
+    } catch (e) {
+      return json({ status: 502, data: { error: e instanceof Error ? e.message : String(e) } }, 502, origin)
+    }
+  }
+
+  const res = await post(path, body)
+  return json({ status: res.status, data: res.data }, res.ok ? 200 : 502, origin)
 })

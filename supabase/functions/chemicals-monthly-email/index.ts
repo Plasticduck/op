@@ -32,6 +32,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { Resend } from 'npm:resend@4'
 import { jsPDF } from 'npm:jspdf@4.2.1'
 import autoTable from 'npm:jspdf-autotable@5.0.8'
+import { flexAllRows } from '../_shared/flexwash_pages.ts'
 
 const RECIPIENTS = ['kjowers@mighty-wash.com', 'justin.gamboa@mighty-wash.com', 'josh.roberts@mighty-wash.com']
 const MW_ACCOUNT = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
@@ -154,14 +155,16 @@ async function flexToken(svc: Any): Promise<string> {
 // carsByPackage with promotional washes): one paid Package line per wash. A wash
 // rung up free with the Test Discount counts as a Test Wash, not under its package.
 async function flexCarsByPackage(svc: Any, carWashId: string, start: string, end: string) {
-  const res = await fetch(`${FLEX_BASE}/external/accounting/get-line-items-detail`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${await flexToken(svc)}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ carWashIds: [carWashId], dateRange: { start, end } }),
-  })
-  const data = await res.json().catch(() => null)
-  if (!res.ok || !Array.isArray(data?.lineItemsDetail)) throw new Error(`FlexWash answered ${res.status}: ${JSON.stringify(data)?.slice(0, 200)}`)
-  const items = data.lineItemsDetail as Any[]
+  const token = await flexToken(svc)
+  // FlexWash pages this report (1,000 lines a call); the helper reads every page.
+  const items = await flexAllRows(async (path, body) => {
+    const res = await fetch(`${FLEX_BASE}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return { ok: res.ok, status: res.status, data: await res.json().catch(() => null), retryAfter: Number(res.headers.get('Retry-After')) || undefined }
+  }, '/external/accounting/get-line-items-detail', [carWashId], { start, end }, { concurrency: 3 })
   const WASH = new Set(['memberWashes', 'singleWashes', 'otherWashes', 'fleetWashes', 'promotionalWashes'])
   const tierOf = (name: string) => {
     const n = name.toLowerCase()

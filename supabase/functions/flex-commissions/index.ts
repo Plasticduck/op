@@ -14,6 +14,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { pageGranted } from '../_shared/page_access.ts'
+import { flexRowsByCarWash } from '../_shared/flexwash_pages.ts'
 // deno-lint-ignore no-explicit-any
 type Any = any
 
@@ -113,22 +114,26 @@ Deno.serve(async (req) => {
     await svc.from('service_tokens').upsert({ provider: 'flexwash', token: j.accessToken, expires_at: new Date(Date.now() + 23 * 3600_000).toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'provider' })
     return j.accessToken as string
   }
-  const flex = async (path: string, b: unknown): Promise<Any> => {
-    if (!flexToken) flexToken = await getFlexToken()
-    const r = await fetch(`${FLEX_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${flexToken}` }, body: JSON.stringify(b) })
-    return await r.json().catch(() => null)
+  try {
+    flexToken = await getFlexToken()
+  } catch (e) {
+    return json({ error: 'flex_error', message: e instanceof Error ? e.message : 'FlexWash sign-in failed' }, 502, origin)
   }
+  const post = async (path: string, b: unknown) => {
+    const r = await fetch(`${FLEX_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${flexToken}` }, body: JSON.stringify(b) })
+    return { ok: r.ok, status: r.status, data: await r.json().catch(() => null), retryAfter: Number(r.headers.get('Retry-After')) || undefined }
+  }
+  // FlexWash pages the line items (1,000 a call): every page for every site, by
+  // site and week, 8 at a time. A site that can't be read is skipped, as before.
+  const { rows: itemsBySite } = await flexRowsByCarWash(post, '/external/accounting/get-line-items-detail', carWashIds, { start, end: today }, { concurrency: 8 })
 
   type Sale = { code: string; tier: string; emp: string; day: string; site: string }
   const sales: Sale[] = []
   const firstRebillDay = new Map<string, string>() // code -> earliest rebill day
 
   for (const id of carWashIds) {
-    let data: Any = null
-    try {
-      data = await flex('/external/accounting/get-line-items-detail', { carWashIds: [id], dateRange: { start, end: today } })
-    } catch { continue }
-    const items = (data?.lineItemsDetail ?? []) as Any[]
+    const items = itemsBySite.get(id)
+    if (!items) continue
     const siteName = nameById.get(id) ?? id
     for (const it of items) {
       const cls = String(it.orderClassification ?? '')

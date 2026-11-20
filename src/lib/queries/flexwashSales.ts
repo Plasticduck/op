@@ -87,6 +87,28 @@ async function flexApi(path: string, body: unknown): Promise<Any> {
   return (data as { data?: Any } | null)?.data ?? null
 }
 
+// FlexWash pages its line-item report (1,000 rows a call, since Nov 2026). Ask
+// for each car wash and week on its own, 6 at a time; the flexwash function
+// follows each one's pages and returns every row.
+async function flexLineItems(carWashIds: string[], start: string, end: string): Promise<Any[]> {
+  const day = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
+  const weeks: { start: string; end: string }[] = []
+  for (let t = day(start); t <= day(end); t += 7 * 86_400_000) weeks.push({ start: iso(t), end: iso(Math.min(day(end), t + 6 * 86_400_000)) })
+  const pieces = (carWashIds.length ? carWashIds : [null]).flatMap((id) => weeks.map((w) => ({ id, w })))
+  const out: Any[][] = new Array(pieces.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(6, pieces.length) }, async () => {
+    while (next < pieces.length) {
+      const i = next++
+      const { id, w } = pieces[i]
+      const data = await flexApi('/external/accounting/get-line-items-detail', { carWashIds: id ? [id] : [], dateRange: w })
+      out[i] = (data?.lineItemsDetail ?? []) as Any[]
+    }
+  }))
+  return out.flat()
+}
+
 const toDollars = (cents: unknown) => (Number(cents) || 0) / 100
 
 // Line-item breakdown (from get-line-items-detail), grouped like FlexWash's own
@@ -419,11 +441,7 @@ export const flexwashSales = {
     end: string,
     opts: { includePromotional?: boolean; testDiscountIsTestWash?: boolean } = {},
   ): Promise<FlexBreakdown> => {
-    const data = await flexApi('/external/accounting/get-line-items-detail', {
-      carWashIds,
-      dateRange: { start, end },
-    })
-    const items = (data?.lineItemsDetail ?? []) as Any[]
+    const items = await flexLineItems(carWashIds, start, end)
 
     // Discount-type reductions that flow into Total to Account For but aren't in
     // the discounts endpoint: rewashes (free re-do credits) and next-bill / prorate
@@ -543,10 +561,7 @@ export const flexwashSales = {
   // member (member = redeemed/rebilled interior, which can be $0). Member
   // classifications all begin with "member" (memberWashes, membershipsRebilled, ...).
   interiorReport: async (carWashIds: string[], start: string, end: string): Promise<FlexInteriorReport> => {
-    const data = await flexApi('/external/accounting/get-line-items-detail', {
-      carWashIds,
-      dateRange: { start, end },
-    })
+    const lineItems = await flexLineItems(carWashIds, start, end)
     const stripCode = (name: string) => name.replace(/^[A-Za-z0-9]+ - /, '')
     // Owner-excluded FlexWash detail lines that aren't interior sales:
     //   MVP Interior Redeem ($0 member redemption), Rewash (a re-do credit),
@@ -556,7 +571,7 @@ export const flexwashSales = {
       const n = name.trim().toLowerCase()
       return EXCLUDE.has(n) || n.includes('hand dry') || (n.includes('tire') && n.includes('wheel'))
     }
-    const raw = (data?.lineItemsDetail ?? []) as Any[]
+    const raw = lineItems
     const items = raw.filter(
       (it) => String(it.orderPackageType) === 'detail' && !isExcluded(stripCode(String(it.name ?? ''))),
     )

@@ -4300,6 +4300,39 @@ export type Database = {
           },
         ]
       }
+      flexwash_catalog: {
+        Row: {
+          changes: Json
+          checked_at: string
+          docs_sha256: string
+          endpoint_count: number
+          endpoints: Json
+          fetched_at: string
+          held: Json
+          id: number
+        }
+        Insert: {
+          changes?: Json
+          checked_at?: string
+          docs_sha256: string
+          endpoint_count: number
+          endpoints: Json
+          fetched_at?: string
+          held?: Json
+          id?: never
+        }
+        Update: {
+          changes?: Json
+          checked_at?: string
+          docs_sha256?: string
+          endpoint_count?: number
+          endpoints?: Json
+          fetched_at?: string
+          held?: Json
+          id?: never
+        }
+        Relationships: []
+      }
       flexwash_sites: {
         Row: {
           account_id: string

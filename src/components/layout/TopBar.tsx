@@ -34,6 +34,8 @@ function renderNotification(n: Notification): { icon: typeof Bell; text: string;
         text: String(p.text ?? `Update on ${String(p.number ?? 'a purchase request')}`),
         to: `/app/purchase-requests?r=${String(p.request_id ?? '')}`,
       }
+    case 'flexwash_api_change':
+      return { icon: AlertTriangle, text: String(p.text ?? 'FlexWash changed its API.'), to: '/app/dashboard' }
     default:
       return { icon: Bell, text: n.kind, to: '/app/dashboard' }
   }
