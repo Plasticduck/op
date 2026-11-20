@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Download, FileSearch, FileSignature, ListChecks, Plus, Settings2 } from 'lucide-react'
+import { Download, FileSearch, FileSignature, ListChecks, Plus, Settings2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { supabase } from '@/lib/supabase'
 import { currency, shortDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { isSuperAdmin } from '@/lib/pageAccessLogic'
 import { listUsers, type AccountUser } from '@/lib/queries/account'
 import { invoiceVendors } from '@/lib/queries/invoiceVendors'
 import { invoiceGlCodes } from '@/lib/queries/invoiceGlCodes'
@@ -21,6 +22,7 @@ import { RequestEditor } from './RequestEditor'
 import { SendForSignature } from './SendForSignature'
 import { RequestDetail } from './RequestDetail'
 import { ApprovalRulesModal } from './ApprovalRulesModal'
+import { DeleteRequestModal } from './DeleteRequestModal'
 
 type RecipLite = Pick<Recipient, 'id' | 'envelope_id' | 'user_id' | 'name' | 'email' | 'role' | 'label' | 'routing_order' | 'status' | 'sent_at' | 'signed_at' | 'declined_at' | 'required_by_rule'>
 type TabKey = 'to_sign' | 'drafts' | 'pending' | 'approved' | 'purchased' | 'closed'
@@ -44,6 +46,10 @@ export default function PurchaseRequestsPage() {
   const { profile } = useAuth()
   const { locations } = useLocations()
   const me = profile?.id ?? ''
+  // The super admin can delete a request from any tab (migration 0254).
+  const canDelete = isSuperAdmin(profile?.email)
+  const [deleting, setDeleting] = useState<PurchaseRequest | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const isAP = isAccountsPayable(profile)
   const isOwner = profile?.role === 'owner'
 
@@ -220,12 +226,20 @@ export default function PurchaseRequestsPage() {
         </div>
       </div>
 
+      {notice && (
+        <p className="flex items-center justify-between gap-3 rounded-md bg-ok-soft px-3 py-2 text-sm text-ok" role="status">
+          {notice}
+          <button type="button" onClick={() => setNotice(null)} className="text-xs font-medium underline">Dismiss</button>
+        </p>
+      )}
+
       {/* Phones: cards */}
       <div className="flex flex-col gap-3 md:hidden" data-testid="pr-cards">
         {!loaded ? <p className="py-8 text-center text-sm text-ink-muted">Loading…</p>
           : filtered.length === 0 ? <p className="rounded-lg border border-border bg-card px-4 py-8 text-center text-sm text-ink-muted">{active.empty}</p>
             : filtered.map(({ pr, prog, myTurn }) => (
-              <button key={pr.id} type="button" onClick={() => openRow(pr)}
+              <div key={pr.id} className="flex flex-col">
+              <button type="button" onClick={() => openRow(pr)}
                 className={cn('flex flex-col gap-1.5 rounded-lg border bg-card p-4 text-left transition hover:bg-content', myTurn ? 'border-accent/50' : 'border-border')}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-ink-muted">{prNumber(pr.number)}</span>
@@ -239,6 +253,13 @@ export default function PurchaseRequestsPage() {
                 </div>
                 {myTurn && <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-white"><FileSignature className="size-3.5" /> Review and sign</span>}
               </button>
+              {canDelete && (
+                <button type="button" onClick={() => setDeleting(pr)} aria-label={`Delete ${prNumber(pr.number)}`}
+                  className="mt-1 inline-flex min-h-9 items-center gap-1.5 self-end px-2 text-xs font-medium text-danger hover:underline">
+                  <Trash2 className="size-3.5" /> Delete
+                </button>
+              )}
+              </div>
             ))}
       </div>
 
@@ -287,11 +308,19 @@ export default function PurchaseRequestsPage() {
                 <td className="px-4 py-3 text-ink-muted">{shortDate(activeKey === 'drafts' ? pr.updated_at : (pr.submitted_at ?? pr.created_at))}</td>
                 <td className="px-4 py-3"><StatusPill status={pr.status} /></td>
                 <td className="px-4 py-3 text-right">
+                  <div className="inline-flex items-center justify-end gap-1.5">
                   {myTurn ? (
                     <span className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-white"><FileSignature className="size-3.5" /> Sign</span>
                   ) : (
                     <span className="inline-flex items-center rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-ink">{pr.status === 'draft' && pr.requester_id === me ? 'Edit' : 'Open'}</span>
                   )}
+                  {canDelete && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setDeleting(pr) }} aria-label={`Delete ${prNumber(pr.number)}`} title="Delete"
+                      className="inline-flex size-8 items-center justify-center rounded-md border border-border bg-card text-ink-muted transition hover:border-danger/40 hover:text-danger">
+                      <Trash2 className="size-4" />
+                    </button>
+                  )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -337,6 +366,13 @@ export default function PurchaseRequestsPage() {
       {modal === 'rules' && profile && (
         <ApprovalRulesModal accountId={profile.account_id} rules={rules} signers={signers}
           onClose={() => setModal(null)} onSaved={() => { setModal(null); void loadRules() }} />
+      )}
+      {deleting && (
+        <DeleteRequestModal
+          request={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={(note) => { setNotice(note ?? `${prNumber(deleting.number)} was deleted.`); setDeleting(null); void load() }}
+        />
       )}
       {modal === 'verify' && <VerifyPdfModal onClose={() => setModal(null)} />}
       {modal === 'settings' && <EsignSettingsModal onClose={() => setModal(null)} />}

@@ -166,6 +166,9 @@ src/
                             completion. Every signing step runs in the purchase-requests fn; the
                             esign_* tables are append-only (triggers) so other documents can reuse
                             them (source_type). Legal map: docs/purchase-requests/ESIGN.md.
+                            Only the super admin can delete a request (any tab, signed ones too):
+                            purchase_request_delete() (migration 0254) takes its envelopes, files and
+                            notifications, keeps consents, and logs it in purchase_request_deletions.
                             Pre-launch list: PURCHASE_REQUEST_EMAILS in purchasing/access.ts
     secretshoppers/         Secret Shoppers: ShopperApp is a separate phone app (ss.html ->
                             src/ss.tsx, served at /ss, own manifest + home-screen icon, no
@@ -193,7 +196,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0253.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0254.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides

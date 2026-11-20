@@ -12747,6 +12747,72 @@ export type Database = {
           },
         ]
       }
+      purchase_request_deletions: {
+        Row: {
+          account_id: string
+          deleted_at: string
+          deleted_by: string | null
+          deleted_by_name: string | null
+          envelope_count: number
+          ever_sent: boolean | null
+          file_count: number
+          id: string
+          number: number | null
+          request_id: string
+          requester_name: string | null
+          status: string | null
+          title: string | null
+          total: number | null
+        }
+        Insert: {
+          account_id: string
+          deleted_at?: string
+          deleted_by?: string | null
+          deleted_by_name?: string | null
+          envelope_count?: number
+          ever_sent?: boolean | null
+          file_count?: number
+          id?: string
+          number?: number | null
+          request_id: string
+          requester_name?: string | null
+          status?: string | null
+          title?: string | null
+          total?: number | null
+        }
+        Update: {
+          account_id?: string
+          deleted_at?: string
+          deleted_by?: string | null
+          deleted_by_name?: string | null
+          envelope_count?: number
+          ever_sent?: boolean | null
+          file_count?: number
+          id?: string
+          number?: number | null
+          request_id?: string
+          requester_name?: string | null
+          status?: string | null
+          title?: string | null
+          total?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_request_deletions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_request_deletions_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_request_files: {
         Row: {
           account_id: string
@@ -18749,6 +18815,7 @@ export type Database = {
         }[]
       }
       pr_path_request: { Args: { p_name: string }; Returns: string }
+      purchase_request_delete: { Args: { p_id: string }; Returns: Json }
       qb_check_login: {
         Args: { p_password: string; p_username: string }
         Returns: string

@@ -84,6 +84,17 @@ export const purchaseRequests = {
   update: (id: string, patch: Partial<PurchaseRequestDraft>) =>
     supabase.from('purchase_requests').update(patch as T['purchase_requests']['Update']).eq('id', id).select('*').single(),
   remove: (id: string) => supabase.from('purchase_requests').delete().eq('id', id),
+  // Super admin only (migration 0254): deletes a request from any tab, sent and
+  // signed ones included, with its envelopes, signatures, audit trail, files and
+  // notifications (logged in purchase_request_deletions), then its stored files.
+  adminDelete: async (id: string): Promise<{ error: string | null; filesLeft: number }> => {
+    const { data, error } = await supabase.rpc('purchase_request_delete', { p_id: id })
+    if (error) return { error: error.message, filesLeft: 0 }
+    const paths = ((data as { paths?: string[] } | null)?.paths ?? []).filter(Boolean)
+    if (!paths.length) return { error: null, filesLeft: 0 }
+    const rm = await supabase.storage.from(BUCKET).remove(paths)
+    return { error: null, filesLeft: rm.error ? paths.length : 0 }
+  },
 
   files: (requestId: string) =>
     supabase.from('purchase_request_files').select('*').eq('request_id', requestId).order('created_at'),
