@@ -100,7 +100,8 @@ time_off_requests(id, location_id, employee_id, start_date, end_date, reason, st
 reviews(id, employee_id, reviewed_by, review_date, due_date, rating, status)
 counseling_records(id, employee_id, date, type, category, description, follow_up_date)
 injury_reports(id, employee_id, location_id, incident_date, description, body_part_affected, osha_recordable, severity, days_lost)
-site_audits(id, account_id, location_id, submitted_by_name, created_at)
+site_audits_v2(id, account_id, location_id, status 'draft'|'submitted', score numeric 0-100, grade 'A'..'F', safety_failed bool, failed_sections text[], answers jsonb {"section.item": {value 'pass'|'warn'|'fail', comments, photos}}, auditor_name, submitted_at, review_status 'needs_attention'|'complete', rm_responses jsonb {"section.item": text}, rm_note, completed_by_name, completed_role 'regional_manager'|'admin', completed_at) -- Site Audits, the graded audit since 2026-11-20: red = 'fail'; every submitted audit waits in needs_attention until the site's Regional Manager (or an Admin) acknowledges it. Use status = 'submitted' for results.
+site_audits(id, account_id, location_id, submitted_by_name, created_at) -- older audits on the earlier form (Mar 9 to Nov 18, 2026), read only now
 site_violations(id, account_id, location_id, violation_type, severity, description, status, due_date, department, created_at)
 ops_invoices(id, account_id, location_id, vendor_name, invoice_date, amount, gl_code, status, assigned_to_name)
 capital_requests(id, account_id, location_id, title, category, estimated_cost, priority, status, requested_by_name, created_at)

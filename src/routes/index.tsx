@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components -- route config: lazy() refs + router export, not an HMR component module */
 import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate, useRouteError } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useParams, useRouteError } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { RouteProgress } from '@/components/feedback/TopLoadingBar'
 import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSitePerformance, RequireSuperAdmin, RequireEmails, RequireEmailsOrRoles, RedirectIfAuthed } from '@/routes/guards'
@@ -34,6 +34,12 @@ function lz<T extends ComponentType<unknown>>(factory: () => Promise<{ default: 
 
 // Friendly fallback if a route still errors after the reload guard. Surfaces the
 // underlying error text so a crash is diagnosable instead of a blank wall.
+// An audit link from before Site Audit NEW became Site Audits.
+function SiteAuditNewRedirect() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/app/site-audits/${id ?? ''}`} replace />
+}
+
 function RouteError() {
   const err = useRouteError()
   const message = err instanceof Error ? err.message : String(err ?? 'Unknown error')
@@ -117,8 +123,8 @@ const TimeOffPage = lz(() => import('@/features/people/timeoff/TimeOffPage'))
 const CalendarPage = lz(() => import('@/features/people/calendar/CalendarPage'))
 const BreaksPage = lz(() => import('@/features/people/breaks/BreaksPage'))
 const SiteReviewsPage = lz(() => import('@/features/opssuite/SiteReviewsPage'))
-const SiteAuditsPage = lz(() => import('@/features/opssuite/SiteAuditsPage'))
 const SiteAuditsNewPage = lz(() => import('@/features/opssuite/siteauditnew/SiteAuditsNewPage'))
+const OlderSiteAuditsPage = lz(() => import('@/features/opssuite/OlderSiteAuditsPage'))
 const InvoicesPage = lz(() => import('@/features/opssuite/InvoicesPage'))
 const PerDiemPage = lz(() => import('@/features/opssuite/PerDiemPage'))
 const PurchaseRequestsPage = lz(() => import('@/features/purchasing/PurchaseRequestsPage'))
@@ -292,10 +298,14 @@ export const router = createBrowserRouter([
           { path: 'supplies', element: s(<SuppliesPage />) },
 
           { path: 'site-reviews', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive']}>{s(<SiteReviewsPage />)}</RequirePermRole> },
-          { path: 'site-audits', element: mgr(<SiteAuditsPage />) },
-          // Pre-launch: Kevan only (and anyone he grants the page).
-          { path: 'site-audits-new', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<SiteAuditsNewPage />)}</RequireEmails> },
-          { path: 'site-audits-new/:id', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<SiteAuditsNewPage />)}</RequireEmails> },
+          // The graded audit (it replaced the earlier form on 2026-11-20); the
+          // earlier form's audits are read only under /older.
+          { path: 'site-audits', element: mgr(<SiteAuditsNewPage />) },
+          { path: 'site-audits/older', element: mgr(<OlderSiteAuditsPage />) },
+          { path: 'site-audits/:id', element: mgr(<SiteAuditsNewPage />) },
+          // Its pre-launch address, still in earlier emails.
+          { path: 'site-audits-new', element: <Navigate to="/app/site-audits" replace /> },
+          { path: 'site-audits-new/:id', element: <SiteAuditNewRedirect /> },
           { path: 'invoices', element: tech(<InvoicesPage />) },
           { path: 'purchase-requests', element: PURCHASE_REQUEST_EMAILS ? <RequireEmails allow={PURCHASE_REQUEST_EMAILS}>{tech(<PurchaseRequestsPage />)}</RequireEmails> : tech(<PurchaseRequestsPage />) },
           { path: 'per-diem', element: <RequirePermRole allow={['owner', 'regional_manager', 'executive', 'finance']}>{s(<PerDiemPage />)}</RequirePermRole> },

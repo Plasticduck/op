@@ -53,8 +53,8 @@ export function RatingPill({ value }: { value: Rating | null }) {
   return <span className={cn('shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold', TONE_PILL[p.tone])}>{p.label}</span>
 }
 
-// Where a submitted audit is in its follow-up: red items wait on the Regional
-// Manager (Needs attention), everything else is Complete.
+// Where a submitted audit is in its follow-up: waiting on the Regional Manager to
+// acknowledge it (Needs attention), or Complete.
 export function ReviewPill({ status }: { status: string | null }) {
   const cls = 'inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-xs font-semibold'
   if (status === 'needs_attention') return <span className={cn(cls, TONE_PILL.danger)}>Needs attention</span>

@@ -1,18 +1,23 @@
 // site-audit-new-notify — Supabase Edge Function (Deno).
-// When a Site Audit NEW is submitted, emails its PDF (grade, every item, comments,
-// photos) and texts a one-line result. Pre-launch it goes only to Kevan (his
-// request, 2026-11-17), not the old Site Audits list in email-site-audit.
+// When a Site Audit is submitted, emails its PDF (grade, every item, comments,
+// photos) and texts a one-line result. Live since 2026-11-20 (it was Kevan-only
+// while the graded audit was Site Audit NEW): see recipients() for who.
 //
-// Body: { audit_id, event?, resend?, smsOnly?, emailOnly?, check?, preview? }. Sends once per audit: the row's
-// notified_at is claimed before sending, so a retry or a second tab doesn't send it
-// again; resend: true sends it again anyway (smsOnly / emailOnly: just one). check: true
-// reads back delivery from Resend and Twilio (accepted is not delivered); preview:
-// true returns the PDF (base64) and how each photo was read, sending nothing.
+// Body: { audit_id, event?, resend?, smsOnly?, emailOnly?, check?, preview?, test?, dryRun? }.
+// Sends once per audit: the row's notified_at is claimed before sending, so a retry
+// or a second tab doesn't send it again; resend: true sends it again anyway (smsOnly /
+// emailOnly: just one). check: true reads back delivery from Resend and Twilio
+// (accepted is not delivered); preview: true returns the PDF (base64) and how each
+// photo was read, sending nothing. test: true sends only to Kevan (his email and
+// phone), without claiming the send. dryRun: true returns who it would go to and
+// the text, sending nothing.
 //
 // event: 'acknowledged' is the follow-up (migration 0248): once the site's Regional
-// Manager (or an Admin) answers the red items and marks the audit complete, a text
-// says so. Claims ack_notified_at the same way, so it goes once. Pre-launch the
-// text goes only to Kevan too.
+// Manager (or an Admin) marks the audit complete, an email (their answers and the
+// final PDF) and a text say so, to the same people. Claims ack_notified_at the same
+// way, so it goes once.
+//
+// Only Mighty Wash's audits are sent: the recipients are theirs.
 //
 // Auth: the audit's auditor, an Admin (owner) of its account, or the service role;
 // for the acknowledged text, also the person who completed it.
@@ -30,8 +35,18 @@ import { openWorkOrdersForSite } from '../_shared/maintainx_site.ts'
 // deno-lint-ignore no-explicit-any
 type Any = any
 
-const EMAIL_TO = ['kjowers@mighty-wash.com']
-const SMS_TO = ['+19408676366'] // Kevan
+// Who hears about an audit (Kevan, 2026-11-20): the people the earlier Site Audits
+// emailed (email-site-audit): this leadership list, the site's own mailbox (MW05 ->
+// mw05@mighty-wash.com) and the site's Regional Manager this quarter. Texts go to
+// those of them whose Operator login has a phone and is signed up for texts, looked
+// up at send time, so anyone who signs up later starts getting them.
+const LEADERSHIP = [
+  'kjowers@mighty-wash.com', 'jay@mighty-wash.com', 'staci@mymightywash.com',
+  'kstaton@mighty-wash.com', 'debra@mighty-wash.com', 'justin.gamboa@mighty-wash.com',
+  'zachary@mighty-wash.com', 'ernest@mighty-wash.com', 'lkeith@mighty-wash.com',
+]
+const TEST_EMAIL = ['kjowers@mighty-wash.com']
+const TEST_SMS = [{ to: '+19408676366', name: 'Kevan Jowers' }]
 const BUCKET = 'site-audit-photos'
 const APP = 'https://operator.washlyfe.com'
 const MIGHTY_WASH = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
@@ -179,6 +194,37 @@ function outcome(audit: Any, answers: Record<string, Answer>): Outcome {
   }
 }
 
+// Where the RM's acknowledgement stands, for the PDF (as the app's PDF shows it).
+function followUpFor(audit: Any, answers: Record<string, Answer>) {
+  const reds = SECTIONS.flatMap((s) => s.items.map((it) => ({ key: `${s.id}.${it.id}`, section: s.title, label: it.label })))
+    .filter((r) => answers[r.key]?.value === 'fail')
+  if (audit.review_status === 'needs_attention') {
+    return {
+      title: 'Follow-up', note: 'Needs attention', tone: 'danger' as const,
+      message: reds.length
+        ? `Waiting on the site's Regional Manager to answer ${reds.length} red item${reds.length === 1 ? '' : 's'} and mark the audit complete.`
+        : "Nothing red. Waiting on the site's Regional Manager to acknowledge it.",
+    }
+  }
+  if (audit.review_status !== 'complete') return null
+  if (!audit.completed_by_name) {
+    return { title: 'Follow-up', note: 'Complete', tone: 'ok' as const, message: 'No red items, so no Regional Manager follow-up was needed.' }
+  }
+  const role = audit.completed_role === 'admin' ? 'Admin' : 'Regional Manager'
+  const responses = (audit.rm_responses ?? {}) as Record<string, string>
+  const rows = [
+    ...reds.map((r) => [`${r.section}\n${r.label}`, answers[r.key].comments.trim() || '-', responses[r.key] || '-']),
+    ...(audit.rm_note ? [['Note', '', String(audit.rm_note)]] : []),
+  ]
+  return {
+    title: role === 'Admin' ? 'Follow-up' : 'Regional Manager response',
+    note: `Complete. Acknowledged by ${audit.completed_by_name} (${role})${audit.completed_at ? ' on ' + central(audit.completed_at) : ''}.`,
+    tone: 'ok' as const,
+    message: reds.length ? undefined : 'Nothing was red on this audit.',
+    rows,
+  }
+}
+
 async function buildPdf(svc: Any, audit: Any, answers: Record<string, Answer>, site: string, o: Outcome): Promise<{ pdf: string; photos: { path: string; how: string }[] }> {
   const photoImages: Record<string, Any> = {}
   const paths = Object.values(answers).flatMap((a) => a.photos)
@@ -209,6 +255,7 @@ async function buildPdf(svc: Any, audit: Any, answers: Record<string, Answer>, s
     photoImages,
     footer: `Audited by ${audit.auditor_name ?? '-'}  -  generated ${central(new Date())}`,
     workOrders: audit.work_orders ?? null,
+    followUp: followUpFor(audit, answers),
     fmtDate: centralDate,
     fmtDateTime: (iso) => central(iso),
   })
@@ -228,6 +275,46 @@ function woLine(wo: Any, site: string): string {
   if (!list.length) return p(`No open work orders at ${site || 'this site'} in MaintainX.`)
   const high = list.filter((w) => w.priority === 'HIGH').length
   return p(`${list.length} open work order${list.length === 1 ? '' : 's'} at ${site || 'this site'} in MaintainX${high ? ` (${high} high priority)` : ''}, listed at the end of the PDF.`)
+}
+
+const e164 = (raw: unknown): string | null => {
+  const s = String(raw ?? '').trim()
+  const d = s.replace(/\D/g, '')
+  if (s.startsWith('+') && d.length >= 11) return '+' + d
+  if (d.length === 10) return '+1' + d
+  if (d.length === 11 && d.startsWith('1')) return '+' + d
+  return null
+}
+
+type Recipients = {
+  emails: string[]
+  sms: { to: string; name: string }[]
+  rm: { name: string; email: string | null } | null
+}
+
+// The emails (leadership, the site's mailbox, its RM) and, for those with an
+// Operator login that has a phone and is signed up for texts, the texts.
+async function recipients(svc: Any, a: Any, site: string): Promise<Recipients> {
+  const { data: map } = await svc.rpc('site_audit_v2_rm_map', { p_account: a.account_id })
+  const m = ((map ?? []) as Any[]).find((x) => x.location_id === a.location_id)
+  let rm: Recipients['rm'] = null
+  if (m?.user_id) {
+    const { data: u } = await svc.from('users').select('name, email').eq('id', m.user_id).maybeSingle()
+    rm = { name: String(u?.name ?? m.name ?? ''), email: u?.email ? String(u.email).toLowerCase() : null }
+  }
+  const local = site.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const emails = [...new Set([...LEADERSHIP, ...(local ? [`${local}@mighty-wash.com`] : []), ...(rm?.email ? [rm.email] : [])])]
+
+  const { data: people } = await svc.from('users').select('name, email, phone, sms_opt_in')
+    .eq('account_id', a.account_id).eq('sms_opt_in', true).not('phone', 'is', null)
+  const want = new Set(emails)
+  const sms: Recipients['sms'] = []
+  for (const p of (people ?? []) as Any[]) {
+    const to = e164(p.phone)
+    if (!to || !want.has(String(p.email ?? '').toLowerCase()) || sms.some((s) => s.to === to)) continue
+    sms.push({ to, name: String(p.name ?? '') })
+  }
+  return { emails, sms, rm }
 }
 
 async function sendSms(to: string, text: string): Promise<Any> {
@@ -265,7 +352,7 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
 
-  let body: { audit_id?: string; event?: string; resend?: boolean; check?: boolean; smsOnly?: boolean; emailOnly?: boolean; preview?: boolean } = {}
+  let body: { audit_id?: string; event?: string; resend?: boolean; check?: boolean; smsOnly?: boolean; emailOnly?: boolean; preview?: boolean; test?: boolean; dryRun?: boolean } = {}
   try { body = await req.json() } catch { /* empty */ }
   const auditId = body.audit_id
   if (!auditId || !/^[0-9a-f-]{36}$/i.test(auditId)) return json({ error: 'bad_request' }, 400, origin)
@@ -332,47 +419,96 @@ Deno.serve(async (req) => {
     return json(out, 200, origin)
   }
 
+  // Only Mighty Wash's audits go out: the recipients below are theirs.
+  if (a.account_id !== MIGHTY_WASH) return json({ ok: true, skipped: 'not_mighty_wash' }, 200, origin)
+
   const answers = normalizeAnswers(a.answers)
   const site = String(a.location?.name ?? '').trim()
   const reds = Object.values(answers).filter((x) => x.value === 'fail').length
+  const o = outcome(a, answers)
+  const link = `${APP}/app/site-audits/${a.id}`
+  const who = await recipients(svc, a, site)
+  const emailTo = body.test ? TEST_EMAIL : who.emails
+  const smsTo = body.test ? TEST_SMS : who.sms
+  const from = Deno.env.get('RESEND_FROM') ?? 'WashLyfe Operator <notifications@washlyfe.com>'
+  const pdfName = `site-audit-${(site || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`
+  // Test sends (only to Kevan) don't claim the audit's real send.
+  const claims = !body.resend && !body.test
 
   // ---- Acknowledged: the RM (or an Admin) marked it complete ----
   if (isAck) {
     if (a.review_status !== 'complete' || !a.completed_by) return json({ error: 'not_acknowledged' }, 409, origin)
-    if (!body.resend) {
+    const by = `${a.completed_role === 'admin' ? 'Admin' : 'RM'} ${a.completed_by_name ?? 'unknown'}`
+    const text = `Site Audit at ${site || 'site'} has been acknowledged by ${by}. ${reds ? `${reds} red item${reds === 1 ? '' : 's'} answered` : 'Nothing red'}; marked complete. Full PDF report emailed.`
+    const subject = `Site Audit${site ? ': ' + site : ''} · Acknowledged by ${a.completed_by_name ?? 'unknown'}`
+    if (body.dryRun) return json({ dryRun: true, event: 'acknowledged', email: { to: emailTo, subject }, sms: { to: smsTo, text } }, 200, origin)
+    if (claims) {
       const { data: claimed } = await svc.from('site_audits_v2').update({ ack_notified_at: new Date().toISOString() }).eq('id', auditId).is('ack_notified_at', null).select('id')
       if (!claimed?.length) return json({ ok: true, already: true, ack_notified_at: a.ack_notified_at }, 200, origin)
     }
-    const who = `${a.completed_role === 'admin' ? 'Admin' : 'RM'} ${a.completed_by_name ?? 'unknown'}`
-    const text = `Site Audit at ${site || 'site'} has been acknowledged by ${who}. ${reds} red item${reds === 1 ? '' : 's'} answered; marked complete.`
-    const sms = await Promise.all(SMS_TO.map((to) => sendSms(to, text)))
-    const anySent = sms.some((s) => s.ok)
-    const result = { sms, at: new Date().toISOString() }
-    await svc.from('site_audits_v2').update({ ack_notify_result: result, ...(anySent ? {} : { ack_notified_at: null }) }).eq('id', auditId)
+
+    let email: Any = body.smsOnly ? (a.ack_notify_result?.email ?? { ok: false, skipped: true }) : { ok: false, error: 'no_key' }
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    if (resendKey && !body.smsOnly) {
+      let pdf: string | null = null
+      let pdfError: string | null = null
+      try { pdf = (await buildPdf(svc, a, answers, site, o)).pdf } catch (e) { pdfError = e instanceof Error ? e.message : String(e) }
+      const responses = (a.rm_responses ?? {}) as Record<string, string>
+      const answered = SECTIONS.flatMap((s) => s.items.map((it) => ({ key: `${s.id}.${it.id}`, label: `${s.title}: ${it.label}` })))
+        .filter((r) => answers[r.key]?.value === 'fail')
+        .map((r) => `<li style="margin:0 0 8px;"><b>${esc(r.label)}</b>${answers[r.key].comments.trim() ? `<br><span style="color:#666;">Auditor: ${esc(answers[r.key].comments.trim())}</span>` : ''}<br>Response: ${esc(responses[r.key] ?? '-')}</li>`)
+      const role = a.completed_role === 'admin' ? 'an Admin' : 'the Regional Manager'
+      const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">
+        <h2 style="margin:0 0 16px;font-size:20px;">Site Audit acknowledged${site ? ': ' + esc(site) : ''}</h2>
+        <div style="border:1px solid #15803d;background:#dcfce7;border-radius:6px;padding:12px 16px;margin:0 0 16px;">
+          <p style="margin:0;font-size:16px;font-weight:700;color:#15803d;">Complete</p>
+          <p style="margin:4px 0 0;font-size:14px;">Acknowledged by ${esc(a.completed_by_name ?? 'unknown')} (${role})${a.completed_at ? ' on ' + esc(central(a.completed_at)) : ''}.</p>
+        </div>
+        <table style="border-collapse:collapse;width:100%;font-size:14px;">
+          ${([['Site', site || '-'], ['Result', o.short], ['Auditor', a.auditor_name ?? '-'], ['Submitted', central(a.submitted_at)]] as [string, string][])
+            .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#666;white-space:nowrap;">${esc(k)}</td><td style="padding:4px 0;font-weight:600;">${esc(v)}</td></tr>`).join('')}
+        </table>
+        ${answered.length
+          ? `<p style="margin:16px 0 6px;font-size:14px;font-weight:600;color:#b91c1c;">Red items and responses</p><ul style="margin:0;padding-left:18px;font-size:14px;">${answered.join('')}</ul>`
+          : '<p style="margin:16px 0 0;font-size:14px;">Nothing was red on this audit.</p>'}
+        ${a.rm_note ? `<p style="margin:12px 0 0;font-size:14px;"><b>Note:</b> ${esc(a.rm_note)}</p>` : ''}
+        <p style="margin:20px 0 0;font-size:14px;">${pdf ? 'The final audit, with the responses, is attached as a PDF.' : 'The PDF could not be built this time (' + esc(pdfError) + '); open the audit in Operator instead.'}</p>
+        <p style="margin:16px 0 0;"><a href="${link}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-size:14px;font-weight:600;">Open in Operator</a></p>
+        <p style="margin:20px 0 0;color:#888;font-size:12px;">Sent from WashLyfe Operator.</p>
+      </div>`
+      try {
+        const resend = new Resend(resendKey)
+        const { data, error } = await resend.emails.send({
+          from, to: emailTo, subject, html,
+          ...(pdf ? { attachments: [{ filename: pdfName, content: pdf }] } : {}),
+        })
+        email = error ? { ok: false, to: emailTo, error: (error as Any).message ?? 'send_failed' } : { ok: true, to: emailTo, id: (data as Any)?.id, pdf: !!pdf, pdfError }
+      } catch (e) {
+        email = { ok: false, to: emailTo, error: e instanceof Error ? e.message : 'send_failed' }
+      }
+    }
+    const sms = body.emailOnly ? ((a.ack_notify_result?.sms ?? []) as Any[]) : await Promise.all(smsTo.map((s) => sendSms(s.to, text)))
+    const anySent = email.ok || sms.some((s) => s.ok)
+    const result = { email, sms, test: !!body.test, at: new Date().toISOString() }
+    if (!body.test) {
+      await svc.from('site_audits_v2').update({ ack_notify_result: result, ...(anySent ? {} : { ack_notified_at: null }) }).eq('id', auditId)
+    }
     return json({ ok: anySent, ...result }, anySent ? 200 : 502, origin)
   }
 
-  const o = outcome(a, answers)
-  const link = `${APP}/app/site-audits-new/${a.id}`
-
-  // Who the red items wait on: the site's Regional Manager this quarter.
-  let rmName: string | null = null
-  if (a.review_status === 'needs_attention') {
-    const { data: map } = await svc.rpc('site_audit_v2_rm_map', { p_account: a.account_id })
-    const rm = ((map ?? []) as Any[]).find((m) => m.location_id === a.location_id)
-    rmName = rm?.user_id && rm?.name ? String(rm.name) : null
-  }
-  const followUpHtml = a.review_status === 'needs_attention'
-    ? `<p style="margin:16px 0 0;font-size:14px;"><b style="color:#b91c1c;">Needs attention.</b> ${reds} red item${reds === 1 ? '' : 's'} ${rmName ? `go to ${esc(rmName)} (Regional Manager) to answer and mark complete` : "wait on an Admin to answer, since this site has no Regional Manager"}, in Operator's Needs Attention tab.</p>`
-    : `<p style="margin:16px 0 0;font-size:14px;"><b style="color:#15803d;">Complete.</b> No red items, so no Regional Manager follow-up is needed.</p>`
-  const followUpText = a.review_status === 'needs_attention'
-    ? (rmName ? ` Waiting on RM ${rmName}.` : ' Needs an Admin to answer (no RM for this site).')
-    : ''
+  // Every audit waits on the site's Regional Manager to acknowledge it (0256).
+  const rmName = who.rm?.name || null
+  const waiting = rmName
+    ? `${esc(rmName)} (Regional Manager) to ${reds ? 'answer them and mark it complete' : 'acknowledge it'}`
+    : `an Admin to ${reds ? 'answer them and mark it complete' : 'acknowledge it'}, since this site has no Regional Manager`
+  const followUpHtml = `<p style="margin:16px 0 0;font-size:14px;"><b style="color:#b91c1c;">Needs attention.</b> ${reds ? `${reds} red item${reds === 1 ? '' : 's'}. ` : 'Nothing red. '}Waiting on ${waiting}, in Operator's Needs Attention tab.</p>`
+  const followUpText = rmName ? ` Waiting on RM ${rmName}.` : ' Waiting on an Admin (no RM for this site).'
 
   // The site's open MaintainX work orders, saved on the audit the first time it's
   // sent (right after submit), so its PDF and report keep the list as it was then.
   // A failed try is saved too ({ error }) and tried again on the next send.
-  const needWorkOrders = a.account_id === MIGHTY_WASH && (!a.work_orders || a.work_orders.error)
+  const needWorkOrders = !a.work_orders || a.work_orders.error
   const takeWorkOrders = async (): Promise<Any> => {
     try {
       return await openWorkOrdersForSite({ name: site, maintainx_id: a.location?.maintainx_id ?? null })
@@ -380,6 +516,13 @@ Deno.serve(async (req) => {
       return { error: e instanceof Error ? e.message : String(e), site, fetchedAt: new Date().toISOString() }
     }
   }
+
+  // No link: carriers filtered the first one that had a link (Twilio 30007), while
+  // this sender's link-free texts all deliver. The email has the link.
+  const redList = o.failedItems.length ? ` Red: ${o.failedItems.join(', ')}.` : ''
+  const text = `Site Audit: ${site || 'site'}. ${o.short}.${redList}${followUpText} By ${a.auditor_name ?? 'unknown'}. Full PDF report emailed.`
+  const subject = `Site Audit${site ? ': ' + site : ''} · ${o.short}`
+  if (body.dryRun) return json({ dryRun: true, event: 'submitted', email: { to: emailTo, subject }, sms: { to: smsTo, text } }, 200, origin)
 
   // preview: true builds the emailed PDF and returns it, sending nothing (and
   // saving nothing).
@@ -390,7 +533,7 @@ Deno.serve(async (req) => {
   }
 
   // Claim the send, so two calls can't both send it.
-  if (!body.resend) {
+  if (claims) {
     const { data: claimed } = await svc.from('site_audits_v2').update({ notified_at: new Date().toISOString() }).eq('id', auditId).is('notified_at', null).select('id')
     if (!claimed?.length) return json({ ok: true, already: true, notified_at: a.notified_at }, 200, origin)
   }
@@ -435,29 +578,23 @@ Deno.serve(async (req) => {
     try {
       const resend = new Resend(resendKey)
       const { data, error } = await resend.emails.send({
-        from: Deno.env.get('RESEND_FROM') ?? 'WashLyfe Operator <notifications@washlyfe.com>',
-        to: EMAIL_TO,
-        subject: `Site Audit${site ? ': ' + site : ''} · ${o.short}`,
-        html,
-        ...(pdf ? { attachments: [{ filename: `site-audit-${(site || 'site').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`, content: pdf }] } : {}),
+        from, to: emailTo, subject, html,
+        ...(pdf ? { attachments: [{ filename: pdfName, content: pdf }] } : {}),
       })
-      email = error ? { ok: false, to: EMAIL_TO, error: (error as Any).message ?? 'send_failed' } : { ok: true, to: EMAIL_TO, id: (data as Any)?.id, pdf: !!pdf, pdfError, photos: photoNotes }
+      email = error ? { ok: false, to: emailTo, error: (error as Any).message ?? 'send_failed' } : { ok: true, to: emailTo, id: (data as Any)?.id, pdf: !!pdf, pdfError, photos: photoNotes }
     } catch (e) {
-      email = { ok: false, to: EMAIL_TO, error: e instanceof Error ? e.message : 'send_failed' }
+      email = { ok: false, to: emailTo, error: e instanceof Error ? e.message : 'send_failed' }
     }
   }
 
-  // ---- Text ----
-  // No link: carriers filtered the first one that had a link (Twilio 30007), while
-  // this sender's link-free texts all deliver. The email has the link.
-  const redList = o.failedItems.length ? ` Red: ${o.failedItems.join(', ')}.` : ''
-  const text = `Site Audit: ${site || 'site'}. ${o.short}.${redList}${followUpText} By ${a.auditor_name ?? 'unknown'}. Full PDF report emailed.`
-  // emailOnly with resend keeps the earlier text result.
-  const sms = body.emailOnly ? ((a.notify_result?.sms ?? []) as Any[]) : await Promise.all(SMS_TO.map((to) => sendSms(to, text)))
+  // ---- Text ---- (emailOnly with resend keeps the earlier text result)
+  const sms = body.emailOnly ? ((a.notify_result?.sms ?? []) as Any[]) : await Promise.all(smsTo.map((s) => sendSms(s.to, text)))
 
   const anySent = email.ok || sms.some((s) => s.ok)
-  const result = { email, sms, at: new Date().toISOString() }
+  const result = { email, sms, test: !!body.test, at: new Date().toISOString() }
   // Nothing went out: free the claim so the app (or a person) can try again.
-  await svc.from('site_audits_v2').update({ notify_result: result, ...(anySent ? {} : { notified_at: null }) }).eq('id', auditId)
+  if (!body.test) {
+    await svc.from('site_audits_v2').update({ notify_result: result, ...(anySent ? {} : { notified_at: null }) }).eq('id', auditId)
+  }
   return json({ ok: anySent, ...result }, anySent ? 200 : 502, origin)
 })

@@ -121,6 +121,9 @@ export type RenderInput = {
   // The site's open MaintainX work orders saved when the audit was sent
   // (site_audits_v2.work_orders); null leaves the section off.
   workOrders?: Any | null
+  // The follow-up (where the Regional Manager's acknowledgement stands, and their
+  // answers to the red items once it's complete); null leaves it off.
+  followUp?: { title: string; note: string; tone: Tone; message?: string; rows?: string[][] } | null
   // Date (and time) in Central, from the caller, which owns the time zone.
   fmtDate: (iso: string) => string
   fmtDateTime: (iso: string) => string
@@ -254,6 +257,41 @@ export function renderAuditNew(doc: Any, input: RenderInput): void {
     })
     y = doc.lastAutoTable.finalY + 8
   })
+
+  // ---- Follow-up: the Regional Manager's acknowledgement ----
+  const fu = input.followUp
+  if (fu) {
+    ensureSpace(24)
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(11, 15, 20)
+    doc.text(fu.title, marginX, y)
+    y += 5
+    doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(...INK[fu.tone])
+    const noteLines = doc.splitTextToSize(fu.note, contentWidth) as string[]
+    doc.text(noteLines, marginX, y)
+    y += noteLines.length * 4.4
+    if (fu.message) {
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(60, 64, 72)
+      const lines = doc.splitTextToSize(fu.message, contentWidth) as string[]
+      doc.text(lines, marginX, y + 1)
+      y += lines.length * 4.4 + 4
+    }
+    if (fu.rows?.length) {
+      ;(autoTable as Any)(doc, {
+        startY: y,
+        head: [['Red item', 'Auditor comments', 'Response']],
+        body: fu.rows,
+        margin: { left: marginX, right: marginX },
+        rowPageBreak: 'avoid',
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, valign: 'top' },
+        headStyles: { fillColor: [11, 15, 20], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [247, 248, 250] },
+        columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 52 }, 2: { cellWidth: contentWidth - 100 } },
+      })
+      y = doc.lastAutoTable.finalY + 8
+    } else {
+      y += 4
+    }
+  }
 
   // ---- Open work orders in MaintainX when the audit was sent ----
   const wo = input.workOrders

@@ -77,27 +77,8 @@ end $$;
 
 reset role;
 
--- ---- Manager A without the page: nothing ----
-select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
-set local role authenticated;
-
-do $$
-declare n int;
-begin
-  select count(*) into n from public.site_audits_v2;
-  if n <> 0 then raise exception 'FAIL 7: manager without the page sees % audits', n; end if;
-  begin
-    insert into public.site_audits_v2 (account_id, location_id) values (current_setting('t.a')::uuid, current_setting('t.mgr_loc')::uuid);
-    raise exception 'FAIL 8: manager without the page started an audit';
-  exception when insufficient_privilege then null; end;
-end $$;
-
-reset role;
-
--- ---- Manager A granted the page: submitted audits at their sites, own drafts ----
-insert into public.page_access (account_id, user_id, page, allowed)
-values (current_setting('t.a')::uuid, current_setting('t.a_mgr')::uuid, '/app/site-audits-new', true);
-
+-- ---- Manager A, no grant needed since it went live (0256): submitted audits at
+-- their sites, and their own drafts ----
 select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
 set local role authenticated;
 
@@ -148,6 +129,26 @@ declare n int;
 begin
   select count(*) into n from public.site_audits_v2;
   if n <> 0 then raise exception 'FAIL 15: employee sees % audits', n; end if;
+  if public.site_audit_v2_can_use() then raise exception 'FAIL 7: an employee can use Site Audits'; end if;
+end $$;
+reset role;
+
+-- An employee the super admin grants the page can use it; a grant of the
+-- pre-launch address no longer counts.
+insert into public.page_access (account_id, user_id, page, allowed)
+values (current_setting('t.a')::uuid, current_setting('t.a_emp')::uuid, '/app/site-audits-new', true);
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if public.site_audit_v2_can_use() then raise exception 'FAIL 8: the old page address still opens it'; end if;
+end $$;
+reset role;
+update public.page_access set page = '/app/site-audits'
+where account_id = current_setting('t.a')::uuid and user_id = current_setting('t.a_emp')::uuid and page = '/app/site-audits-new';
+select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_emp'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$ begin
+  if not public.site_audit_v2_can_use() then raise exception 'FAIL 20: a granted employee cannot use Site Audits'; end if;
 end $$;
 reset role;
 

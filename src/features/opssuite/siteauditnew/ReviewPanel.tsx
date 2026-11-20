@@ -17,10 +17,10 @@ const FRIENDLY: Record<string, string> = {
 }
 const friendly = (msg: string) => FRIENDLY[msg] ?? msg
 
-// The follow-up on a submitted audit, at the top of its report. Red items wait on
-// the site's Regional Manager, who answers each one and marks the audit complete
-// (an Admin can too); a text then says it was acknowledged. Clean audits are
-// complete from the start.
+// The follow-up on a submitted audit, at the top of its report. Every audit waits
+// on the site's Regional Manager, who answers each red item (if any) and marks it
+// complete (an Admin can too); an email and text then say it was acknowledged.
+// Audits completed before 2026-11-20 with nothing red skipped this step.
 export function ReviewPanel({ audit, rms, onChanged }: { audit: SiteAuditV2; rms: Map<string, SiteRm> | null; onChanged: () => void }) {
   const { profile } = useAuth()
   const answers = useMemo(() => normalizeAnswers(audit.answers), [audit.answers])
@@ -38,10 +38,10 @@ export function ReviewPanel({ audit, rms, onChanged }: { audit: SiteAuditV2; rms
     <section className="rounded-md border border-danger/40 bg-danger-soft/40 px-4 py-3">
       <h2 className="flex items-center gap-2 text-base font-semibold text-danger"><Clock className="size-4" /> Needs attention</h2>
       <p className="mt-1 text-sm text-ink">
-        {reds.length} red item{reds.length === 1 ? '' : 's'}.{' '}
+        {reds.length ? `${reds.length} red item${reds.length === 1 ? '' : 's'}.` : 'Nothing red.'}{' '}
         {rm?.user_id
-          ? <>Waiting on <span className="font-semibold">{rm.name}</span> (Regional Manager{rm.region ? `, ${rm.region}` : ''}) to answer and mark the audit complete.</>
-          : `${noRmReason(rm)}, so an Admin answers and marks the audit complete.`}
+          ? <>Waiting on <span className="font-semibold">{rm.name}</span> (Regional Manager{rm.region ? `, ${rm.region}` : ''}) to {reds.length ? 'answer and mark the audit complete' : 'acknowledge it and mark it complete'}.</>
+          : `${noRmReason(rm)}, so an Admin ${reds.length ? 'answers and marks the audit complete' : 'acknowledges it and marks it complete'}.`}
       </p>
       <ul className="mt-2 list-disc pl-5 text-sm text-ink-muted">
         {reds.map((r) => <li key={r.key}>{r.section.title}: {r.item.label}</li>)}
@@ -135,7 +135,7 @@ function RespondForm({ audit, reds, rm, isRm, onChanged }: {
     }
     const ack = await siteAuditsV2.notifyAck(id)
     if (ack.error) {
-      window.alert('The audit is complete, but the text alert did not go out: ' + await fnErrorMessage(ack.error, ack.data, 'unknown error'))
+      window.alert('The audit is complete, but the email and text did not go out: ' + await fnErrorMessage(ack.error, ack.data, 'unknown error'))
     }
     onChanged()
   }
@@ -149,7 +149,9 @@ function RespondForm({ audit, reds, rm, isRm, onChanged }: {
           <MessageSquareReply className="size-4" /> {isRm ? 'Needs your attention' : 'Needs attention'}
         </h2>
         <p className="mt-1 text-sm text-ink">
-          {reds.length} red item{reds.length === 1 ? '' : 's'} at {site}. Answer each one with the fix or a reply, then mark the audit complete.
+          {reds.length
+            ? `${reds.length} red item${reds.length === 1 ? '' : 's'} at ${site}. Answer each one with the fix or a reply, then mark the audit complete.`
+            : `Nothing red at ${site}. Look it over, add a note if you like, and mark it complete to acknowledge it.`}
         </p>
         {!isRm && (
           <p className="mt-1 text-xs text-ink-muted">
@@ -187,7 +189,7 @@ function RespondForm({ audit, reds, rm, isRm, onChanged }: {
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
         <p className="text-xs text-ink-muted">
-          <span className={allAnswered ? 'font-semibold text-ok' : 'font-semibold text-ink'}>{answered} of {reds.length} answered</span> · {saveLabel}
+          {reds.length > 0 && <><span className={allAnswered ? 'font-semibold text-ok' : 'font-semibold text-ink'}>{answered} of {reds.length} answered</span> · </>}{saveLabel}
         </p>
         <Button disabled={!allAnswered || busy} onClick={() => setConfirming(true)}>
           <CheckCircle2 className="size-4" /> Mark complete
@@ -198,8 +200,8 @@ function RespondForm({ audit, reds, rm, isRm, onChanged }: {
         <Modal open onClose={() => !busy && setConfirming(false)} title="Mark this audit complete?" size="sm">
           <div className="flex flex-col gap-4">
             <p className="text-sm text-ink">
-              {site} moves to Complete with your answers, and a text goes out that {isRm ? 'you' : (profile?.name ?? 'you')} acknowledged it.
-              Answers can't be changed after this.
+              {site} moves to Complete{reds.length ? ' with your answers' : ''}, and an email and text go out that {isRm ? 'you' : (profile?.name ?? 'you')} acknowledged it.
+              {reds.length ? " Answers can't be changed after this." : " It can't be changed after this."}
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" disabled={busy} onClick={() => setConfirming(false)}>Cancel</Button>

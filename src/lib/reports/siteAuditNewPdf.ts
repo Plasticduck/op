@@ -89,7 +89,9 @@ function followUpAppendix(audit: SiteAuditV2): PdfAppendix[] {
     return [{
       title: 'Follow-up',
       note: { text: 'Needs attention', tone: 'danger' },
-      message: `Waiting on the site's Regional Manager to answer ${reds.length} red item${reds.length === 1 ? '' : 's'} and mark the audit complete.`,
+      message: reds.length
+        ? `Waiting on the site's Regional Manager to answer ${reds.length} red item${reds.length === 1 ? '' : 's'} and mark the audit complete.`
+        : "Nothing red. Waiting on the site's Regional Manager to acknowledge it.",
     }]
   }
   if (audit.review_status !== 'complete') return []

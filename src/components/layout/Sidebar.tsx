@@ -251,13 +251,6 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: SearchCheck,
         roles: ['owner', 'manager'],
       },
-      {
-        to: '/app/site-audits-new',
-        label: 'Site Audit NEW',
-        icon: ClipboardCheck,
-        roles: ['owner', 'manager'],
-        emails: ['kevan@washlyfe.com'], // pre-launch: visible to Kevan only
-      },
     ],
   },
   {

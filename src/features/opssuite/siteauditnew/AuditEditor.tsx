@@ -26,7 +26,7 @@ import { MAINTAINX_ACCOUNT_ID } from '@/lib/queries/workOrders'
 import { useSiteWorkOrders } from './useSiteWorkOrders'
 import { WorkOrdersChip, WorkOrdersDrawer, WorkOrdersSummary } from './WorkOrdersPanel'
 
-const LIST = '/app/site-audits-new'
+const LIST = '/app/site-audits'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'gone'
 
@@ -199,7 +199,7 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
   return (
     <div className="flex flex-col gap-4">
       <button type="button" onClick={() => void leave()} className="inline-flex w-fit items-center gap-1 text-sm font-medium text-ink-muted hover:text-ink">
-        <ArrowLeft className="size-4" /> Site Audit NEW
+        <ArrowLeft className="size-4" /> Site Audits
       </button>
 
       <div className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
@@ -335,7 +335,7 @@ export function AuditEditor({ audit, onSubmitted }: { audit: SiteAuditV2; onSubm
         <Modal open onClose={() => { if (!busy) setConfirming(false) }} title="Submit this audit?" size="sm">
           <div className="flex flex-col gap-4">
             <ResultBox result={result} />
-            <p className="text-sm text-ink-muted">Once it's submitted, the audit can't be changed.</p>
+            <p className="text-sm text-ink-muted">Once it's submitted, the audit can't be changed. It's emailed and texted to leadership and the site's Regional Manager, who acknowledges it.</p>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" disabled={busy} onClick={() => setConfirming(false)}>Keep editing</Button>
               <Button disabled={busy} onClick={() => void submit()}>{busy ? 'Submitting…' : 'Submit audit'}</Button>

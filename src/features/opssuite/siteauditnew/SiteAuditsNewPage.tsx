@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, ClipboardCheck, FileText, MapPin, Plus, Search } from 'lucide-react'
+import { Archive, CheckCircle2, ClipboardCheck, FileText, MapPin, Plus, Search } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -25,7 +25,7 @@ import { AuditEditor } from './AuditEditor'
 import { AuditReport } from './AuditReport'
 import { useSiteRms } from './useSiteRms'
 
-const LIST = '/app/site-audits-new'
+const LIST = '/app/site-audits'
 
 const scoreText = (a: SiteAuditV2) =>
   a.safety_failed ? 'Failed (Safety)' : a.score != null ? `${fmtPoints(Number(a.score))} / 100` : '—'
@@ -39,9 +39,11 @@ const EXPORT_COLUMNS: ExportColumn<SiteAuditV2>[] = [
   { header: 'Failed sections', value: (r) => (r.failed_sections ?? []).join(', ') },
 ]
 
-// Site Audit NEW: graded site audits (pre-launch, Kevan only). /app/site-audits-new
-// lists them; /app/site-audits-new/:id is one audit, taken while it's a draft and
-// read once it's submitted.
+// Site Audits: graded site audits. /app/site-audits lists them; /app/site-audits/:id
+// is one audit, taken while it's a draft and read once it's submitted. Every
+// submitted audit waits in Needs Attention until the site's Regional Manager (or an
+// Admin) acknowledges it, then moves to Complete. It replaced the earlier form on
+// 2026-11-20; those audits are read only at /app/site-audits/older.
 export default function SiteAuditsNewPage() {
   const { id } = useParams<{ id?: string }>()
   return id ? <AuditDetail key={id} id={id} /> : <AuditList />
@@ -70,7 +72,7 @@ function AuditDetail({ id }: { id: string }) {
         icon={ClipboardCheck}
         title="This audit isn't available"
         description="It may have been deleted, or it's another person's draft."
-        action={<Link to={LIST} className="text-sm font-medium text-accent hover:underline">Back to Site Audit NEW</Link>}
+        action={<Link to={LIST} className="text-sm font-medium text-accent hover:underline">Back to Site Audits</Link>}
       />
     )
   }
@@ -90,8 +92,8 @@ const TABS: { key: TabKey; label: string; short?: string }[] = [
 const isTab = (v: string | null): v is TabKey => TABS.some((t) => t.key === v)
 const EMPTY: Record<TabKey, { title: string; description: string }> = {
   history: { title: 'No audits yet', description: 'Every submitted audit shows here with its score, grade and where it is.' },
-  needs_attention: { title: 'Nothing needs attention', description: "Audits with a red item wait here until the site's Regional Manager answers each one and marks it complete." },
-  complete: { title: 'No completed audits yet', description: 'Audits land here once the Regional Manager marks them complete, or right away when nothing was red.' },
+  needs_attention: { title: 'Nothing needs attention', description: "Every submitted audit waits here until the site's Regional Manager acknowledges it, answering each red item if there are any." },
+  complete: { title: 'No completed audits yet', description: 'Audits land here once the Regional Manager (or an Admin, for a site without one) marks them complete.' },
 }
 type Col = { header: string; cell: (a: SiteAuditV2) => ReactNode; className?: string }
 
@@ -108,20 +110,27 @@ function AuditList() {
   const logoUrl = useBrandLogoUrl()
   const rms = useSiteRms()
   const [params, setParams] = useSearchParams()
-  const tab: TabKey = isTab(params.get('tab')) ? (params.get('tab') as TabKey) : 'history'
+  // A Regional Manager opens on Needs Attention at their own sites.
+  const uid = profile?.id
+  const mySites = useMemo(
+    () => new Set(rms ? [...rms].filter(([, r]) => !!r.user_id && r.user_id === uid).map(([loc]) => loc) : []),
+    [rms, uid],
+  )
+  const isRm = mySites.size > 0
+  const tab: TabKey = isTab(params.get('tab')) ? (params.get('tab') as TabKey) : isRm ? 'needs_attention' : 'history'
   const setTab = (t: TabKey) => setParams((p) => { p.set('tab', t); return p }, { replace: true })
   const [rows, setRows] = useState<SiteAuditV2[]>([])
   const [drafts, setDrafts] = useState<SiteAuditV2[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
-  const [siteFilter, setSiteFilter] = useState('all')
+  const [siteChoice, setSiteFilter] = useState<string | null>(null)
+  const siteFilter = siteChoice ?? (isRm ? 'mine' : 'all')
   const [search, setSearch] = useState('')
   const [pdfBusyId, setPdfBusyId] = useState<string | null>(null)
 
   const sortedLocations = useMemo(() => [...locations].sort((a, b) => compareLocationName(a.name, b.name)), [locations])
 
-  const uid = profile?.id
   const load = useCallback(async () => {
     const [done, mine] = await Promise.all([
       siteAuditsV2.listSubmitted(),
@@ -136,7 +145,8 @@ function AuditList() {
 
   const filtered = useMemo(() => {
     let r = rows
-    if (siteFilter !== 'all') r = r.filter((x) => x.location_id === siteFilter)
+    if (siteFilter === 'mine') r = r.filter((x) => mySites.has(x.location_id))
+    else if (siteFilter !== 'all') r = r.filter((x) => x.location_id === siteFilter)
     const q = search.trim().toLowerCase()
     if (q) {
       r = r.filter((x) =>
@@ -145,7 +155,7 @@ function AuditList() {
         || (rms?.get(x.location_id)?.name ?? '').toLowerCase().includes(q))
     }
     return r
-  }, [rows, siteFilter, search, rms])
+  }, [rows, siteFilter, search, rms, mySites])
   const counts: Record<TabKey, number> = useMemo(() => ({
     history: filtered.length,
     needs_attention: filtered.filter((a) => a.review_status === 'needs_attention').length,
@@ -170,7 +180,7 @@ function AuditList() {
   const columns: Col[] = tab === 'needs_attention'
     ? [
         site, submitted, grade,
-        { header: 'Red items', cell: (a) => redCount(a), className: 'font-semibold text-danger' },
+        { header: 'Red items', cell: (a) => <span className={redCount(a) ? 'font-semibold text-danger' : 'text-ink-muted'}>{redCount(a)}</span>, className: '' },
         { header: 'Waiting on', cell: rmName, className: 'text-ink' },
         { header: 'Open', cell: (a) => daysText(daysSince(a.submitted_at)) },
       ]
@@ -190,7 +200,7 @@ function AuditList() {
         ]
   const mobileLine = (a: SiteAuditV2) =>
     tab === 'needs_attention'
-      ? `${redCount(a)} red · ${rms?.get(a.location_id)?.name ? 'Waiting on ' : ''}${rmName(a)} · ${daysText(daysSince(a.submitted_at))}`
+      ? `${redCount(a) ? `${redCount(a)} red` : 'No red'} · ${rms?.get(a.location_id)?.name ? 'Waiting on ' : ''}${rmName(a)} · ${daysText(daysSince(a.submitted_at))}`
       : tab === 'complete'
         ? `${completedText(a)} · ${shortDate(a.completed_at ?? a.submitted_at)}`
         : `${scoreText(a)} · ${shortDate(a.submitted_at)} · ${a.auditor_name ?? '—'}`
@@ -222,9 +232,16 @@ function AuditList() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Site Audit NEW"
-        subtitle={`Graded audits: ${AUDIT_SECTIONS.length} sections worth ${fmtPoints(SECTION_POINTS)} points each. A red item fails its section, and a red Safety item fails the whole audit.`}
-        actions={<Button onClick={() => setStarting(true)}><Plus className="size-4" /> Start audit</Button>}
+        title="Site Audits"
+        subtitle={`Graded audits: ${AUDIT_SECTIONS.length} sections worth ${fmtPoints(SECTION_POINTS)} points each. A red item fails its section, and a red Safety item fails the whole audit. Each one waits for the site's Regional Manager to acknowledge it.`}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to={`${LIST}/older`} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium text-ink hover:bg-content">
+              <Archive className="size-4" /> Older audits
+            </Link>
+            <Button onClick={() => setStarting(true)}><Plus className="size-4" /> Start audit</Button>
+          </div>
+        }
       />
 
       {drafts.length > 0 && (
@@ -257,6 +274,7 @@ function AuditList() {
           <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" /> Site</span>
           <Select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} className="h-9 w-56" aria-label="Filter by site">
             <option value="all">All sites</option>
+            {isRm && <option value="mine">My sites</option>}
             {sortedLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </Select>
         </label>

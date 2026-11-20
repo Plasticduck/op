@@ -15,7 +15,7 @@ import { useSiteRms } from './useSiteRms'
 import { savedWorkOrders } from '@/lib/queries/siteWorkOrders'
 import { useBrandLogoUrl } from '@/lib/brandLogo'
 
-const LIST = '/app/site-audits-new'
+const LIST = '/app/site-audits'
 
 // A submitted audit: the grade, its follow-up (Needs attention or Complete), then
 // every section and item as it was rated.
@@ -65,7 +65,7 @@ export function AuditReport({ audit, onChanged }: { audit: SiteAuditV2; onChange
   return (
     <div className="flex flex-col gap-4">
       <Link to={LIST} className="inline-flex w-fit items-center gap-1 text-sm font-medium text-ink-muted hover:text-ink">
-        <ArrowLeft className="size-4" /> Site Audit NEW
+        <ArrowLeft className="size-4" /> Site Audits
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-3">

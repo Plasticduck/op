@@ -68,11 +68,11 @@ begin
   if r.review_status <> 'needs_attention' or r.completed_at is not null then raise exception 'FAIL 4: red items did not go to Needs Attention'; end if;
   insert into t_ids values ('red', r.id);
 
-  -- Yellow only: straight to Complete.
+  -- Nothing red (yellow only): still waits for the RM to acknowledge it (0256).
   insert into public.site_audits_v2 (account_id, location_id, auditor_name, answers)
   values (current_setting('t.a')::uuid, current_setting('t.mgr_loc')::uuid, 'Owner', '{"vacs.hoses":{"value":"warn","comments":"","photos":[]}}') returning * into r;
   update public.site_audits_v2 set status = 'submitted', score = 100, grade = 'A', safety_failed = false where id = r.id returning * into r;
-  if r.review_status <> 'complete' or r.completed_at is null or r.completed_by is not null then raise exception 'FAIL 5: a clean audit did not complete on its own'; end if;
+  if r.review_status <> 'needs_attention' or r.completed_at is not null then raise exception 'FAIL 5: a clean audit skipped Needs Attention'; end if;
   insert into t_ids values ('clean', r.id);
 
   -- A red item at a site with no RM (vacant region): an Admin closes it.
@@ -84,33 +84,27 @@ end $$;
 
 reset role;
 
--- ---- The RM, before the page is granted to them: nothing ----
+-- ---- The RM (a manager: no grant needed since 0256) ----
 select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
 set local role authenticated;
 
 do $$ begin
-  begin
-    perform public.site_audit_v2_respond((select id from t_ids where k = 'red'), '{}'::jsonb, null, false);
-    raise exception 'FAIL 6: answered without the page';
-  exception when no_data_found then null; end;
-  if exists (select 1 from public.site_audit_v2_rms()) then raise exception 'FAIL 7: rm list without the page'; end if;
   begin
     perform * from public.site_audit_v2_rm_map(current_setting('t.a')::uuid);
     raise exception 'FAIL 8: the internal rm map is callable from the app';
   exception when insufficient_privilege then null; end;
 end $$;
 
-reset role;
-insert into public.page_access (account_id, user_id, page, allowed)
-values (current_setting('t.a')::uuid, current_setting('t.a_mgr')::uuid, '/app/site-audits-new', true);
-
--- ---- The RM with the page ----
-select set_config('request.jwt.claims', json_build_object('sub', current_setting('t.a_mgr'), 'role', 'authenticated')::text, true);
-set local role authenticated;
-
 do $$
-declare r record; res jsonb; n int; red uuid := (select id from t_ids where k = 'red');
+declare r record; res jsonb; n int; red uuid := (select id from t_ids where k = 'red'); clean uuid := (select id from t_ids where k = 'clean');
 begin
+  -- Nothing red: marking it complete is the acknowledgement, with no answers.
+  res := public.site_audit_v2_respond(clean, '{}'::jsonb, 'Looks good.', true);
+  select * into r from public.site_audits_v2 where id = clean;
+  if r.review_status <> 'complete' or r.completed_role <> 'regional_manager' or r.rm_note <> 'Looks good.' or (res->>'missing')::int <> 0 then
+    raise exception 'FAIL 6: RM could not acknowledge a clean audit';
+  end if;
+
   if not exists (select 1 from public.site_audit_v2_rms() where location_id = current_setting('t.mgr_loc')::uuid and user_id = current_setting('t.a_mgr')::uuid) then
     raise exception 'FAIL 9: rm list missing their own site';
   end if;

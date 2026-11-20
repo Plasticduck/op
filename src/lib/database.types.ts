@@ -18892,6 +18892,7 @@ export type Database = {
         }
         Returns: string
       }
+      site_audit_v2_can_use: { Args: never; Returns: boolean }
       site_audit_v2_respond: {
         Args: {
           p_complete: boolean
