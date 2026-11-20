@@ -36,6 +36,9 @@ but not what RLS allows. See **Access control** below.
   drawing from photos, on `claude-opus-5-5`). Model id lives in each
   function; default `claude-sonnet-4-6` (`ask-operator` also honors an
   `ANTHROPIC_MODEL` secret; `classify-work-order` uses `claude-opus-5-5`).
+  Operator AI's replies can run to 12,000 tokens (a report covering every site needs
+  it); a reply cut off at the limit is sent back to the model to finish
+  (`ask-operator/cutoff.ts`), since a cut-off `build_report` call never runs.
   Operator AI also reads FlexWash: `flexwash_call` / `flexwash_describe` over every
   read endpoint of the FlexWash partner API, with the company key. Owners see all
   FlexWash car washes, managers only theirs. The endpoint list stays current on its
@@ -203,7 +206,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0256.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0257.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides

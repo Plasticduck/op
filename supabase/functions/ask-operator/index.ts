@@ -38,6 +38,7 @@ import type { McpSession } from '../_shared/mcp.ts'
 import { HOURLY_TOOL, hourlyCars } from './hourly.ts'
 import { ISOLVED_LABOR_TOOL, ISOLVED_NOTE, ISOLVED_ON_CLOCK_TOOL, isolvedLabor, isolvedOnTheClock } from './isolved.ts'
 import { fpaPrompt, type FpaVersionInfo } from './fpa.ts'
+import { appendUserNote, recoverCutOff } from './cutoff.ts'
 import { RECALL_TOOL, openConversation, recall, recentNote, saveAnswer, type Convo } from './history.ts'
 
 const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
@@ -46,9 +47,14 @@ const MODEL = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
 // open work orders, so this needs headroom. On the final round tools are
 // dropped so the model must answer with what it has (see run()).
 const MAX_STEPS = 14
-// Generous so a large build_report spec or a multi-part answer is never
-// truncated mid-tool-call (which would corrupt the tool input JSON).
-const MAX_TOKENS = 4000
+// Room for a full report: a build_report spec covering every site runs well past
+// 4,000 tokens, and a call cut off at the limit never runs. A cut that still
+// happens is sent back to the model to finish (cutoff.ts).
+const MAX_TOKENS = 12000
+// Edge functions are stopped at 400 seconds. A round that starts after this is
+// the last one, short and without tools, so the answer lands before the cutoff.
+const LATE_MS = 200_000
+const LATE_TOKENS = 4000
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',
@@ -442,6 +448,7 @@ function buildPerf(feed: any, allowed: Set<number> | null, siteFilter: string | 
 }
 
 Deno.serve(async (req) => {
+  const startedAt = Date.now()
   const origin = req.headers.get('Origin')
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) })
 
@@ -662,15 +669,23 @@ Deno.serve(async (req) => {
   // The tool-use loop, instrumented so a streaming caller can narrate each
   // phase and receive the answer token by token as it is written.
   async function run(emit: Emit): Promise<{ answer: string; steps: Step[] }> {
+    // The answer as the page shows it: text streamed since narration last moved
+    // to the activity trail, across rounds (text, a report, then its sign-off).
+    let shown = ''
+    // The next round picks up a written answer that was cut off mid-sentence.
+    let resuming = false
+    let cutOffs = 0
     for (let i = 0; i < MAX_STEPS; i++) {
       emit({ t: 'phase', phase: 'thinking' })
       // On the last allowed round, withhold the tools so the model can only
       // reply with prose. That turns "too many steps" into a real answer built
-      // from whatever it has already gathered.
-      const finalRound = i === MAX_STEPS - 1
+      // from whatever it has already gathered. Running late, or a second reply
+      // cut off at the length limit, ends the same way.
+      const late = Date.now() - startedAt > LATE_MS
+      const finalRound = i === MAX_STEPS - 1 || late || cutOffs >= 2
       const turn = anthropic.messages.stream({
         model: MODEL,
-        max_tokens: MAX_TOKENS,
+        max_tokens: late ? LATE_TOKENS : MAX_TOKENS,
         system: [
           { type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } },
           // The FlexWash catalog is the same for every Admin (and for every
@@ -689,33 +704,62 @@ Deno.serve(async (req) => {
               historyNote +
               (finalRound
                 ? ' You have gathered enough. Give your best final answer now using the data already returned; do not ask for more.'
-                : ''),
+                : '') +
+              (late ? ' Time is nearly up: keep it brief.' : ''),
           },
         ],
         ...(finalRound ? {} : { tools }),
         messages,
       })
+      let firstText = true
       for await (const ev of turn) {
         if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
+          // A new round's text starts a new paragraph after what's already shown,
+          // unless it's picking up a cut-off sentence.
+          if (firstText && shown && !resuming && !/\s$/.test(shown)) {
+            shown += '\n\n'
+            emit({ t: 'delta', text: '\n\n' })
+          }
+          firstText = false
+          shown += ev.delta.text
           emit({ t: 'delta', text: ev.delta.text })
         }
       }
       const resp = await turn.finalMessage()
 
+      // Cut off at the length limit: a tool call cut short never runs, and a
+      // written answer stops mid-sentence. Send it back to be finished.
+      if (resp.stop_reason === 'max_tokens') {
+        cutOffs++
+        const cut = recoverCutOff(resp.content)
+        console.warn(`ask-operator: reply cut off at max_tokens (${cut.tool ?? 'answer text'}), round ${i + 1}`)
+        // Out of rounds or time (these rounds have no tools, so it's the written
+        // answer): keep what was written rather than run past the limit.
+        if (late || i === MAX_STEPS - 1) {
+          const tail = '\n\n(That ran long and was cut off. Ask me to continue.)'
+          shown += tail
+          emit({ t: 'delta', text: tail })
+          return { answer: shown.trim(), steps }
+        }
+        if (cut.kept.length) messages.push({ role: 'assistant', content: cut.kept })
+        appendUserNote(messages, cut.note)
+        resuming = cut.tool === null
+        continue
+      }
+      resuming = false
+
       if (resp.stop_reason !== 'tool_use') {
-        const answer = resp.content
-          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-          .map((b) => b.text)
-          .join('\n')
-          .trim()
-        return { answer: answer || 'I could not find an answer.', steps }
+        return { answer: shown.trim() || 'I could not find an answer.', steps }
       }
 
       // Text before a DATA tool is narration — move it to the activity trail.
       // Text before a presentational tool (choices/report) is the real answer
       // (the question, or the report confirmation), so keep it in place.
       const usedDataTool = resp.content.some((b) => b.type === 'tool_use' && isDataTool(b.name))
-      if (usedDataTool) emit({ t: 'preamble' })
+      if (usedDataTool) {
+        emit({ t: 'preamble' })
+        shown = ''
+      }
 
       messages.push({ role: 'assistant', content: resp.content })
       const toolResults: Anthropic.ToolResultBlockParam[] = []
@@ -730,7 +774,9 @@ Deno.serve(async (req) => {
         })
 
         if (block.name === 'run_sql') {
-          const query = String((block.input as { query?: string })?.query ?? '')
+          // The model often starts a query with a line break; operator_ask_sql
+          // trims that too (migration 0257), this keeps the logged query tidy.
+          const query = String((block.input as { query?: string })?.query ?? '').trim()
           const step: Step = { tool: 'run_sql', sql: query }
           let content: string
           const { data, error } = await userClient.rpc('operator_ask_sql', { query })
