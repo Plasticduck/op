@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { Search, X, Loader2, MapPin, Maximize2, Users, Building2, Circle, Car } from 'lucide-react'
 import { searchPlaces, censusDemographics, placeDetails } from '@/lib/queries/places'
 import { useLocations } from '@/lib/locations'
+import { sitePinHtml } from '@/lib/sitePoints'
 import { useAuth } from '@/lib/auth'
 
 const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
@@ -299,7 +300,7 @@ export default function MarketExplorerPage() {
   const sitesRef = useRef<L.LayerGroup | null>(null)
   const tapRef = useRef<L.Marker | null>(null)
 
-  const { locations } = useLocations()
+  const { sitePoints } = useLocations()
   const { profile } = useAuth()
   const isMightyWash = profile?.account_id === MW_ACCOUNT_ID
 
@@ -404,16 +405,13 @@ export default function MarketExplorerPage() {
     if (!layer || !mapRef.current) return
     layer.clearLayers()
     if (!isMightyWash) return
-    for (const s of locations) {
-      if (s.latitude == null || s.longitude == null) continue
-      L.marker([s.latitude, s.longitude], { icon: mwSiteIcon, zIndexOffset: 1000, title: s.name })
-        .bindPopup(
-          `<div style="font-size:15px;font-weight:700;margin-bottom:2px">${escapeHtml(s.name)}</div>` +
-            '<div style="font-size:12px;color:#2563eb;font-weight:600">Mighty Wash site</div>',
-        )
+    // Every address of a site gets a logo (MW34 is three car washes, one site).
+    for (const p of sitePoints) {
+      L.marker([p.lat, p.lng], { icon: mwSiteIcon, zIndexOffset: 1000, title: p.name })
+        .bindPopup(sitePinHtml(p, sitePoints, escapeHtml, '<div style="font-size:12px;color:#2563eb;font-weight:600">Mighty Wash site</div>'))
         .addTo(layer)
     }
-  }, [locations, isMightyWash])
+  }, [sitePoints, isMightyWash])
 
   // Fill a pin's popup with the full Google listing on first open.
   const enrichPopup = useCallback(async (placeId: string, marker: L.Marker, base: { name: string; addr: string }) => {
@@ -477,17 +475,23 @@ export default function MarketExplorerPage() {
           searchPlaces({ includedTypes: ['car_wash'], lat: clat, lon: clon, radius: Math.min(meters, 50000) }),
         ])
 
-        const ourSites = locations
-          .filter((s) => s.latitude != null && s.longitude != null && haversineMeters(clat, clon, s.latitude, s.longitude) <= meters)
-          .map((s) => ({ name: s.name, miles: haversineMeters(clat, clon, s.latitude as number, s.longitude as number) * MILES_PER_M }))
-          .sort((a, b) => a.miles - b.miles)
+        // Each site once, at its nearest address inside the circle.
+        const nearest = new Map<string, { name: string; miles: number }>()
+        for (const p of sitePoints) {
+          const m = haversineMeters(clat, clon, p.lat, p.lng)
+          if (m > meters) continue
+          const miles = m * MILES_PER_M
+          const had = nearest.get(p.locationId)
+          if (!had || miles < had.miles) nearest.set(p.locationId, { name: p.name, miles })
+        }
+        const ourSites = [...nearest.values()].sort((a, b) => a.miles - b.miles)
 
-        // Car washes inside the circle, excluding our own sites (matched by
-        // proximity so it works regardless of how Google names them).
+        // Car washes inside the circle, excluding our own sites, at any of their
+        // addresses (matched by proximity so it works however Google names them).
         const compFull = (placesOut.ok ? placesOut.hits : [])
           .map((h) => ({ id: h.id, name: h.name, addr: h.address, miles: haversineMeters(clat, clon, h.lat, h.lon) * MILES_PER_M, lat: h.lat, lon: h.lon }))
           .filter((h) => h.miles <= milesR + 0.01)
-          .filter((h) => !locations.some((s) => s.latitude != null && s.longitude != null && haversineMeters(h.lat, h.lon, s.latitude, s.longitude) <= 200))
+          .filter((h) => !sitePoints.some((p) => haversineMeters(h.lat, h.lon, p.lat, p.lng) <= 200))
           .sort((a, b) => a.miles - b.miles)
 
         if (pinsRef.current)
@@ -509,7 +513,7 @@ export default function MarketExplorerPage() {
         setTradeLoading(false)
       }
     },
-    [locations, enrichPopup, loadCompetition],
+    [sitePoints, enrichPopup, loadCompetition],
   )
   useEffect(() => { analyzeAreaRef.current = analyzeArea }, [analyzeArea])
 

@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select'
 import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { AddressAutocomplete } from '@/components/forms/AddressAutocomplete'
+import { OtherAddresses } from './OtherAddresses'
 import { useAuth } from '@/lib/auth'
 import { useLocations } from '@/lib/locations'
 import { useCompany } from '@/lib/company'
@@ -72,7 +73,9 @@ export function LocationsPage() {
   const [archiveTarget, setArchiveTarget] = useState<LocationFull | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<LocationFull | null>(null)
   const [busy, setBusy] = useState(false)
-  const { reload: reloadActiveLocations } = useLocations()
+  const { reload: reloadActiveLocations, sitePoints } = useLocations()
+  // Other addresses per site (MW34 has three car washes), shown under its main one.
+  const otherCount = (id: string) => sitePoints.filter((p) => p.locationId === id && !p.main).length
   const { sitePlan, reload: reloadCompany } = useCompany()
   const { profile } = useAuth()
   const [confirmAdd, setConfirmAdd] = useState<AddConfirm | null>(null)
@@ -207,6 +210,11 @@ export function LocationsPage() {
                   <p className="mt-0.5 text-sm text-ink-muted">
                     {l.address ?? 'No address'}
                   </p>
+                  {otherCount(l.id) > 0 && (
+                    <p className="text-xs text-ink-subtle">
+                      + {otherCount(l.id)} other address{otherCount(l.id) === 1 ? '' : 'es'}
+                    </p>
+                  )}
                 </div>
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink-muted">
@@ -468,6 +476,7 @@ function LocationModal({
             />
           )}
         </Field>
+        {location && profile && <OtherAddresses accountId={profile.account_id} locationId={location.id} />}
         <Field label="Timezone">
           {(id) => (
             <Select id={id} value={timezone} onChange={(e) => setTimezone(e.target.value)}>

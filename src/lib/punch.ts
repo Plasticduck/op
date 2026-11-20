@@ -43,16 +43,18 @@ export function distanceMeters(a: { lat: number; lng: number }, b: { lat: number
   return Math.round(2 * R * Math.asin(Math.sqrt(s)))
 }
 
+// A site can have more than one address (MW34 is three car washes), so the fence
+// is a circle around each and the distance is to the nearest one.
 export async function checkLocationFence(
-  fenceCenter: { lat: number; lng: number } | null,
+  fenceCenters: { lat: number; lng: number }[],
   fenceRadiusM: number,
 ): Promise<FenceCheck> {
-  if (!fenceCenter) {
+  if (!fenceCenters.length) {
     return { coords: null, distanceM: null, outside: false, unavailable: true, errorMessage: 'No site coordinates set' }
   }
   try {
     const coords = await getCurrentPosition()
-    const d = distanceMeters(coords, fenceCenter)
+    const d = Math.min(...fenceCenters.map((c) => distanceMeters(coords, c)))
     return { coords, distanceM: d, outside: d > fenceRadiusM, unavailable: false }
   } catch (e) {
     return { coords: null, distanceM: null, outside: false, unavailable: true, errorMessage: (e as Error).message }

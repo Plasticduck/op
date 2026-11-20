@@ -9,6 +9,8 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { compareLocationName } from '@/lib/utils'
+import { locationAddresses, type LocationAddress } from '@/lib/queries/locationAddresses'
+import { buildSitePoints, type SitePoint } from '@/lib/sitePoints'
 
 export type LocationRow = {
   id: string
@@ -25,6 +27,9 @@ export type LocationRow = {
 
 type LocationState = {
   locations: LocationRow[]
+  // Every map point of those sites: main addresses plus other addresses
+  // (MW34's three car washes are three points, one site).
+  sitePoints: SitePoint[]
   activeId: string | null
   activeLocation: LocationRow | null
   setActiveId: (id: string) => void
@@ -38,6 +43,7 @@ const STORAGE_KEY = 'tunnelsync.activeLocation'
 export function LocationProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth()
   const [locations, setLocations] = useState<LocationRow[]>([])
+  const [extras, setExtras] = useState<LocationAddress[]>([])
   const [activeId, setActiveIdState] = useState<string | null>(
     () => localStorage.getItem(STORAGE_KEY),
   )
@@ -46,18 +52,24 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const load = async () => {
     if (!profile) {
       setLocations([])
+      setExtras([])
       setLoading(false)
       return
     }
     setLoading(true)
-    const { data, error } = await supabase
-      .from('locations')
-      .select('id, name, timezone, address, latitude, longitude, geofence_radius_m, require_geofence, require_punch_photo, tips_enabled')
-      .eq('archived', false)
+    const [{ data, error }, more] = await Promise.all([
+      supabase
+        .from('locations')
+        .select('id, name, timezone, address, latitude, longitude, geofence_radius_m, require_geofence, require_punch_photo, tips_enabled')
+        .eq('archived', false),
+      locationAddresses.list(),
+    ])
     if (error) {
       // eslint-disable-next-line no-console
       console.error('[locations] load failed', error)
     }
+    // Other addresses only add map points; a failure here leaves the sites intact.
+    setExtras((more.data as LocationAddress[] | null) ?? [])
     const rows = ((data as LocationRow[] | null) ?? []).sort((a, b) =>
       compareLocationName(a.name, b.name),
     )
@@ -78,9 +90,12 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, id)
   }
 
+  const sitePoints = useMemo(() => buildSitePoints(locations, extras), [locations, extras])
+
   const value = useMemo<LocationState>(
     () => ({
       locations,
+      sitePoints,
       activeId,
       activeLocation: locations.find((l) => l.id === activeId) ?? null,
       setActiveId,
@@ -88,7 +103,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       reload: load,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [locations, activeId, loading],
+    [locations, sitePoints, activeId, loading],
   )
 
   return (

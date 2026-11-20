@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -39,7 +39,7 @@ type Resolved = {
 type FinalResult = { action: 'in' | 'out'; name: string }
 
 function Inner({ locationId }: { locationId: string }) {
-  const { activeLocation } = useLocations()
+  const { activeLocation, sitePoints } = useLocations()
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [resolved, setResolved] = useState<(Resolved & { pin: string }) | null>(null)
@@ -49,10 +49,12 @@ function Inner({ locationId }: { locationId: string }) {
   const requireGeo = activeLocation?.require_geofence ?? false
   const requirePhoto = activeLocation?.require_punch_photo ?? false
   const fenceRadius = activeLocation?.geofence_radius_m ?? 200
-  const fenceCenter =
-    activeLocation?.latitude != null && activeLocation?.longitude != null
-      ? { lat: Number(activeLocation.latitude), lng: Number(activeLocation.longitude) }
-      : null
+  // Every address of the site counts (MW34 is three car washes, one site).
+  const siteId = activeLocation?.id
+  const fenceCenters = useMemo(
+    () => sitePoints.filter((p) => p.locationId === siteId).map((p) => ({ lat: p.lat, lng: p.lng })),
+    [sitePoints, siteId],
+  )
 
   const submit = async (fullPin: string) => {
     setBusy(true)
@@ -174,7 +176,7 @@ function Inner({ locationId }: { locationId: string }) {
           <VerifyAndPunch
             resolved={resolved}
             locationId={locationId}
-            fenceCenter={fenceCenter}
+            fenceCenters={fenceCenters}
             fenceRadius={fenceRadius}
             requireGeo={requireGeo}
             requirePhoto={requirePhoto}
@@ -194,11 +196,11 @@ function Inner({ locationId }: { locationId: string }) {
 // commits the punch with all the metadata in one RPC call. Designed to be
 // fast on a tablet camera (everything runs in parallel where possible).
 function VerifyAndPunch({
-  resolved, locationId, fenceCenter, fenceRadius, requireGeo, requirePhoto, onCancel, onPunched,
+  resolved, locationId, fenceCenters, fenceRadius, requireGeo, requirePhoto, onCancel, onPunched,
 }: {
   resolved: Resolved & { pin: string }
   locationId: string
-  fenceCenter: { lat: number; lng: number } | null
+  fenceCenters: { lat: number; lng: number }[]
   fenceRadius: number
   requireGeo: boolean
   requirePhoto: boolean
@@ -240,12 +242,12 @@ function VerifyAndPunch({
       }
     })()
     void (async () => {
-      const f = await checkLocationFence(fenceCenter, fenceRadius)
+      const f = await checkLocationFence(fenceCenters, fenceRadius)
       if (!alive) return
       setFence(f)
     })()
     return () => { alive = false }
-  }, [fenceCenter, fenceRadius])
+  }, [fenceCenters, fenceRadius])
 
   // Run face detection on a slow tick while the camera is live so the user
   // sees a green check vs a "no face" prompt before they tap Punch.

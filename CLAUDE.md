@@ -206,7 +206,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0257.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0258.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
@@ -233,6 +233,14 @@ categories, vendors) share one pattern:
   add its pattern there too, or scrolling/overflow will break.
 - `BottomNav` (mobile) hides itself on `/app/(messages|work-orders|assets|parts)/:id`
   detail routes so the screen is full-height.
+
+**One site, several addresses:** a site can be more than one car wash (MW34 is three
+in Hereford, MW33 two in Dalhart) and is still one site everywhere. The main address
+stays on `locations`; the others are `location_addresses` (migration 0258, edited under
+Settings > Locations). Anything that puts sites on a map or matches a position to a
+site uses `sitePoints` from `useLocations()` (`lib/sitePoints.ts`), not
+`locations.latitude/longitude`: Fleet Map, Market Explorer, the kiosk geofence, and
+`reveal-visits-sync` (Site Visits). Weather stays on the main address.
 
 **Realtime:** list + detail panes subscribe to `postgres_changes` and reload on
 change. Keep channel names unique per entity (`'work-order-' + id`).

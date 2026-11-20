@@ -83,6 +83,7 @@ const json = (body: unknown, status: number, origin: string | null) =>
 const SCHEMA = `Tables (Postgres, snake_case). Money columns are numeric dollars unless noted.
 accounts(id, name, account_type, plan, is_demo, gm_bonus_enabled, site_performance_enabled)
 locations(id, account_id, name, address, timezone, archived, latitude, longitude, google_rating, google_rating_count)
+location_addresses(id, location_id, address, latitude, longitude) -- a site's other car washes: one site can be several addresses (MW34 is three in Hereford, MW33 two in Dalhart). Still one site with one set of numbers; count sites from locations, physical car washes as locations plus these.
 users(id, account_id, location_ids uuid[], role, name, email, last_seen_at)
 employees(id, location_id, first_name, last_name, email, phone, start_date, role_title, hourly_rate, status)
 work_orders(id, account_id, location_id, number, title, status, priority, work_type, due_at, start_at, completed_at, equipment_id, created_at)

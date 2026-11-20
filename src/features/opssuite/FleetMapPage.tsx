@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { Loader2, RefreshCw, Search, X, List, Tag } from 'lucide-react'
 import { fleet, type FleetLive, type FleetVehicle } from '@/lib/queries/fleet'
 import { useLocations } from '@/lib/locations'
+import { sitePinHtml } from '@/lib/sitePoints'
 
 // Fleet Map: live positions of Mighty Wash vehicles from Verizon Connect Reveal
 // (reveal-fleet edge function). Pre-launch: kevan@washlyfe.com only.
@@ -135,7 +136,7 @@ export default function FleetMapPage() {
   const rafRef = useRef<number | null>(null)
   const anyMovingRef = useRef(false)
 
-  const { locations } = useLocations()
+  const { sitePoints } = useLocations()
   const [data, setData] = useState<FleetLive | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -242,13 +243,13 @@ export default function FleetMapPage() {
     const layer = sitesRef.current
     if (!layer) return
     layer.clearLayers()
-    for (const s of locations) {
-      if (s.latitude == null || s.longitude == null) continue
-      L.marker([s.latitude, s.longitude], { icon: siteIcon, title: s.name, zIndexOffset: -500 })
-        .bindPopup(`<div style="font-size:15px;font-weight:700">${escapeHtml(s.name)}</div>`)
+    // Every address of a site gets a pin (MW34 is three car washes, one site).
+    for (const p of sitePoints) {
+      L.marker([p.lat, p.lng], { icon: siteIcon, title: p.name, zIndexOffset: -500 })
+        .bindPopup(sitePinHtml(p, sitePoints, escapeHtml))
         .addTo(layer)
     }
-  }, [locations])
+  }, [sitePoints])
 
   const vehicles = useMemo(() => data?.vehicles ?? [], [data])
   const counts = useMemo(() => {

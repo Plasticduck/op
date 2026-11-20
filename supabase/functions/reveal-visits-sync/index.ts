@@ -9,7 +9,8 @@
 // Reveal segments (GET /rad/v1/vehicles/<n>/segments?startdateutc=...) are
 // trips, ignition on -> off, for the 24 hours from startdateutc. A stop runs
 // from one trip's end to the next trip's start; a stop within a site's
-// geofence (locations lat/lng + geofence_radius_m) is a visit. Stops at the
+// geofence (locations lat/lng + geofence_radius_m, or one of the site's other
+// addresses in location_addresses) is a visit. Stops at the
 // same site split only by moving the vehicle within the lot are merged.
 // Vehicles with no vehicle number in Reveal can't be queried by vehicle, so
 // drivers who didn't show up on any numbered vehicle that day are queried by
@@ -252,6 +253,18 @@ Deno.serve(async (req) => {
     const sites: Site[] = (locs ?? []).map((l: Any) => ({
       id: l.id, lat: l.latitude, lng: l.longitude, radius: l.geofence_radius_m || DEFAULT_RADIUS_M,
     }))
+    // A site's other addresses (location_addresses, e.g. MW34's three car washes)
+    // count as that site, with its geofence radius.
+    const radiusOf = new Map(sites.map((s) => [s.id, s.radius]))
+    const { data: extra } = await svc
+      .from('location_addresses')
+      .select('location_id, latitude, longitude')
+      .eq('account_id', MW_ACCOUNT_ID)
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+    for (const a of (extra ?? []) as Any[]) {
+      sites.push({ id: a.location_id, lat: Number(a.latitude), lng: Number(a.longitude), radius: radiusOf.get(a.location_id) ?? DEFAULT_RADIUS_M })
+    }
 
     const [vr, dr] = await Promise.all([reveal('/cmd/v1/vehicles'), reveal('/cmd/v1/drivers')])
     if (!vr.ok || !dr.ok) return json({ error: 'reveal_failed', step: 'roster', status: vr.ok ? dr.status : vr.status }, 502, origin)

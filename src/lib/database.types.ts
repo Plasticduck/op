@@ -8364,6 +8364,54 @@ export type Database = {
           },
         ]
       }
+      location_addresses: {
+        Row: {
+          account_id: string
+          address: string
+          created_at: string
+          created_by: string | null
+          id: string
+          latitude: number | null
+          location_id: string
+          longitude: number | null
+        }
+        Insert: {
+          account_id: string
+          address: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          latitude?: number | null
+          location_id: string
+          longitude?: number | null
+        }
+        Update: {
+          account_id?: string
+          address?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          latitude?: number | null
+          location_id?: string
+          longitude?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "location_addresses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "location_addresses_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           account_id: string
