@@ -294,6 +294,15 @@ Deno.serve(async (req) => {
       return json({ columns, rows, truncated }, 200, origin)
     }
 
+    // Checks only: which tools CoreNav offers now (names and descriptions), and
+    // which of them Operator keeps after its read-only review.
+    if (body.action === 'tools' && asService) {
+      return json({
+        kept: session.tools.map((t) => ({ name: t.name, description: t.description.slice(0, 300) })),
+        skipped: session.skipped,
+      }, 200, origin)
+    }
+
     if (body.action === 'describe' && asService) {
       return json(await tool(session, 'describe', { ...u, ...(body.table ? { table: body.table } : {}) }), 200, origin)
     }
