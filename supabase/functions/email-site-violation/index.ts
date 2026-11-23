@@ -26,14 +26,14 @@ type Any = any
 const MW_ACCOUNT_ID = '54f3e299-1f61-4ed2-9921-3d02160b72e6'
 
 // Regional manager per site (keyed by the normalized site name). Alignment of
-// 2026-11-16 (migrations 0239-0240). Central Region (MW27-30, Spotless) has no
+// 2026-11-16 (migrations 0239-0240; MW04 to New Mexico 2026-11-23, 0259). Central Region (MW27-30, Spotless) has no
 // regional manager.
 const RM_BY_SITE: Record<string, string> = {}
 const addRm = (email: string, sites: string[]) => { for (const s of sites) RM_BY_SITE[s] = email }
 addRm('mcanales@mighty-wash.com', ['MW01', 'MW05', 'MW07', 'MW09', 'MW10', 'MW11', 'MW32', 'MW33', 'MW34'])
 addRm('isabel@mighty-wash.com', ['MW02', 'MW08', 'MW15', 'MW22', 'MW25'])
-addRm('djones@mighty-wash.com', ['MW03', 'MW04', 'MW06', 'MW12', 'MW13', 'MW14', 'MW24', 'MW31'])
-addRm('rbreed@mighty-wash.com', ['MW16', 'MW17', 'MW18', 'MW19', 'MW20', 'MW21', 'MW23', 'MW26'])
+addRm('djones@mighty-wash.com', ['MW03', 'MW06', 'MW12', 'MW13', 'MW14', 'MW24', 'MW31'])
+addRm('rbreed@mighty-wash.com', ['MW04', 'MW16', 'MW17', 'MW18', 'MW19', 'MW20', 'MW21', 'MW23', 'MW26'])
 
 const ALLOWED_ORIGINS = new Set<string>([
   'https://operator.washlyfe.com',

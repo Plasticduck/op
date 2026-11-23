@@ -17,11 +17,11 @@ const REGION_BY_SITE: Record<number, string> = {
   1: 'Lubbock', 5: 'Lubbock', 7: 'Lubbock', 9: 'Lubbock', 10: 'Lubbock', 11: 'Lubbock', 32: 'Lubbock',
   2: 'Permian Basin - Odessa', 8: 'Permian Basin - Odessa', 15: 'Permian Basin - Odessa',
   22: 'Permian Basin - Odessa', 25: 'Permian Basin - Odessa',
-  3: 'Permian Basin - Midland', 4: 'Permian Basin - Midland', 6: 'Permian Basin - Midland', 12: 'Permian Basin - Midland',
+  3: 'Permian Basin - Midland', 6: 'Permian Basin - Midland', 12: 'Permian Basin - Midland',
   13: 'Permian Basin - Midland', 14: 'Permian Basin - Midland', 24: 'Permian Basin - Midland',
   31: 'Permian Basin - Midland',
   27: 'Central Texas', 28: 'Central Texas', 29: 'Central Texas', 30: 'Central Texas',
-  16: 'New Mexico', 23: 'New Mexico', 26: 'New Mexico', 21: 'New Mexico', 17: 'New Mexico', 18: 'New Mexico',
+  4: 'New Mexico', 16: 'New Mexico', 23: 'New Mexico', 26: 'New Mexico', 21: 'New Mexico', 17: 'New Mexico', 18: 'New Mexico',
 }
 // Sites deliberately left out of the region breakdown (Dalhart, per request).
 const EXCLUDED_SITES = new Set<number>([34])
