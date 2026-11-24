@@ -29,6 +29,10 @@ export function walkOrder(assets: ItAssetRow[], refs: ItRefs, siteName: Map<stri
     || a.asset_tag.localeCompare(b.asset_tag, undefined, { numeric: true }))
 }
 
+// Small print on every IT sticker, blank tags included (asked for 2026-11-24).
+// IT Inventory is Mighty Wash's alone for now (see access.ts), so it's fixed text.
+export const STICKER_FOOTER = 'Property of Mighty Wash'
+
 export function assetLabel(a: ItAssetRow, refs: ItRefs, siteName: Map<string, string>): LabelContent {
   return {
     tag: a.asset_tag,
@@ -36,10 +40,12 @@ export function assetLabel(a: ItAssetRow, refs: ItRefs, siteName: Map<string, st
     name: a.name,
     site: siteName.get(a.location_id) ?? null,
     phone: refs.settings.support_phone,
+    footer: STICKER_FOOTER,
   }
 }
 
-export const blankLabel = (tag: string, refs: ItRefs): LabelContent => ({ tag, url: tagUrl(refs.settings.short_code, tag) })
+export const blankLabel = (tag: string, refs: ItRefs): LabelContent =>
+  ({ tag, url: tagUrl(refs.settings.short_code, tag), footer: STICKER_FOOTER })
 
 export function accountDefaultTemplate(refs: ItRefs): ItLabelTemplate | undefined {
   return refs.templates.find((t) => t.is_default) ?? refs.templates[0]

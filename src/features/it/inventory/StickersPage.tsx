@@ -22,7 +22,7 @@ import type { Json } from '@/lib/database.types'
 import { itInventory, type ItAssetRow, type ItConsumable, type ItLabelTemplate, type ItTag } from '@/lib/queries/itInventory'
 import { PrintDialog } from './PrintDialog'
 import { needsSticker, tagUrl } from './format'
-import { accountDefaultTemplate, isOutdoorAsset, toPrintTemplate, useStickerLogo, walkOrder } from './stickers'
+import { accountDefaultTemplate, isOutdoorAsset, STICKER_FOOTER, toPrintTemplate, useStickerLogo, walkOrder } from './stickers'
 import { useItRefs, type ItRefs } from './useItRefs'
 import { useItSites } from './useItSites'
 
@@ -498,7 +498,7 @@ const withLogo = (layout: LabelLayoutSpec, on: boolean): LabelLayoutSpec =>
 
 function sampleLabel(refs: ItRefs, site: string | undefined): LabelContent {
   const tag = `${refs.settings.tag_prefix}-${'0'.repeat(Math.max(0, refs.settings.tag_padding - 3))}123`
-  return { tag, url: tagUrl(refs.settings.short_code, tag), name: 'Pay Lane 1 pay station', site: site ?? 'Your site', phone: refs.settings.support_phone }
+  return { tag, url: tagUrl(refs.settings.short_code, tag), name: 'Pay Lane 1 pay station', site: site ?? 'Your site', phone: refs.settings.support_phone, footer: STICKER_FOOTER }
 }
 
 function Calibrate({ row, refs, logo, onSaved }: { row: ItLabelTemplate; refs: ItRefs; logo: StickerLogo | null; onSaved: () => void }) {

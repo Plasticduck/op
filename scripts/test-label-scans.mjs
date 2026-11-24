@@ -5,6 +5,10 @@
 // QR doesn't read back as the sticker URL or the Code 128 as the tag. Stock
 // that shows a logo is also tried with a wide and a tall logo, drawn as a
 // solid black block, and fails if the logo touches the QR or the barcode.
+// Every sticker carries the "Property of Mighty Wash" footer, as IT's do. It
+// fails if the footer touches anything else or runs off the label, and the
+// footer is rasterized as a solid black bar its full width, so the scans prove
+// it doesn't get in the QR's or barcode's way.
 //
 // Run: node scripts/test-label-scans.mjs
 
@@ -73,7 +77,17 @@ for (const [name, partial, layout] of TEMPLATES) {
   const spec = { cols: 1, rows: 1, margin_top_mm: 0, margin_left_mm: 0, pitch_x_mm: 0, pitch_y_mm: 0, ...partial }
   for (const [tag, aspect] of TAGS.flatMap((t) => LOGOS.map((l) => [t, l]))) {
     const url = `https://operator.washlyfe.com/t/${SHORT}/${tag}`
-    const d = drawLabel({ tag, url, name: 'Pay Lane 1 pay station', site: 'MW12 Lubbock 50th St', phone: '806-555-0100' }, spec, layout, aspect)
+    const footer = 'Property of Mighty Wash'
+    const d = drawLabel({ tag, url, name: 'Pay Lane 1 pay station', site: 'MW12 Lubbock 50th St', phone: '806-555-0100', footer }, spec, layout, aspect)
+    const lineH = (t) => t.sizePt * 0.3528 * 1.18
+    const foot = d.texts.find((t) => t.text === footer)
+    const footBox = foot && { x: foot.x, y: foot.y, w: foot.w, h: lineH(foot) }
+    const others = [...d.rects, ...(d.logo ? [d.logo] : []), ...d.texts.filter((t) => t !== foot).map((t) => ({ x: t.x, y: t.y, w: t.w, h: lineH(t) * t.maxLines }))]
+    if (!footBox || others.some((r) => overlaps(r, footBox, 0.3))
+      || footBox.x < 0 || footBox.x + footBox.w > spec.label.w_mm + 0.01 || footBox.y + footBox.h > spec.label.h_mm + 0.01) {
+      failures++
+      console.log(`FAIL  ${name} ${tag} footer ${footBox ? 'touches something or runs off the label' : 'missing'}`)
+    }
     if (aspect && d.logo) {
       // The QR's box (quiet zone included) is square from the top-left padding.
       const clash = d.rects.some((r) => overlaps(r, d.logo, 0.5)) || d.logo.x < d.qrModuleMm * 4
@@ -83,7 +97,7 @@ for (const [name, partial, layout] of TEMPLATES) {
     if (aspect && layout.style === 'outdoor' && d.logo) { failures++; console.log(`FAIL  ${name} has a logo on outdoor stock`) }
     const logoNote = aspect ? `logo ${String(aspect).padEnd(4)} ${d.logo ? `${d.logo.w.toFixed(1)}x${d.logo.h.toFixed(1)}mm` : 'left off'}` : 'no logo'
     for (const dpi of [203, 300]) {
-      const img = raster(d.logo ? [...d.rects, d.logo] : d.rects, spec.label.w_mm, spec.label.h_mm, dpi)
+      const img = raster([...d.rects, ...(d.logo ? [d.logo] : []), ...(footBox ? [footBox] : [])], spec.label.w_mm, spec.label.h_mm, dpi)
       const found = await readBarcodesFromImageData(img, { formats: ['QRCode', 'Code128'], tryHarder: true, maxNumberOfSymbols: 4 })
       const qr = found.find((f) => f.format === 'QRCode')?.text
       const bar = found.find((f) => f.format === 'Code128')?.text

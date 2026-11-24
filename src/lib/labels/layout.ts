@@ -32,6 +32,9 @@ export type LabelContent = {
   name?: string | null
   site?: string | null
   phone?: string | null
+  // Small print across the bottom (IT's "Property of Mighty Wash"). Printed on
+  // every style whatever the layout shows; the rest of the label sits above it.
+  footer?: string | null
 }
 
 export type Rect = { x: number; y: number; w: number; h: number }
@@ -45,12 +48,21 @@ export type TextBlock = {
   bold: boolean
   maxLines: number
   align: 'left' | 'center'
+  shrink?: boolean // one line, made smaller to fit rather than cut short
 }
 export type Stroke = { x1: number; y1: number; x2: number; y2: number; width: number }
 export type Drawing = { rects: Rect[]; texts: TextBlock[]; strokes: Stroke[] }
 
 export const PT_MM = 25.4 / 72
 const lineMm = (pt: number) => pt * PT_MM * 1.18
+// Helvetica's width, guessed on the wide side (capitals and m/w wide, i/l/t
+// narrow). It only decides where a line goes or whether a name keeps a second
+// line; the PDF still wraps, shrinks or trims whatever doesn't fit.
+function roughWidthMm(text: string, pt: number, bold = false): number {
+  let em = 0
+  for (const ch of text) em += /[A-Zmw@%]/.test(ch) ? 0.78 : /[ijlft.,:;'|!]/.test(ch) ? 0.34 : ch === ' ' ? 0.28 : 0.6
+  return em * (bold ? 1.06 : 1) * pt * PT_MM
+}
 export const MIN_BAR_MM = 0.19
 const QR_QUIET = 4
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -105,7 +117,10 @@ function textColumn(c: LabelContent, show: string[], x: number, y: number, w: nu
     cy += lineMm(tagPt) + 0.4
   }
   if (show.includes('name') && c.name) {
-    const lines = fits(smallPt, 2) ? 2 : fits(smallPt, 1) ? 1 : 0
+    // A sticker with a footer is a line short, so there a name that looks to
+    // fit on one line doesn't hold a second one for wrapping.
+    const oneLine = !!c.footer && roughWidthMm(c.name, smallPt, true) <= w
+    const lines = !oneLine && fits(smallPt, 2) ? 2 : fits(smallPt, 1) ? 1 : 0
     if (lines) {
       out.push({ x, y: cy, w, text: c.name, sizePt: smallPt, font: 'helvetica', bold: true, maxLines: lines, align })
       cy += lineMm(smallPt) * lines
@@ -151,30 +166,43 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
   let logo: Rect | null = null
   const wantLogo = !!logoAspect && logoAspect > 0 && show.includes('logo')
 
+  // The footer is the last line of the text column, so the QR and barcode keep
+  // their size. Only where there's no column (outdoor) or it's too narrow does
+  // it run across the foot of the label and take its height from the QR.
+  const footPt = clamp(Math.min(W, H) / 6, 5, 6.5)
+  const footH = c.footer ? lineMm(footPt) + 0.4 : 0
+  const addFooter = (x: number, bottom: number, w: number, align: 'left' | 'center') => {
+    if (c.footer) d.texts.push({ x, y: bottom - lineMm(footPt), w, text: c.footer, sizePt: footPt, font: 'helvetica', bold: false, maxLines: 1, align, shrink: true })
+  }
+
   if (layout.style === 'outdoor') {
     // Big QR with extra error correction (survives dirt and fading), tag under it.
     const band = H * 0.24
-    const box = Math.min(W - 2 * pad, H - 2 * pad - band)
+    const box = Math.min(W - 2 * pad, H - 2 * pad - band - footH)
     const qr = qrRects(c.url, (W - box) / 2, pad, box, 'Q')
     d.rects.push(...qr.rects)
     const tagPt = clamp((band * 0.5) / PT_MM / 1.18, 7, 16)
     d.texts.push(...textColumn(c, show.filter((s) => s === 'tag' || s === 'name'), pad, pad + box + 0.5, W - 2 * pad, band - 0.5, tagPt, 'center'))
+    addFooter(pad, H - pad, W - 2 * pad, 'center')
     return { ...d, qrModuleMm: qr.moduleMm, barMm, logo }
   }
 
   const wantBar = show.includes('barcode')
   const side = W - H >= 28
   if (side) {
-    // QR full height on the left; text and barcode in the column beside it.
+    // QR full height on the left; text and barcode in the column beside it,
+    // the footer under the barcode.
     const box = H - 2 * pad
     const qr = qrRects(c.url, pad, pad, box, 'M')
     d.rects.push(...qr.rects)
     const x0 = pad + box + 1
     const cw = W - x0 - pad
-    let textH = H - 2 * pad
+    addFooter(x0, H - pad, cw, 'left')
+    const colBottom = H - pad - footH
+    let textH = colBottom - pad
     if (wantBar) {
       const hb = clamp(H * 0.26, 4, 10)
-      const bar = barcodeRects(c.tag, x0, H - pad - hb, cw, hb)
+      const bar = barcodeRects(c.tag, x0, colBottom - hb, cw, hb)
       if (bar) {
         d.rects.push(...bar.rects)
         barMm = bar.barMm
@@ -195,17 +223,19 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
   }
 
   // Stacked: QR and text on top, barcode across the full width underneath.
-  let topH = H - 2 * pad
-  if (wantBar) {
-    const hb = clamp(H * 0.24, 5, 9)
-    const bar = barcodeRects(c.tag, pad, H - pad - hb, W - 2 * pad, hb)
-    if (bar) {
-      // Center the bars (quiet zones included) in the band.
-      const shift = (W - 2 * pad - bar.w) / 2
-      d.rects.push(...bar.rects.map((r) => ({ ...r, x: r.x + shift })))
-      barMm = bar.barMm
-      topH -= hb + 1
-    }
+  const hb = clamp(H * 0.24, 5, 9)
+  const bar = wantBar ? barcodeRects(c.tag, pad, 0, W - 2 * pad, hb) : null
+  const colW = W - (pad + H - 2 * pad - (bar ? hb + 1 : 0) + 1) - pad
+  const footAcross = !!c.footer && roughWidthMm(c.footer, footPt) > colW
+  if (footAcross) addFooter(pad, H - pad, W - 2 * pad, 'center')
+  const bottom = H - pad - (footAcross ? footH : 0)
+  let topH = bottom - pad
+  if (bar) {
+    // Center the bars (quiet zones included) in the band.
+    const shift = (W - 2 * pad - bar.w) / 2
+    d.rects.push(...bar.rects.map((r) => ({ ...r, x: r.x + shift, y: bottom - hb })))
+    barMm = bar.barMm
+    topH -= hb + 1
   }
   const box = topH
   const qr = qrRects(c.url, pad, pad, box, 'M')
@@ -213,8 +243,12 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
   const x0 = pad + box + 1
   let ty = pad
   let textH = topH
+  if (c.footer && !footAcross) {
+    addFooter(x0, pad + topH, W - x0 - pad, 'left')
+    textH -= footH
+  }
   if (wantLogo) {
-    logo = logoBand(logoAspect, x0, pad, W - x0 - pad, topH)
+    logo = logoBand(logoAspect, x0, pad, W - x0 - pad, textH)
     if (logo) {
       ty += logo.h + 0.8
       textH -= logo.h + 0.8

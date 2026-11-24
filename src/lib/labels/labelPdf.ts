@@ -63,8 +63,8 @@ function paint(doc: JsPDF, d: Drawing, slotX: number, slotY: number, t: Xf, logo
     doc.setFont(tb.font, tb.bold ? 'bold' : 'normal')
     doc.setFontSize(size)
     let lines: string[]
-    if (tb.font === 'courier') {
-      // A tag is never cut short: shrink it until it fits.
+    if (tb.font === 'courier' || tb.shrink) {
+      // A tag (or the footer) is never cut short: shrink it until it fits.
       while (size > 4 && doc.getTextWidth(tb.text) > w) {
         size -= 0.25
         doc.setFontSize(size)
