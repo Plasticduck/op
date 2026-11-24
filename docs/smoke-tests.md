@@ -37,6 +37,9 @@ Run `npm run dev` and work through these.
 ## Reports
 - [ ] /app/reports → open any report → change date range + location filter → CSV export → Print (chrome hidden).
 
+## IT
+- [ ] IT → Super Mighty Maxx → title plays music after a click or key → press A on an Xbox pad → map → MW01 → run, jump, wash the first car → pause (Menu) → quit to map. Leave the page and come back: progress kept, no sound left playing.
+
 ## Key-gated (after secrets are set)
 - [ ] AI Insights → Refresh → ≥1 card per category (needs `ANTHROPIC_API_KEY`).
 - [ ] Billing → choose a plan → Stripe checkout (needs `STRIPE_*`); webhook flips `billing_status` to active.

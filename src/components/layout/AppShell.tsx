@@ -42,6 +42,7 @@ const FULL_BLEED_PATTERNS = [
   /^\/app\/procedures($|\/)/,
   /^\/app\/it-inventory\/(audits\/)?[0-9a-f]{8}-/,
   /^\/app\/maintenance-inventory\/equipment\/[0-9a-f]{8}-/,
+  /^\/app\/super-mighty-maxx($|\/)/,
 ]
 
 // Enforce page permissions on direct navigation. Maps the current path to its

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Super Mighty Maxx: text and UI kit (dev only)</title>
+    <style>
+      body { margin: 0; padding: 12px; background: #101014; color: #a9afbd; font: 12px/1.4 system-ui, sans-serif; }
+      h2 { margin: 14px 0 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+      p { margin: 0; }
+      canvas { display: block; image-rendering: pixelated; outline: none; }
+      .touch { display: flex; gap: 6px; margin: 8px 0 0; user-select: none; touch-action: none; }
+      .touch span { padding: 8px 12px; border: 1px solid #4b4f5c; border-radius: 6px; color: #d6dae3; cursor: pointer; }
+      .touch span:active { background: #2e3038; }
+    </style>
+  </head>
+  <body>
+    <!-- Dev only: the game's pixel font, button prompts and UI kit, no sign-in. Not part of the
+         production build (vite.config.ts lists the build's pages). The script path follows the
+         game folder: src/features/it/maxx/ while it is being built, src/features/it/maxx/ afterwards.
+         ?sheet=charset|sentences|prompts|ui shows one sheet, ?zoom=3 sets the pixel size.
+         The menus run on the game's real input module: keyboard, an Xbox controller, or the
+         strip of touch buttons under the status line. -->
+    <div id="root"></div>
+    <script type="module" src="/src/features/it/maxx/game/dev/textPreview.ts"></script>
+  </body>
+</html>

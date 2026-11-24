@@ -75,6 +75,7 @@ import {
   Warehouse,
   Wrench,
   X,
+  Gamepad2,
 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { useAuth } from '@/lib/auth'
@@ -465,6 +466,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: MonitorSmartphone,
         roles: ['owner', 'manager', 'technician'],
         emails: IT_INVENTORY_EMAILS, // rollout list in features/it/inventory/access.ts
+      },
+      {
+        to: '/app/super-mighty-maxx',
+        label: 'Super Mighty Maxx',
+        icon: Gamepad2,
+        roles: ['owner', 'manager', 'technician'],
       },
     ],
   },

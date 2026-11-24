@@ -157,6 +157,7 @@ const IssuetrakPage = lz(() => import('@/features/it/IssuetrakPage'))
 const ItFieldChecklistPage = lz(() => import('@/features/it/ItFieldChecklistPage'))
 const ItInventoryPage = lz(() => import('@/features/it/inventory/ItInventoryPage'))
 const TagLandingPage = lz(() => import('@/features/it/inventory/TagLandingPage'))
+const SuperMightyMaxxPage = lz(() => import('@/features/it/maxx/SuperMightyMaxxPage'))
 const VehicleScanPage = lz(() => import('@/features/opssuite/VehicleScanPage'))
 const LaborDashboardPage = lz(() => import('@/features/ops/labor/LaborDashboardPage'))
 const RequestPortalPage = lz(() => import('@/features/ops/requests/RequestPortalPage'))
@@ -253,6 +254,7 @@ export const router = createBrowserRouter([
           { path: 'issuetrak', element: tech(<IssuetrakPage />) },
           { path: 'it-field-checklist', element: tech(<ItFieldChecklistPage />) },
           { path: 'it-field-checklist/:id', element: tech(<ItFieldChecklistPage />) },
+          { path: 'super-mighty-maxx', element: tech(<SuperMightyMaxxPage />) },
           { path: 'it-inventory', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'it-inventory/stickers', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },
           { path: 'it-inventory/import', element: <RequireEmails allow={IT_INVENTORY_EMAILS}>{tech(<ItInventoryPage />)}</RequireEmails> },

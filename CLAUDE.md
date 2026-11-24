@@ -162,7 +162,10 @@ src/
                             On the Clock also has a FlexWash tab (?tab=flexwash): hours + cost
                             by site from FlexWash's time clock via flexwash-labor (FlexWash's API
                             has totals only, no names or punch times); region scoping in hr/regions.ts
-    it/                     Issuetrak, IT Field Checklist
+    it/                     Issuetrak, IT Field Checklist, and it/maxx: Super Mighty Maxx (/app/super-mighty-maxx),
+                            an 8-bit platformer on a canvas with synthesized sound, played with an Xbox pad or
+                            keyboard. Read docs/super-mighty-maxx/NOTES.md first; its tools and tests are in
+                            scripts/maxx (node scripts/maxx/test.mjs, node scripts/maxx/check.mjs --serve <port>)
     maintenance/            Chemicals, Maintenance Orders, inventory/ (Maintenance Inventory) and log/ (Maintenance Log), see docs/maintenance-inventory
                             (its Tunnel tab's 3D view, plain three.js: docs/maintenance-inventory/TUNNEL.md)
     facilities/             Service Board
