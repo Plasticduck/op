@@ -60,10 +60,11 @@ const lineMm = (pt: number) => pt * PT_MM * 1.18
 // line; the PDF still wraps, shrinks or trims whatever doesn't fit.
 function roughWidthMm(text: string, pt: number, bold = false): number {
   let em = 0
-  for (const ch of text) em += /[A-Zmw@%]/.test(ch) ? 0.78 : /[ijlft.,:;'|!]/.test(ch) ? 0.34 : ch === ' ' ? 0.28 : 0.6
+  for (const ch of text) em += /[A-Zmw@%]/.test(ch) ? 0.78 : /[ijlfrt.,:;'|!]/.test(ch) ? 0.34 : ch === ' ' ? 0.28 : 0.6
   return em * (bold ? 1.06 : 1) * pt * PT_MM
 }
 export const MIN_BAR_MM = 0.19
+const BARS_MIN = 4 // mm: how short a caption may make the bars
 const QR_QUIET = 4
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
@@ -166,13 +167,23 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
   let logo: Rect | null = null
   const wantLogo = !!logoAspect && logoAspect > 0 && show.includes('logo')
 
-  // The footer is the last line of the text column, so the QR and barcode keep
-  // their size. Only where there's no column (outdoor) or it's too narrow does
-  // it run across the foot of the label and take its height from the QR.
+  // The footer is a caption centered over the barcode. It takes its height from
+  // the bars (they stay at least BARS_MIN tall), so the QR and the text keep
+  // their room. With no barcode it's the last line of the text beside the QR,
+  // or runs across the foot of the label (outdoor, or a column too narrow).
   const footPt = clamp(Math.min(W, H) / 6, 5, 6.5)
   const footH = c.footer ? lineMm(footPt) + 0.4 : 0
   const addFooter = (x: number, bottom: number, w: number, align: 'left' | 'center') => {
     if (c.footer) d.texts.push({ x, y: bottom - lineMm(footPt), w, text: c.footer, sizePt: footPt, font: 'helvetica', bold: false, maxLines: 1, align, shrink: true })
+  }
+  // Bars at x in a band of height h ending at `bottom`, the caption centered in
+  // [capX, capX + capW] over them. Returns the height used, caption included.
+  const placeBars = (bar: NonNullable<ReturnType<typeof barcodeRects>>, x: number, bottom: number, h: number, capX: number, capW: number): number => {
+    const barsH = c.footer ? Math.max(BARS_MIN, h - footH) : h
+    d.rects.push(...bar.rects.map((r) => ({ ...r, x: r.x + x, y: bottom - barsH, h: barsH })))
+    barMm = bar.barMm
+    addFooter(capX, bottom - barsH - 0.4, capW, 'center')
+    return barsH + footH
   }
 
   if (layout.style === 'outdoor') {
@@ -190,24 +201,22 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
   const wantBar = show.includes('barcode')
   const side = W - H >= 28
   if (side) {
-    // QR full height on the left; text and barcode in the column beside it,
-    // the footer under the barcode.
+    // QR full height on the left; text and barcode in the column beside it.
     const box = H - 2 * pad
     const qr = qrRects(c.url, pad, pad, box, 'M')
     d.rects.push(...qr.rects)
     const x0 = pad + box + 1
     const cw = W - x0 - pad
-    addFooter(x0, H - pad, cw, 'left')
-    const colBottom = H - pad - footH
-    let textH = colBottom - pad
-    if (wantBar) {
-      const hb = clamp(H * 0.26, 4, 10)
-      const bar = barcodeRects(c.tag, x0, colBottom - hb, cw, hb)
-      if (bar) {
-        d.rects.push(...bar.rects)
-        barMm = bar.barMm
-        textH -= hb + 0.8
-      }
+    let textH = H - 2 * pad
+    const bar = wantBar ? barcodeRects(c.tag, 0, 0, cw, 1) : null
+    if (bar) {
+      // Caption centered over the bars, or over the column when the bars are
+      // too short for it (they start at the column's left edge).
+      const capW = c.footer && roughWidthMm(c.footer, footPt) <= bar.w ? bar.w : cw
+      textH -= placeBars(bar, x0, H - pad, clamp(H * 0.26, 4, 10), x0, capW) + 0.8
+    } else if (c.footer) {
+      addFooter(x0, H - pad, cw, 'left')
+      textH -= footH
     }
     let ty = pad
     if (wantLogo) {
@@ -223,19 +232,18 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
   }
 
   // Stacked: QR and text on top, barcode across the full width underneath.
-  const hb = clamp(H * 0.24, 5, 9)
-  const bar = wantBar ? barcodeRects(c.tag, pad, 0, W - 2 * pad, hb) : null
-  const colW = W - (pad + H - 2 * pad - (bar ? hb + 1 : 0) + 1) - pad
-  const footAcross = !!c.footer && roughWidthMm(c.footer, footPt) > colW
-  if (footAcross) addFooter(pad, H - pad, W - 2 * pad, 'center')
-  const bottom = H - pad - (footAcross ? footH : 0)
-  let topH = bottom - pad
+  let topH = H - 2 * pad
+  let footInColumn = false
+  const bar = wantBar ? barcodeRects(c.tag, 0, 0, W - 2 * pad, 1) : null
   if (bar) {
-    // Center the bars (quiet zones included) in the band.
-    const shift = (W - 2 * pad - bar.w) / 2
-    d.rects.push(...bar.rects.map((r) => ({ ...r, x: r.x + shift, y: bottom - hb })))
-    barMm = bar.barMm
-    topH -= hb + 1
+    // Bars centered in the band (quiet zones included), caption across the width.
+    topH -= placeBars(bar, pad + (W - 2 * pad - bar.w) / 2, H - pad, clamp(H * 0.24, 5, 9), pad, W - 2 * pad) + 1
+  } else if (c.footer) {
+    footInColumn = roughWidthMm(c.footer, footPt) <= W - (pad + topH + 1) - pad
+    if (!footInColumn) {
+      addFooter(pad, H - pad, W - 2 * pad, 'center')
+      topH -= footH
+    }
   }
   const box = topH
   const qr = qrRects(c.url, pad, pad, box, 'M')
@@ -243,7 +251,7 @@ export function drawLabel(c: LabelContent, spec: LabelSpec, layout: LabelLayoutS
   const x0 = pad + box + 1
   let ty = pad
   let textH = topH
-  if (c.footer && !footAcross) {
+  if (footInColumn) {
     addFooter(x0, pad + topH, W - x0 - pad, 'left')
     textH -= footH
   }
