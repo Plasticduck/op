@@ -57,6 +57,68 @@ export const fleet = {
   },
 }
 
+// Truck photos kept in Operator (migration 0263): Reveal shows a Picture per
+// vehicle but doesn't share it through its API. One per Reveal vehicle number, in
+// the private fleet-photos bucket under the account's folder, shown through
+// links that last an hour. Same people as the Fleet Map (fleet_map_can_use()).
+const PHOTO_BUCKET = 'fleet-photos'
+export type FleetPhoto = T['fleet_vehicle_photos']['Row']
+
+export const fleetPhotos = {
+  list: async (): Promise<FleetPhoto[]> => {
+    const { data, error } = await supabase.from('fleet_vehicle_photos').select('*')
+    if (error) throw error
+    return data ?? []
+  },
+
+  // vehicle number -> a link to its photo that works for an hour.
+  links: async (rows: FleetPhoto[]): Promise<Map<string, string>> => {
+    if (!rows.length) return new Map()
+    const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(rows.map((r) => r.path), 3600)
+    if (error) throw error
+    const byPath = new Map((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path as string, d.signedUrl]))
+    const out = new Map<string, string>()
+    for (const r of rows) {
+      const url = byPath.get(r.path)
+      if (url) out.set(r.vehicle_number, url)
+    }
+    return out
+  },
+
+  // A new file name each time, so nobody sees a cached copy of the old photo; the
+  // replaced file is removed once the vehicle points at the new one.
+  save: async (p: { accountId: string; userId: string; vehicleNumber: string; file: File; previous: string | null }): Promise<void> => {
+    const ext = p.file.type === 'image/png' ? 'png' : p.file.type === 'image/webp' ? 'webp' : 'jpg'
+    const path = `${p.accountId}/${p.vehicleNumber.replace(/[^A-Za-z0-9_-]/g, '_')}-${Date.now()}.${ext}`
+    const up = await supabase.storage.from(PHOTO_BUCKET).upload(path, p.file, { contentType: p.file.type || 'image/jpeg' })
+    if (up.error) throw up.error
+    const { error } = await supabase.from('fleet_vehicle_photos').upsert({
+      account_id: p.accountId,
+      vehicle_number: p.vehicleNumber,
+      path,
+      updated_at: new Date().toISOString(),
+      updated_by: p.userId,
+    })
+    if (error) {
+      await supabase.storage.from(PHOTO_BUCKET).remove([path])
+      throw error
+    }
+    if (p.previous && p.previous !== path) await supabase.storage.from(PHOTO_BUCKET).remove([p.previous])
+  },
+
+  remove: async (row: FleetPhoto): Promise<void> => {
+    const { data, error } = await supabase
+      .from('fleet_vehicle_photos')
+      .delete()
+      .eq('account_id', row.account_id)
+      .eq('vehicle_number', row.vehicle_number)
+      .select('vehicle_number')
+    if (error) throw error
+    if (!data?.length) throw new Error('That photo could not be removed.')
+    await supabase.storage.from(PHOTO_BUCKET).remove([row.path])
+  },
+}
+
 // Fleet Management (Admins): drivers, vehicles and assignments in Reveal, through
 // the fleet-admin edge function. Every change is logged in fleet_changes (0207).
 export type FleetChange = T['fleet_changes']['Row']

@@ -4300,6 +4300,38 @@ export type Database = {
           },
         ]
       }
+      fleet_vehicle_photos: {
+        Row: {
+          account_id: string
+          path: string
+          updated_at: string
+          updated_by: string | null
+          vehicle_number: string
+        }
+        Insert: {
+          account_id: string
+          path: string
+          updated_at?: string
+          updated_by?: string | null
+          vehicle_number: string
+        }
+        Update: {
+          account_id?: string
+          path?: string
+          updated_at?: string
+          updated_by?: string | null
+          vehicle_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_vehicle_photos_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       flexwash_catalog: {
         Row: {
           changes: Json
@@ -17021,6 +17053,7 @@ export type Database = {
           version: number
         }[]
       }
+      fleet_map_can_use: { Args: never; Returns: boolean }
       fpa_activate: { Args: { p_version: string }; Returns: Json }
       fpa_begin: {
         Args: {
