@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { labelsPerPage } from '@/lib/labels/layout'
 import { cn } from '@/lib/utils'
 import {
   fleetAdminApi,
@@ -253,7 +254,7 @@ function StickersModal({ vehicles, onClose, onDone }: {
   useEffect(() => {
     if (!chosen.length) { setPreview(null); return }
     let alive = true
-    const items = chosen.slice(0, 10).map((v) => vehicleSticker(v.sticker_code ?? 'NEW000', v.name))
+    const items = chosen.slice(0, labelsPerPage(stock.template.page_spec)).map((v) => vehicleSticker(v.sticker_code ?? 'NEW000', v.name))
     const id = window.setTimeout(() => {
       void buildVehicleStickersPdf(stock, stock.template.page_spec.page ? items : items.slice(0, 1)).then(({ doc }) => {
         if (alive) setPreview(doc.output('arraybuffer'))

@@ -30,6 +30,28 @@ export const STICKER_STOCKS: StickerStock[] = [
     },
   },
   {
+    // Same sheet geometry as IT Inventory's Avery 5160 stock.
+    id: 'avery5160',
+    name: 'Avery 5160 sheet, 1" x 2 5/8" (30 per page)',
+    template: {
+      name: 'Avery 5160',
+      page_spec: {
+        page: { w_mm: 215.9, h_mm: 279.4 },
+        label: { w_mm: 66.675, h_mm: 25.4 },
+        cols: 3,
+        rows: 10,
+        margin_top_mm: 12.7,
+        margin_left_mm: 4.7625,
+        pitch_x_mm: 69.85,
+        pitch_y_mm: 25.4,
+      },
+      layout: { style: 'compact', show: ['tag', 'name', 'site'] },
+      offset_x_mm: 0,
+      offset_y_mm: 0,
+      scale: 1,
+    },
+  },
+  {
     id: 'roll2x2',
     name: 'Label printer roll, 2" x 2"',
     template: {
