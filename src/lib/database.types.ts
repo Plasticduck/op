@@ -4184,6 +4184,24 @@ export type Database = {
           },
         ]
       }
+      fleet_driver_bad_pins: {
+        Row: {
+          at: string
+          id: number
+          ip: string
+        }
+        Insert: {
+          at?: string
+          id?: never
+          ip: string
+        }
+        Update: {
+          at?: string
+          id?: never
+          ip?: string
+        }
+        Relationships: []
+      }
       fleet_driver_links: {
         Row: {
           account_id: string
@@ -4219,6 +4237,38 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_driver_pins: {
+        Row: {
+          account_id: string
+          driver_number: string
+          pin: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          account_id: string
+          driver_number: string
+          pin: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          account_id?: string
+          driver_number?: string
+          pin?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_driver_pins_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]

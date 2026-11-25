@@ -147,9 +147,26 @@ export type FleetAdminDriver = {
   vehicle: string | null // vehicle number they're assigned to
   // The Operator login this driver is: by a sticker-scan link, else by email.
   operator_user: { id: string; name: string; linked: 'email' | 'self' | 'created' | 'admin' } | null
+  // Their 4-digit PIN for the Driver Assignment app (/driverassignment, 0265).
+  pin: string | null
 }
 export type FleetOverview = { fetched_at: string; vehicles: FleetAdminVehicle[]; drivers: FleetAdminDriver[]; unnumbered: string[] }
-export type DriverInput = { number: string; first: string; last: string; email: string; phone: string }
+// `pin`: 4 digits, or empty (a new driver then gets a random one; an edit keeps theirs).
+export type DriverInput = { number: string; first: string; last: string; email: string; phone: string; pin?: string }
+
+// The Driver Assignment app drivers sign in to with their PIN.
+export const DRIVER_APP_URL = 'https://operator.washlyfe.com/driverassignment'
+
+// A random PIN no one in `taken` has, skipping easy guesses (one digit four times,
+// or a run like 1234 / 9876), as fleet-admin does.
+export function randomDriverPin(taken: Set<string>): string {
+  const weak = (p: string) => /^(\d)\1{3}$/.test(p) || '0123456789'.includes(p) || '9876543210'.includes(p)
+  for (let i = 0; i < 1000; i++) {
+    const pin = String(crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, '0')
+    if (!taken.has(pin) && !weak(pin)) return pin
+  }
+  return ''
+}
 export type VehicleInput = { name: string; plate: string; vin: string; year: string; make: string; model: string; fuel_type: number; size: number }
 export const FUEL_TYPES = ['Unleaded', 'Diesel', 'Electric']
 export const VEHICLE_SIZES = ['Light duty', 'Medium duty', 'Heavy duty']

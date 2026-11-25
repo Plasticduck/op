@@ -439,3 +439,9 @@ verify_jwt = false
 # password (qb_check_login), not a Supabase session.
 [functions.qbwc]
 verify_jwt = false
+
+# Driver Assignment phone app (/driverassignment): drivers have no Operator login,
+# their 4-digit PIN is the credential (wrong PINs capped per IP and overall), and an
+# assignment also needs a real vehicle sticker code.
+[functions.driver-assign]
+verify_jwt = false

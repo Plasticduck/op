@@ -191,6 +191,11 @@ src/
                             page (/app/secret-shoppers, by URL only, not in nav). All data goes
                             through the secret-shopper fn (verify_jwt off; tables RLS-locked,
                             migrations 0232-0234)
+    driverassign/           Driver Assignment phone app: driverassignment.html -> src/driverassignment.tsx,
+                            served at /driverassignment (own manifest + icon, no Operator login). A driver
+                            enters their 4-digit PIN (fleet_driver_pins, migration 0265; shown and edited in
+                            Fleet Management, handed out by fleet-admin) and scans a vehicle's QR sticker to be
+                            put on it in Reveal (driver-assign fn: wrong PINs capped per IP and overall)
     cameras/                Spot AI camera feeds
     messages/               Slack-style chat: site rooms + DMs + groups, @mentions,
                             reactions, pins, threads, files
@@ -209,7 +214,7 @@ src/
     scorecard.ts            site letter-grade computation (dashboard)
     punch.ts / push.ts / nativeBridge.ts / tipPoster.ts / fnError.ts / weather.ts ...
 supabase/
-  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0264.
+  migrations/NNNN_name.sql  sequential, append-only. Currently up to 0265.
   tests/*.sql               SQL tests run in a rolled-back transaction (e.g. it_inventory_rls.sql)
   functions/<name>/index.ts Deno edge functions (~80)
   config.toml               per-function verify_jwt overrides
@@ -329,7 +334,8 @@ or work by URL but stay hidden. A super admin grant opens one for a single perso
 <name>`. Add `--no-verify-jwt` for functions that are hit without a Supabase
 session or do their own auth: `tips-public`, `enter-demo`, `work-request-portal`, `it-scan-public`, `mi-scan-public`,
 `public-schedules`, `accept-invite`, `stripe-webhook`, `invoice-inbound`,
-`sms-optin`, `qbwc` (the QuickBooks Web Connector; see docs/quickbooks), the
+`sms-optin`, `qbwc` (the QuickBooks Web Connector; see docs/quickbooks), `driver-assign`
+(the Driver Assignment phone app), the
 `google-oauth-*` / `google-calendar-*` functions, and the `billing-*` functions. Each such function says so in its header comment;
 `config.toml` also sets `verify_jwt = false` for some. Conventions:
 - A CORS `ALLOWED_ORIGINS` allowlist (operator.washlyfe.com + localhost ports)

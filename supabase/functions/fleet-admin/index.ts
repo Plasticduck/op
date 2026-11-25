@@ -4,9 +4,11 @@
 // source of truth; every change made here is also written to fleet_changes (0207).
 //
 // Actions (body.action):
-//   overview                                   vehicles + drivers + current assignments
-//   driver_create  { number, first, last, email?, phone? }
-//   driver_update  { number, first, last, email?, phone? }
+//   overview                                   vehicles + drivers (with their PIN) + current assignments;
+//                                              any driver without a PIN gets a random one
+//   driver_create  { number, first, last, email?, phone?, pin? }   no pin = a random one
+//   driver_update  { number, first, last, email?, phone?, pin? }
+//   fill_pins                                  hand out missing PINs (also allowed for the service role)
 //   driver_delete  { number }                  ends their assignment first
 //   assign         { driver, vehicle }
 //   unassign       { vehicle }
@@ -27,7 +29,10 @@
 //     back as junk), so updates send the current record with the edits merged in.
 //   - Vehicles can't be created or deleted through the API, only edited.
 //
-// Callers: Admins (owner role) of the Mighty Wash account.
+// Driver PINs (fleet_driver_pins, 0265) are for the Driver Assignment app
+// (/driverassignment, the driver-assign function): 4 digits, one per driver, unique.
+//
+// Callers: Admins (owner role) of the Mighty Wash account; the service role for fill_pins.
 // Secrets: REVEAL_USERNAME, REVEAL_PASSWORD, REVEAL_APP_ID.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -102,6 +107,30 @@ async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<void>): P
 
 class UserError extends Error {}
 
+// The role in a bearer token the gateway has already verified.
+function jwtRole(auth: string): string | null {
+  const parts = auth.replace(/^Bearer\s+/i, '').split('.')
+  if (parts.length !== 3) return null
+  try {
+    return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? null
+  } catch {
+    return null
+  }
+}
+
+// Driver PINs for the Driver Assignment app (0265): four digits, unique per
+// account. Random ones skip the easy guesses: one digit four times, or a run
+// like 1234 or 9876.
+const PIN_RE = /^\d{4}$/
+const weakPin = (p: string) => /^(\d)\1{3}$/.test(p) || '0123456789'.includes(p) || '9876543210'.includes(p)
+function randomPin(taken: Set<string>): string {
+  for (let i = 0; i < 1000; i++) {
+    const pin = String(crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, '0')
+    if (!taken.has(pin) && !weakPin(pin)) return pin
+  }
+  throw new Error('No free PIN left')
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('Origin')
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(origin) })
@@ -117,18 +146,27 @@ Deno.serve(async (req) => {
 
   const auth = req.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) return json({ error: 'unauthorized' }, 401, origin)
-  const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
-  const { data: u } = await userClient.auth.getUser()
-  if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
   const svc = createClient(url, serviceKey, { auth: { persistSession: false } })
-  const { data: me } = await svc.from('users').select('id, name, role, account_id').eq('id', u.user.id).single()
-  if (!me || me.role !== 'owner' || me.account_id !== MW_ACCOUNT_ID) {
-    return json({ error: 'forbidden', message: 'Fleet Management is for Admins.' }, 403, origin)
-  }
-
   let body: Any = {}
   try { body = await req.json() } catch { /* default */ }
   const action = String(body.action ?? 'overview')
+
+  // The service role may only hand out missing PINs (fill_pins); everything else
+  // is an Admin's.
+  let me: { id: string | null; name: string | null }
+  if (jwtRole(auth) === 'service_role') {
+    if (action !== 'fill_pins') return json({ error: 'forbidden' }, 403, origin)
+    me = { id: null, name: 'Operator' }
+  } else {
+    const userClient = createClient(url, anonKey, { global: { headers: { Authorization: auth } } })
+    const { data: u } = await userClient.auth.getUser()
+    if (!u.user) return json({ error: 'unauthorized' }, 401, origin)
+    const { data: who } = await svc.from('users').select('id, name, role, account_id').eq('id', u.user.id).single()
+    if (!who || who.role !== 'owner' || who.account_id !== MW_ACCOUNT_ID) {
+      return json({ error: 'forbidden', message: 'Fleet Management is for Admins.' }, 403, origin)
+    }
+    me = { id: who.id, name: who.name }
+  }
 
   // One retry with a fresh token if Reveal rejects the cached one. Returns the
   // status and the parsed body (text when it isn't JSON).
@@ -192,7 +230,70 @@ Deno.serve(async (req) => {
     await svc.from('fleet_changes').insert({ account_id: MW_ACCOUNT_ID, user_id: me.id, user_name: me.name, ...row })
   }
 
+  const loadPins = async (): Promise<Map<string, string>> => {
+    const { data, error } = await svc.from('fleet_driver_pins').select('driver_number, pin').eq('account_id', MW_ACCOUNT_ID)
+    if (error) throw error
+    return new Map((data ?? []).map((r: Any) => [String(r.driver_number), String(r.pin)]))
+  }
+  // Every current driver gets a PIN, and PINs of drivers gone from Reveal are
+  // dropped (only with a full driver list in hand). Returns driver number -> PIN.
+  const ensurePins = async (driverNums: string[]): Promise<{ pins: Map<string, string>; added: number }> => {
+    const pins = await loadPins()
+    if (driverNums.length) {
+      const current = new Set(driverNums)
+      const gone = [...pins.keys()].filter((n) => !current.has(n))
+      if (gone.length) {
+        await svc.from('fleet_driver_pins').delete().eq('account_id', MW_ACCOUNT_ID).in('driver_number', gone)
+        for (const n of gone) pins.delete(n)
+      }
+    }
+    let added = 0
+    for (const num of driverNums.filter((n) => !pins.has(n))) {
+      for (let attempt = 0; attempt < 3 && !pins.has(num); attempt++) {
+        const pin = randomPin(new Set(pins.values()))
+        const { error } = await svc.from('fleet_driver_pins').insert({ account_id: MW_ACCOUNT_ID, driver_number: num, pin, updated_by: me.id })
+        if (!error) {
+          pins.set(num, pin)
+          added++
+        } else if (error.code === '23505') {
+          // Another request just handed out that PIN or gave this driver one.
+          for (const [n, p] of await loadPins()) pins.set(n, p)
+        } else {
+          throw error
+        }
+      }
+    }
+    if (added) await log({ action: 'pins_assigned', details: { drivers: added } })
+    return { pins, added }
+  }
+  // Refuses a PIN another driver already has.
+  const checkPinFree = async (num: string, pin: string) => {
+    const pins = await loadPins()
+    for (const [n, p] of pins) if (p === pin && n !== num) throw new UserError('Another driver already has that PIN. Pick a different one.')
+    return pins
+  }
+  // Sets a driver's PIN, or a random one when `pin` is empty.
+  const setPin = async (num: string, pin: string | null): Promise<string> => {
+    const pins = await checkPinFree(num, pin ?? '')
+    const final = pin || randomPin(new Set([...pins].filter(([n]) => n !== num).map(([, p]) => p)))
+    const { error } = await svc.from('fleet_driver_pins').upsert({
+      account_id: MW_ACCOUNT_ID, driver_number: num, pin: final, updated_at: new Date().toISOString(), updated_by: me.id,
+    })
+    if (error) throw error.code === '23505' ? new UserError('Another driver already has that PIN. Pick a different one.') : error
+    return final
+  }
+
   try {
+    if (action === 'fill_pins') {
+      const dr = await reveal('GET', '/cmd/v1/drivers')
+      if (dr.status !== 200) return json({ error: 'reveal_failed', step: 'drivers', status: dr.status }, 502, origin)
+      const nums = ((dr.body ?? []) as Any[])
+        .map((row) => String((row?.Driver ?? row)?.DriverNumber ?? '').trim())
+        .filter((n) => n && n !== 'null')
+      const { pins, added } = await ensurePins(nums)
+      return json({ ok: true, drivers: nums.length, with_pin: nums.filter((n) => pins.has(n)).length, added }, 200, origin)
+    }
+
     if (action === 'overview') {
       const [vr, dr] = await Promise.all([reveal('GET', '/cmd/v1/vehicles'), reveal('GET', '/cmd/v1/drivers')])
       if (vr.status !== 200) return json({ error: 'reveal_failed', step: 'vehicles', status: vr.status }, 502, origin)
@@ -273,7 +374,10 @@ Deno.serve(async (req) => {
         .sort((a, b) => `${a.first} ${a.last}`.localeCompare(`${b.first} ${b.last}`))
 
       const unnumbered = rawVehicles.filter((v) => !String(v?.VehicleNumber ?? '').trim()).map((v) => cleanName(v.Name))
-      return json({ fetched_at: new Date().toISOString(), vehicles, drivers, unnumbered }, 200, origin)
+      // Any driver without a Driver Assignment PIN gets one here.
+      const { pins } = await ensurePins(drivers.map((d) => d.number))
+      const withPins = drivers.map((d) => ({ ...d, pin: pins.get(d.number) ?? null }))
+      return json({ fetched_at: new Date().toISOString(), vehicles, drivers: withPins, unnumbered }, 200, origin)
     }
 
     if (action === 'driver_create' || action === 'driver_update') {
@@ -285,6 +389,10 @@ Deno.serve(async (req) => {
       if (!num || !first || !last) throw new UserError('First name, last name and driver number are required.')
       if (!/^[A-Za-z0-9_-]{1,20}$/.test(num)) throw new UserError('Driver numbers use letters, numbers, - and _ (up to 20).')
       if (email && !realEmail(email)) throw new UserError('That email address doesn\'t look right.')
+      // The Driver Assignment PIN: checked before anything is saved in Verizon.
+      const pinIn = body.pin == null ? '' : String(body.pin).trim()
+      if (pinIn && !PIN_RE.test(pinIn)) throw new UserError('A PIN is 4 digits.')
+      const pinsNow = pinIn ? await checkPinFree(num, pinIn) : await loadPins()
 
       const existing = await getDriver(num)
       if (action === 'driver_create') {
@@ -292,6 +400,7 @@ Deno.serve(async (req) => {
         const r = await reveal('POST', '/cmd/v1/drivers', { DriverNumber: num, FirstName: first, LastName: last, EmailAddress: email, PhoneNumber: phone, EnableMobileAccess: false })
         if (r.status !== 201 && r.status !== 200) throw new UserError(`Verizon didn't add the driver: ${revealMessage(r) || r.status}`)
         await log({ action: 'driver_added', driver_number: num, driver_name: `${first} ${last}`, details: { email, phone } })
+        await setPin(num, pinIn || null)
         return json({ ok: true }, 200, origin)
       }
       if (!existing) throw new UserError(`Driver ${num} isn't in Verizon anymore.`)
@@ -305,6 +414,11 @@ Deno.serve(async (req) => {
         action: 'driver_edited', driver_number: num, driver_name: `${first} ${last}`,
         details: { before: { first: existing.FirstName, last: existing.LastName, email: realEmail(existing.EmailAddress), phone: existing.PhoneNumber }, after: { first, last, email, phone } },
       })
+      // A changed PIN is logged without the PIN itself.
+      if (pinIn && pinsNow.get(num) !== pinIn) {
+        await setPin(num, pinIn)
+        await log({ action: 'pin_set', driver_number: num, driver_name: `${first} ${last}`, details: {} })
+      }
       return json({ ok: true }, 200, origin)
     }
 
@@ -317,6 +431,7 @@ Deno.serve(async (req) => {
       const r = await reveal('DELETE', `/cmd/v1/drivers/${enc(num)}`)
       if (r.status >= 300) throw new UserError(`Verizon didn't remove the driver: ${revealMessage(r) || r.status}`)
       await svc.from('fleet_driver_links').delete().eq('account_id', MW_ACCOUNT_ID).eq('driver_number', num)
+      await svc.from('fleet_driver_pins').delete().eq('account_id', MW_ACCOUNT_ID).eq('driver_number', num)
       await log({ action: 'driver_removed', driver_number: num, driver_name: driverName(existing), vehicle_number: a?.VehicleNumber ?? null, details: { email: realEmail(existing.EmailAddress) } })
       return json({ ok: true }, 200, origin)
     }

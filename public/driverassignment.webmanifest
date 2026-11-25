@@ -1,0 +1,17 @@
+{
+  "id": "/driverassignment",
+  "name": "Driver Assignment",
+  "short_name": "Driver Assign",
+  "description": "Sign in with your PIN and scan a Mighty Wash vehicle to drive it.",
+  "start_url": "/driverassignment",
+  "scope": "/driverassignment",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0B0F14",
+  "icons": [
+    { "src": "/da-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/da-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/da-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

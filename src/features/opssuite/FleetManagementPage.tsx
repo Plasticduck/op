@@ -13,7 +13,9 @@ import { labelsPerPage } from '@/lib/labels/layout'
 import { cn } from '@/lib/utils'
 import {
   fleetAdminApi,
+  DRIVER_APP_URL,
   FUEL_TYPES,
+  randomDriverPin,
   VEHICLE_SIZES,
   type DriverInput,
   type FleetAdminDriver,
@@ -503,6 +505,7 @@ function DriversTab({ vehicles, drivers, onDone }: {
             <thead className="bg-content text-left text-xs uppercase tracking-wide text-ink-muted">
               <tr>
                 <th className="px-3 py-2.5 font-medium">Driver</th>
+                <th className="px-3 py-2.5 font-medium" title="For the Driver Assignment app">PIN</th>
                 <th className="px-3 py-2.5 font-medium">Email</th>
                 <th className="px-3 py-2.5 font-medium">Phone</th>
                 <th className="px-3 py-2.5 font-medium">Vehicle</th>
@@ -517,6 +520,7 @@ function DriversTab({ vehicles, drivers, onDone }: {
                     <div className="font-medium text-ink">{fullName(d) || d.number}</div>
                     <div className="text-xs text-ink-muted">#{d.number}</div>
                   </td>
+                  <td className="px-3 py-2.5 font-mono tracking-widest text-ink">{d.pin ?? <span className="text-ink-subtle">-</span>}</td>
                   <td className="px-3 py-2.5 text-ink">{d.email ?? <span className="text-ink-subtle">-</span>}</td>
                   <td className="px-3 py-2.5 text-ink">{d.phone ?? <span className="text-ink-subtle">-</span>}</td>
                   <td className="px-3 py-2.5 text-ink">
@@ -550,6 +554,11 @@ function DriversTab({ vehicles, drivers, onDone }: {
         </div>
       )}
       <p className="text-xs text-ink-subtle">
+        Drivers put themselves on a vehicle at{' '}
+        <a href={DRIVER_APP_URL} target="_blank" rel="noopener" className="font-medium text-accent hover:underline">operator.washlyfe.com/driverassignment</a>:
+        they enter their PIN, then scan the QR sticker on the dash. No Operator login needed.
+      </p>
+      <p className="text-xs text-ink-subtle">
         A driver is linked to an Operator login when their email here matches the login's email, or when someone picks this driver as
         themselves the first time they scan a vehicle sticker ("by scan"). If someone picked the wrong driver, undo the link and they'll be asked again.
       </p>
@@ -557,6 +566,7 @@ function DriversTab({ vehicles, drivers, onDone }: {
       {editing && (
         <DriverModal
           driver={editing === 'new' ? null : editing}
+          takenPins={new Set(drivers.filter((d) => d.pin && (editing === 'new' || d.number !== editing.number)).map((d) => d.pin!))}
           taken={new Set(drivers.map((d) => d.number.toUpperCase()))}
           onClose={() => setEditing(null)}
           onDone={onDone}
@@ -596,9 +606,11 @@ function DriversTab({ vehicles, drivers, onDone }: {
   )
 }
 
-function DriverModal({ driver, taken, onClose, onDone }: {
+function DriverModal({ driver, taken, takenPins, onClose, onDone }: {
   driver: FleetAdminDriver | null
   taken: Set<string>
+  // Other drivers' PINs: a PIN alone says who the driver is, so no two share one.
+  takenPins: Set<string>
   onClose: () => void
   onDone: (message: string) => void
 }) {
@@ -609,7 +621,11 @@ function DriverModal({ driver, taken, onClose, onDone }: {
     last: driver?.last ?? '',
     email: driver?.email ?? '',
     phone: driver?.phone ?? '',
+    pin: driver?.pin ?? '',
   })
+  const pin = f.pin ?? ''
+  const pinTaken = pin.length === 4 && takenPins.has(pin)
+  const pinShort = pin.length > 0 && pin.length < 4
   // New drivers get a suggested number until someone types their own.
   const [numberTouched, setNumberTouched] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -628,11 +644,15 @@ function DriverModal({ driver, taken, onClose, onDone }: {
     setBusy(true)
     setError(null)
     try {
-      const input = { ...f, number: f.number.trim(), first: f.first.trim(), last: f.last.trim(), email: f.email.trim(), phone: f.phone.trim() }
+      const input = { ...f, number: f.number.trim(), first: f.first.trim(), last: f.last.trim(), email: f.email.trim(), phone: f.phone.trim(), pin }
       if (isNew) await fleetAdminApi.createDriver(input)
       else await fleetAdminApi.updateDriver(input)
       onClose()
-      onDone(isNew ? `Added ${input.first} ${input.last} as driver #${input.number}.` : `Saved ${input.first} ${input.last}.`)
+      onDone(
+        isNew
+          ? `Added ${input.first} ${input.last} as driver #${input.number}${pin ? ` with PIN ${pin}` : ' with a random PIN'}.`
+          : `Saved ${input.first} ${input.last}${pin && pin !== driver?.pin ? `. Their new PIN is ${pin}` : ''}.`,
+      )
     } catch (e) {
       setError((e as Error).message)
       setBusy(false)
@@ -657,11 +677,35 @@ function DriverModal({ driver, taken, onClose, onDone }: {
           />
           {numberTaken && <p className="mt-1 text-xs text-danger">That number is already used.</p>}
         </Field>
+        <Field
+          label="Driver Assignment PIN"
+          hint={isNew ? 'Leave blank for a random one.' : 'They enter it at operator.washlyfe.com/driverassignment.'}
+          className="sm:col-span-2"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-28">
+              <Input
+                value={pin}
+                onChange={(e) => setF((x) => ({ ...x, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="4 digits"
+                className="font-mono tracking-widest"
+                invalid={pinTaken || pinShort}
+              />
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setF((x) => ({ ...x, pin: randomDriverPin(takenPins) }))}>
+              New random PIN
+            </Button>
+          </div>
+          {pinTaken && <p className="mt-1 text-xs text-danger">Another driver already has that PIN.</p>}
+          {pinShort && <p className="mt-1 text-xs text-danger">A PIN is 4 digits.</p>}
+        </Field>
       </div>
       {error && <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
-        <Button onClick={() => void save()} disabled={busy || !f.first.trim() || !f.last.trim() || !f.number.trim() || numberTaken}>
+        <Button onClick={() => void save()} disabled={busy || !f.first.trim() || !f.last.trim() || !f.number.trim() || numberTaken || pinTaken || pinShort}>
           {busy ? 'Saving...' : isNew ? 'Add driver' : 'Save'}
         </Button>
       </div>
@@ -674,8 +718,9 @@ function DriverModal({ driver, taken, onClose, onDone }: {
 function describe(c: FleetChange): string {
   const d = c.driver_name ?? (c.driver_number ? `driver #${c.driver_number}` : 'a driver')
   const v = c.vehicle_name ?? (c.vehicle_number ? `vehicle #${c.vehicle_number}` : 'a vehicle')
-  const details = (c.details ?? {}) as { miles?: number; not_saved?: string[]; self?: boolean; source?: string; vehicles?: number }
+  const details = (c.details ?? {}) as { miles?: number; not_saved?: string[]; self?: boolean; source?: string; vehicles?: number; via?: string; drivers?: number }
   const scanned = details.self || details.source === 'self'
+  if (c.action === 'assigned' && details.via === 'pin') return `Signed in with their PIN and scanned in to drive ${v}`
   switch (c.action) {
     case 'driver_added': return scanned ? `Added themselves as driver ${d} (scanned a sticker)` : `Added driver ${d}`
     case 'driver_edited': return `Edited driver ${d}`
@@ -687,6 +732,8 @@ function describe(c: FleetChange): string {
     case 'linked': return `Said they're driver ${d} (scanned a sticker)`
     case 'unlinked': return `Undid the link to driver ${d}`
     case 'stickers_printed': return `Printed QR stickers for ${details.vehicles ?? '?'} vehicle${details.vehicles === 1 ? '' : 's'}`
+    case 'pin_set': return `Changed ${d}'s Driver Assignment PIN`
+    case 'pins_assigned': return `Gave ${details.drivers ?? '?'} driver${details.drivers === 1 ? '' : 's'} a Driver Assignment PIN`
     default: return c.action
   }
 }
