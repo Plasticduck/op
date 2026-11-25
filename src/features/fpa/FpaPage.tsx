@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/auth'
+import { isSuperAdmin } from '@/lib/pageAccessLogic'
 import { dateTime } from '@/lib/format'
 import { fpa, type FpaEntity, type FpaSite, type FpaVersion } from '@/lib/queries/fpa'
 import { monthLabel, monthRange, toSeries, type Series } from './model'
@@ -80,6 +82,10 @@ export default function FpaPage() {
   const loading = !!versionId && !series
 
   const [loadOpen, setLoadOpen] = useState(false)
+  // Loading a version is the super admin's (fpa_may_load refuses everyone else), so
+  // the other readers get the page without the load buttons.
+  const { profile } = useAuth()
+  const canLoad = isSuperAdmin(profile?.email)
   const onLoaded = () => {
     setLoadOpen(false)
     void loadBase()
@@ -98,7 +104,7 @@ export default function FpaPage() {
         subtitle={version
           ? `${version.label} · QuickBooks P&L ${firstMonth ? monthLabel(firstMonth) : ''} to ${lastClosed ? monthLabel(lastClosed) : ''} · loaded ${dateTime(version.activated_at ?? version.loaded_at)}`
           : 'Mighty Wash’s FP&A workbook, inside Operator.'}
-        actions={<Button variant="secondary" onClick={() => setLoadOpen(true)}><Upload className="size-4" /> Load a new version</Button>}
+        actions={canLoad ? <Button variant="secondary" onClick={() => setLoadOpen(true)}><Upload className="size-4" /> Load a new version</Button> : undefined}
       />
 
       {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">Could not load the model: {error}</p>}
@@ -107,8 +113,10 @@ export default function FpaPage() {
         <EmptyState
           icon={Landmark}
           title="No model loaded yet"
-          description="Load the FP&A workbook (Mighty_Wash_FPA_Model_*.xlsx) and its P&L, KPIs, budget and forecast show here."
-          action={<Button onClick={() => setLoadOpen(true)}><Upload className="size-4" /> Load the workbook</Button>}
+          description={canLoad
+            ? 'Load the FP&A workbook (Mighty_Wash_FPA_Model_*.xlsx) and its P&L, KPIs, budget and forecast show here.'
+            : 'The FP&A workbook has not been loaded yet. Its P&L, KPIs, budget and forecast show here once it is.'}
+          action={canLoad ? <Button onClick={() => setLoadOpen(true)}><Upload className="size-4" /> Load the workbook</Button> : undefined}
         />
       ) : (
         <>
@@ -177,7 +185,7 @@ export default function FpaPage() {
         </>
       )}
 
-      {loadOpen && <LoadModal current={version ?? null} onClose={() => setLoadOpen(false)} onLoaded={onLoaded} />}
+      {loadOpen && canLoad && <LoadModal current={version ?? null} onClose={() => setLoadOpen(false)} onLoaded={onLoaded} />}
     </div>
   )
 }

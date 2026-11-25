@@ -14,7 +14,7 @@ export const SERVER_LIMITED: Record<string, string> = {
   '/app/per-diem': 'Shows only their own requests. Approving needs Admin or Finance.',
   '/app/mileage': 'Shows only their own requests. Approving needs Admin or Finance.',
   '/app/quickbooks': 'Its data loads for Admins only.',
-  '/app/fpa': 'Its data loads only for the six people on the FP&A reader list, whatever the grant.',
+  '/app/fpa': 'Its data loads only for the people on the FP&A reader list, whatever the grant.',
   '/app/it-inventory': 'Editing needs an Admin, manager or technician login.',
   '/app/tips-new': MANAGER_DATA,
   '/app/maintenance-orders': 'Shows only orders they place.',

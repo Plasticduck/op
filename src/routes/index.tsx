@@ -7,6 +7,7 @@ import { RequireAuth, RequireRole, RequirePermRole, RequireGmBonus, RequireSiteP
 import { RouteStub } from '@/routes/RouteStub'
 import { BillingGate } from '@/features/settings/billing/BillingGate'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
+import { FPA_PAGE_EMAILS } from '@/features/fpa/access'
 import { PURCHASE_REQUEST_EMAILS } from '@/features/purchasing/access'
 import { MI_EMAILS } from '@/features/maintenance/inventory/access'
 import { SECRET_SHOPPER_EMAILS } from '@/features/secretshoppers/access'
@@ -338,7 +339,7 @@ export const router = createBrowserRouter([
           { path: 'commissions', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<CommissionsPage />)}</RequireEmails> },
           { path: 'quickbooks', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<QuickBooksPage />)}</RequireEmails> },
           // Kevan's page. The model's data is kept to the fpa_readers list in the database.
-          { path: 'fpa', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<FpaPage />)}</RequireEmails> },
+          { path: 'fpa', element: <RequireEmails allow={FPA_PAGE_EMAILS}>{s(<FpaPage />)}</RequireEmails> },
           { path: 'event-pay', element: <RequirePermRole allow={['owner', 'regional_manager']}>{s(<EventPayPage />)}</RequirePermRole> },
           // Kevan enters every exec's goals, so it's his page for now.
           { path: 'goal-tracker', element: <RequireEmails allow={['kevan@washlyfe.com']}>{s(<GoalTrackerPage />)}</RequireEmails> },

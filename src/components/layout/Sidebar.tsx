@@ -87,6 +87,7 @@ import { usePageAccess } from '@/lib/pageAccess'
 import { SECRET_SHOPPER_EMAILS } from '@/features/secretshoppers/access'
 import { cn } from '@/lib/utils'
 import { IT_INVENTORY_EMAILS } from '@/features/it/inventory/access'
+import { FPA_PAGE_EMAILS } from '@/features/fpa/access'
 import { PURCHASE_REQUEST_EMAILS } from '@/features/purchasing/access'
 import { MI_EMAILS } from '@/features/maintenance/inventory/access'
 
@@ -396,7 +397,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'FP&A Model',
         icon: Landmark,
         roles: ['owner'],
-        emails: ['kevan@washlyfe.com'], // Kevan's page; the data is read through Operator AI by the fpa_readers list
+        emails: FPA_PAGE_EMAILS, // features/fpa/access.ts; the data loads only for the fpa_readers list
       },
       // Chargebacks page hidden pending a real Adyen dispute feed (the FlexWash
       // partner API doesn't expose disputes). Route + page kept in the repo.
