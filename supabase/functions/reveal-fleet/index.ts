@@ -10,6 +10,8 @@
 //   GET  /cmd/v1/vehicles            vehicle list (VehicleNumber keys everything else)
 //   GET  /cmd/v1/drivers             driver list (DriverNumber -> name)
 //   POST /rad/v1/vehicles/locations  latest GPS plot for up to 100 vehicle numbers
+//   GET  /da/v1/driverassignments/vehicles/<n>/currentassignment  who has the truck now
+//                                    (a vehicle's `driver`; "Unassigned" on the map when null)
 // Every call after /token sends "Atmosphere atmosphere_app_id=<app id>, Bearer <token>".
 // Speeds come back in km/h. A vehicle with no VehicleNumber in Reveal can't be
 // queried; those are returned in `missing` so they can be fixed in Reveal.
@@ -49,6 +51,19 @@ const json = (body: unknown, status: number, origin: string | null) =>
 // minutes, the vehicle and driver lists for 10 (they rarely change).
 let token: { value: string; exp: number } | null = null
 let roster: { vehicles: Any[]; drivers: Map<string, string>; exp: number } | null = null
+// Who each vehicle is assigned to right now (vehicle number -> driver number, or
+// null when unassigned): what Fleet Management shows and the QR stickers change.
+// One call per vehicle, so kept for two minutes. A vehicle missing here (its
+// lookup failed) falls back to the driver on its latest GPS plot.
+let assigned: { map: Map<string, string | null>; exp: number } | null = null
+const ASSIGNED_TTL_MS = 2 * 60_000
+
+async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let i = 0
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) await fn(items[i++])
+  }))
+}
 
 async function getToken(user: string, pass: string, force = false): Promise<string> {
   if (!force && token && token.exp > Date.now()) return token.value
@@ -139,6 +154,32 @@ Deno.serve(async (req) => {
     }
 
     const located = roster.vehicles.filter((v) => v?.VehicleNumber)
+    if (!assigned || assigned.exp < Date.now()) {
+      const map = new Map<string, string | null>()
+      await pool(located, 6, async (v) => {
+        const num = String(v.VehicleNumber).trim()
+        try {
+          const r = await reveal(`/da/v1/driverassignments/vehicles/${encodeURIComponent(num)}/currentassignment`)
+          if (r.status === 200) {
+            const b = await r.json().catch(() => null)
+            map.set(num, b?.DriverNumber ? String(b.DriverNumber).trim() : null)
+          } else if (r.status === 204 || r.status === 404) {
+            map.set(num, null)
+          } else {
+            await r.body?.cancel()
+          }
+        } catch {
+          // left out: this vehicle shows its GPS plot's driver instead
+        }
+      })
+      // No truck assigned at all means Reveal isn't answering the lookups usefully
+      // (or assignments aren't in use), not that the whole fleet sits idle: fall
+      // back to the GPS plots' drivers rather than show everyone as unassigned.
+      if (![...map.values()].some(Boolean)) map.clear()
+      assigned = { map, exp: Date.now() + ASSIGNED_TTL_MS }
+      const vals = [...map.values()]
+      console.log(`reveal-fleet assignments: ${vals.filter(Boolean).length} assigned, ${vals.filter((x) => x === null).length} unassigned, ${located.length - map.size} not looked up`)
+    }
     const missing: Any[] = roster.vehicles
       .filter((v) => !v?.VehicleNumber)
       .map((v) => ({ name: cleanName(v.Name), reason: 'no_vehicle_number' }))
@@ -162,12 +203,18 @@ Deno.serve(async (req) => {
         continue
       }
       const driverNum = p.DriverNumber ? String(p.DriverNumber).trim() : null
+      const plotDriver = driverNum ? (roster.drivers.get(driverNum.toLowerCase()) ?? null) : null
+      // The current assignment wins (a parked truck's last plot can predate a
+      // reassignment); null there means nobody has the truck.
+      const num = String(v.VehicleNumber).trim()
+      const asg = assigned.map.has(num) ? assigned.map.get(num)! : undefined
+      const driver = asg === undefined ? plotDriver : asg === null ? null : (roster.drivers.get(asg.toLowerCase()) ?? `Driver ${asg}`)
       const a = p.Address ?? {}
       out.push({
         number: v.VehicleNumber,
         name: cleanName(v.Name) || String(v.VehicleNumber),
         vehicle: [v.Year || null, v.Make, v.Model].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() || null,
-        driver: driverNum ? (roster.drivers.get(driverNum.toLowerCase()) ?? null) : null,
+        driver,
         lat: p.Latitude,
         lng: p.Longitude,
         // AddressLine1 is usually the full one-line address already.

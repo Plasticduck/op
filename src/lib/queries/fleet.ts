@@ -32,7 +32,7 @@ export type FleetVehicle = {
   number: string
   name: string // cleaned Reveal vehicle name, usually the assigned person
   vehicle: string | null // "2024 Nissan Frontier"
-  driver: string | null // driver on the latest GPS plot
+  driver: string | null // assigned in Reveal now (else the latest GPS plot's); null = unassigned
   lat: number
   lng: number
   address: string | null

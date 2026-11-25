@@ -85,18 +85,44 @@ function vehicleIcon(v: FleetVehicle): L.DivIcon {
   })
 }
 
+// The car's own name, for under the driver. Older Reveal names are just a person
+// ("Aaron Messina", "Laramie"); when that only repeats the driver, the year, make
+// and model say more.
+function carName(v: FleetVehicle): string | null {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const car = norm(v.name)
+  const who = v.driver ? norm(v.driver) : ''
+  if (car && !(who && who.includes(car))) return v.name
+  return v.vehicle
+}
+
+// Map label: who has the truck (or Unassigned), the car's name smaller beneath.
+function labelHtml(v: FleetVehicle): string {
+  const car = carName(v)
+  return (
+    '<div style="text-align:center;line-height:1.25">' +
+    (v.driver
+      ? `<div style="font-size:12px;font-weight:700;color:#0f172a">${escapeHtml(v.driver)}</div>`
+      : '<div style="font-size:12px;font-weight:600;font-style:italic;color:#64748b">Unassigned</div>') +
+    (car ? `<div style="font-size:10px;color:#64748b">${escapeHtml(car)}</div>` : '') +
+    '</div>'
+  )
+}
+
 function popupHtml(v: FleetVehicle): string {
   const k = kindOf(v)
   const moving = k === 'moving' && v.speed_mph != null
   const line = (text: string, color = '#334155') => `<div style="font-size:13px;color:${color};margin-top:2px">${text}</div>`
   return (
     '<div style="min-width:210px">' +
-    `<div style="font-size:15px;font-weight:700">${escapeHtml(v.name)}</div>` +
-    (v.vehicle ? line(escapeHtml(v.vehicle), '#64748b') : '') +
+    (v.driver
+      ? `<div style="font-size:15px;font-weight:700">${escapeHtml(v.driver)}</div>`
+      : '<div style="font-size:15px;font-weight:600;font-style:italic;color:#64748b">Unassigned</div>') +
+    line(escapeHtml(v.name), '#475569') +
+    (v.vehicle && !v.name.toLowerCase().includes(v.vehicle.toLowerCase()) ? line(escapeHtml(v.vehicle), '#64748b') : '') +
     `<div style="font-size:13px;margin-top:6px"><span style="color:${KIND[k].color};font-weight:700">${KIND[k].label}</span>` +
     (moving ? ` &middot; ${v.speed_mph} mph${v.heading ? ` ${escapeHtml(v.heading)}` : ''}` : '') +
     '</div>' +
-    (v.driver ? line(`Driver: ${escapeHtml(v.driver)}`) : '') +
     (v.address ? line(escapeHtml(v.address)) : '') +
     (v.geofence ? line(`Geofence: ${escapeHtml(v.geofence)}`) : '') +
     line(`Updated ${ago(v.updated_at)}`, '#64748b') +
@@ -313,7 +339,7 @@ export default function FleetMapPage() {
         if (!layer.hasLayer(m)) m.addTo(layer)
       }
       m.unbindTooltip()
-      if (showNames) m.bindTooltip(escapeHtml(v.name), { permanent: true, direction: 'bottom', className: 'text-xs' })
+      if (showNames) m.bindTooltip(labelHtml(v), { permanent: true, direction: 'bottom' })
     }
     for (const [num, m] of markers) {
       if (!keep.has(num)) layer.removeLayer(m)
@@ -440,12 +466,14 @@ export default function FleetMapPage() {
                         style={{ background: KIND[k].color, opacity: ageMs(v) > OLD_MS ? 0.55 : 1 }}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-ink">{v.name}</span>
+                        <span className={`block truncate text-sm font-semibold ${v.driver ? 'text-ink' : 'italic text-ink-muted'}`}>
+                          {v.driver ?? 'Unassigned'}
+                        </span>
+                        {carName(v) && <span className="block truncate text-xs text-ink-muted">{carName(v)}</span>}
                         <span className="block truncate text-xs text-ink-subtle">
                           {KIND[k].label}
                           {k === 'moving' && v.speed_mph != null ? ` ${v.speed_mph} mph` : ''}
                           {v.city ? ` · ${v.city}` : ''}
-                          {v.driver && !v.name.toLowerCase().includes(v.driver.split(' ')[0].toLowerCase()) ? ` · ${v.driver}` : ''}
                         </span>
                       </span>
                       <span className="shrink-0 pt-0.5 text-xs text-ink-subtle">{agoShort(v.updated_at)}</span>
