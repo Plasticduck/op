@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Loader2, RefreshCw, Search, X, List, Tag, Truck, Trash2, ImagePlus } from 'lucide-react'
-import { fleet, fleetPhotos, type FleetLive, type FleetPhoto, type FleetVehicle } from '@/lib/queries/fleet'
+import { Loader2, RefreshCw, Search, X, List, Tag, Truck } from 'lucide-react'
+import { fleet, type FleetLive, type FleetVehicle } from '@/lib/queries/fleet'
 import { useLocations } from '@/lib/locations'
-import { useAuth } from '@/lib/auth'
 import { sitePinHtml } from '@/lib/sitePoints'
-import { shrinkPhoto } from '@/lib/shrinkPhoto'
 import { Modal } from '@/components/ui/Modal'
-import { Button } from '@/components/ui/Button'
-import { ConfirmDialog } from '@/components/feedback/ConfirmDialog'
+import { useFleetPhotos, VehiclePhotoField } from './FleetVehiclePhoto'
 
 // Fleet Map: live positions of Mighty Wash vehicles from Verizon Connect Reveal
 // (reveal-fleet edge function). Pre-launch: kevan@washlyfe.com only.
@@ -178,25 +175,8 @@ export default function FleetMapPage() {
   const [, setTick] = useState(0)
 
   // Truck photos kept in Operator (Reveal's API doesn't share its Pictures).
-  const [photoRows, setPhotoRows] = useState<FleetPhoto[]>([])
-  const [photoLinks, setPhotoLinks] = useState<Map<string, string>>(() => new Map())
+  const photos = useFleetPhotos()
   const [photoFor, setPhotoFor] = useState<FleetVehicle | null>(null)
-  const loadPhotos = useCallback(async () => {
-    try {
-      const rows = await fleetPhotos.list()
-      setPhotoLinks(await fleetPhotos.links(rows))
-      setPhotoRows(rows)
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[fleet photos]', e)
-    }
-  }, [])
-  // The photo links last an hour, so they're renewed before then.
-  useEffect(() => {
-    void loadPhotos()
-    const id = setInterval(() => void loadPhotos(), 45 * 60_000)
-    return () => clearInterval(id)
-  }, [loadPhotos])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -484,7 +464,7 @@ export default function FleetMapPage() {
             <ul className="divide-y divide-border">
               {shown.map((v) => {
                 const k = kindOf(v)
-                const photo = photoLinks.get(v.number)
+                const photo = photos.links.get(v.number)
                 return (
                   <li key={v.number} className="flex items-start gap-3 px-4 py-2.5 hover:bg-content">
                     {/* The truck's photo (tap to view or change it), with its status as a dot. */}
@@ -548,110 +528,18 @@ export default function FleetMapPage() {
       {photoFor && (
         // The list panel sits at z-500, so the dialog needs its own higher layer.
         <div className="relative z-[1100]">
-          <VehiclePhotoModal
-            vehicle={photoFor}
-            row={photoRows.find((r) => r.vehicle_number === photoFor.number) ?? null}
-            url={photoLinks.get(photoFor.number) ?? null}
-            onClose={() => setPhotoFor(null)}
-            onChanged={loadPhotos}
-          />
+          <Modal open onClose={() => setPhotoFor(null)} title={photoFor.name} description={photoFor.driver ?? 'Unassigned'} size="md">
+            <VehiclePhotoField
+              vehicleNumber={photoFor.number}
+              vehicleName={photoFor.name}
+              row={photos.rows.find((r) => r.vehicle_number === photoFor.number) ?? null}
+              url={photos.links.get(photoFor.number) ?? null}
+              ready={photos.ready}
+              onChanged={photos.reload}
+            />
+          </Modal>
         </div>
       )}
     </div>
-  )
-}
-
-// View, add, replace or remove a truck's photo. Photos are kept in Operator
-// because Reveal's API doesn't share the Picture set in Reveal.
-function VehiclePhotoModal({ vehicle, row, url, onClose, onChanged }: {
-  vehicle: FleetVehicle
-  row: FleetPhoto | null
-  url: string | null
-  onClose: () => void
-  onChanged: () => Promise<void>
-}) {
-  const { profile } = useAuth()
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [confirmRemove, setConfirmRemove] = useState(false)
-
-  const pick = async (file: File | undefined) => {
-    if (!file || !profile) return
-    setBusy(true)
-    setError(null)
-    try {
-      const small = await shrinkPhoto(file, 1200, { alwaysJpeg: true })
-      if (small.size > 5 * 1024 * 1024) throw new Error('That picture is too large. Try a smaller one.')
-      await fleetPhotos.save({ accountId: profile.account_id, userId: profile.id, vehicleNumber: vehicle.number, file: small, previous: row?.path ?? null })
-      await onChanged()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save the photo.')
-    } finally {
-      setBusy(false)
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
-
-  const remove = async () => {
-    if (!row) return
-    setBusy(true)
-    setError(null)
-    try {
-      await fleetPhotos.remove(row)
-      await onChanged()
-      setConfirmRemove(false)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not remove the photo.')
-      setConfirmRemove(false)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <Modal open onClose={() => !busy && onClose()} title={vehicle.name} description={vehicle.driver ?? 'Unassigned'} size="md">
-        <div className="flex flex-col gap-3">
-          {url ? (
-            <img src={url} alt={`Photo of ${vehicle.name}`} className="max-h-[60vh] w-full rounded-md bg-content object-contain" />
-          ) : (
-            <div className="grid place-items-center gap-2 rounded-md border border-dashed border-border bg-content px-4 py-10 text-center">
-              <Truck className="size-8 text-ink-subtle" />
-              <p className="text-sm text-ink-muted">No photo of this truck yet.</p>
-            </div>
-          )}
-          {error && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => void pick(e.target.files?.[0])}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {row ? (
-              <Button variant="ghost" size="sm" className="text-danger" disabled={busy} onClick={() => setConfirmRemove(true)}>
-                <Trash2 className="size-4" /> Remove photo
-              </Button>
-            ) : <span />}
-            <Button size="sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
-              {row ? 'Replace photo' : 'Add a photo'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-      <ConfirmDialog
-        open={confirmRemove}
-        title="Remove this photo?"
-        description={`The photo of ${vehicle.name} will be taken off the Fleet Map.`}
-        confirmLabel="Remove"
-        destructive
-        loading={busy}
-        onConfirm={() => void remove()}
-        onCancel={() => setConfirmRemove(false)}
-      />
-    </>
   )
 }

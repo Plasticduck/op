@@ -22,6 +22,7 @@ import {
   type VehicleInput,
 } from '@/lib/queries/fleet'
 import { buildVehicleStickersPdf, STICKER_STOCKS, vehicleSticker } from './fleetStickers'
+import { useFleetPhotos, VehiclePhotoField } from './FleetVehiclePhoto'
 
 // Fleet Management: Admins add, edit and remove drivers, edit vehicles, and put
 // drivers on (or take them off) vehicles, all in Verizon Connect Reveal through
@@ -404,6 +405,9 @@ function VehicleModal({ vehicle, onClose, onDone }: { vehicle: FleetAdminVehicle
   const [miles, setMiles] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The truck's photo is kept in Operator (Reveal's API doesn't share its Picture)
+  // and saves on its own, apart from the Save below.
+  const photos = useFleetPhotos()
   const set = (k: keyof VehicleInput) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }))
 
   const save = async () => {
@@ -426,6 +430,17 @@ function VehicleModal({ vehicle, onClose, onDone }: { vehicle: FleetAdminVehicle
 
   return (
     <Modal open onClose={onClose} title="Edit vehicle" description={`Vehicle #${vehicle.number}`} size="md">
+      <div className="mb-4 border-b border-border pb-4">
+        <VehiclePhotoField
+          layout="inline"
+          vehicleNumber={vehicle.number}
+          vehicleName={vehicle.name}
+          row={photos.rows.find((r) => r.vehicle_number === vehicle.number) ?? null}
+          url={photos.links.get(vehicle.number) ?? null}
+          ready={photos.ready}
+          onChanged={photos.reload}
+        />
+      </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Name" className="sm:col-span-2"><Input value={f.name} onChange={set('name')} /></Field>
         <Field label="License plate"><Input value={f.plate} onChange={set('plate')} /></Field>

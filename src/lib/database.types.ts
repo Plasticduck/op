@@ -17054,6 +17054,7 @@ export type Database = {
         }[]
       }
       fleet_map_can_use: { Args: never; Returns: boolean }
+      fleet_photos_can_use: { Args: never; Returns: boolean }
       fpa_activate: { Args: { p_version: string }; Returns: Json }
       fpa_begin: {
         Args: {
